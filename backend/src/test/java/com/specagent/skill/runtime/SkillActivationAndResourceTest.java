@@ -48,24 +48,24 @@ class SkillActivationAndResourceTest {
 
     @Test
     void activateDisabledSkillIsRejected() {
-        when(queryService.findSkill("sk-disabled")).thenReturn(Optional.of(
+        when(repository.findEnabledSkillForActivation("sk-disabled")).thenReturn(Optional.of(
                 skill("sk-disabled", "Disabled", false)));
 
-        assertThatThrownBy(() -> activation.activate(UUID.randomUUID(), null, "sk-disabled"))
+        assertThatThrownBy(() -> activation.activate(UUID.randomUUID(), UUID.randomUUID(), "sk-disabled"))
                 .isInstanceOf(SkillNotVisibleException.class);
     }
 
     @Test
     void activateUnknownSkillIsRejected() {
-        when(queryService.findSkill("sk-unknown")).thenReturn(Optional.empty());
+        when(repository.findEnabledSkillForActivation("sk-unknown")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> activation.activate(UUID.randomUUID(), null, "sk-unknown"))
+        assertThatThrownBy(() -> activation.activate(UUID.randomUUID(), UUID.randomUUID(), "sk-unknown"))
                 .isInstanceOf(SkillNotVisibleException.class);
     }
 
     @Test
     void activateReturnsBoundedInstructionsAndRecordsProvenance() {
-        when(queryService.findSkill("sk-ok")).thenReturn(Optional.of(
+        when(repository.findEnabledSkillForActivation("sk-ok")).thenReturn(Optional.of(
                 skill("sk-ok", "Ok", true)));
         when(queryService.findVersion(VERSION_ID)).thenReturn(Optional.of(
                 new SkillVersion(VERSION_ID, UUID.randomUUID(), 3, "hash-abc",
@@ -76,7 +76,7 @@ class SkillActivationAndResourceTest {
                         4, "sha-a")));
 
         SkillActivationService.ActivatedSkill activated =
-                activation.activate(UUID.randomUUID(), null, "sk-ok");
+                activation.activate(UUID.randomUUID(), UUID.randomUUID(), "sk-ok");
 
         assertThat(activated.skillId()).isEqualTo("sk-ok");
         assertThat(activated.versionNo()).isEqualTo(3);
@@ -89,7 +89,7 @@ class SkillActivationAndResourceTest {
     @Test
     void activateBoundsOversizedInstructions() {
         properties.setActivationMaxInstructionBytes(8);
-        when(queryService.findSkill("sk-big")).thenReturn(Optional.of(
+        when(repository.findEnabledSkillForActivation("sk-big")).thenReturn(Optional.of(
                 skill("sk-big", "Big", true)));
         when(queryService.findVersion(VERSION_ID)).thenReturn(Optional.of(
                 new SkillVersion(VERSION_ID, UUID.randomUUID(), 1, "h",
@@ -97,7 +97,7 @@ class SkillActivationAndResourceTest {
         when(queryService.listFileSummaries(VERSION_ID)).thenReturn(List.of());
 
         SkillActivationService.ActivatedSkill activated =
-                activation.activate(UUID.randomUUID(), null, "sk-big");
+                activation.activate(UUID.randomUUID(), UUID.randomUUID(), "sk-big");
 
         assertThat(activated.instructions()).hasSize(9); // 8 chars + …
     }
@@ -105,7 +105,7 @@ class SkillActivationAndResourceTest {
     @Test
     void resourceReadRejectsTraversal() {
         SkillResourceService resourceService =
-                new SkillResourceService(queryService, properties);
+                new SkillResourceService(queryService, properties, repository);
 
         assertThatThrownBy(() -> resourceService.readResource(VERSION_ID, "../etc/passwd"))
                 .isInstanceOf(SkillResourceRejectedException.class);
@@ -116,7 +116,7 @@ class SkillActivationAndResourceTest {
     @Test
     void resourceReadServesSkillMarkdownSoTheDetailPageCanShowIt() {
         SkillResourceService resourceService =
-                new SkillResourceService(queryService, properties);
+                new SkillResourceService(queryService, properties, repository);
         when(queryService.findPackageFile(VERSION_ID, "SKILL.md")).thenReturn(
                 Optional.of(new com.specagent.skill.domain.SkillPackageFile(
                         UUID.randomUUID(), VERSION_ID, "SKILL.md",
@@ -135,7 +135,7 @@ class SkillActivationAndResourceTest {
     @Test
     void resourceReadReturnsBoundedTextWithProvenance() {
         SkillResourceService resourceService =
-                new SkillResourceService(queryService, properties);
+                new SkillResourceService(queryService, properties, repository);
         when(queryService.findPackageFile(VERSION_ID, "references/guide.md")).thenReturn(
                 Optional.of(new com.specagent.skill.domain.SkillPackageFile(
                         UUID.randomUUID(), VERSION_ID, "references/guide.md",
@@ -153,7 +153,7 @@ class SkillActivationAndResourceTest {
     @Test
     void resourceReadRejectsBinaryInPhaseOne() {
         SkillResourceService resourceService =
-                new SkillResourceService(queryService, properties);
+                new SkillResourceService(queryService, properties, repository);
         when(queryService.findPackageFile(VERSION_ID, "assets/logo.png")).thenReturn(
                 Optional.of(new com.specagent.skill.domain.SkillPackageFile(
                         UUID.randomUUID(), VERSION_ID, "assets/logo.png",
@@ -168,7 +168,7 @@ class SkillActivationAndResourceTest {
     @Test
     void resourceReadMissingFileIsRejected() {
         SkillResourceService resourceService =
-                new SkillResourceService(queryService, properties);
+                new SkillResourceService(queryService, properties, repository);
         when(queryService.findPackageFile(VERSION_ID, "missing.txt"))
                 .thenReturn(Optional.empty());
 

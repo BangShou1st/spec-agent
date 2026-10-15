@@ -1,6 +1,7 @@
+import { accessSession } from '@/features/access/accessSession'
 // 文件名:SkillImportDialog.spec.ts
 // 用途:Skill 导入弹窗组件测试:验证未选择文件时禁用 ZIP 暂存等表单规则。
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SkillImportDialog from '@/features/skills/components/SkillImportDialog.vue'
 
@@ -81,3 +82,5 @@ describe('SkillImportDialog', () => {
     expect(w.find('[data-test="import-dialog"]').exists()).toBe(false)
   })
 })
+
+beforeEach(() => { accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'editor', orgId: 'org', displayName: 'Editor', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['ORG_MANAGE'], memberships: [] } })

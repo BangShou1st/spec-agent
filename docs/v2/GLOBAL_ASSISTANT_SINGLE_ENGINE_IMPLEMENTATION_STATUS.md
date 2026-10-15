@@ -85,3 +85,11 @@ ollama list
 模型须符合既有固定profile/digest和1024维约束；保持现有embedding选择。GA自动每15秒有界准备HELP；项目内容检索只使用已有项目索引，未准备时提示明确失败，不自动切换项目检索默认或建立项目索引。
 4. 用`http://localhost:5173/api/v1/global-assistant/tools`检查engineVersion、webConfigured、retrievalReady/retrievalStatus及实际工具目录；该端点不返回密钥。Ollama停止/模型不符合profile、存储认证失败、索引未准备分别有中文提示。若只需应用项目工具，未配置网页/检索时仍可独立使用。
 5. 默认端口8080/5173/8100/8101；可设置SPEC_AGENT_BACKEND_PORT、SPEC_AGENT_FRONTEND_PORT、SPEC_AGENT_BRAIN_PORT、SPEC_AGENT_GA_BRAIN_PORT。GA独立解释器可由SPEC_AGENT_GA_PYTHON覆盖；项目环境不随GA覆盖而改变。
+
+## 检索就绪语义通用化与工具上下文组织（2026-10-02）
+
+检索就绪不再把所有 Embedding 故障归为 OLLAMA_UNAVAILABLE。Python health 新增 additive 字段 `embeddingStatus`（旧字段全部保留，旧 Python 不带该字段时 Java 回退原状态）：`READY`（本地已验证）、`CONFIGURED`（云端生效配置存在且凭据在，明确不冒充持续健康，不增加付费探测）、`EMBEDDING_CREDENTIAL_UNAVAILABLE`、`EMBEDDING_CONNECTION_FAILED`、`EMBEDDING_MODEL_NOT_FOUND`、`EMBEDDING_TIMEOUT`、`EMBEDDING_UNAVAILABLE`、`EMBEDDING_NOT_CONFIGURED`。health 失败时保留生效 profile 的非敏感 provider/modelTag；`/api/v1/global-assistant/tools` 新增 `retrievalProvider`/`retrievalModel`。前端指引基于生效配置（候选配置不参与判断），移除 qwen3-embedding:0.6b 硬编码，配置可修的故障显示“打开知识检索设置”链接。HYBRID 降级与凭据/授权失效显式失败的边界不变。
+
+工具上下文组织：`IdentityMemory` 只保留 SUCCEEDED 宿主工具观察（失败结果留在可见对话里由模型解释，不成为保留事实），注入改为带来源标注的分区与有界边界指引（最新用户消息更新当前目标：澄清、补充与格式要求继续原任务，仅明确取消/替换/冲突时废弃旧目标；用户已指明/宿主已核验的身份不再重复询问；失败结果不得表述为成功；目录外能力如实说明不可用并给替代）。模型适配器不再因目录外工具名终止整个 run：受控中间件返回有界 `CAPABILITY_UNAVAILABLE` 观察后由模型解释，宿主只见冻结目录的边界不变。摘要提示词明确“最新请求更新当前目标，补充型回答继续原任务，仅在用户明确取消/替换/冲突时标记 superseded，失败尝试不得总结为已完成”。未新增规划模型调用、持久字段或权限扩张。
+
+验证：Python 235 项（含新增 health 分类、失败不保留、目录外能力有界观察、上下文分区注入）；Java 全量通过（含 readiness 新映射与旧协议兼容回退）；前端 870 项、类型检查与构建通过；readiness e2e 7 项（含云端凭据缺失、模型不存在与设置链接）。真实浏览器（Edge）在模拟 API 下核验 7 张截图：凭据缺失指引处理凭据、模型不存在带 OLLAMA·模型名、旧状态通用指引、READY 无警告、链接跳转 /settings/retrieval；截图均标注“模拟 API”，见忽略目录 `scratch/review-embedding-guidance/`。真实生效链路（新 Python health → 新 Java readiness → tools 端点）在本机验证返回 `READY / OLLAMA / qwen3-embedding:0.6b`。真实聊天模型验证（OpenCode Zen 现有生效配置 mimo-v2.6-flash-free，凭据加密存于 opencode_settings，未读取或输出密钥）：三轮只读对话全部 COMPLETED——①“列出你最近能找到的项目”真实调用一次 project.list_recent；②“读取刚才列表里第一个项目的概要”直接调用 project.get_summary，未重复询问身份、未重复列项目（复用了上轮成功观察保留的项目身份）；③“先不管项目了，打开项目列表页面”只调用 ui.navigate，旧目标不再主导。真实模型行为与上下文组织设计一致；全程无写操作。

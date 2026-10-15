@@ -59,6 +59,19 @@ public class ApiException extends RuntimeException {
         return new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, code, message);
     }
 
+    /**
+     * 已认证但缺少操作权限(第二阶段 §6)。与"资源不可见"区分:
+     * 可见性失败必须表现为 404,不能退化成 403。
+     */
+    public static ApiException forbidden(String code, String message) {
+        return new ApiException(HttpStatus.FORBIDDEN, code, message);
+    }
+
+    /** 未认证或登录失效:前端据此明确要求重新登录,而不是重定向。 */
+    public static ApiException unauthorized(String code, String message) {
+        return new ApiException(HttpStatus.UNAUTHORIZED, code, message);
+    }
+
     public HttpStatus status() {
         return status;
     }

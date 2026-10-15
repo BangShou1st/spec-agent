@@ -72,7 +72,7 @@ public class NodeQueryRunController {
     public ResponseEntity<?> getQueryResult(@PathVariable UUID projectId,
                                             @PathVariable UUID nodeId,
                                             @PathVariable UUID runId) {
-        return agentRunService.getRun(runId)
+        return agentRunService.getRunForActor(runId)
                 .filter(run -> run.projectId().equals(projectId))
                 .filter(run -> run.triggerType().code().equals("node_query"))
                 // 该 run 必须指向请求的节点。inputNodeId 不匹配(或为 null)的

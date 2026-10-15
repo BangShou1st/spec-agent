@@ -131,8 +131,8 @@ public class DecisionExecutionService {
         executionFence.assertOwnership();
         semanticTraceRecorder.captureDecisionInput(envelope);
 
-        eventService.append(runId, AgentRunPhase.DECIDING, "DECISION_STARTED",
-                decisionStartedPayload);
+        guarded(() -> eventService.append(runId, AgentRunPhase.DECIDING, "DECISION_STARTED",
+                decisionStartedPayload));
         AgentResponseEnvelope decision;
         try {
             decision = decisionEngine.runDecision(envelope);
@@ -142,6 +142,10 @@ public class DecisionExecutionService {
             semanticTraceRecorder.captureFailure(runId, "DECISION_OUTPUT", ex);
             throw ex;
         }
+        // 缺口一:模型返回后必须重新验证所有权——租约可能在模型调用期间到期、
+        // 任务可能已被接管或撤权。在任何业务产物、提案与事件之前拒绝已经失权的
+        // 执行(短事务内先取 task 锁;数据库仍是最终权威),绝不让迟到结果落地。
+        executionFence.assertOwnership();
 
         ActionProposal proposal = decision.actionProposal();
         ActionEligibilityGate.Assessment eligibilityAssessment =
@@ -149,10 +153,12 @@ public class DecisionExecutionService {
         semanticTraceRecorder.captureActionEligibility(
                 runId, envelope, decision, eligibilityAssessment);
         actionEligibilityGate.enforce(eligibilityAssessment);
-        eventService.append(runId, AgentRunPhase.PROPOSAL_CREATED, "PROPOSAL_CREATED", Map.of(
-                "actionFamily", proposal.actionFamily(),
-                "proposalId", proposal.proposalId().toString()));
-        progressRecorder.note(runId, AgentRunPhase.PROPOSAL_CREATED, "已确定下一步动作");
+        guarded(() -> {
+            eventService.append(runId, AgentRunPhase.PROPOSAL_CREATED, "PROPOSAL_CREATED", Map.of(
+                    "actionFamily", proposal.actionFamily(),
+                    "proposalId", proposal.proposalId().toString()));
+            progressRecorder.note(runId, AgentRunPhase.PROPOSAL_CREATED, "已确定下一步动作");
+        });
 
         PolicyDecision policyDecision = policyEngine.evaluate(proposal, execContext);
 
@@ -166,25 +172,38 @@ public class DecisionExecutionService {
         semanticTraceRecorder.capturePolicyDecision(runId, policyDecision);
 
         if (policyDecision.denyReason() != null) {
-            AgentProposal agentProposal = proposalService.createProposal(
-                    proposal, runId, projectId, routeId);
-            if (agentProposal.status() == ProposalStatus.PROPOSED) {
-                proposalService.expireProposal(agentProposal.id());
-            }
-            trace = appendTrace(trace, "policy_denied:" + policyDecision.denyReason(), traceSeparator);
-            terminalizationService.completeWithCheck(runId, AgentRunStatus.COMPLETED, trace);
+            final String denyTrace = appendTrace(trace,
+                    "policy_denied:" + policyDecision.denyReason(), traceSeparator);
+            // 提案、提案的过期与 run 终态在同一受保护事务内提交:先取 task 锁并
+            // 核实 token/租约/取消/deadline/动态授权,任何一项不满足即整体回滚,
+            // 绝不留下"业务行已提交而终态未收口"的部分结果。
+            AgentProposal agentProposal = guarded(() -> {
+                AgentProposal created = proposalService.createProposal(
+                        proposal, runId, projectId, routeId);
+                if (created.status() == ProposalStatus.PROPOSED) {
+                    proposalService.expireProposal(created.id());
+                }
+                terminalizationService.completeWithCheck(runId, AgentRunStatus.COMPLETED, denyTrace);
+                return created;
+            });
+            trace = denyTrace;
             return new DecisionExecutionResult(runId, null, agentProposal.id(),
                     "policy_denied:" + policyDecision.denyReason(), trace);
         }
 
         if (policyDecision.requiresConfirmation()) {
-            AgentProposal agentProposal = proposalService.createProposal(
-                    proposal, runId, projectId, routeId);
-            trace = appendTrace(trace, "awaiting_approval:" + agentProposal.id(), traceSeparator);
-            progressRecorder.note(runId, AgentRunPhase.AWAITING_APPROVAL, "提案已提交，等待你的确认");
-            terminalizationService.completeWithEvent(runId, AgentRunStatus.COMPLETED, trace,
-                    AgentRunPhase.AWAITING_APPROVAL, "AWAITING_APPROVAL", Map.of(
-                            "proposalId", agentProposal.id().toString()));
+            final String baseTrace = trace;
+            AgentProposal agentProposal = guarded(() -> {
+                AgentProposal created = proposalService.createProposal(
+                        proposal, runId, projectId, routeId);
+                progressRecorder.note(runId, AgentRunPhase.AWAITING_APPROVAL, "提案已提交，等待你的确认");
+                terminalizationService.completeWithEvent(runId, AgentRunStatus.COMPLETED,
+                        appendTrace(baseTrace, "awaiting_approval:" + created.id(), traceSeparator),
+                        AgentRunPhase.AWAITING_APPROVAL, "AWAITING_APPROVAL", Map.of(
+                                "proposalId", created.id().toString()));
+                return created;
+            });
+            trace = appendTrace(baseTrace, "awaiting_approval:" + agentProposal.id(), traceSeparator);
             return new DecisionExecutionResult(runId, null, agentProposal.id(),
                     "awaiting_approval", trace);
         }
@@ -192,9 +211,11 @@ public class DecisionExecutionService {
         // 自动执行:任何变更前,proposal 的基础上下文必须仍是当前活跃快照。
         staleContextChecker.check(proposal, execContext, snapshot);
         trace = appendTrace(trace, "executing", traceSeparator);
-        eventService.append(runId, AgentRunPhase.EXECUTING,
-                "EXECUTING", Map.of("actionFamily", proposal.actionFamily()));
-        progressRecorder.note(runId, AgentRunPhase.EXECUTING, "正在执行变更");
+        guarded(() -> {
+            eventService.append(runId, AgentRunPhase.EXECUTING,
+                    "EXECUTING", Map.of("actionFamily", proposal.actionFamily()));
+            progressRecorder.note(runId, AgentRunPhase.EXECUTING, "正在执行变更");
+        });
 
         // 节点产物族(CREATE_NODE / REQUEST_USER_INPUT)的执行是纯数据库
         // 变更:把图变更与带所有权条件的终态化放进同一事务——丢锁执行器
@@ -246,6 +267,28 @@ public class DecisionExecutionService {
 
         return new DecisionExecutionResult(runId, execResult.producedNodeId(), null,
                 "completed", trace);
+    }
+
+    /**
+     * 受保护短事务(缺口一):<b>第一条语句</b>先取 task 锁并核实 token/租约/
+     * 取消/绝对 deadline/动态授权(统一锁序 task → 容量槽 → 执行 scope →
+     * 授权 scope → 业务 Run → 业务行),再执行业务写入。业务产物、提案、
+     * checkpoint 与相关事件因此要么一起提交、要么一起回滚——绝不出现
+     * "事件被过滤而业务行已提交"的假象,也绝不让已失权的执行留下任何痕迹。
+     */
+    private void guarded(Runnable body) {
+        transactionTemplate.executeWithoutResult(tx -> {
+            executionFence.lockOwnershipForWrite();
+            body.run();
+        });
+    }
+
+    /** 与 {@link #guarded(Runnable)} 同语义,用于需要返回业务产物的分支。 */
+    private <T> T guarded(java.util.function.Supplier<T> body) {
+        return transactionTemplate.execute(tx -> {
+            executionFence.lockOwnershipForWrite();
+            return body.get();
+        });
     }
 
     private String appendTrace(String trace, String step, String separator) {

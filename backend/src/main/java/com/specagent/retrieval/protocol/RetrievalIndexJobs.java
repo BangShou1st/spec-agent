@@ -22,6 +22,7 @@ public class RetrievalIndexJobs {
         return prepareGeneration(corpus,PROFILE);
     }
     @Transactional public UUID prepareGeneration(UUID corpus,String profile) {
+        store.authorizeIndexCorpus(corpus);
         store.dimensions(profile); UUID id=UUID.randomUUID();
         jdbc.update("INSERT INTO retrieval_index_generations(id,corpus_id,profile_id,state) VALUES(:id,:corpus,:profile,'PREPARING')",
                 Map.of("id",id,"corpus",corpus,"profile",profile));
@@ -29,6 +30,8 @@ public class RetrievalIndexJobs {
     }
 
     @Transactional public Optional<IndexBatch> claim(UUID corpus,UUID generation) {
+        var service=store.authorizeIndexCorpus(corpus);
+        var parent=store.captureRebuild(corpus,generation);
         var gen=jdbc.queryForList("SELECT * FROM retrieval_index_generations WHERE id=:id AND corpus_id=:corpus AND state IN ('PREPARING','ACTIVE') FOR UPDATE",
                 Map.of("id",generation,"corpus",corpus));
         if(gen.size()!=1) throw new IllegalStateException("INDEX_GENERATION_MISMATCH");
@@ -69,10 +72,11 @@ public class RetrievalIndexJobs {
         var batch=new IndexBatch(RetrievalStore.protocol(profile),request,new Workload("INDEX_JOB",job,1),new Grant(grant,1,deadline),profile,
                 generation,deadline,job,lease,0,List.copyOf(sources));
         jdbc.update("""
-                INSERT INTO retrieval_scope_grants(id,request_id,corpus_id,project_id,workload_kind,workload_id,epoch,profile_id,index_generation,deadline,scope)
-                VALUES(:grant,:request,:corpus,:project,'INDEX_JOB',:job,1,:profile,:generation,:deadline,CAST(:scope AS jsonb))
+                INSERT INTO retrieval_scope_grants(id,request_id,corpus_id,project_id,workload_kind,workload_id,epoch,profile_id,index_generation,deadline,scope,service_kind,service_org_id,rebuild_id,rebuild_epoch,rebuild_lease_id)
+                VALUES(:grant,:request,:corpus,:project,'INDEX_JOB',:job,1,:profile,:generation,:deadline,CAST(:scope AS jsonb),:service,:org,:parent,:parentEpoch,:parentLease)
                 """,Maps.of("grant",grant,"request",request,"corpus",corpus,"project",project,"job",job,"profile",profile,
-                "generation",generation,"deadline",Timestamp.from(deadline),"scope",write(scope)));
+                "generation",generation,"deadline",Timestamp.from(deadline),"scope",write(scope),"service",service.kind(),"org",service.org(),
+                "parent",parent==null?null:parent.id(),"parentEpoch",parent==null?null:parent.epoch(),"parentLease",parent==null?null:parent.lease()));
         jdbc.update("""
                 INSERT INTO retrieval_index_jobs(id,corpus_id,index_generation,profile_id,lease_id,state,deadline,request)
                 VALUES(:job,:corpus,:generation,:profile,:lease,'CLAIMED',:deadline,CAST(:request AS jsonb))
@@ -83,6 +87,10 @@ public class RetrievalIndexJobs {
 
     @Transactional public boolean commit(IndexResult result) {
         validate(result);
+        var corpus=jdbc.queryForList("SELECT corpus_id FROM retrieval_index_jobs WHERE id=:id",Map.of("id",result.jobId()),UUID.class);
+        if(corpus.size()!=1) throw new IllegalStateException("STALE_WORKLOAD");
+        store.authorizeIndexCorpus(corpus.getFirst());
+        store.authorizeRebuildForJob(result.jobId());
         var generationRows=jdbc.queryForList("SELECT state FROM retrieval_index_generations WHERE id=:id AND profile_id=:profile AND state IN ('PREPARING','ACTIVE') FOR UPDATE",
                 Map.of("id",result.indexGeneration(),"profile",result.profileId()));
         if(generationRows.size()!=1) throw new IllegalStateException("INDEX_GENERATION_MISMATCH");
@@ -149,6 +157,7 @@ public class RetrievalIndexJobs {
 
     /** One head CAS activates the fully prepared generation; never mixes profiles in a query. */
     @Transactional public void activate(UUID corpus,UUID generation,long expectedHeadVersion) {
+        store.authorizeIndexCorpus(corpus);
         var generations=jdbc.queryForList("SELECT profile_id FROM retrieval_index_generations WHERE id=:id AND corpus_id=:corpus",Map.of("id",generation,"corpus",corpus));
         if(generations.size()!=1) throw new IllegalStateException("INDEX_GENERATION_MISMATCH");
         String profile=(String)generations.getFirst().get("profile_id"); store.dimensions(profile);

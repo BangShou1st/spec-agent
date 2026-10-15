@@ -27,19 +27,46 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api")
 public class HealthController {
+    private String securityMode="LOCAL";
+    @org.springframework.beans.factory.annotation.Autowired
+    public void configureSecurityMode(@Value("${spec.agent.security.mode:LOCAL}") String securityMode) {
+        this.securityMode=securityMode;
+    }
 
     private final boolean workerEnabled;
     private final ObjectProvider<WorkerRuntimeStatus> gate;
+    private final org.springframework.beans.factory.ObjectProvider<ExecutionModeAdmissionStatus>
+            admission;
 
     public HealthController(
             @Value("${spec.agent.brain.worker.enabled:true}") boolean workerEnabled,
-            ObjectProvider<WorkerRuntimeStatus> gate) {
+            ObjectProvider<WorkerRuntimeStatus> gate,
+            org.springframework.beans.factory.ObjectProvider<ExecutionModeAdmissionStatus> admission) {
         this.workerEnabled = workerEnabled;
         this.gate = gate;
+        this.admission = admission;
     }
 
     @GetMapping("/health")
     public ResponseEntity<Map<String, Object>> health() {
+        ResponseEntity<Map<String,Object>> response=detailedHealth();
+        if("OIDC".equalsIgnoreCase(securityMode)) return ResponseEntity.status(response.getStatusCode())
+                .body(Map.of("status",response.getBody().get("status")));
+        return response;
+    }
+    private ResponseEntity<Map<String,Object>> detailedHealth() {
+        // 模式准入丢失对 API-only 实例同样致命:入队路径必须与 Worker 的调度
+        // 模式一致(design §11),因此该检查先于 worker-enabled 分支。
+        ExecutionModeAdmissionStatus mode = admission.getIfAvailable();
+        if (mode != null && mode.isLost()) {
+            return ResponseEntity.status(503).body(Map.of(
+                "status", "DEGRADED",
+                "service", "spec-agent",
+                "reason", "EXECUTION_MODE_ADMISSION_LOST",
+                "admissionLostReason", String.valueOf(mode.getLostReason()),
+                "timestamp", Instant.now().toString()
+            ));
+        }
         // 故障兜底:只服务 run API 但没有 worker 的进程绝不报完全健康,
         // 否则 run 会被接收却永远无人认领(AGENT_WORKER_UNAVAILABLE)。
         if (!workerEnabled) {
@@ -74,6 +101,19 @@ public class HealthController {
         body.put("status", "UP");
         body.put("service", "spec-agent");
         body.put("worker", "ENABLED");
+        // 多 Worker(任务级所有权)是独立的运行形态:没有全库租约,"租约丢失"
+        // 不是它的失败模式。明确暴露形态,避免运维把单实例语义套到多实例上。
+        body.put("executionOwnership", polling.isMultiWorkerTaskOwnership()
+                ? "PER_TASK" : "SINGLE_EXECUTOR_LEASE");
+        // 数据库范围的调度模式准入(design §11):运维可以确认本实例与舰队
+        // 的模式一致,以及准入协议是否处于激活状态。
+        body.put("executionModeAdmission", mode == null
+                ? "DISABLED" : String.valueOf(mode.admittedMode()));
+        // worker 身份(design §9):多 Worker 部署用它把 runtime_tasks.worker_id
+        // 映射到具体实例;无执行身份的进程为 null。
+        if (polling.getWorkerId() != null) {
+            body.put("workerId", polling.getWorkerId());
+        }
         body.put("startupRecovery", polling.isStartupRecoveryEnabled()
                 ? "ENABLED" : "DISABLED");
         if (polling.getRecoveryError() != null) {

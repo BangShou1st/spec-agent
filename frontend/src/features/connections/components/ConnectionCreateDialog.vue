@@ -4,7 +4,9 @@
        弹窗打开时通过 useDialogReset 自动清空表单。
 -->
 <script setup lang="ts">
-import { ref, toRef } from 'vue'
+import { ref, toRef, computed, watch } from 'vue'
+import { canCreatePersonalConnection } from '../connectionPermissions'
+import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
 import { useDialogReset } from '@/shared/ui/useDialogForm'
 import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'
 import UiDialogShell from '@/shared/ui/UiDialogShell.vue'
@@ -12,22 +14,29 @@ import UiFormField from '@/shared/ui/UiFormField.vue'
 import { managementErrorMessage } from '@/shared/http/errorCopy'
 import type { ConnectionsStoreError } from '@/features/connections/state/connectionsStore'
 const props = defineProps<{ open: boolean; saving: boolean; error: ConnectionsStoreError | null }>()
-const emit = defineEmits<{ (e: 'close'): void; (e: 'create', payload: { name: string; serverUrl: string; secret?: string }): void }>()
+const emit = defineEmits<{ (e: 'close'): void; (e: 'create', payload: { name: string; serverUrl: string; secret?: string; ownerKind: 'USER' | 'ORG' }): void }>()
+const canCreate = computed(canCreatePersonalConnection)
+const canShare = useOrganizationCapability('CREDENTIAL_MANAGE')
+const ownerKind = ref<'USER' | 'ORG'>('USER')
 const name = ref('')
 const serverUrl = ref('')
 const secret = ref('')
 const showSecret = ref(false)
+watch(canShare, allowed => { if (!allowed) { ownerKind.value = 'USER'; secret.value = '' } }, { flush: 'sync' })
+watch(canCreate, allowed => { if (!allowed) { name.value = ''; serverUrl.value = ''; secret.value = ''; showSecret.value = false; ownerKind.value = 'USER' } }, { flush: 'sync' })
 useDialogReset(toRef(props, 'open'), () => {
+  ownerKind.value = 'USER'
   name.value = ''
   serverUrl.value = ''
   secret.value = ''
   showSecret.value = false
 })
 const valid = () => name.value.trim().length > 0 && serverUrl.value.trim().length > 0
-function submit(): void { if (!valid() || props.saving) return; const s = secret.value; emit('create', { name: name.value.trim(), serverUrl: serverUrl.value.trim(), secret: s ? s : undefined }) }
+function submit(): void { if (!canCreate.value || (ownerKind.value === 'ORG' && !canShare.value)) return; if (!valid() || props.saving) return; const s = secret.value; emit('create', { ownerKind: ownerKind.value, name: name.value.trim(), serverUrl: serverUrl.value.trim(), secret: s ? s : undefined }) }
 </script>
 <template>
-  <UiDialogShell :open="open" title="新建连接" description="Custom MCP 连接。凭证只保存一次，不会再次完整显示" test-id="connection-create-dialog" @close="emit('close')">
+  <UiDialogShell :open="canCreate && open" title="新建连接" description="Custom MCP 连接。凭证只保存一次，不会再次完整显示" test-id="connection-create-dialog" @close="emit('close')">
+    <UiFormField label="使用范围" html-for="conn-owner"><select id="conn-owner" v-model="ownerKind" class="settings-control" data-test="conn-owner"><option value="USER">仅我使用</option><option v-if="canShare" value="ORG">组织共享</option></select></UiFormField>
     <UiFormField label="名称" html-for="conn-name">
       <input id="conn-name" v-model="name" class="settings-control" type="text" autocomplete="off" maxlength="128" placeholder="例如 Research Tools" data-test="conn-name" />
     </UiFormField>

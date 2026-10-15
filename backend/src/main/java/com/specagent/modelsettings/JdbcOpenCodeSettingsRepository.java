@@ -17,6 +17,10 @@ import java.util.Optional;
  */
 @Repository
 public class JdbcOpenCodeSettingsRepository implements OpenCodeSettingsRepository {
+    private com.specagent.access.OrganizationConfigurationScope orgScope;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setOrgScope(com.specagent.access.OrganizationConfigurationScope orgScope) { this.orgScope=orgScope; }
+
 
     private final NamedParameterJdbcTemplate jdbc;
     private final ModelCredentialCrypto crypto;
@@ -27,7 +31,7 @@ public class JdbcOpenCodeSettingsRepository implements OpenCodeSettingsRepositor
         this.jdbc = jdbc;
         this.crypto = crypto;
         this.rowMapper = (rs, rowNum) -> new OpenCodeSettings(
-                crypto.decrypt(rs.getString("api_key")),
+                crypto.decryptScoped(rs.getString("api_key"), rs.getObject("org_id", java.util.UUID.class), "opencode_settings", 1),
                 rs.getString("masked_suffix"),
                 rs.getString("selected_model"),
                 rs.getTimestamp("created_at").toInstant(),
@@ -36,24 +40,27 @@ public class JdbcOpenCodeSettingsRepository implements OpenCodeSettingsRepositor
 
     @Override
     public Optional<OpenCodeSettings> find() {
-        return jdbc.query("SELECT * FROM opencode_settings WHERE singleton_id = 1", Maps.of(), rowMapper)
+        return jdbc.query("SELECT * FROM opencode_settings WHERE singleton_id = 1 AND org_id = :orgId", Maps.of("orgId",orgScope.readOrg()), rowMapper)
                 .stream().findFirst();
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void upsert(OpenCodeSettings settings) {
+        java.util.UUID org = orgScope.writeOrg();
         Instant now = settings.updatedAt() == null ? Instant.now() : settings.updatedAt();
         jdbc.update("""
-                INSERT INTO opencode_settings (singleton_id, api_key, masked_suffix, selected_model,
+                INSERT INTO opencode_settings (org_id, singleton_id, api_key, masked_suffix, selected_model,
                                                created_at, updated_at)
-                VALUES (1, :apiKey, :maskedSuffix, :selectedModel, :createdAt, :updatedAt)
-                ON CONFLICT (singleton_id) DO UPDATE SET
+                VALUES (:orgId, 1, :apiKey, :maskedSuffix, :selectedModel, :createdAt, :updatedAt)
+                ON CONFLICT (org_id, singleton_id) DO UPDATE SET
                     api_key = EXCLUDED.api_key,
                     masked_suffix = EXCLUDED.masked_suffix,
                     selected_model = EXCLUDED.selected_model,
                     updated_at = EXCLUDED.updated_at
                 """, Maps.of(
-                "apiKey", crypto.encrypt(settings.apiKey()),
+                "orgId", org,
+                "apiKey", crypto.encryptScoped(settings.apiKey(), org, "opencode_settings", 1),
                 "maskedSuffix", settings.maskedSuffix(),
                 "selectedModel", settings.selectedModel(),
                 "createdAt", Timestamp.from(settings.createdAt() == null ? now : settings.createdAt()),

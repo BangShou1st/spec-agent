@@ -33,6 +33,26 @@ import { gaErrorMessage, gaToolDisplayName, gaArgsSummary, gaStatusMessage, GA_S
 export const GA_THREAD_KEY = 'spec-agent:global-assistant:thread:v1'
 export const GA_RUN_KEY = 'spec-agent:global-assistant:run:v1'
 export const GA_PANEL_KEY = 'spec-agent:global-assistant:panel:v1'
+export const GA_IDENTITY_KEY = 'spec-agent:global-assistant:owner:v1'
+class GaIdentityExpiredError extends Error {}
+const identityStoreRoots = new WeakMap<object, object>()
+/** A promise can settle before the awaiting continuation runs. Guard the
+ * continuation's actual store access as well as the awaited result. */
+function identityScopedStore<T extends { identityEpoch: number }>(store: T, epoch: number): T {
+  const root = (identityStoreRoots.get(store) ?? store) as T
+  const scoped = new Proxy(root, {
+    get(target, key) {
+      if (target.identityEpoch !== epoch) throw new GaIdentityExpiredError()
+      return Reflect.get(target, key, target)
+    },
+    set(target, key, value) {
+      if (target.identityEpoch !== epoch) throw new GaIdentityExpiredError()
+      return Reflect.set(target, key, value, target)
+    },
+  })
+  identityStoreRoots.set(scoped, root)
+  return scoped
+}
 
 export type GaToolState = 'running' | 'success' | 'failure' | 'interrupted'
 
@@ -373,6 +393,8 @@ function diffMs(startedAt: string, endedAt: string | null): number | null {
 
 export const useGlobalAssistantStore = defineStore('globalAssistant', {
   state: () => ({
+    identityEpoch: 0,
+    privateIdentity: null as string | null,
     threadId: null as string | null,
     messages: [] as GaMessage[],
     loadingThread: false,
@@ -432,6 +454,26 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
     },
   },
   actions: {
+    bindIdentity(identity: string | null): void {
+      if (identity === this.privateIdentity && identity !== null) return
+      const nextEpoch = this.identityEpoch + 1
+      this.stopSuccessorObservation()
+      this.closeStream()
+      cancelReconnectWaits()
+      this.$reset()
+      this.identityEpoch = nextEpoch
+      this.privateIdentity = identity
+      if (identity === null || readStored(GA_IDENTITY_KEY) !== identity) {
+        writeStored(GA_THREAD_KEY, null)
+        writeStored(GA_RUN_KEY, null)
+      }
+      writeStored(GA_IDENTITY_KEY, identity)
+    },
+    async awaitIdentity<T>(epoch: number, work: Promise<T>): Promise<T> {
+      const result = await work
+      if (this.identityEpoch !== epoch) throw new GaIdentityExpiredError()
+      return result
+    },
     initPanel(): void {
       const stored = readStored(GA_PANEL_KEY)
       this.panelOpen = stored === 'open'
@@ -449,69 +491,104 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       return target
     },
     async init(): Promise<void> {
-      if (this.initialized) return
-      this.initialized = true
-      this.initPanel()
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (identityStore.initialized) return
+      identityStore.initialized = true
+      identityStore.initPanel()
       const storedThread = readStored(GA_THREAD_KEY)
       const storedRun = readStored(GA_RUN_KEY)
       if (!storedThread) {
-        void this.loadThreads()
+        void identityStore.loadThreads()
         return
       }
-      this.loadingThread = true
+      identityStore.loadingThread = true
       try {
-        await getGaThread(storedThread)
-        this.threadId = storedThread
-        this.messages = await listGaMessages(storedThread)
-        await this.restoreProcessHistory()
-        await this.refreshActivity()
-        if (this.activeRunId) {
+        await identityStore.awaitIdentity(identityEpoch, (getGaThread(storedThread)))
+        identityStore.threadId = storedThread
+        identityStore.messages = await identityStore.awaitIdentity(identityEpoch, (listGaMessages(storedThread)))
+        await identityStore.awaitIdentity(identityEpoch, (identityStore.restoreProcessHistory()))
+        await identityStore.awaitIdentity(identityEpoch, (identityStore.refreshActivity()))
+        if (identityStore.activeRunId) {
           try {
-            const envelopes = await listGaEvents(this.activeRunId)
-            for (const envelope of envelopes) this.ingestEvent(envelope)
-          } catch { /* 重放尽力而为,SSE 会补齐 */ }
-          if (this.activeRunId) this.openStream()
-        } else if (storedRun && !this.pendingSteer) {
-          await this.recoverRun(storedRun)
+            const envelopes = await identityStore.awaitIdentity(identityEpoch, (listGaEvents(identityStore.activeRunId)))
+            for (const envelope of envelopes) identityStore.ingestEvent(envelope)
+          } catch {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+ /* 重放尽力而为,SSE 会补齐 */ }
+          if (identityStore.activeRunId) identityStore.openStream()
+        } else if (storedRun && !identityStore.pendingSteer) {
+          await identityStore.awaitIdentity(identityEpoch, (identityStore.recoverRun(storedRun)))
         }
       } catch (err) {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+
         if (err instanceof ApiError && err.code === 'THREAD_NOT_FOUND') {
           writeStored(GA_THREAD_KEY, null)
           writeStored(GA_RUN_KEY, null)
-          this.threadId = null
-          this.messages = []
-          this.activeRunId = null
-          this.pendingSteer = null
+          identityStore.threadId = null
+          identityStore.messages = []
+          identityStore.activeRunId = null
+          identityStore.pendingSteer = null
         } else if (err instanceof ApiError) {
-          this.threadId = storedThread
-          try { this.messages = await listGaMessages(storedThread) } catch { /* 保持为空 */ }
-          this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
+          identityStore.threadId = storedThread
+          try { identityStore.messages = await identityStore.awaitIdentity(identityEpoch, (listGaMessages(storedThread))) } catch {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+ /* 保持为空 */ }
+          identityStore.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
         }
       } finally {
-        this.loadingThread = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.loadingThread = false
+      
+        }
       }
-      void this.loadThreads()
+      void identityStore.loadThreads()
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
+      }
     },
     async refreshActivity(): Promise<GaThreadActivity | null> {
-      const act = await this.readThreadActivity()
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      const act = await identityStore.awaitIdentity(identityEpoch, (identityStore.readThreadActivity()))
       if (!act) return null
-      this.applyThreadActivity(act)
+      identityStore.applyThreadActivity(act)
       return act
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return null }
+        throw identityError
+      }
     },
     /**
      * 带线程守护的规范读取。刻意不参与投影,
      * 让调用方能在任何内容写入 state 之前先校验归属。
      */
     async readThreadActivity(): Promise<GaThreadActivity | null> {
-      if (!this.threadId) return null
-      const requestedThreadId = this.threadId
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        const act = await getGaThreadActivity(this.threadId)
+      if (!identityStore.threadId) return null
+      const requestedThreadId = identityStore.threadId
+      try {
+        const act = await identityStore.awaitIdentity(identityEpoch, (getGaThreadActivity(identityStore.threadId)))
         // 线程切换之后才返回的读取属于旧线程。
-        if (this.threadId !== requestedThreadId) return null
+        if (identityStore.threadId !== requestedThreadId) return null
         return act
       } catch {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+
         return null
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return null }
+        throw identityError
       }
     },
     /** 将一次已校验的规范活动读取投影到 store。 */
@@ -548,18 +625,29 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       }
     },
     async ensureThread(): Promise<string> {
-      if (this.threadId) return this.threadId
-      const created = await createGaThread()
-      this.threadId = created.threadId
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (identityStore.threadId) return identityStore.threadId
+      const created = await identityStore.awaitIdentity(identityEpoch, (createGaThread()))
+      identityStore.threadId = created.threadId
       writeStored(GA_THREAD_KEY, created.threadId)
       return created.threadId
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { throw identityError }
+        throw identityError
+      }
     },
     async loadThreads(): Promise<void> {
-      if (this.threadsLoading) return
-      this.threadsLoading = true
-      this.threadsError = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        const items = await listGaThreads()
+      if (identityStore.threadsLoading) return
+      identityStore.threadsLoading = true
+      identityStore.threadsError = null
+      try {
+        const items = await identityStore.awaitIdentity(identityEpoch, (listGaThreads()))
         const seen = new Set<string>()
         const deduped: GaThreadListItem[] = []
         for (const item of items ?? []) {
@@ -567,11 +655,21 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
           seen.add(item.threadId)
           deduped.push(item)
         }
-        this.threads = deduped
+        identityStore.threads = deduped
       } catch (err) {
-        this.threadsError = err instanceof ApiError ? gaErrorMessage(err.code, err.message) : gaErrorMessage('UNKNOWN_ERROR')
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+
+        identityStore.threadsError = err instanceof ApiError ? gaErrorMessage(err.code, err.message) : gaErrorMessage('UNKNOWN_ERROR')
       } finally {
-        this.threadsLoading = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.threadsLoading = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
       }
     },
     setHistoryOpen(open: boolean): void {
@@ -582,67 +680,87 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.setHistoryOpen(!this.historyOpen)
     },
     async switchThread(threadId: string): Promise<void> {
-      if (!threadId || this.switchingThread || this.isRunning || this.sending || this.steerSending) return
-      if (threadId === this.threadId) {
-        this.historyOpen = false
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (!threadId || identityStore.switchingThread || identityStore.isRunning || identityStore.sending || identityStore.steerSending) return
+      if (threadId === identityStore.threadId) {
+        identityStore.historyOpen = false
         return
       }
-      this.switchingThread = true
-      this.error = null
+      identityStore.switchingThread = true
+      identityStore.error = null
       try {
         let messages: GaMessage[]
         try {
-          messages = await listGaMessages(threadId)
-          await getGaThread(threadId)
+          messages = await identityStore.awaitIdentity(identityEpoch, (listGaMessages(threadId)))
+          await identityStore.awaitIdentity(identityEpoch, (getGaThread(threadId)))
         } catch (err) {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+
           if (err instanceof ApiError && err.code === 'THREAD_NOT_FOUND') {
-            this.error = { code: 'THREAD_NOT_FOUND', message: '该会话已不存在，已为你保留当前会话' }
-            await this.loadThreads()
+            identityStore.error = { code: 'THREAD_NOT_FOUND', message: '该会话已不存在，已为你保留当前会话' }
+            await identityStore.awaitIdentity(identityEpoch, (identityStore.loadThreads()))
             return
           }
           throw err
         }
-        this.closeStream()
-        this.threadId = threadId
+        identityStore.closeStream()
+        identityStore.threadId = threadId
         writeStored(GA_THREAD_KEY, threadId)
         writeStored(GA_RUN_KEY, null)
-        this.messages = messages
-        this.historicalActivities = {}
-        this.historyLoadedRuns = []
-        await this.restoreProcessHistory()
-        this.streamingText = ''
-      this.streamGeneration = null
-        this.activities = []
-        this.currentStatus = null
-        this.waitingQuestion = null
-        this.approvalRequired = false
-        this.lastUiAction = null
-        this.pendingNavigation = null
-        this.stopSuccessorObservation()
-        this.activeRunId = null
-        this.activeStatus = null
-        this.pendingSteer = null
-        this.stoppedNotice = false
-        this.lastSequence = 0
-        this.cancelRequested = false
-        this.connection = 'idle'
-        this.historyOpen = false
-        void this.loadThreads()
+        identityStore.messages = messages
+        identityStore.historicalActivities = {}
+        identityStore.historyLoadedRuns = []
+        await identityStore.awaitIdentity(identityEpoch, (identityStore.restoreProcessHistory()))
+        identityStore.streamingText = ''
+      identityStore.streamGeneration = null
+        identityStore.activities = []
+        identityStore.currentStatus = null
+        identityStore.waitingQuestion = null
+        identityStore.approvalRequired = false
+        identityStore.lastUiAction = null
+        identityStore.pendingNavigation = null
+        identityStore.stopSuccessorObservation()
+        identityStore.activeRunId = null
+        identityStore.activeStatus = null
+        identityStore.pendingSteer = null
+        identityStore.stoppedNotice = false
+        identityStore.lastSequence = 0
+        identityStore.cancelRequested = false
+        identityStore.connection = 'idle'
+        identityStore.historyOpen = false
+        void identityStore.loadThreads()
       } catch (err) {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+
         if (err instanceof ApiError) {
-          this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
+          identityStore.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
         } else {
-          this.error = { code: 'UNKNOWN_ERROR', message: gaErrorMessage('UNKNOWN_ERROR') }
+          identityStore.error = { code: 'UNKNOWN_ERROR', message: gaErrorMessage('UNKNOWN_ERROR') }
         }
       } finally {
-        this.switchingThread = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.switchingThread = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
       }
     },
     async recoverRun(runId: string): Promise<void> {
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
       let run: GaRun
       try {
-        run = await getGaRun(runId)
+        run = await identityStore.awaitIdentity(identityEpoch, (getGaRun(runId)))
       } catch {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+
         writeStored(GA_RUN_KEY, null)
         return
       }
@@ -650,15 +768,22 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         writeStored(GA_RUN_KEY, null)
         return
       }
-      this.activeRunId = run.runId
-      this.activeStatus = run.status
-      this.cancelRequested = false
+      identityStore.activeRunId = run.runId
+      identityStore.activeStatus = run.status
+      identityStore.cancelRequested = false
       writeStored(GA_RUN_KEY, run.runId)
       try {
-        const envelopes = await listGaEvents(runId)
-        for (const envelope of envelopes) this.ingestEvent(envelope)
-      } catch { /* 重放尽力而为,SSE 会补齐 */ }
-      this.openStream()
+        const envelopes = await identityStore.awaitIdentity(identityEpoch, (listGaEvents(runId)))
+        for (const envelope of envelopes) identityStore.ingestEvent(envelope)
+      } catch {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+ /* 重放尽力而为,SSE 会补齐 */ }
+      identityStore.openStream()
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
+      }
     },
     ingestEvent(event: GaEventEnvelope): boolean {
       // 上一个运行迟到的事件绝不能污染新运行:
@@ -740,51 +865,77 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       void this.pollSuccessorAfterTerminal()
     },
     async pollSuccessorAfterTerminal(): Promise<void> {
-      if (!this.threadId) return
-      await this.attachSuccessorIfReady()
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (!identityStore.threadId) return
+      await identityStore.awaitIdentity(identityEpoch, (identityStore.attachSuccessorIfReady()))
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
+      }
     },
     /**
      * 终态后的唯一入口:确保由同一代观测者持有该线程,
      * 然后执行一次规范的观测步骤。重入调用复用活跃代(绝不启动第二个循环)。
      */
     async attachSuccessorIfReady(): Promise<void> {
-      if (!this.threadId) return
-      if (this.successorObserverToken === 0) {
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (!identityStore.threadId) return
+      if (identityStore.successorObserverToken === 0) {
         successorObserverSeq += 1
-        this.successorObserverToken = successorObserverSeq
+        identityStore.successorObserverToken = successorObserverSeq
       }
-      await this.observeSuccessor(this.successorObserverToken, 0)
+      await identityStore.awaitIdentity(identityEpoch, (identityStore.observeSuccessor(identityStore.successorObserverToken, 0)))
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
+      }
     },
     /**
      * 挂接后继运行:重置单运行投影、重放其事件并打开其事件流。
      * 按运行 id 保证幂等。
      */
     async attachSuccessorRun(runId: string, status: string): Promise<void> {
-      if (!this.threadId) return
-      if (this.successorAttachedRunId === runId) return
-      this.stopSuccessorObservation()
-      this.successorAttachedRunId = runId
-      this.pendingSteer = null
-      this.stoppedNotice = false
-      this.activeRunId = runId
-      this.activeStatus = status
-      writeStored(GA_RUN_KEY, runId)
-      this.lastSequence = 0
-      this.streamingText = ''
-      this.streamGeneration = null
-      this.activities = []
-      this.currentStatus = GA_STEERING_STATUS
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        const envelopes = await listGaEvents(runId)
+      if (!identityStore.threadId) return
+      if (identityStore.successorAttachedRunId === runId) return
+      identityStore.stopSuccessorObservation()
+      identityStore.successorAttachedRunId = runId
+      identityStore.pendingSteer = null
+      identityStore.stoppedNotice = false
+      identityStore.activeRunId = runId
+      identityStore.activeStatus = status
+      writeStored(GA_RUN_KEY, runId)
+      identityStore.lastSequence = 0
+      identityStore.streamingText = ''
+      identityStore.streamGeneration = null
+      identityStore.activities = []
+      identityStore.currentStatus = GA_STEERING_STATUS
+      try {
+        const envelopes = await identityStore.awaitIdentity(identityEpoch, (listGaEvents(runId)))
         for (const envelope of envelopes) {
           // 重放过程中后继运行可能已经终结:停止向其继续投影。
-          if (this.activeRunId !== runId) return
-          this.ingestEvent(envelope)
+          if (identityStore.activeRunId !== runId) return
+          identityStore.ingestEvent(envelope)
         }
-      } catch { /* SSE 会补齐 */ }
-      if (this.activeRunId !== runId) return
-      this.openStream()
-      await this.reconcileMessages()
+      } catch {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+ /* SSE 会补齐 */ }
+      if (identityStore.activeRunId !== runId) return
+      identityStore.openStream()
+      await identityStore.awaitIdentity(identityEpoch, (identityStore.reconcileMessages()))
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
+      }
     },
     /** 使观测循环失效。进行中的读取/定时器随之变成空操作。 */
     stopSuccessorObservation(): void {
@@ -797,37 +948,45 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
      * 绝没有机会写入 activeRunId、activeStatus 或 pendingSteer。
      */
     async observeSuccessor(token: number, attempt: number): Promise<void> {
-      if (this.successorObserverToken !== token) return
-      if (!this.threadId) {
-        this.resolveSuccessorObservation(false)
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (identityStore.successorObserverToken !== token) return
+      if (!identityStore.threadId) {
+        identityStore.resolveSuccessorObservation(false)
         return
       }
-      const previousRunId = this.activeRunId
-      const act = await this.readThreadActivity()
+      const previousRunId = identityStore.activeRunId
+      const act = await identityStore.awaitIdentity(identityEpoch, (identityStore.readThreadActivity()))
       // 投影之前先做归属校验:绝不应用过期的读取。
-      if (this.successorObserverToken !== token) return
+      if (identityStore.successorObserverToken !== token) return
       if (!act) {
-        this.scheduleSuccessorObservation(token, attempt + 1)
+        identityStore.scheduleSuccessorObservation(token, attempt + 1)
         return
       }
-      const hadPendingSteer = this.pendingSteer !== null
-      this.applyThreadActivity(act)
+      const hadPendingSteer = identityStore.pendingSteer !== null
+      identityStore.applyThreadActivity(act)
       const run = act.activeRun
       if (run) {
-        if (run.runId === previousRunId) this.stopSuccessorObservation()
-        else await this.attachSuccessorRun(run.runId, run.status)
+        if (run.runId === previousRunId) identityStore.stopSuccessorObservation()
+        else await identityStore.awaitIdentity(identityEpoch, (identityStore.attachSuccessorRun(run.runId, run.status)))
         return
       }
       if (act.pendingSteer) {
         // 交接仍未完成:后继运行只是还没可见。
         // 只要规范的 pending steer 还存在,观测就继续,
         // 降级为慢速轮询而不是放弃。
-        this.currentStatus = GA_STEERING_STATUS
-        this.scheduleSuccessorObservation(token, attempt + 1)
+        identityStore.currentStatus = GA_STEERING_STATUS
+        identityStore.scheduleSuccessorObservation(token, attempt + 1)
         return
       }
       // 既没有后继运行也没有待生效 steer:交接已自行落定。
-      this.resolveSuccessorObservation(hadPendingSteer)
+      identityStore.resolveSuccessorObservation(hadPendingSteer)
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
+      }
     },
     /**
      * 安排下一次观测。前几次读取用快节奏,之后转为持续的低频节奏。
@@ -855,118 +1014,162 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       if (reconcileCanonical) void this.reconcileMessages()
     },
     async restoreProcessHistory(): Promise<void> {
-      const thread = this.threadId
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      const thread = identityStore.threadId
       if (!thread) return
-      const runs = [...new Set(this.messages.map(m => m.runId).filter((id): id is string => !!id))]
-        .filter(id => id !== this.activeRunId && !this.historyLoadedRuns.includes(id))
+      const runs = [...new Set(identityStore.messages.map(m => m.runId).filter((id): id is string => !!id))]
+        .filter(id => id !== identityStore.activeRunId && !identityStore.historyLoadedRuns.includes(id))
       // Bounded concurrency; event replay never performs navigation or appends model drafts.
       for (let start = 0; start < runs.length; start += 4) {
-        const batch = await Promise.allSettled(runs.slice(start, start + 4).map(async run => {
+        const batch = await identityStore.awaitIdentity(identityEpoch, (Promise.allSettled(runs.slice(start, start + 4).map(async run => {
           const projection = new GaRunProjection()
-          for (const event of await listGaEvents(run)) {
+          for (const event of await identityStore.awaitIdentity(identityEpoch, (listGaEvents(run)))) {
             if (event.threadId === thread && event.runId === run) projection.apply(event)
           }
           return { run, projection }
-        }))
-        if (this.threadId !== thread) return
+        }))))
+        if (identityStore.threadId !== thread) return
         for (const result of batch) {
           if (result.status !== 'fulfilled' || !result.value.projection.terminal) continue
           const { run, projection } = result.value
-          this.historicalActivities[run] = projection.activities
-          this.historyLoadedRuns.push(run)
+          identityStore.historicalActivities[run] = projection.activities
+          identityStore.historyLoadedRuns.push(run)
         }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
       }
     },
     async reconcileMessages(): Promise<void> {
-      const thread = this.threadId
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      const thread = identityStore.threadId
       if (!thread) return
       try {
-        const messages = await listGaMessages(thread)
-        if (this.threadId !== thread) return
-        this.messages = messages
+        const messages = await identityStore.awaitIdentity(identityEpoch, (listGaMessages(thread)))
+        if (identityStore.threadId !== thread) return
+        identityStore.messages = messages
         // A history refresh during an active successor must not erase its live draft.
-        if (!this.activeRunId) {
-          this.streamingText = ''
-          this.streamGeneration = null
+        if (!identityStore.activeRunId) {
+          identityStore.streamingText = ''
+          identityStore.streamGeneration = null
         }
-        this.dedupeOptimistic()
-        await this.restoreProcessHistory()
-      } catch { /* 保留乐观投影 */ }
+        identityStore.dedupeOptimistic()
+        await identityStore.awaitIdentity(identityEpoch, (identityStore.restoreProcessHistory()))
+      } catch {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+ /* 保留乐观投影 */ }
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
+      }
     },
     async sendMessage(text: string, uiContext: GaUiContext): Promise<void> {
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
       const message = text.trim()
-      if (!message || this.sending || this.steerSending) return
+      if (!message || identityStore.sending || identityStore.steerSending) return
       if (message.length > 4000) {
-        this.error = { code: 'MESSAGE_TOO_LONG', message: gaErrorMessage('MESSAGE_TOO_LONG') }
-        this.draft = text
+        identityStore.error = { code: 'MESSAGE_TOO_LONG', message: gaErrorMessage('MESSAGE_TOO_LONG') }
+        identityStore.draft = text
         return
       }
-      if (this.isRunning) {
-        await this.steerActiveRun(message, uiContext)
+      if (identityStore.isRunning) {
+        await identityStore.awaitIdentity(identityEpoch, (identityStore.steerActiveRun(message, uiContext)))
         return
       }
-      await this.createIdleRun(message, uiContext)
+      await identityStore.awaitIdentity(identityEpoch, (identityStore.createIdleRun(message, uiContext)))
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
+      }
     },
     async steerActiveRun(message: string, uiContext: GaUiContext): Promise<void> {
-      if (!this.threadId || !this.activeRunId || this.pendingSteer || this.steerSending) return
-      this.error = null
-      this.steerSending = true
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (!identityStore.threadId || !identityStore.activeRunId || identityStore.pendingSteer || identityStore.steerSending) return
+      identityStore.error = null
+      identityStore.steerSending = true
       const optimisticId = 'local-steer-' + Date.now()
       const optimistic: GaMessage = {
         id: optimisticId,
-        threadId: this.threadId,
+        threadId: identityStore.threadId,
         role: 'USER',
         content: message,
         runId: null,
         createdAt: new Date().toISOString(),
       }
-      this.messages = [...this.messages, optimistic]
-      this.currentStatus = GA_STEERING_STATUS
+      identityStore.messages = [...identityStore.messages, optimistic]
+      identityStore.currentStatus = GA_STEERING_STATUS
       try {
-        const result = await steerGaRun(this.activeRunId, message, uiContext)
-        this.pendingSteer = {
+        const result = await identityStore.awaitIdentity(identityEpoch, (steerGaRun(identityStore.activeRunId, message, uiContext)))
+        identityStore.pendingSteer = {
           id: result.steerId,
           message,
           status: result.status,
           createdAt: new Date().toISOString(),
           optimisticId,
         }
-        this.draft = ''
+        identityStore.draft = ''
         if (result.status === 'STARTED' && result.successorRunId) {
-          await this.attachSuccessorIfReady()
+          await identityStore.awaitIdentity(identityEpoch, (identityStore.attachSuccessorIfReady()))
         }
       } catch (err) {
-        this.messages = this.messages.filter((m) => m.id !== optimisticId)
-        this.draft = message
-        this.currentStatus = null
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+
+        identityStore.messages = identityStore.messages.filter((m) => m.id !== optimisticId)
+        identityStore.draft = message
+        identityStore.currentStatus = null
         if (err instanceof ApiError) {
-          this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
+          identityStore.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
         } else {
-          this.error = { code: 'UNKNOWN_ERROR', message: gaErrorMessage('UNKNOWN_ERROR') }
+          identityStore.error = { code: 'UNKNOWN_ERROR', message: gaErrorMessage('UNKNOWN_ERROR') }
         }
       } finally {
-        this.steerSending = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.steerSending = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
       }
     },
     async createIdleRun(message: string, uiContext: GaUiContext): Promise<void> {
-      this.error = null
-      this.sending = true
-      this.draft = ''
-      this.stoppedNotice = false
-      let threadId = this.threadId
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        if (!threadId) threadId = await this.ensureThread()
+      identityStore.error = null
+      identityStore.sending = true
+      identityStore.draft = ''
+      identityStore.stoppedNotice = false
+      let threadId = identityStore.threadId
+      try {
+        if (!threadId) threadId = await identityStore.awaitIdentity(identityEpoch, (identityStore.ensureThread()))
         else {
-          try { await getGaThread(threadId) } catch (err) {
+          try { await identityStore.awaitIdentity(identityEpoch, (getGaThread(threadId))) } catch (err) {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+
             if (err instanceof ApiError && err.code === 'THREAD_NOT_FOUND') {
               writeStored(GA_THREAD_KEY, null)
               writeStored(GA_RUN_KEY, null)
-              this.threadId = null
-              this.messages = []
-              this.activeRunId = null
-              this.pendingSteer = null
-              void this.loadThreads()
-              threadId = await this.ensureThread()
+              identityStore.threadId = null
+              identityStore.messages = []
+              identityStore.activeRunId = null
+              identityStore.pendingSteer = null
+              void identityStore.loadThreads()
+              threadId = await identityStore.awaitIdentity(identityEpoch, (identityStore.ensureThread()))
             } else throw err
           }
         }
@@ -978,56 +1181,68 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
           runId: null,
           createdAt: new Date().toISOString(),
         }
-        this.messages = [...this.messages, optimistic]
-        this.streamingText = ''
-      this.streamGeneration = null
-        this.activities = []
-        this.currentStatus = GA_SENDING_STATUS
-        this.sendStartedAt = Date.now()
-        this.firstVisibleUiMs = 0
-        this.firstToolResultMs = null
-        this.waitingQuestion = null
-        this.approvalRequired = false
-        this.lastUiAction = null
+        identityStore.messages = [...identityStore.messages, optimistic]
+        identityStore.streamingText = ''
+      identityStore.streamGeneration = null
+        identityStore.activities = []
+        identityStore.currentStatus = GA_SENDING_STATUS
+        identityStore.sendStartedAt = Date.now()
+        identityStore.firstVisibleUiMs = 0
+        identityStore.firstToolResultMs = null
+        identityStore.waitingQuestion = null
+        identityStore.approvalRequired = false
+        identityStore.lastUiAction = null
         let created: { runId: string; status: string }
         try {
-          created = await createGaRun(threadId, message, uiContext)
+          created = await identityStore.awaitIdentity(identityEpoch, (createGaRun(threadId, message, uiContext)))
         } catch (err) {
-          this.messages = this.messages.filter((m) => m.id !== optimistic.id)
-          this.draft = message
-          this.currentStatus = null
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+
+          identityStore.messages = identityStore.messages.filter((m) => m.id !== optimistic.id)
+          identityStore.draft = message
+          identityStore.currentStatus = null
           if (err instanceof ApiError && err.code === 'GLOBAL_ASSISTANT_RUN_ACTIVE') {
-            this.error = { code: err.code, message: gaErrorMessage(err.code) }
-            await this.reconcileMessages()
+            identityStore.error = { code: err.code, message: gaErrorMessage(err.code) }
+            await identityStore.awaitIdentity(identityEpoch, (identityStore.reconcileMessages()))
             return
           }
           if (err instanceof ApiError) {
-            this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
+            identityStore.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
           } else {
-            this.error = { code: 'UNKNOWN_ERROR', message: gaErrorMessage('UNKNOWN_ERROR') }
+            identityStore.error = { code: 'UNKNOWN_ERROR', message: gaErrorMessage('UNKNOWN_ERROR') }
           }
           return
         }
-        this.dedupeCreateOptimistic(optimistic.id, message)
-        this.messages = this.messages.map(m => m.id === optimistic.id ? { ...m, runId: created.runId } : m)
-        this.activeRunId = created.runId
-        this.activeStatus = created.status as GaRun['status']
-        this.lastSequence = 0
-        this.cancelRequested = false
-        this.reconnectAttempts = 0
+        identityStore.dedupeCreateOptimistic(optimistic.id, message)
+        identityStore.messages = identityStore.messages.map(m => m.id === optimistic.id ? { ...m, runId: created.runId } : m)
+        identityStore.activeRunId = created.runId
+        identityStore.activeStatus = created.status as GaRun['status']
+        identityStore.lastSequence = 0
+        identityStore.cancelRequested = false
+        identityStore.reconnectAttempts = 0
         writeStored(GA_RUN_KEY, created.runId)
         if (created.status === 'COMPLETED' || created.status === 'FAILED' || created.status === 'CANCELLED') {
           try {
-            const envelopes = await listGaEvents(created.runId)
-            for (const envelope of envelopes) this.ingestEvent(envelope)
-          } catch { /* 继续走对账兜底 */ }
-          if (!this.activeRunId) return
-          this.finishTerminal({ type: created.status === 'COMPLETED' ? 'RUN_COMPLETED' : created.status === 'FAILED' ? 'RUN_FAILED' : 'RUN_CANCELLED', errorCode: null, reason: null })
+            const envelopes = await identityStore.awaitIdentity(identityEpoch, (listGaEvents(created.runId)))
+            for (const envelope of envelopes) identityStore.ingestEvent(envelope)
+          } catch {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+ /* 继续走对账兜底 */ }
+          if (!identityStore.activeRunId) return
+          identityStore.finishTerminal({ type: created.status === 'COMPLETED' ? 'RUN_COMPLETED' : created.status === 'FAILED' ? 'RUN_FAILED' : 'RUN_CANCELLED', errorCode: null, reason: null })
           return
         }
-        this.openStream()
+        identityStore.openStream()
       } finally {
-        this.sending = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.sending = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
       }
     },
     dedupeCreateOptimistic(optimisticId: string, message: string): void {
@@ -1040,54 +1255,70 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
     },
     openStream(): void {
       if (!this.activeRunId) return
+      const identityEpoch = this.identityEpoch
       this.closeStream()
       const runId = this.activeRunId
       this.connection = 'connecting'
       const handle = openGaEventStream(runId, this.lastSequence, {
         onEvent: (event) => {
+          if (this.identityEpoch !== identityEpoch) return
           if (event.runId !== this.activeRunId) return
           this.connection = 'connected'
           this.reconnectAttempts = 0
           this.ingestEvent(event)
         },
-        onError: () => { void this.handleStreamError(runId) },
+        onError: () => { if (this.identityEpoch === identityEpoch) void this.handleStreamError(runId) },
       }, streamAbortSignal())
       setStreamHandle(handle)
     },
     async handleStreamError(runId: string): Promise<void> {
-      if (this.activeRunId !== runId) return
-      if (!this.activeRunId) return
-      this.connection = 'reconnecting'
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        const run = await getGaRun(runId)
+      if (identityStore.activeRunId !== runId) return
+      if (!identityStore.activeRunId) return
+      identityStore.connection = 'reconnecting'
+      try {
+        const run = await identityStore.awaitIdentity(identityEpoch, (getGaRun(runId)))
         if (run.status === 'COMPLETED' || run.status === 'FAILED' || run.status === 'CANCELLED') {
           try {
-            const envelopes = await listGaEvents(runId)
-            for (const envelope of envelopes) this.ingestEvent(envelope)
-          } catch { /* 忽略 */ }
-          if (this.activeRunId === runId && !this.lastSequenceTerminal()) {
-            this.finishTerminal({ type: run.status === 'COMPLETED' ? 'RUN_COMPLETED' : run.status === 'FAILED' ? 'RUN_FAILED' : 'RUN_CANCELLED', errorCode: run.errorCode, reason: null })
+            const envelopes = await identityStore.awaitIdentity(identityEpoch, (listGaEvents(runId)))
+            for (const envelope of envelopes) identityStore.ingestEvent(envelope)
+          } catch {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+ /* 忽略 */ }
+          if (identityStore.activeRunId === runId && !identityStore.lastSequenceTerminal()) {
+            identityStore.finishTerminal({ type: run.status === 'COMPLETED' ? 'RUN_COMPLETED' : run.status === 'FAILED' ? 'RUN_FAILED' : 'RUN_CANCELLED', errorCode: run.errorCode, reason: null })
           }
           return
         }
-      } catch { /* 继续走重试 */ }
+      } catch {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+ /* 继续走重试 */ }
       try {
-        const envelopes = await listGaEvents(runId)
+        const envelopes = await identityStore.awaitIdentity(identityEpoch, (listGaEvents(runId)))
         for (const envelope of envelopes) {
-          if (this.activeRunId !== runId) return
-          this.ingestEvent(envelope)
+          if (identityStore.activeRunId !== runId) return
+          identityStore.ingestEvent(envelope)
         }
-      } catch { /* 忽略 */ }
-      if (this.activeRunId !== runId) return
-      if (this.reconnectAttempts >= 5) {
-        this.connection = 'disconnected'
+      } catch {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+ /* 忽略 */ }
+      if (identityStore.activeRunId !== runId) return
+      if (identityStore.reconnectAttempts >= 5) {
+        identityStore.connection = 'disconnected'
         return
       }
-      this.reconnectAttempts += 1
-      const delay = Math.min(5000, 800 * this.reconnectAttempts)
-      await sleep(delay)
-      if (this.activeRunId !== runId) return
-      this.openStream()
+      identityStore.reconnectAttempts += 1
+      const delay = Math.min(5000, 800 * identityStore.reconnectAttempts)
+      await identityStore.awaitIdentity(identityEpoch, (sleep(delay)))
+      if (identityStore.activeRunId !== runId) return
+      identityStore.openStream()
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
+      }
     },
     lastSequenceTerminal(): boolean {
       return this.activeRunId === null
@@ -1099,137 +1330,183 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.openStream()
     },
     async cancelActiveRun(): Promise<void> {
-      if (!this.threadId || this.cancelRequested) return
-      if (!this.activeRunId && !this.pendingSteer) return
-      this.cancelRequested = true
-      // 显式停止会一并取消任何待生效的 steer 续接。
-      this.stopSuccessorObservation()
-      this.currentStatus = '正在停止…'
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        const act = await stopGaThread(this.threadId)
+      if (!identityStore.threadId || identityStore.cancelRequested) return
+      if (!identityStore.activeRunId && !identityStore.pendingSteer) return
+      identityStore.cancelRequested = true
+      // 显式停止会一并取消任何待生效的 steer 续接。
+      identityStore.stopSuccessorObservation()
+      identityStore.currentStatus = '正在停止…'
+      try {
+        const act = await identityStore.awaitIdentity(identityEpoch, (stopGaThread(identityStore.threadId)))
         if (!act.activeRun && !act.pendingSteer) {
-          this.pendingSteer = null
+          identityStore.pendingSteer = null
         } else if (!act.pendingSteer) {
-          this.pendingSteer = null
+          identityStore.pendingSteer = null
         }
       } catch (err) {
-        this.cancelRequested = false
-        this.currentStatus = null
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+
+        identityStore.cancelRequested = false
+        identityStore.currentStatus = null
         if (err instanceof ApiError) {
-          this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
+          identityStore.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
         }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
       }
     },
     async deleteThread(threadId: string): Promise<boolean> {
-      if (!threadId || this.deletingThreadId) return false
-      this.deletingThreadId = threadId
-      this.error = null
-      if (threadId === this.threadId) this.stopSuccessorObservation()
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        await deleteGaThread(threadId)
-        const wasCurrent = threadId === this.threadId
-        await this.loadThreads()
+      if (!threadId || identityStore.deletingThreadId) return false
+      identityStore.deletingThreadId = threadId
+      identityStore.error = null
+      if (threadId === identityStore.threadId) identityStore.stopSuccessorObservation()
+      try {
+        await identityStore.awaitIdentity(identityEpoch, (deleteGaThread(threadId)))
+        const wasCurrent = threadId === identityStore.threadId
+        await identityStore.awaitIdentity(identityEpoch, (identityStore.loadThreads()))
         if (wasCurrent) {
-          const next = this.threads.find((t) => t.threadId !== threadId) ?? null
-          this.closeStream()
+          const next = identityStore.threads.find((t) => t.threadId !== threadId) ?? null
+          identityStore.closeStream()
           if (next) {
-            await this.switchThreadIdle(next.threadId)
+            await identityStore.awaitIdentity(identityEpoch, (identityStore.switchThreadIdle(next.threadId)))
           } else {
-            this.threadId = null
+            identityStore.threadId = null
             writeStored(GA_THREAD_KEY, null)
             writeStored(GA_RUN_KEY, null)
-            this.messages = []
-            this.streamingText = ''
-            this.streamGeneration = null
-            this.activities = []
-            this.currentStatus = null
-            this.waitingQuestion = null
-            this.activeRunId = null
-            this.activeStatus = null
-            this.pendingSteer = null
-            this.stoppedNotice = false
+            identityStore.messages = []
+            identityStore.streamingText = ''
+            identityStore.streamGeneration = null
+            identityStore.activities = []
+            identityStore.currentStatus = null
+            identityStore.waitingQuestion = null
+            identityStore.activeRunId = null
+            identityStore.activeStatus = null
+            identityStore.pendingSteer = null
+            identityStore.stoppedNotice = false
           }
         }
-        this.confirmDeleteThreadId = null
+        identityStore.confirmDeleteThreadId = null
         return true
       } catch (err) {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+
         if (err instanceof ApiError) {
-          this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
+          identityStore.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
         } else {
-          this.error = { code: 'UNKNOWN_ERROR', message: gaErrorMessage('UNKNOWN_ERROR') }
+          identityStore.error = { code: 'UNKNOWN_ERROR', message: gaErrorMessage('UNKNOWN_ERROR') }
         }
         return false
       } finally {
-        this.deletingThreadId = null
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.deletingThreadId = null
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return false }
+        throw identityError
       }
     },
     async switchThreadIdle(threadId: string): Promise<void> {
-      this.switchingThread = true
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        const messages = await listGaMessages(threadId)
-        await getGaThread(threadId)
-        this.closeStream()
-        this.threadId = threadId
+      identityStore.switchingThread = true
+      try {
+        const messages = await identityStore.awaitIdentity(identityEpoch, (listGaMessages(threadId)))
+        await identityStore.awaitIdentity(identityEpoch, (getGaThread(threadId)))
+        identityStore.closeStream()
+        identityStore.threadId = threadId
         writeStored(GA_THREAD_KEY, threadId)
         writeStored(GA_RUN_KEY, null)
-        this.messages = messages
-        this.historicalActivities = {}
-        this.historyLoadedRuns = []
-        await this.restoreProcessHistory()
-        this.streamingText = ''
-      this.streamGeneration = null
-        this.activities = []
-        this.currentStatus = null
-        this.waitingQuestion = null
-        this.approvalRequired = false
-        this.stopSuccessorObservation()
-        this.activeRunId = null
-        this.activeStatus = null
-        this.pendingSteer = null
-        this.stoppedNotice = false
-        this.lastSequence = 0
-        this.cancelRequested = false
-        this.connection = 'idle'
-        this.historyOpen = false
-        await this.refreshActivity()
+        identityStore.messages = messages
+        identityStore.historicalActivities = {}
+        identityStore.historyLoadedRuns = []
+        await identityStore.awaitIdentity(identityEpoch, (identityStore.restoreProcessHistory()))
+        identityStore.streamingText = ''
+      identityStore.streamGeneration = null
+        identityStore.activities = []
+        identityStore.currentStatus = null
+        identityStore.waitingQuestion = null
+        identityStore.approvalRequired = false
+        identityStore.stopSuccessorObservation()
+        identityStore.activeRunId = null
+        identityStore.activeStatus = null
+        identityStore.pendingSteer = null
+        identityStore.stoppedNotice = false
+        identityStore.lastSequence = 0
+        identityStore.cancelRequested = false
+        identityStore.connection = 'idle'
+        identityStore.historyOpen = false
+        await identityStore.awaitIdentity(identityEpoch, (identityStore.refreshActivity()))
       } catch (err) {
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+
         if (err instanceof ApiError && err.code === 'THREAD_NOT_FOUND') {
-          this.error = { code: 'THREAD_NOT_FOUND', message: '该会话已不存在，已为你保留当前会话' }
-          await this.loadThreads()
+          identityStore.error = { code: 'THREAD_NOT_FOUND', message: '该会话已不存在，已为你保留当前会话' }
+          await identityStore.awaitIdentity(identityEpoch, (identityStore.loadThreads()))
         } else if (err instanceof ApiError) {
-          this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
+          identityStore.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
         }
       } finally {
-        this.switchingThread = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.switchingThread = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
       }
     },
     async startNewConversation(): Promise<void> {
-      if (this.sending || this.isRunning || this.steerSending) return
-      this.closeStream()
-      this.error = null
-      this.historyOpen = false
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        const created = await createGaThread()
-        this.threadId = created.threadId
+      if (identityStore.sending || identityStore.isRunning || identityStore.steerSending) return
+      identityStore.closeStream()
+      identityStore.error = null
+      identityStore.historyOpen = false
+      try {
+        const created = await identityStore.awaitIdentity(identityEpoch, (createGaThread()))
+        identityStore.threadId = created.threadId
         writeStored(GA_THREAD_KEY, created.threadId)
         writeStored(GA_RUN_KEY, null)
-        this.messages = []
-        this.streamingText = ''
-      this.streamGeneration = null
-        this.activities = []
-        this.currentStatus = null
-        this.waitingQuestion = null
-        this.approvalRequired = false
-        this.lastUiAction = null
-        this.pendingNavigation = null
-        this.stopSuccessorObservation()
-        this.activeRunId = null
-        this.activeStatus = null
-        this.lastSequence = 0
-        this.cancelRequested = false
-        this.connection = 'idle'
+        identityStore.messages = []
+        identityStore.streamingText = ''
+      identityStore.streamGeneration = null
+        identityStore.activities = []
+        identityStore.currentStatus = null
+        identityStore.waitingQuestion = null
+        identityStore.approvalRequired = false
+        identityStore.lastUiAction = null
+        identityStore.pendingNavigation = null
+        identityStore.stopSuccessorObservation()
+        identityStore.activeRunId = null
+        identityStore.activeStatus = null
+        identityStore.lastSequence = 0
+        identityStore.cancelRequested = false
+        identityStore.connection = 'idle'
       } catch (err) {
-        if (err instanceof ApiError) this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
+        if (this.identityEpoch !== identityEpoch) throw new GaIdentityExpiredError()
+
+        if (err instanceof ApiError) identityStore.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof GaIdentityExpiredError) { return }
+        throw identityError
       }
     },
     closeStream(): void {
@@ -1304,6 +1581,14 @@ function closeStreamHandle(): void {
   activeController = null
 }
 
+const reconnectWaits = new Map<ReturnType<typeof setTimeout>, () => void>()
+function cancelReconnectWaits(): void {
+  for (const [timer, resolve] of reconnectWaits) { clearTimeout(timer); resolve() }
+  reconnectWaits.clear()
+}
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => { setTimeout(resolve, ms) })
+  return new Promise(resolve => {
+    const timer = setTimeout(() => { reconnectWaits.delete(timer); resolve() }, ms)
+    reconnectWaits.set(timer, resolve)
+  })
 }

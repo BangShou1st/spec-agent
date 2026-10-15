@@ -5,6 +5,43 @@ import { setActivePinia, createPinia } from 'pinia'
 import { INPUT_DRAFT_STORAGE_KEY, useInputDraftStore } from '@/features/workspace/state/inputDraftStore'
 
 describe('useInputDraftStore', () => {
+  it('keeps a verified owners drafts on reload but clears them for another user in the same organization', () => {
+    setActivePinia(createPinia())
+    const owner = useInputDraftStore()
+    owner.bindIdentity(JSON.stringify(['alice', 'org']))
+    owner.setDraft('shared-project', 'node', { selectedOptionId: null, freeText: 'alice private' })
+    setActivePinia(createPinia())
+    const restored = useInputDraftStore()
+    restored.bindIdentity(JSON.stringify(['alice', 'org']))
+    expect(restored.getDraft('shared-project', 'node')?.freeText).toBe('alice private')
+    restored.bindIdentity(JSON.stringify(['bob', 'org']))
+    expect(restored.getDraft('shared-project', 'node')).toBeUndefined()
+    expect(sessionStorage.getItem(INPUT_DRAFT_STORAGE_KEY)).toBeNull()
+  })
+  it('does not adopt unattributed legacy drafts and clears a users drafts on logout', () => {
+    sessionStorage.removeItem('spec-agent:input-drafts:owner:v1')
+    setActivePinia(createPinia())
+    const store = useInputDraftStore()
+    store.setDraft('p', 'n', { selectedOptionId: null, freeText: 'legacy' })
+    store.bindIdentity(JSON.stringify(['alice', 'org']))
+    expect(store.getDraft('p', 'n')).toBeUndefined()
+    store.setDraft('p', 'n', { selectedOptionId: null, freeText: 'authenticated draft' })
+    store.bindIdentity(null)
+    expect(store.draftCount).toBe(0)
+    expect(sessionStorage.getItem(INPUT_DRAFT_STORAGE_KEY)).toBeNull()
+  })
+  it('clears all route drafts for a revoked project without clearing another project', () => {
+    setActivePinia(createPinia())
+    const store = useInputDraftStore()
+    store.setDraft('project-a', 'n1', { selectedOptionId: null, freeText: 'private draft' }, 'r1')
+    store.setDraft('project-a', 'n1', { selectedOptionId: null, freeText: 'another route' }, 'r2')
+    store.setDraft('project-ab', 'n1', { selectedOptionId: null, freeText: 'keep' })
+    store.clearProject('project-a')
+    expect(store.getDraft('project-a', 'n1', 'r1')).toBeUndefined()
+    expect(store.getDraft('project-a', 'n1', 'r2')).toBeUndefined()
+    expect(store.getDraft('project-ab', 'n1')?.freeText).toBe('keep')
+    expect(sessionStorage.getItem(INPUT_DRAFT_STORAGE_KEY)).not.toContain('private draft')
+  })
   afterEach(() => vi.restoreAllMocks())
   beforeEach(() => {
     setActivePinia(createPinia())

@@ -18,6 +18,28 @@ const mockedList = vi.mocked(listProjects)
 const mockedCreate = vi.mocked(createProject)
 
 describe('projectStore', () => {
+  it('clears old titles and refuses a late list response after switching users', async () => {
+    const store = useProjectStore(); store.bindIdentity('alice/org')
+    store.projects = [makeProject({ id: 'old', title: 'private title' })]
+    let finish!: (value: Awaited<ReturnType<typeof listProjects>>) => void
+    mockedList.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const pending = store.loadProjects()
+    store.bindIdentity('bob/org')
+    expect(store.projects).toEqual([])
+    finish([makeProject({ id: 'late', title: 'late private title' })]); await pending
+    expect(store.projects).toEqual([])
+  })
+  it('refuses a late created project without clearing the new users busy flag', async () => {
+    const store = useProjectStore(); store.bindIdentity('alice/org')
+    let finish!: (value: Awaited<ReturnType<typeof createProject>>) => void
+    mockedCreate.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const pending = store.createProject('alice private')
+    store.bindIdentity('bob/org'); store.creating = true
+    finish(makeProject({ id: 'late' }))
+    expect(await pending).toBeNull()
+    expect(store.projects).toEqual([])
+    expect(store.creating).toBe(true)
+  })
   beforeEach(() => {
     setActivePinia(createPinia())
     mockedList.mockReset()

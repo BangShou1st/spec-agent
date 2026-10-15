@@ -46,18 +46,70 @@ public class ContinuationCheckRepository {
         jdbcTemplate.update(sql, Maps.of("runId", runId));
     }
 
-    /** 待处理检查按最老优先取出,带条数上限,单次轮询绝不全表扫描。 */
-    public List<ContinuationCheck> findPending(int limit) {
+    /**
+     * 待处理检查按最老优先取出,带条数上限,单次轮询绝不全表扫描。
+     *
+     * <p><b>worker 归属(design §10)。</b>多 Worker 下必须由数据库裁决归属,否则
+     * 两个实例会同时评估同一批检查。这里用 {@code FOR UPDATE SKIP LOCKED} 加一次
+     * 会过期的认领:认领者崩溃后 claim 自然过期,其他实例可以重新认领——
+     * 绝不允许一个死掉的 worker 永久搁置一条检查。
+     *
+     * @param workerId 本进程的执行身份;null 表示不做归属(单执行器模式的历史行为)
+     * @param claimSeconds 认领的有效期(秒)
+     */
+    public List<ContinuationCheck> claimPending(int limit, UUID workerId, int claimSeconds) {
+        if (workerId == null) {
+            // 单执行器模式:没有并发消费者,保持历史查询(不写认领列,
+            // 因此也不会在该模式下引入新的列依赖)。
+            String sql = """
+                    SELECT run_id, request_generation FROM agent_run_continuation_checks
+                    WHERE processed_at IS NULL
+                    ORDER BY requested_at
+                    LIMIT :limit
+                    """;
+            return jdbcTemplate.query(sql, Maps.of("limit", limit),
+                    (rs, rowNum) -> new ContinuationCheck(
+                            rs.getObject("run_id", UUID.class),
+                            rs.getLong("request_generation")));
+        }
         String sql = """
-                SELECT run_id, request_generation FROM agent_run_continuation_checks
-                WHERE processed_at IS NULL
-                ORDER BY requested_at
-                LIMIT :limit
+                UPDATE agent_run_continuation_checks
+                SET claimed_by = :workerId,
+                    claim_expires_at = now() + make_interval(secs => :claimSeconds)
+                WHERE run_id IN (
+                    SELECT run_id FROM agent_run_continuation_checks
+                    WHERE processed_at IS NULL
+                      AND (claim_expires_at IS NULL OR claim_expires_at <= now()
+                           OR claimed_by = :workerId)
+                    ORDER BY requested_at
+                    LIMIT :limit
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING run_id, request_generation
                 """;
-        return jdbcTemplate.query(sql, Maps.of("limit", limit),
+        return jdbcTemplate.query(sql, Maps.of(
+                        "limit", limit, "workerId", workerId, "claimSeconds", claimSeconds),
                 (rs, rowNum) -> new ContinuationCheck(
                         rs.getObject("run_id", UUID.class),
                         rs.getLong("request_generation")));
+    }
+
+    /** 待处理检查按最老优先取出(单执行器模式的历史入口)。 */
+    public List<ContinuationCheck> findPending(int limit) {
+        return claimPending(limit, null, 0);
+    }
+
+    /**
+     * 释放某条检查的认领,使其立即可以被重新评估。评估失败时调用,避免让一条
+     * 瞬时失败的检查等到 claim 过期。
+     */
+    public int releaseClaim(UUID runId, UUID workerId) {
+        String sql = """
+                UPDATE agent_run_continuation_checks
+                SET claimed_by = NULL, claim_expires_at = NULL
+                WHERE run_id = :runId AND claimed_by = :workerId AND processed_at IS NULL
+                """;
+        return jdbcTemplate.update(sql, Maps.of("runId", runId, "workerId", workerId));
     }
 
     /** 单个 run 的待处理代数(若存在)。 */

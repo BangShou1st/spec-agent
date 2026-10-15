@@ -18,13 +18,17 @@ public class GaRetrievalReadiness {
     private final RetrievalStore store;
     private final boolean enabled;
     private volatile String status="PYTHON_UNAVAILABLE";
+    private volatile String provider, model;
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
     public GaRetrievalReadiness(com.specagent.assistant.config.GaBrainSettings connection, GaRetrievalAccess shared, RetrievalStore store,
             @Value("${spec.global-assistant.retrieval-enabled:true}") boolean enabled, org.springframework.jdbc.core.JdbcTemplate jdbc) {
         this.jdbc=jdbc; this.connection=connection; this.shared=shared.host(); this.store=store; this.enabled=enabled;
     }
-    public boolean ready() { return "READY".equals(status); }
+    public boolean ready() { return "READY".equals(status) || "CONFIGURED".equals(status); }
     public String status() { return status; }
+    /** Non-sensitive active-embedding identity for honest guidance; null when unknown. */
+    public String provider() { return provider; }
+    public String model() { return model; }
     @Scheduled(fixedDelayString="${spec.global-assistant.retrieval-readiness-ms:15000}", initialDelay=3000)
     public void refresh() {
         if (!enabled) { status="DISABLED"; return; }
@@ -39,7 +43,15 @@ public class GaRetrievalReadiness {
             var result=new com.fasterxml.jackson.databind.ObjectMapper().readTree(response.body());
             if (!"python-rag.v1".equals(result.path("retrievalEngineVersion").asText())) { status="PYTHON_UNAVAILABLE"; return; }
             if (!result.path("storeReady").asBoolean()) { status="STORE_UNAVAILABLE"; return; }
-            if (!result.path("ollamaReady").asBoolean() || !store.activeHelpProfile().equals(result.path("profile").path("profileId").asText())) {
+            var profile=result.path("profile");
+            provider=profile.path("provider").asText(null);
+            model=profile.path("modelTag").asText(null);
+            if (!result.path("ollamaReady").asBoolean()) {
+                // Newer brains report the concrete availability code; older ones only say ollamaReady=false.
+                String detail=result.path("embeddingStatus").asText("");
+                status=detail.isBlank()?"OLLAMA_UNAVAILABLE":detail; return;
+            }
+            if (!store.activeHelpProfile().equals(result.path("profile").path("profileId").asText())) {
                 status="OLLAMA_UNAVAILABLE"; return;
             }
             var generation=store.ensureHelpGeneration();

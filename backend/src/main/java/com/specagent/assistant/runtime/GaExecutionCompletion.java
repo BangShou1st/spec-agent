@@ -38,6 +38,7 @@ public class GaExecutionCompletion {
     /** Each draft append and its receipt commit under the same run lock as terminalization. */
     @Transactional
     public void progress(GaExecutionPreparation.Prepared prepared,String line,StreamState state) {
+        executions.requireActor(prepared.scope());
         var run=runs.lockById(prepared.scope().runId());
         if(!run.status().isActive()) throw new IllegalStateException("GA_EXECUTION_FENCE");
         executions.authorize(prepared.scope());
@@ -77,6 +78,7 @@ public class GaExecutionCompletion {
     @Transactional
     public void accept(GaExecutionPreparation.Prepared prepared, List<String> lines, StreamState state) {
         var scope=prepared.scope();
+        executions.requireActor(scope);
         var run=runs.lockById(scope.runId());
         // A duplicate completed dispatch has no authority to emit another public event.
         if(!run.status().isActive()) return;

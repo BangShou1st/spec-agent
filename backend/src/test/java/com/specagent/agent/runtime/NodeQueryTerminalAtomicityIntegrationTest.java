@@ -78,6 +78,7 @@ class NodeQueryTerminalAtomicityIntegrationTest {
     @Autowired private RouteRepository routeRepository;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private TransactionTemplate transactionTemplate;
+    @Autowired private AgentRunFailureService agentRunFailureService;
 
     @MockBean
     private AgentDecisionEngine decisionEngine;
@@ -318,6 +319,90 @@ class NodeQueryTerminalAtomicityIntegrationTest {
         } catch (Exception ex) {
             throw new IllegalStateException("visibility probe failed", ex);
         }
+    }
+
+    // ------------------------------------------------------------------
+    // 提案与终态化在同一受保护短事务(修复 3 回归)
+    // ------------------------------------------------------------------
+
+    /**
+     * 检查通过后、提案落库前撤权:决策引擎打桩为"先挂起,等撤权提交后再
+     * 返回变异提案",awaiting_approval 路径的受保护短事务在取 task 所有权锁
+     * 处被整体拒绝——数据库里没有新增提案、没有 AWAITING_APPROVAL 终态、
+     * 没有 PROPOSAL_CREATED/COMPLETED 状态迁移(业务行绝不脱离所有权提交)。
+     */
+    @Test
+    void revocationBetweenCheckAndProposalLeavesNoProposalOrTerminalState() throws Exception {
+        var entered = new java.util.concurrent.CountDownLatch(1);
+        var revocationDone = new java.util.concurrent.CountDownLatch(1);
+        stubDecision("CREATE_NODE", Map.of(
+                "kind", "KNOWLEDGE", "subtype", "RISK",
+                "content", Map.of("text", "撤权竞态节点")));
+        when(decisionEngine.runDecision(any(AgentRequestEnvelope.class))).thenAnswer(invocation -> {
+            // 决策"执行中":等控制面撤权提交完成后才返回提案——复现
+            // "检查在撤权之前通过、提案在撤权之后落库"的竞态窗口。
+            entered.countDown();
+            revocationDone.await(15, TimeUnit.SECONDS);
+            AgentRequestEnvelope request = invocation.getArgument(0);
+            AgentInputSnapshot snapshot = request.snapshot();
+            return new AgentResponseEnvelope(
+                    AgentProtocol.DECISION_PROTOCOL_VERSION,
+                    request.runId(),
+                    null,
+                    new ObservationView(List.of("context"), List.of(), List.of(), List.of()),
+                    new ActionProposal(
+                            "CREATE_NODE", Map.of(
+                                    "kind", "KNOWLEDGE", "subtype", "RISK",
+                                    "content", Map.of("text", "撤权竞态节点")),
+                            UUID.fromString(snapshot.snapshotId()),
+                            snapshot.contextHash(),
+                            List.of(),
+                            UUID.randomUUID(),
+                            request.runId().toString(),
+                            List.of()),
+                    new UsageView(1, List.of()),
+                    Map.of());
+        });
+        UUID runId = runService.createQueuedNodeQuery(
+                project.id(), routeId, anchor.id(), "撤权竞态下的节点问答");
+        AgentRun claimed = runService.claimNodeQueryRun(runId).orElseThrow();
+
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            var execution = pool.submit(() -> worker.executeRun(claimed));
+            assertThat(entered.await(10, TimeUnit.SECONDS))
+                    .as("the decision call must be in flight before revocation")
+                    .isTrue();
+            // 控制面撤权:走生产撤权收敛的等价路径(RUN_FAILED + FAILED 终态),
+            // 与 WorkspaceAuthorizationRevocationHandler 的收敛事实一致。
+            agentRunFailureService.fail(runId, "failed:AUTHORIZATION_REVOKED",
+                    com.specagent.access.AccessDeniedException.forbidden(
+                            com.specagent.access.AccessReason.PROJECT_CAPABILITY_MISSING, "revoked in test"));
+            revocationDone.countDown();
+            assertThatThrownBy(execution::get)
+                    .as("the awaiting_approval transaction must be refused after revocation")
+                    .hasCauseInstanceOf(Exception.class);
+        } finally {
+            pool.shutdownNow();
+        }
+
+        // 无新增提案:变异提案绝不脱离所有权落库。
+        Integer proposals = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM agent_proposals WHERE run_id = ?", Integer.class, runId);
+        assertThat(proposals).as("no proposal row may survive a post-check revocation").isZero();
+        // run 已被控制面撤权收敛为 FAILED,绝不被迟到的 AWAITING_APPROVAL/
+        // COMPLETED 覆盖。
+        String status = jdbcTemplate.queryForObject(
+                "SELECT status FROM agent_runs WHERE id = ?", String.class, runId);
+        assertThat(status).isEqualTo("failed");
+        Integer awaitingEvents = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM agent_run_events WHERE run_id = ? AND event_type = 'AWAITING_APPROVAL'",
+                Integer.class, runId);
+        assertThat(awaitingEvents).isZero();
+        Integer proposalCreatedEvents = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM agent_run_events WHERE run_id = ? AND event_type = 'PROPOSAL_CREATED'",
+                Integer.class, runId);
+        assertThat(proposalCreatedEvents).isZero();
     }
 
     @FunctionalInterface

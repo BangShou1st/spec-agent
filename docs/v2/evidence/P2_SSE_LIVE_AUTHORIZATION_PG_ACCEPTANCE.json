@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-14",
+  "command": "gradlew.bat testNonLive --tests com.specagent.assistant.* --tests com.specagent.architecture.* --tests com.specagent.access.SecurityProtocolAdmissionTest",
+  "counts": {
+    "tests": 267,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 26,
+    "suites": 32
+  },
+  "scope": "All assistant suites; per-event SSE authorization/session checks, SQL-bounded replay, authoritative cursor ordering, subscription bucket lifecycle and concurrent publish/poll",
+  "newUnitTests": 10,
+  "newRealPgTests": 4,
+  "migration": {
+    "V85": "success=true",
+    "securityProtocol": 8
+  },
+  "identityAcceptance": "Explicit trusted test actor binding and shared-session existence marker; not actual OIDC authentication/browser acceptance",
+  "oldProtocol7StartupRefusal": {
+    "jar": "runtime-v84-accepted-protocol7.jar",
+    "sha256": "88EA6A1A757499C9A0393E0C5594E98D62ABFEA47C59318F29F0DB5C1E182103",
+    "reason": "Security protocol version mismatch: database=8, this instance=7",
+    "exitCode": 1,
+    "flywayEnabled": false,
+    "alreadyRunningOldInstancesFenced": false
+  },
+  "initialEnvironmentFailure": {
+    "tests": 92,
+    "failures": 8,
+    "reason": "PG container exited normally; Flyway connection refused",
+    "recovered": "started only dedicated PG and Keycloak containers; fresh focused run passed"
+  },
+  "fullRegressionBaseline": {
+    "migration": "V84",
+    "tests": 1851,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 33,
+    "coversCurrentChanges": false
+  },
+  "limitations": [
+    "Two JVM OIDC/browser lifecycle matrix pending",
+    "Slow-client five-second revocation latency not measured",
+    "Full P2-C/D/E/F remains incomplete"
+  ],
+  "stageCompleted": false
+}

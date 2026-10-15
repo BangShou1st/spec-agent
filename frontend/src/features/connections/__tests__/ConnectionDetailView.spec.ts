@@ -1,3 +1,4 @@
+import { accessSession } from '@/features/access/accessSession'
 // 文件名:ConnectionDetailView.spec.ts
 // 用途:Connection 详情页组件测试:mock 连接 API,验证详情渲染不泄露 secret 明文、
 //       生命周期操作入口可用、删除前有二次确认。
@@ -27,7 +28,7 @@ vi.mock('@/features/connections/api/connections', () => ({
 
 const api = vi.mocked(connsApi)
 
-const detail = { connectionId: 'conn_1', name: 'Personal MCP', kind: 'CUSTOM_MCP', status: 'CONNECTED', enabled: false, config: { serverUrl: 'https://mcp.example.com/mcp' }, hasCredential: true, maskedSuffix: '****abcd', lastError: null, createdAt: 'x', updatedAt: 'x' }
+const detail = { ownerKind: 'ORG' as const, connectionId: 'conn_1', name: 'Personal MCP', kind: 'CUSTOM_MCP', status: 'CONNECTED', enabled: false, config: { serverUrl: 'https://mcp.example.com/mcp' }, hasCredential: true, maskedSuffix: '****abcd', lastError: null, createdAt: 'x', updatedAt: 'x' }
 
 function mountView() {
   setActivePinia(createPinia())
@@ -67,4 +68,69 @@ describe('ConnectionDetailView', () => {
     await w.get('[data-test="connection-delete-confirm"]').trigger('click')
     expect(api.deleteConnection).toHaveBeenCalledWith('conn_1')
   })
+})
+
+beforeEach(() => { accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'editor', orgId: 'org', displayName: 'Editor', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['CREDENTIAL_MANAGE'], memberships: [] } })
+
+
+describe('connection ownership boundary', () => {
+  it('keeps shared connection readable without management capability', async () => {
+    accessSession.identity!.orgCapabilities = []
+    api.getConnection.mockResolvedValue({ ...detail })
+    const w = mountView()
+    await flushPromises()
+    expect(w.get('[data-test="connection-detail-name"]').text()).toContain('Personal MCP')
+    expect(w.find('[data-test="edit-connection"]').exists()).toBe(false)
+    expect(w.find('[data-test="lifecycle-enable"]').exists()).toBe(false)
+    expect(w.find('[data-test="danger-zone"]').exists()).toBe(false)
+    w.unmount()
+  })
+  it('lets a member manage their server-visible personal connection', async () => {
+    accessSession.identity!.orgCapabilities = []
+    api.getConnection.mockResolvedValue({ ...detail, ownerKind: 'USER' })
+    const w = mountView()
+    await flushPromises()
+    expect(w.find('[data-test="edit-connection"]').exists()).toBe(true)
+    expect(w.find('[data-test="lifecycle-enable"]').exists()).toBe(true)
+    w.unmount()
+  })
+  it('removes shared edit and delete confirmations on capability loss', async () => {
+    api.getConnection.mockResolvedValue({ ...detail })
+    const w = mountView()
+    await flushPromises()
+    await w.get('[data-test="edit-connection"]').trigger('click')
+    await w.get('[data-test="edit-secret"]').setValue('unsaved-secret')
+    accessSession.identity!.orgCapabilities = []
+    await flushPromises()
+    expect(w.find('[data-test="connection-edit-dialog"]').exists()).toBe(false)
+    accessSession.identity!.orgCapabilities = ['CREDENTIAL_MANAGE']
+    await flushPromises()
+    await w.get('[data-test="edit-connection"]').trigger('click')
+    expect((w.get('[data-test="edit-secret"]').element as HTMLInputElement).value).toBe('')
+    w.unmount()
+  })
+  it('denies management when an older response lacks ownership metadata', async () => {
+    const { ownerKind: _ownerKind, ...legacy } = detail
+    api.getConnection.mockResolvedValue(legacy)
+    const w = mountView()
+    await flushPromises()
+    expect(w.find('[data-test="edit-connection"]').exists()).toBe(false)
+    expect(w.find('[data-test="danger-zone"]').exists()).toBe(false)
+    w.unmount()
+  })
+})
+
+
+it('does not discover resources or prompts for a disabled connection', async () => {
+  api.getConnection.mockResolvedValue({ ...detail, status: 'CREATED', enabled: false })
+  api.listConnectionTools.mockClear()
+  api.listConnectionResources.mockClear()
+  api.listConnectionPrompts.mockClear()
+  const w = mountView()
+  await flushPromises()
+  expect(w.get('[data-test="connection-detail-name"]').text()).toContain('Personal MCP')
+  expect(api.listConnectionTools).not.toHaveBeenCalled()
+  expect(api.listConnectionResources).not.toHaveBeenCalled()
+  expect(api.listConnectionPrompts).not.toHaveBeenCalled()
+  w.unmount()
 })

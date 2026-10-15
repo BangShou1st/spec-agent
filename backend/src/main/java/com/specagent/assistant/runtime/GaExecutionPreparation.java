@@ -38,6 +38,32 @@ public class GaExecutionPreparation {
     }
     @Transactional
     public Prepared prepare(UUID thread, UUID runId, String text, GaHostContext.UiRequest ui) {
+        // 执行代次来自当前任务的显式 token(design §7):首次认领为 1,接管后为
+        // 递增后的代次。缺省回落到 1 只为兼容单执行器模式的既有测试与路径。
+        long epoch = com.specagent.runtime.execution.ExecutionTokenContext.current()
+                .map(com.specagent.runtime.execution.ExecutionToken::epoch).orElse(1L);
+        return prepare(thread, runId, text, ui, epoch);
+    }
+
+    /**
+     * 带显式执行代次的准备。
+     *
+     * <p>{@code executionEpoch} 参与三件事,缺一不可:
+     * <ul>
+     *   <li>写入 {@code ga_executions.execution_epoch} 与 {@code lease_id},
+     *       使旧代次的迟到写入被 fence 拒绝;</li>
+     *   <li>写进执行信封,Python 侧按 attempt 分区内部序号与事件去重;</li>
+     *   <li>恢复时沿用原模型/能力快照与<b>剩余</b>预算——本方法绝不重置
+     *       {@code model_calls}/{@code tool_calls}(那在 initialize 里被刻意排除)。</li>
+     * </ul>
+     */
+    @Transactional
+    public Prepared prepare(UUID thread, UUID runId, String text, GaHostContext.UiRequest ui,
+                            long executionEpoch) {
+        if (executionEpoch < 1) {
+            throw new IllegalArgumentException("GA execution epoch must be >= 1");
+        }
+        executions.requireActor(new GaExecutionStore.Scope(runId,executionEpoch,UUID.randomUUID()));
         var run=runs.lockById(runId);
         if (run.status()!=GlobalAssistantRunStatus.CREATED) throw new GlobalAssistantRunClaimedException(run.status());
         if (!run.threadId().equals(thread)) throw new IllegalArgumentException("GA thread mismatch");
@@ -67,10 +93,10 @@ public class GaExecutionPreparation {
         UUID selected=projected.selectedEntity()!=null && "PROJECT".equals(projected.selectedEntity().type())
                 ? UUID.fromString(projected.selectedEntity().id()) : null;
         var catalog=catalogs.current();
-        var scope=new GaExecutionStore.Scope(runId,1,UUID.randomUUID());
+        var scope=new GaExecutionStore.Scope(runId,executionEpoch,UUID.randomUUID());
         UUID binding=UUID.randomUUID();
         var envelope=Maps.of("protocolVersion","ga-execution.v1","engineVersion","langchain-ga.v1",
-                "threadId",thread.toString(),"runId",runId.toString(),"executionEpoch",1,"leaseId",scope.leaseId().toString(),
+                "threadId",thread.toString(),"runId",runId.toString(),"executionEpoch",executionEpoch,"leaseId",scope.leaseId().toString(),
                 "messageId",current.getFirst().id().toString(),"content",text,"modelBindingId",binding.toString(),
                 "policyVersion","1","catalogHash",catalog.hash(),"historyBoundary",history.isEmpty()?null:history.getLast().get("messageId"),
                 "history",history,"uiContext",Maps.of("currentPage",projected.currentPage(),"selectedEntity",selected),

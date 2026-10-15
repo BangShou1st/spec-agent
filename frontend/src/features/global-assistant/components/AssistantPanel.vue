@@ -13,7 +13,7 @@ import ConversationHistory from './ConversationHistory.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import { getGaToolsStatus, buildGaUiContext } from '@/features/global-assistant/api/globalAssistant'
 import { useGlobalAssistantStore } from '@/features/global-assistant/state/globalAssistantStore'
-import { gaRetrievalStatusMessage } from '../presentation/globalAssistantPresentation'
+import { gaRetrievalStatusMessage, gaRetrievalStatusFixableInSettings } from '../presentation/globalAssistantPresentation'
 import { currentGaTitle } from '@/features/global-assistant/presentation/conversationLibrary'
 
 const store = useGlobalAssistantStore()
@@ -21,7 +21,9 @@ const route = useRoute()
 const router = useRouter()
 const composerText = ref('')
 const webConfigured = ref<boolean | null>(null)
+const retrievalReady = ref(false)
 const retrievalStatus = ref<string | null>(null)
+const retrievalInfo = ref<{ provider?: string | null; model?: string | null } | null>(null)
 let toolsTimer: ReturnType<typeof setInterval> | undefined
 let disposed = false
 async function refreshTools() {
@@ -29,7 +31,9 @@ async function refreshTools() {
     const status = await getGaToolsStatus()
     if (disposed) return
     webConfigured.value = status.webConfigured
-    retrievalStatus.value = status.retrievalReady ? 'READY' : status.retrievalStatus ?? 'RETRIEVAL_UNAVAILABLE'
+    retrievalReady.value = status.retrievalReady
+    retrievalStatus.value = status.retrievalStatus ?? null
+    retrievalInfo.value = { provider: status.retrievalProvider ?? null, model: status.retrievalModel ?? null }
   } catch { }
 }
 onUnmounted(() => { disposed = true; if (toolsTimer) clearInterval(toolsTimer) })
@@ -218,7 +222,10 @@ function handleClose(): void {
       />
     </div>
     <p v-if="webConfigured === false" class="ga-web-status" data-test="ga-web-unconfigured">联网未配置；当前可使用工作区工具。</p>
-    <p v-if="retrievalStatus && retrievalStatus !== 'READY'" class="ga-web-status" data-test="ga-retrieval-unready">{{ gaRetrievalStatusMessage(retrievalStatus) }}</p>
+    <p v-if="!retrievalReady && retrievalStatus" class="ga-web-status" data-test="ga-retrieval-unready">
+      <span>{{ gaRetrievalStatusMessage(retrievalStatus, retrievalInfo) }}</span>
+      <RouterLink v-if="gaRetrievalStatusFixableInSettings(retrievalStatus)" class="ga-web-status__link" data-test="ga-retrieval-settings-link" to="/settings/retrieval">打开知识检索设置</RouterLink>
+    </p>
     <ConversationTimeline
       v-if="!historyOpen"
       :messages="store.messages"
@@ -250,6 +257,8 @@ function handleClose(): void {
 
 <style scoped>
 .ga-web-status { margin: 0; padding: 6px 12px; color: var(--color-text-muted); font-size: 12px; }
+.ga-web-status__link { margin-left: 8px; color: var(--color-text-secondary); text-decoration: underline; }
+.ga-web-status__link:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 4px; }
 .ga-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--color-surface); }
 .ga-panel__header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
 .ga-panel__history-btn[aria-expanded='true'] { background: var(--color-focus-soft); color: var(--color-focus-strong); box-shadow: inset 0 0 0 1px var(--color-focus); }

@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-14",
+  "change": "Move security/execution YAML blocks to actual spec.agent Java binding prefix; align both test-profile copies",
+  "verification": {
+    "command": "gradlew.bat testNonLive --tests *DeploymentPropertyBindingTest --tests *SecurityProtocolAdmissionTest",
+    "counts": {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 2
+    },
+    "scope": "Actual YAML property source loading and Spring Binder; no DB/JVM OIDC acceptance claimed"
+  },
+  "cases": [
+    "Canonical production OIDC properties resolve through published YAML",
+    "Multi-worker switch and local slot/lease variables bind correctly",
+    "Test profile uses same Java binding prefix",
+    "Every main/test application-test.yml copy checked",
+    "Existing security protocol admission unit checks"
+  ],
+  "limitations": [
+    "Database full regression pending Docker recovery",
+    "Saved V91 jar predates these resource corrections",
+    "An environment property with the actual binding name can override profile properties; tests do not assume otherwise"
+  ],
+  "dockerRecovery": {
+    "authorized": true,
+    "desktopRestart": "CLI failed to stop processes before timeout",
+    "scopedRecovery": "Stopped executables only under Docker installation root, attempted docker-desktop terminate, launched Desktop hidden",
+    "current": "Desktop processes restarted; Linux engine pipe unavailable",
+    "otherWslDistributionsTerminated": false
+  }
+}

@@ -166,14 +166,46 @@ export function gaStatusMessage(message: string): string {
   return GA_STATUS_COPY[message] ?? message
 }
 
-export function gaRetrievalStatusMessage(status?: string): string {
+/**
+ * 检索就绪状态的展示层映射。指引只基于后端上报的实际"生效"Embedding 状态
+ * (embeddingStatus + 非敏感的提供商/模型信息),不假设部署使用 Ollama 或任何特定模型;
+ * 云端服务只报告"已配置",绝不冒充持续健康。未知状态诚实透出通用文案。
+ */
+export interface GaRetrievalStatusInfo {
+  provider?: string | null
+  model?: string | null
+}
+
+function gaEmbeddingLabel(info?: GaRetrievalStatusInfo | null): string {
+  const label = [info?.provider, info?.model].filter(value => typeof value === 'string' && value.length > 0).join(' · ')
+  return label ? `（${label}）` : ''
+}
+
+export function gaRetrievalStatusMessage(status?: string, info?: GaRetrievalStatusInfo | null): string {
+  const embedding = gaEmbeddingLabel(info)
   const messages: Record<string, string> = {
     DISABLED: '内容检索已关闭；项目查找和网页工具仍可独立使用。',
     PYTHON_UNAVAILABLE: '内容检索未就绪：请检查全局助手 Python 服务。',
     STORE_UNAVAILABLE: '内容检索未就绪：请检查后端存储与共享令牌。',
-    OLLAMA_UNAVAILABLE: '内容检索未就绪：请启动 Ollama 并准备 qwen3-embedding:0.6b。',
+    OLLAMA_UNAVAILABLE: '内容检索未就绪：请检查知识检索设置中的向量服务。',
+    EMBEDDING_NOT_CONFIGURED: '内容检索未就绪：尚未配置向量服务，请在知识检索设置中配置。',
+    EMBEDDING_CREDENTIAL_UNAVAILABLE: '内容检索未就绪：当前向量服务凭据缺失，请在知识检索设置中处理凭据。',
+    EMBEDDING_CONNECTION_FAILED: `内容检索未就绪：无法连接向量服务${embedding}，请检查服务地址与运行状态。`,
+    EMBEDDING_MODEL_NOT_FOUND: `内容检索未就绪：向量服务上未找到模型${embedding}，请在知识检索设置中确认模型。`,
+    EMBEDDING_TIMEOUT: `内容检索未就绪：向量服务${embedding}响应超时，请检查服务运行状态。`,
+    EMBEDDING_UNAVAILABLE: '内容检索未就绪：向量服务不可用，请检查知识检索设置中的服务与模型。',
     HELP_INDEX_NOT_READY: '帮助索引正在准备；稍后自动恢复内容检索。',
-    RETRIEVAL_UNAVAILABLE: '内容检索暂不可用，请检查 Ollama、后端存储和索引准备状态。',
+    RETRIEVAL_UNAVAILABLE: '内容检索暂不可用，请检查后端存储和索引准备状态。',
   }
-  return status === 'READY' ? '' : (messages[status ?? ''] ?? '内容检索正在准备。')
+  return status === 'READY' || status === 'CONFIGURED' ? '' : (messages[status ?? ''] ?? '内容检索正在准备。')
+}
+
+/** 这些故障的修复入口在知识检索设置页;Python/存储/索引类故障给了链接也无处可修,不展示。 */
+const GA_RETRIEVAL_SETTINGS_FIXABLE = new Set([
+  'OLLAMA_UNAVAILABLE', 'EMBEDDING_NOT_CONFIGURED', 'EMBEDDING_CREDENTIAL_UNAVAILABLE',
+  'EMBEDDING_CONNECTION_FAILED', 'EMBEDDING_MODEL_NOT_FOUND', 'EMBEDDING_TIMEOUT', 'EMBEDDING_UNAVAILABLE',
+])
+
+export function gaRetrievalStatusFixableInSettings(status?: string): boolean {
+  return GA_RETRIEVAL_SETTINGS_FIXABLE.has(status ?? '')
 }

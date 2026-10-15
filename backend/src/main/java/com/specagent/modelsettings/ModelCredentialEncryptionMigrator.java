@@ -66,46 +66,63 @@ public class ModelCredentialEncryptionMigrator implements ApplicationRunner {
     }
 
     private int encryptPlaintextRows(String table, String pk) {
+        boolean scoped = organizationScoped(table);
         List<Row> rows = jdbc.query(
-                "SELECT " + pk + " AS pk, api_key FROM " + table
+                "SELECT " + pk + " AS pk, api_key" + (scoped ? ", org_id" : ", NULL::uuid AS org_id") + " FROM " + table
                         + " WHERE api_key IS NOT NULL AND api_key <> '' "
-                        + "AND api_key NOT LIKE 'enc:v1:%'",
+                        + "AND api_key NOT LIKE 'enc:v1:%' AND api_key NOT LIKE 'enc:v2:%'",
                 Map.of(), (rs, n) -> Row.of(rs, n));
         for (Row row : rows) {
-            jdbc.update("UPDATE " + table + " SET api_key = :cipher WHERE " + pk + " = :pk",
+            jdbc.update("UPDATE " + table + " SET api_key = :cipher WHERE " + pk + " = :pk"
+                            + (scoped ? " AND org_id = :org" : "") + " AND api_key = :original",
                     new MapSqlParameterSource()
-                            .addValue("cipher", crypto.encrypt(row.value))
-                            .addValue("pk", row.pk));
+                            .addValue("cipher", scoped ? crypto.encryptScoped(row.value, row.org, table, row.pk)
+                                    : crypto.encrypt(row.value))
+                            .addValue("pk", row.pk).addValue("org", row.org)
+                            .addValue("original", row.value));
         }
         return rows.size();
     }
 
     private int rotateForeignCiphertextRows(String table, String pk) {
+        boolean scoped = organizationScoped(table);
         List<Row> rows = jdbc.query(
-                "SELECT " + pk + " AS pk, api_key FROM " + table
-                        + " WHERE api_key LIKE 'enc:v1:%'",
+                "SELECT " + pk + " AS pk, api_key" + (scoped ? ", org_id" : ", NULL::uuid AS org_id") + " FROM " + table
+                        + " WHERE api_key LIKE 'enc:v1:%' OR api_key LIKE 'enc:v2:%'",
                 Map.of(), (rs, n) -> Row.of(rs, n));
         int changed = 0;
         for (Row row : rows) {
-            if (!crypto.primaryKeyId().equals(crypto.keyIdOfCiphertext(row.value))) {
+            if ((scoped && row.value.startsWith(ModelCredentialCrypto.PREFIX))
+                    || !crypto.primaryKeyId().equals(crypto.keyIdOfCiphertext(row.value))) {
                 // 用旧密钥解密(需要 fallback 配置),再用当前主密钥重写
-                String plaintext = crypto.decrypt(row.value);
-                jdbc.update("UPDATE " + table + " SET api_key = :cipher WHERE " + pk + " = :pk",
+                String plaintext = scoped ? crypto.decryptScoped(row.value, row.org, table, row.pk)
+                        : crypto.decrypt(row.value);
+                jdbc.update("UPDATE " + table + " SET api_key = :cipher WHERE " + pk + " = :pk"
+                                + (scoped ? " AND org_id = :org" : "") + " AND api_key = :original",
                         new MapSqlParameterSource()
-                                .addValue("cipher", crypto.encrypt(plaintext))
-                                .addValue("pk", row.pk));
+                                .addValue("cipher", scoped ? crypto.encryptScoped(plaintext, row.org, table, row.pk)
+                                        : crypto.encrypt(plaintext))
+                                .addValue("pk", row.pk).addValue("org", row.org)
+                                .addValue("original", row.value));
                 changed++;
             }
         }
         return changed;
     }
 
-    private record Row(Object pk, String value) {
+    private static boolean organizationScoped(String table) {
+        return java.util.Set.of("model_providers", "opencode_settings", "openrouter_settings",
+                "custom_provider_settings", "search_settings", "embedding_service_settings",
+                "embedding_service_revisions").contains(table);
+    }
+
+    private record Row(Object pk, String value, java.util.UUID org) {
         static Row of(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
             Object key = rs.getObject("pk");
             // model_providers 主键是 UUID,单例表是数字——统一按对象持有
             return new Row(key instanceof java.util.UUID u ? u
-                    : (key instanceof Number n ? n.longValue() : key), rs.getString("api_key"));
+                    : (key instanceof Number n ? n.longValue() : key), rs.getString("api_key"),
+                    rs.getObject("org_id", java.util.UUID.class));
         }
     }
 }

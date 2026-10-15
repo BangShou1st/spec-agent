@@ -1,0 +1,71 @@
+{
+  "error": null,
+  "frames": [
+    {
+      "elapsedMs": 89,
+      "sequence": 1,
+      "type": "RUN_STARTED"
+    },
+    {
+      "elapsedMs": 89,
+      "sequence": 2,
+      "type": "ANSWER_STREAM_STARTED"
+    },
+    {
+      "elapsedMs": 89,
+      "sequence": 3,
+      "type": "ANSWER_DELTA"
+    },
+    {
+      "elapsedMs": 89,
+      "sequence": 4,
+      "type": "ANSWER_DELTA"
+    },
+    {
+      "elapsedMs": 3727,
+      "sequence": 5,
+      "type": "ANSWER_DELTA"
+    },
+    {
+      "elapsedMs": 3733,
+      "sequence": 6,
+      "type": "ASSISTANT_COMPLETED"
+    },
+    {
+      "elapsedMs": 3741,
+      "sequence": 7,
+      "type": "RUN_COMPLETED"
+    }
+  ],
+  "origin": "http://127.0.0.1:8282",
+  "replay": [
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "runId": "6d8fd65b-b487-485e-bd90-6120a898d885",
+  "jarSha256": "cbcc5f1ba1c9e7cbe0c1ca7983065215a2a168f2f482600088300fd6e9438846",
+  "database": "spec_agent_p2_workers_20261015a",
+  "executor": {
+    "instance": "B",
+    "port": 8384,
+    "workerIdObservedWhileRunning": "10fab441-adbb-445d-8406-48e963197298"
+  },
+  "subscriber": {
+    "instance": "A",
+    "port": 8383,
+    "browserOrigin": "http://127.0.0.1:8282"
+  },
+  "nativeTransport": "explicit test-only fake, 6000ms per fragment; real Python broker",
+  "durableResult": {
+    "runStatus": "COMPLETED",
+    "taskState": "SUCCEEDED",
+    "modelCalls": 1,
+    "actorSource": "OIDC",
+    "actorUserId": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+    "actorOrgId": "4466ef97-14f5-4379-8110-a7af1d9ca14b"
+  },
+  "passed": true
+}

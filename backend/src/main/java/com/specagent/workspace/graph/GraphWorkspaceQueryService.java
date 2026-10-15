@@ -62,7 +62,11 @@ public class GraphWorkspaceQueryService {
     }
 
     public GraphWorkspaceView getForProject(UUID projectId) {
-        Project project = projectService.getProject(projectId)
+        // 可见性先于任何读取:图工作区包含项目正文派生信息(节点、答案)。
+        // 不可见与不存在都由 getProjectForActor 统一表现为 404 PROJECT_NOT_FOUND
+        // (与既有 GraphWorkspaceQueryException.PROJECT_NOT_FOUND 契约逐字一致,
+        // 因此外部响应不变)。授权落在服务层,后台调用同样受校验。
+        Project project = projectService.getProjectForActor(projectId)
                 .orElseThrow(() -> GraphWorkspaceQueryException.of(
                         GraphWorkspaceQueryException.Reason.PROJECT_NOT_FOUND, "Project not found"));
 

@@ -1,6 +1,9 @@
 package com.specagent.skill.registry;
 
 import com.specagent.common.Hashes;
+import com.specagent.skill.access.SkillAccess;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import com.specagent.common.Json;
 import com.specagent.skill.domain.Skill;
 import com.specagent.skill.domain.SkillPackageFile;
@@ -45,19 +48,23 @@ public class SkillImportService {
     private final GitSkillImporter gitImporter;
     private final Json json;
     private final SkillLocalMirror localMirror;
+    private final SkillAccess access;
+    private final TransactionTemplate transactions;
 
     public SkillImportService(SkillRepository repository,
                               SkillMarkdownParser parser,
                               SafeZipExtractor zipExtractor,
                               GitSkillImporter gitImporter,
                               Json json,
-                              SkillLocalMirror localMirror) {
+                              SkillLocalMirror localMirror, SkillAccess access, PlatformTransactionManager transactionManager) {
         this.repository = repository;
         this.parser = parser;
         this.zipExtractor = zipExtractor;
         this.gitImporter = gitImporter;
         this.json = json;
         this.localMirror = localMirror;
+        this.access = access;
+        this.transactions = new TransactionTemplate(transactionManager);
     }
 
     // ---- 暂存 -------------------------------------------------------------
@@ -68,6 +75,7 @@ public class SkillImportService {
      */
     @Transactional
     public StagedResult stageZip(byte[] archiveBytes) {
+        access.manage();
         SafeZipExtractor.ExtractedPackage extracted = zipExtractor.extract(archiveBytes);
         return persistStaged(SkillSourceKind.UPLOAD_ZIP,
                 "upload:" + contentHashOf(extracted.files()),
@@ -79,18 +87,20 @@ public class SkillImportService {
      * 暂存一个 HTTPS git 导入供审阅。解析出的 commit 成为不可变的源身份;
      * {@code subPath} 用于在较大仓库中选择一个 Skill 目录(留空 = 仓库根包)。
      */
-    @Transactional
     public StagedResult stageGit(String repoUrl, String ref, String subPath) {
+        access.requireManagement();
         String path = SkillPackageLayout.normalizeSubPath(subPath);
         GitSkillImporter.ExtractedResult extracted =
                 gitImporter.importHttps(repoUrl, ref, path);
-        return persistStaged(SkillSourceKind.GIT_HTTPS, gitIdentity(extracted.commitSha(), path),
-                new String(extracted.skillMarkdown(), StandardCharsets.UTF_8),
-                extracted.files(), extracted.totalBytes());
+        return transactions.execute(status -> {
+            access.manage();
+            return persistStaged(SkillSourceKind.GIT_HTTPS, gitIdentity(extracted.commitSha(), path),
+                    new String(extracted.skillMarkdown(), StandardCharsets.UTF_8),
+                    extracted.files(), extracted.totalBytes());
+        });
     }
 
     /** 暂存仓库根的 Skill 包(未选择子目录)。 */
-    @Transactional
     public StagedResult stageGit(String repoUrl, String ref) {
         return stageGit(repoUrl, ref, null);
     }
@@ -100,11 +110,13 @@ public class SkillImportService {
      * 恰好一个候选;Skill 库或市场仓库则返回其 Skill 目录供选择其一。
      */
     public DiscoveryResult discoverGit(String repoUrl, String ref) {
+        access.org();
         GitSkillImporter.TreeInventory inventory = gitImporter.fetchTree(repoUrl, ref);
         return discoverInventory(inventory);
     }
 
     public DiscoveryResult discoverInventory(GitSkillImporter.TreeInventory inventory) {
+        access.org();
         List<String> declared = declaredPluginSources(inventory.manifests());
         List<SkillPackageLayout.SkillRoot> roots = SkillPackageLayout.discover(
                 inventory.files().stream().map(SkillSourceFile::relativePath).toList(), declared);
@@ -142,11 +154,13 @@ public class SkillImportService {
     }
 
     public GitSkillImporter.TreeInventory prepareGit(String repoUrl, String ref, java.util.function.BooleanSupplier active) {
+        access.org();
         return gitImporter.fetchTree(repoUrl, ref, active);
     }
 
     @Transactional
     public StagedResult stagePreparedGit(GitSkillImporter.TreeInventory inventory, String subPath) {
+        access.manage();
         String path = SkillPackageLayout.normalizeSubPath(subPath);
         List<SkillSourceFile> files = SkillPackageLayout.slice(inventory.files(), path);
         var skillMd = files.stream().filter(f -> "SKILL.md".equals(f.relativePath())).findFirst()
@@ -184,6 +198,7 @@ public class SkillImportService {
     @Transactional
     public StagedResult stageBuiltin(String sourceIdentity, String skillMarkdown,
                                      List<SkillSourceFile> files, long totalBytes) {
+        access.manage();
         return persistStaged(SkillSourceKind.BUILTIN, "builtin:" + sourceIdentity,
                 skillMarkdown, files, totalBytes);
     }
@@ -222,9 +237,9 @@ public class SkillImportService {
      */
     @Transactional
     public InstalledResult install(UUID stagedImportId) {
+        access.manage();
         SkillStagedImport staged = repository.findStagedImport(stagedImportId)
-                .orElseThrow(() -> new SkillImportException(
-                        "Staged import not found: " + stagedImportId));
+                .orElseThrow(() -> com.specagent.access.AccessDeniedException.notVisible("Skill import not found"));
         if (staged.status() == SkillStagedImport.Status.INSTALLED) {
             throw new SkillImportException("Staged import already installed: "
                     + stagedImportId);
@@ -258,7 +273,7 @@ public class SkillImportService {
                 .findFirst()
                 .orElseGet(() -> repository.insertSkill(new Skill(
                         UUID.randomUUID(),
-                        "sk_" + contentHash.substring(0, 12),
+                        "sk_" + UUID.randomUUID().toString().replace("-", ""),
                         manifest.name(),
                         manifest.description(),
                         staged.sourceKind(),
@@ -271,7 +286,7 @@ public class SkillImportService {
         int nextVersion = repository.nextVersionNo(skill.id());
         // 不可变的内容身份:重复安装字节完全相同的内容(同包、同可选资源集)
         // 直接复用已有的不可变版本,而不是失败或产生重复。
-        Optional<SkillVersion> existing = repository.findVersionByContentHash(contentHash);
+        Optional<SkillVersion> existing = repository.findVersionByContentHash(skill.id(), contentHash);
         SkillVersion version;
         if (existing.isPresent()) {
             version = existing.get();
@@ -296,15 +311,16 @@ public class SkillImportService {
         // 丢失,这里也会顺带重新投影。
         localMirror.mirrorVersion(skill.skillId(), version.versionNo(), files);
         return new InstalledResult(skill.skillId(), skill.id(), version.id(),
-                existing.isPresent() ? nextVersion - 1 : nextVersion);
+                version.versionNo());
     }
 
     // ---- 生命周期 -----------------------------------------------------------
 
     @Transactional
     public void enable(UUID skillRowId) {
+        access.manage();
         Skill skill = repository.findSkillById(skillRowId)
-                .orElseThrow(() -> new SkillImportException("Skill not found: " + skillRowId));
+                .orElseThrow(() -> com.specagent.access.AccessDeniedException.notVisible("Skill not found"));
         if (skill.currentVersionId() == null) {
             throw new SkillImportException("Skill has no installed version to enable: "
                     + skill.skillId());
@@ -325,13 +341,15 @@ public class SkillImportService {
 
     @Transactional
     public void disable(UUID skillRowId) {
+        access.manage();
         repository.updateSkillEnabled(skillRowId, false);
     }
 
     @Transactional
     public void delete(UUID skillRowId) {
+        access.manage();
         Skill skill = repository.findSkillById(skillRowId)
-                .orElseThrow(() -> new SkillImportException("Skill not found: " + skillRowId));
+                .orElseThrow(() -> com.specagent.access.AccessDeniedException.notVisible("Skill not found"));
         repository.deleteVersionsAndFiles(skillRowId);
         repository.deleteSkill(skillRowId);
         localMirror.removeSkill(skill.skillId());
@@ -339,6 +357,7 @@ public class SkillImportService {
 
     @Transactional
     public void rejectStaged(UUID stagedImportId, String reason) {
+        access.manage();
         repository.updateStagedImportStatus(stagedImportId,
                 SkillStagedImport.Status.REJECTED, reason);
         repository.deleteStagedFiles(stagedImportId);
@@ -346,6 +365,7 @@ public class SkillImportService {
 
     @Transactional
     public void deleteStaged(UUID stagedImportId) {
+        access.manage();
         repository.deleteStagedImport(stagedImportId);
     }
 

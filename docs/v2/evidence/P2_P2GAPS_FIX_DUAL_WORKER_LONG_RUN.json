@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-15",
+  "scenario": "P2 gap fixes (TaskWriteGuard real-time clock, GA broker ownership context, NodeQuery atomic proposal, heartbeat loop test) + OIDC dual-JVM long-run with real Python broker",
+  "environment": {
+    "database": "fresh isolated spec_agent_p2_workers_20261015a on spec-agent-p2-auth 127.0.0.1:5546 (maintenance: security_mode=OIDC + issuer registered, runtime_execution_mode=PER_TASK)",
+    "securityMode": "OIDC",
+    "securityProtocol": 13,
+    "postgres": "spec-agent-p2-auth 127.0.0.1:5546 (pg_hba scram for host TCP; password p2_isolated_test)",
+    "keycloak": "127.0.0.1:8184/realms/spec-agent-p2 (H2 rebuilt 10:16 to re-import realm.json with 8281/8282 redirectUris)",
+    "jar": "backend/build/p2-acceptance/runtime-p2gaps-fix-protocol13.jar",
+    "jarSha256": "1FA2585526AB82D6E6949936F7F6A2E0C31B8A40047E36609BB03C0BF428EEEA",
+    "jarNote": "second build; first build 9B0C278F… contained the GA broker ownershipLost that compared the request lease against the runtime_tasks claim lease and misfired on legitimate callbacks (GA bindings carry a prepare-phase lease, distinct from the claim lease); fixed by judging persisted facts on state/epoch/cancel only and precise lease matching on the in-process lost marker",
+    "jvmA": {"port": 8383, "workerId": "d8f37ce5-7f26-4531-bde0-4b11bfa87793"},
+    "jvmB": {"port": 8384, "workerId": "c296917d-9d88-43cb-97d9-cdc0264f0cec"},
+    "brain": {"port": 8104, "modelMode": "broker", "internalSecret": "shared data/internal-secret.txt (64 hex), workers.properties updated to match; first brain launch used stale dev-internal-secret and every execution failed 401 (environment setup error, not a product defect)"},
+    "vite": "8282 -> A 8383, 8286 -> B 8384 (host 127.0.0.1; vite on ::1 only rejects the realm's 127.0.0.1 redirect whitelist)",
+    "nativeFixture": "spec.agent.testing.ga-native-transport=fake, ga-native-fragment-delay-ms=6000",
+    "workerSettings": "lease 15s, heartbeat 3s (log: Lease heartbeat started: every 3s (lease 15s)), poll 200ms",
+    "modelFixture": "opencode_settings rows inserted with test-profile master key (MDEy…ZWY=, fingerprint 3eb1bd43… matches credential_key_admission), suffix masked, selected_model=test-model; NOT a provider configuration acceptance",
+    "login": "browser-skill bsk real OIDC authorization-code flow as alice (8c08a75d-dcf3-32e0-9172-8661d53e538f), org 4466ef97-14f5-4379-8110-a7af1d9ca14b created through the UI"
+  },
+  "scenarios": [
+    {
+      "name": "long execution survives the lease via heartbeat (fix 4 context)",
+      "runId": "590cab23-82a1-4f0f-ae89-15f9aaf28247",
+      "executor": "B (c296917d)",
+      "businessStatus": "COMPLETED",
+      "runtimeTaskState": "SUCCEEDED",
+      "ledger": {"MODEL": {"SUCCEEDED": 1}},
+      "events": ["RUN_STARTED", "ANSWER_STREAM_STARTED", "ANSWER_DELTA", "ANSWER_DELTA", "ANSWER_DELTA", "ASSISTANT_COMPLETED", "RUN_COMPLETED"],
+      "assistantVisible": "browser shows the fake-native assistant text on 8282 while B executed on 8384"
+    },
+    {
+      "name": "cross-instance stream read (A executes, B serves)",
+      "runId": "7650577e-2686-462e-9a57-f091a973ed15",
+      "executor": "A (d8f37ce5)",
+      "subscriber": "B via http://127.0.0.1:8286 (same browser session, OIDC identity verified)",
+      "businessStatus": "COMPLETED",
+      "sseFrames": 7,
+      "sequenceContiguous": true
+    },
+    {
+      "name": "in-flight revocation during the model call",
+      "runId": "37497a93-9a12-4b95-b89f-0ca6f2d3d4c4",
+      "executor": "A (c296917d lookup: B worker id); submitted via B frontend API client",
+      "cancelRequestedAt": "2026-10-15T10:59:35.945444Z (while the 6s native fixture model call was in flight)",
+      "businessStatus": "CANCELLED",
+      "businessErrorCode": "RUN_CANCELLED",
+      "ledger": {"MODEL": {"UNKNOWN": 1}},
+      "events": ["RUN_STARTED", "ANSWER_STREAM_STARTED", "ANSWER_DELTA", "RUN_CANCELLED"],
+      "noLateArtifacts": {
+        "assistantMessages": 0,
+        "ASSISTANT_COMPLETED_or_RUN_COMPLETED_events": 0
+      },
+      "inFlightStreamStopped": "brain log: 'GA sanitized broker failure: GA model stream failed' (the host fenced the in-flight native stream and the Python generator raised, distinct from the earlier 409 class)",
+      "runtimeTaskState": "SUCCEEDED (task terminalized honestly; the unknown model call was NOT replayed and NOT reset)",
+      "checkedAfterOriginalCallReturned": "terminal state and artifacts were queried only after completed_at=18:59:36 had passed"
+    }
+  ],
+  "fixesValidatedLive": [
+    "fix 1 (real-time clock after task row lock): lease 15s with 3s heartbeat kept every execution alive; no LEASE_EXPIRED occurred in the 6s-fixture runs",
+    "fix 2 (trusted ownership context on GA callbacks): after the binding-lease regression fix, legitimate model callbacks stream through; the in-flight revocation fenced the stream ('GA model stream failed' in brain log) and no late result committed",
+    "fix 3 (NodeQuery atomic proposal): covered by focused PG regression NodeQueryTerminalAtomicityIntegrationTest.revocationBetweenCheckAndProposalLeavesNoProposalOrTerminalState",
+    "fix 4 (heartbeat loop test): covered by MultiWorkerSchedulingIntegrationTest.heartbeatLoopKeepsOtherTaskAliveWhileOneRenewalWaitsForARowLock (real single-thread LeaseHeartbeat, real row-lock wait, B renewed while A stuck)"
+  ],
+  "environmentSetupErrorsNotProductDefects": [
+    "brain launched with stale internal secret -> 401 on /executions (two runs failed GA_EXECUTION_FAILED before the secret was aligned)",
+    "first jar build had the binding-lease misfire -> GA model stream rejected status=409 (one run failed); fixed and re-built (SHA256 above) before the accepted runs",
+    "Keycloak H2 retained the pre-8282 realm import; rebuilt to re-import realm.json",
+    "Gradle daemon reused stale environment without SPEC_AGENT_DB_PASSWORD -> first testNonLive rerun failed on password authentication; rerun with --no-daemon after ./gradlew --stop"
+  ],
+  "limitations": [
+    "Slow client, kill-process takeover, database outage, key rotation/rollback acceptance and the remaining P2 entry audit are still pending",
+    "full backend regression rerun (testNonLive --no-daemon) was still executing when this evidence was recorded",
+    "the cancel API response for the in-flight run reported status RUNNING with cancelRequestedAt set; the terminal CANCELLED state arrived via convergence afterwards"
+  ]
+}

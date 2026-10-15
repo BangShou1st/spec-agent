@@ -36,6 +36,14 @@ import java.util.UUID;
  */
 @Service
 public class AgentRunService {
+    private WorkspaceExecutionAuthorization authorization;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setAuthorization(WorkspaceExecutionAuthorization authorization) {this.authorization=authorization;}
+    private com.specagent.workspace.project.ProjectService projectAccess;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setProjectAccess(com.specagent.workspace.project.ProjectService projectAccess) {
+        this.projectAccess=projectAccess;
+    }
 
     private final AgentRunRepository agentRunRepository;
     private final ExecutionFence executionFence;
@@ -59,17 +67,17 @@ public class AgentRunService {
      * 已有事务时(REQUIRED 传播)自然并入同一事务,锁复用,语义不变;
      * 无事务时(自动提交检查点)本包装给出等价的短事务保护。
      *
-     * 无租约进程(epoch == 0)不包事务、不取锁,保持历史写入行为。
+     * 无租约进程(epoch == 0)同样在短事务中核验持久化委托与当前授权。
      */
     private int fencedWrite(java.util.function.Supplier<Integer> write, UUID runId) {
+        UUID boundRun=WorkspaceExecutionContext.currentRun();
+        if(boundRun!=null && !boundRun.equals(runId))
+            throw new com.specagent.runtime.execution.TaskOwnershipLostException("Checkpoint belongs to another bound Run");
         long epoch = ownerEpoch();
-        if (epoch == 0) {
-            int rows = write.get();
-            requireUpdated(rows, runId);
-            return rows;
-        }
         Integer rows = transactionTemplate.execute(tx -> {
-            executionFence.lockOwnershipForWrite();
+            if(epoch>0) executionFence.lockOwnershipForWrite();
+            if(authorization==null) throw new IllegalStateException("Workspace execution authorization is required");
+            authorization.authorize(runId);
             return write.get();
         });
         requireUpdated(rows == null ? 0 : rows, runId);
@@ -320,6 +328,20 @@ public class AgentRunService {
 
     public Optional<AgentRun> getRun(UUID runId) {
         return agentRunRepository.findById(runId);
+    }
+    public Optional<AgentRun> getRunForActor(UUID runId) {
+        return agentRunRepository.findById(runId).map(run -> {
+            projectAccess.getProjectForActor(run.projectId());
+            return run;
+        });
+    }
+    public java.util.List<AgentRun> listByProjectForActor(UUID projectId) {
+        projectAccess.getProjectForActor(projectId);
+        return agentRunRepository.findByProject(projectId);
+    }
+    public java.util.List<AgentRun> listActiveByProjectForActor(UUID projectId) {
+        projectAccess.getProjectForActor(projectId);
+        return agentRunRepository.findActiveByProject(projectId);
     }
 
     public java.util.List<AgentRun> listByProject(UUID projectId) {

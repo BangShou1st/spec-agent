@@ -15,6 +15,8 @@ import AppIcon from '@/shared/ui/AppIcon.vue'
  * 工具栏刻意保持窄条(竖条),因此"只看这条路线"的状态指示器放在画布上
  * (GraphCanvas),而不是这里。
  */
+defineProps<{ canWrite?: boolean }>()
+
 const workspace = useWorkspaceStore()
 
 defineEmits<{
@@ -56,9 +58,9 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="graph-toolbar" data-test="graph-toolbar" data-layout-role="toolbar">
-    <button class="btn graph-toolbar__btn graph-toolbar__btn--primary" data-test="add-idea" title="在当前路线添加一个草稿想法（不调用模型）" @click="$emit('add-idea')"><AppIcon name="plus" /><span>想法</span></button>
+    <button v-if="canWrite" class="btn graph-toolbar__btn graph-toolbar__btn--primary" data-test="add-idea" title="在当前路线添加一个草稿想法（不调用模型）" @click="$emit('add-idea')"><AppIcon name="plus" /><span>想法</span></button>
 
-    <div class="graph-toolbar__group" aria-label="撤销与重做">
+    <div v-if="canWrite" class="graph-toolbar__group" aria-label="撤销与重做">
       <button class="btn graph-toolbar__icon-btn" data-test="undo" aria-label="撤销" title="撤销最近的图操作（保留历史，只做补偿）" :disabled="!workspace.undoRedo.canUndo || workspace.graphCommandPending" @click="$emit('undo')"><AppIcon name="undo" /></button>
       <button class="btn graph-toolbar__icon-btn" data-test="redo" aria-label="重做" title="重做最近撤销的操作（前置条件仍满足时）" :disabled="!workspace.undoRedo.canRedo || workspace.graphCommandPending" @click="$emit('redo')"><AppIcon name="redo" /></button>
     </div>
@@ -72,7 +74,7 @@ onBeforeUnmount(() => {
     <details ref="moreMenu" class="graph-toolbar__more" data-test="toolbar-more">
       <summary class="btn graph-toolbar__icon-btn" aria-label="更多图操作" title="更多图操作"><AppIcon name="more" /></summary>
       <div class="graph-toolbar__menu">
-        <button class="graph-toolbar__menu-item" data-test="add-resource" title="添加资源节点（文本/链接/文件），AI 可读取有界摘录" @click="$emit('add-resource')">添加资源</button>
+        <button v-if="canWrite" class="graph-toolbar__menu-item" data-test="add-resource" title="添加资源节点（文本/链接/文件），AI 可读取有界摘录" @click="$emit('add-resource')">添加资源</button>
         <button class="graph-toolbar__menu-item" data-test="auto-layout" title="重新自动布局" @click="$emit('auto-layout')">重新自动布局</button>
         <button class="graph-toolbar__menu-item" data-test="show-all" title="显示全部路线" @click="$emit('show-all')">显示全部路线</button>
       </div>

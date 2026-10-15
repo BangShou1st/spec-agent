@@ -38,13 +38,38 @@ public class ContinuationDispatchService {
     private final ContinuationCheckRepository checkRepository;
     private final ContinuationCoordinator coordinator;
     private final TransactionTemplate transactionTemplate;
+    /**
+     * 本进程的执行身份(design §10)。非 null 时后台恢复扫描走"认领"路径:
+     * 由数据库裁决每条待处理检查归属哪个 Worker,避免多实例重复评估。
+     * 单执行器模式下为 null,行为与历史一致。
+     */
+    private final UUID workerId;
 
     public ContinuationDispatchService(ContinuationCheckRepository checkRepository,
                                        ContinuationCoordinator coordinator,
                                        TransactionTemplate transactionTemplate) {
+        this(checkRepository, coordinator, transactionTemplate, (UUID) null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ContinuationDispatchService(ContinuationCheckRepository checkRepository,
+                                       ContinuationCoordinator coordinator,
+                                       TransactionTemplate transactionTemplate,
+                                       org.springframework.beans.factory.ObjectProvider<
+                                               com.specagent.runtime.execution.WorkerIdentity> workerIdentity) {
+        this(checkRepository, coordinator, transactionTemplate,
+                workerIdentity == null || workerIdentity.getIfAvailable() == null
+                        ? null : workerIdentity.getIfAvailable().id());
+    }
+
+    private ContinuationDispatchService(ContinuationCheckRepository checkRepository,
+                                        ContinuationCoordinator coordinator,
+                                        TransactionTemplate transactionTemplate,
+                                        UUID workerId) {
         this.checkRepository = checkRepository;
         this.coordinator = coordinator;
         this.transactionTemplate = transactionTemplate;
+        this.workerId = workerId;
     }
 
     /** 为一个终态 run 请求评估(加入终态事务)。 */
@@ -79,20 +104,45 @@ public class ContinuationDispatchService {
         });
     }
 
-    /** 按最老优先重放待处理检查;单行失败绝不阻塞其他行。 */
+    /**
+     * 按最老优先重放待处理检查;单行失败绝不阻塞其他行。
+     *
+     * <p><b>worker 归属(design §10)。</b>任务级调度下,每条检查先由数据库裁决
+     * 归属(带会过期的认领),因此多实例不会重复评估同一条。瞬时失败的检查会
+     * <b>立即释放认领</b>,而不是等到认领过期——否则一次可重试的失败会白白
+     * 延迟一个认领周期。
+     */
     public void recoverPending() {
         recoverPending(100);
     }
 
+    /** 认领有效期(秒):显著大于单次评估耗时,使崩溃后的接管足够及时。 */
+    private static final int CLAIM_SECONDS = 60;
+
     public void recoverPending(int limit) {
-        List<ContinuationCheck> pending = checkRepository.findPending(limit);
+        List<ContinuationCheck> pending =
+                checkRepository.claimPending(limit, workerId, CLAIM_SECONDS);
         for (ContinuationCheck check : pending) {
             try {
                 process(check);
             } catch (RuntimeException ex) {
                 LOG.warn("Continuation recovery deferred for run {}: {}",
                         check.runId(), ex.getMessage());
+                releaseClaimQuietly(check.runId());
             }
+        }
+    }
+
+    /** 释放认领以便下轮立即重试;释放失败只记为告警,由 claim 过期兜底。 */
+    private void releaseClaimQuietly(UUID runId) {
+        if (workerId == null) {
+            return;
+        }
+        try {
+            checkRepository.releaseClaim(runId, workerId);
+        } catch (RuntimeException ex) {
+            LOG.warn("Failed to release continuation claim for run {}: {}",
+                    runId, ex.getMessage());
         }
     }
 }

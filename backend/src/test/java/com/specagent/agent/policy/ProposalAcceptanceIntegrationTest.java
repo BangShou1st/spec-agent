@@ -69,6 +69,10 @@ class ProposalAcceptanceIntegrationTest {
     }
 
     private AgentProposal createPendingNodeProposal() {
+        return createPendingNodeProposal(UUID.randomUUID());
+    }
+
+    private AgentProposal createPendingNodeProposal(UUID runId) {
         ActionProposal proposal = new ActionProposal(
                 "CREATE_NODE",
                 Map.of("kind", "KNOWLEDGE", "subtype", "RISK",
@@ -76,8 +80,36 @@ class ProposalAcceptanceIntegrationTest {
                 UUID.randomUUID(), "hash-" + UUID.randomUUID(),
                 List.of(), UUID.randomUUID(), "idem-" + UUID.randomUUID(),
                 List.of("node:" + tip.id()));
-        return proposalService.createProposal(proposal, UUID.randomUUID(),
+        return proposalService.createProposal(proposal, runId,
                 project.id(), route.id());
+    }
+
+    @Test
+    void pendingProposalFromNonTerminalRunCannotMutateGraph() {
+        var run=agentRunService.create(project.id(),route.id(),
+                com.specagent.agent.runtime.AgentRunTriggerType.DECISION_CYCLE,null,null,"DRAFT_QUESTION");
+        var pending=createPendingNodeProposal(run.id());
+        int before=nodeRepository.findByProject(project.id()).size();
+        assertThatThrownBy(()->acceptanceService.acceptAndExecute(pending.id(),"user"))
+                .isInstanceOf(com.specagent.agent.runtime.ProposalExecutionConflictException.class);
+        assertThat(proposalService.getProposal(pending.id()).orElseThrow().status()).isEqualTo(ProposalStatus.PROPOSED);
+        assertThat(nodeRepository.findByProject(project.id())).hasSize(before);
+        assertThat(checkRepository.findPendingByRunId(run.id())).isEmpty();
+    }
+
+    @Test
+    void originFromDifferentProjectCannotReceiveApprovalEffects() {
+        var other=projectService.createProject("other approval origin");
+        var run=agentRunService.create(other.id(),other.activeRouteId(),
+                com.specagent.agent.runtime.AgentRunTriggerType.DECISION_CYCLE,null,null,"DRAFT_QUESTION");
+        agentRunService.complete(run.id(),com.specagent.agent.runtime.AgentRunStatus.COMPLETED,"{}");
+        var pending=createPendingNodeProposal(run.id());
+        int before=nodeRepository.findByProject(project.id()).size();
+        assertThatThrownBy(()->acceptanceService.acceptAndExecute(pending.id(),"user"))
+                .isInstanceOf(com.specagent.agent.runtime.ProposalExecutionConflictException.class);
+        assertThat(proposalService.getProposal(pending.id()).orElseThrow().status()).isEqualTo(ProposalStatus.PROPOSED);
+        assertThat(nodeRepository.findByProject(project.id())).hasSize(before);
+        assertThat(checkRepository.findPendingByRunId(run.id())).isEmpty();
     }
 
     @Test
@@ -159,6 +191,7 @@ class ProposalAcceptanceIntegrationTest {
         com.specagent.agent.runtime.AgentRun run = agentRunService.create(project.id(), route.id(),
                 com.specagent.agent.runtime.AgentRunTriggerType.DECISION_CYCLE, null, null,
                 "DRAFT_QUESTION");
+        agentRunService.complete(run.id(), com.specagent.agent.runtime.AgentRunStatus.COMPLETED, "{}");
         ActionProposal proposal = new ActionProposal(
                 "CREATE_NODE",
                 Map.of("kind", "KNOWLEDGE", "subtype", "RISK",

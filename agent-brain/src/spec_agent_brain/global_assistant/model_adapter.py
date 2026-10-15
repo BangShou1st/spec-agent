@@ -166,9 +166,10 @@ class BrokerChatModel(BaseChatModel):
         # remain single-call, rejected before dispatch rather than racing effects.
         if len(response.tool_calls) > 1 and any(c.name not in self.batch_read_only_names for c in response.tool_calls):
             raise BrokerError("parallel writes or interaction tools are unsupported")
-        allowed = {tool.name for tool in tools}
-        if any(call.name not in allowed for call in response.tool_calls):
-            raise BrokerError("model requested a tool outside the bound catalog")
+        # Names outside the bound catalog are NOT rejected here: the guarded middleware
+        # re-validates every call against the frozen catalog before any host dispatch and
+        # returns a bounded CAPABILITY_UNAVAILABLE observation, so the model can explain
+        # unavailability instead of the run dying with a generic failure.
         ai = AIMessage(content=response.content,
                        tool_calls=[{"id": c.id, "name": c.name, "args": c.arguments, "type": "tool_call"}
                                    for c in response.tool_calls],

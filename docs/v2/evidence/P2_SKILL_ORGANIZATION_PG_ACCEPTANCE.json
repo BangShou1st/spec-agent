@@ -1,0 +1,84 @@
+{
+  "date": "2026-10-14",
+  "database": "isolated spec_agent_test on 127.0.0.1:5546",
+  "dockerServerVersion": "29.8.0",
+  "migrationVersions": [
+    "86",
+    "87"
+  ],
+  "securityProtocolVersion": 9,
+  "migrationSuccess": true,
+  "schemaFacts": {
+    "rootOrgColumns": [
+      "skills.org_id",
+      "skill_staged_imports.org_id",
+      "skill_activations.org_id"
+    ],
+    "rootOrgNotNull": true,
+    "rootOrgDefaultsAbsent": true,
+    "versionParentExternalIdNotNull": true,
+    "providerCredentialsTableExists": false
+  },
+  "providerCredentialsAudit": {
+    "createdByMigration": "V3",
+    "droppedByMigration": "V5",
+    "javaReferences": 0,
+    "sqlVerification": "SELECT to_regclass('public.provider_credentials')",
+    "action": "Correct inventory; do not recreate retired table"
+  },
+  "focusedRegression": {
+    "command": "gradlew.bat testNonLive --tests com.specagent.skill.* --tests com.specagent.assistant.tool.* --tests com.specagent.architecture.* --tests com.specagent.access.SecurityProtocolAdmissionTest",
+    "counts": {
+      "tests": 232,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "suites": 31
+    },
+    "newPostgresIsolationTests": 10,
+    "newMirrorBoundaryTests": 2,
+    "scope": "organization roots and children, independent identical package installs and enabled names, staging, management capabilities, member revocation, immutable parent constraints, filesystem projection restrictions; before final advisory-lock timeout hardening"
+  },
+  "fullRegression": {
+    "status": "passed",
+    "command": "SPEC_AGENT_REBUILD_PYTHON_ACCEPTANCE=true gradlew.bat testNonLive",
+    "duration": "12m 5s",
+    "counts": {
+      "tests": 1877,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 33,
+      "suites": 305
+    },
+    "scope": "entire non-live backend including final bounded configuration mutex; real Java/Python rebuild Worker acceptance enabled"
+  },
+  "authenticationEvidence": "Tests bind trusted OIDC actors explicitly against actual PostgreSQL identity/member facts; not IdP/HTTP/browser authentication.",
+  "limitations": [
+    "P2 incomplete",
+    "Real OIDC two-JVM Skill/Worker/tool permission matrix pending",
+    "Run-specific activation proof and checkpoint/memory source dependency invalidation pending",
+    "OIDC org builtin onboarding/read-only shared registry pending; current installations are org-owned",
+    "Existing filesystem mirrors/backups are not automatically deleted",
+    "Fleet rotation/rollback and stop-all migration acceptance pending"
+  ],
+  "oldBinaryStartupRefusal": {
+    "jar": "runtime-v84-accepted-protocol7.jar",
+    "jarSha256": "88EA6A1A757499C9A0393E0C5594E98D62ABFEA47C59318F29F0DB5C1E182103",
+    "databaseProtocol": 9,
+    "instanceProtocol": 7,
+    "flywayEnabled": false,
+    "exitCode": 1,
+    "reason": "Security protocol version mismatch: database=9, this instance=7",
+    "log": "backend/build/p2-acceptance/v87-old-protocol7-startup.log",
+    "limitation": "Real protocol7 jar only; protocol8 refusal covered by unit test, not a native v8 artifact. Does not fence already-running old instances."
+  },
+  "nextAcceptanceArtifact": {
+    "path": "backend/build/p2-acceptance/runtime-v87-accepted-protocol9.jar",
+    "sha256": "9A8606FBC153E8A5A19D115BA4F64347CA1263F5475528EAE7928B140001BA90",
+    "buildCommand": "gradlew.bat bootJar",
+    "buildPassed": true,
+    "sameMainSourcesAsPassedFullRegression": true,
+    "deployed": false,
+    "oidcBrowserAcceptance": false
+  }
+}

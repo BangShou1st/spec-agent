@@ -1,3 +1,4 @@
+import { accessSession } from '@/features/access/accessSession'
 // 文件名:SettingsShell.spec.ts
 // 用途:设置外壳(SettingsLayout)的集成测试:mock 掉模型/Skills/Connections 三个子页的 API 依赖,
 //       验证设置区导航及各子页面(含操作入口)能按路由正确渲染。
@@ -53,6 +54,7 @@ vi.mock('@/features/connections/api/connections', () => ({
 }))
 
 async function shellAt(path: string) {
+  accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'admin', orgId: 'org', displayName: 'Admin', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['ORG_MANAGE', 'CREDENTIAL_MANAGE'], memberships: [] }
   const { default: ModelSettingsView } = await import('@/features/model-settings/ModelSettingsView.vue')
   const router = createRouter({
     history: createWebHistory(),

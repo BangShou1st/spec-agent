@@ -1,0 +1,50 @@
+{
+  "sourceDatabase": "spec_agent_p2_workers_20261015a",
+  "database": "spec_agent_p2_rotation_20261015b",
+  "restoredDatabase": "spec_agent_p2_rotation_20261015b_restore",
+  "jarSha256": "cbcc5f1ba1c9e7cbe0c1ca7983065215a2a168f2f482600088300fd6e9438846",
+  "scenarios": [
+    {
+      "name": "different fleet primary rejected before serving",
+      "passed": true
+    },
+    {
+      "name": "new primary plus old fallback migrates model and MCP; two JVMs start and new-only product readers decrypt",
+      "passed": true,
+      "firstReader": {
+        "modelRowsDecrypted": 2,
+        "mcpRowsDecrypted": 1,
+        "crossOrganizationCopiesRejected": 3
+      },
+      "secondReader": {
+        "modelRowsDecrypted": 2,
+        "mcpRowsDecrypted": 1,
+        "crossOrganizationCopiesRejected": 3
+      }
+    },
+    {
+      "name": "coordinated key rollback, product readers need only old primary afterwards",
+      "passed": true,
+      "reader": {
+        "modelRowsDecrypted": 2,
+        "mcpRowsDecrypted": 1,
+        "crossOrganizationCopiesRejected": 3
+      }
+    },
+    {
+      "name": "restore pre-rotation PostgreSQL backup into a different database; startup and decryption succeed",
+      "passed": true,
+      "reader": {
+        "modelRowsDecrypted": 2,
+        "mcpRowsDecrypted": 1,
+        "crossOrganizationCopiesRejected": 3
+      }
+    }
+  ],
+  "passed": true,
+  "limitations": [
+    "Synthetic credentials; no provider or MCP network calls.",
+    "Coordinated maintenance window required; not a rolling-key rotation guarantee.",
+    "Backup restoration and compatible-current-binary key rollback; not permission to downgrade multi-organization data to an unsafe old binary."
+  ]
+}

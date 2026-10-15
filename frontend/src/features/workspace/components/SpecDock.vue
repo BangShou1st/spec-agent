@@ -17,6 +17,7 @@ import { sortSnapshotsDesc, resolveSelectedSpec, dedupeSourceRefs } from '@/feat
  * 意图,绝不改变 Focus / Active 路线。
  */
 const props = defineProps<{
+  canWrite?: boolean
   readingRouteId: string | null
   readingRouteLabel: string
   activeRouteId: string | null
@@ -59,7 +60,7 @@ const latestLabel = computed(() => {
 const readingIsActive = computed(() => props.readingRouteId === props.activeRouteId)
 
 const canGenerate = computed(() =>
-  !props.generating && !props.commandPending && props.activeRouteId !== null,
+  !!props.canWrite && !props.generating && !props.commandPending && props.activeRouteId !== null,
 )
 
 const canExport = computed(() => !props.exporting && selectedSpec.value !== null)
@@ -154,18 +155,19 @@ function onSelectSnapshot(event: Event): void {
         <!-- 规格生成失败的恢复入口(服务端判定,绑定生成路线;面板只展示
              正在查看路线的失败,标签与该路线一致)。 -->
         <NodeRecoveryBar
+          :locate-only="!canWrite"
           v-if="specFailures && specFailures.length > 0"
           :items="specFailures.map((failure) => ({ failure, routeLabel: readingRouteLabel }))"
           :is-retrying="(id) => (isRetrying ? isRetrying(id) : false)"
-          @retry="(failure) => emit('retry-failure', failure)"
+          @retry="(failure) => canWrite && emit('retry-failure', failure)"
         />
         <div class="spec-dock__actions">
           <button
             class="btn btn-primary btn-small"
             type="button"
-            data-test="generate-spec"
+            v-if="canWrite" data-test="generate-spec"
             :disabled="!canGenerate"
-            @click="emit('generate-spec')"
+            @click="canGenerate && emit('generate-spec')"
           >
             {{ generating ? '正在生成…' : '为当前路线生成规格' }}
           </button>

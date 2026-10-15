@@ -73,7 +73,7 @@ function viewWithNodes(overrides: Partial<GraphWorkspaceView> = {}): GraphWorksp
 
 function mountCanvas(view: GraphWorkspaceView | null, extra = {}) {
   const wrapper = mount(GraphCanvas, {
-    props: {
+    props: { canWrite: true,
       view,
       activeNodeId: 'n1',
       submitting: false,
@@ -923,7 +923,7 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
 
   function mountPendingCanvas(runId: string) {
     return mount(GraphCanvas, {
-      props: {
+      props: { canWrite: true,
         view: emptyViewWithRoute(),
         activeNodeId: null,
         submitting: false,
@@ -1130,7 +1130,7 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
 
   it('fit without pending leaves no revalidation intent', async () => {
     const wrapper = mount(GraphCanvas, {
-      props: {
+      props: { canWrite: true,
         view: viewWithRealNode(),
         activeNodeId: 'n1',
         submitting: false,

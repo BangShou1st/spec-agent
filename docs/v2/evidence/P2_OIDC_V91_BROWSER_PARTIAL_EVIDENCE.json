@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-14",
+  "database": "spec_agent_p2_oidc_v91, cloned from V67 historical OIDC database; original untouched",
+  "migration": 91,
+  "protocol": 13,
+  "candidate": "runtime-v91-accepted-protocol13.jar",
+  "apiA": {
+    "port": 8381,
+    "process": 18172,
+    "handle": 69538
+  },
+  "apiB": {
+    "port": 8282,
+    "process": 43824,
+    "handle": 7984
+  },
+  "frontend": {
+    "port": 8281,
+    "proxyTarget": "http://127.0.0.1:8381",
+    "handle": 51464
+  },
+  "browser": {
+    "session": "hasg",
+    "tab": 702810789,
+    "capture": "backend/build/p2-acceptance/v91-oidc-browser-capture.json",
+    "captureRun": "d8dd58e1aa1f4",
+    "sessionStopped": false
+  },
+  "verified": [
+    "Actual Keycloak authorization-code login through frontend to protocol13 API A",
+    "Authenticated UI shows alice Acceptance, selected organization and own project",
+    "Same browser login read by separate API B: GET /api/me 200 authenticated OIDC actor",
+    "Logout through API A UI, subsequent browser request to API B returns 401 UNAUTHENTICATED"
+  ],
+  "limitations": [
+    "API-only test profile: real Worker execution not yet enabled",
+    "Browser logout check does not simulate replay of an old stolen session cookie",
+    "Other identities, role revocation, SSE and slow clients pending",
+    "Capture has expected unauthenticated requests and omitted dev-module bodies; not asserted error-free",
+    "No production deployment or enterprise IdP used"
+  ]
+}

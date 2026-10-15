@@ -50,6 +50,8 @@ class ConnectionMcpIntegrationTest {
     private SdkFakeMcpServerConfig.Fakes fakes;
     @Autowired
     private JdbcTemplate jdbcTemplate;
+    @org.springframework.boot.test.mock.mockito.SpyBean
+    private com.specagent.mcp.transport.McpClientFactory clientFactory;
 
     @LocalServerPort
     private int serverPort;
@@ -75,6 +77,15 @@ class ConnectionMcpIntegrationTest {
         jdbcTemplate.update("DELETE FROM mcp_discovery_cache");
         jdbcTemplate.update("DELETE FROM connection_credentials");
         jdbcTemplate.update("DELETE FROM connections");
+    }
+    @Test void persistedCredentialDeletedBeforeConnectRefusesBeforeAnyTransport() {
+        var created=lifecycleService.create(ConnectionKind.CUSTOM_MCP,"lost-auth",Map.of("serverUrl",fakeServerUrl),"fixture-lost-credential");
+        jdbcTemplate.update("DELETE FROM connection_credentials WHERE ref=?",created.credentialRef());
+        org.mockito.Mockito.clearInvocations(clientFactory);
+        assertThatThrownBy(()->lifecycleService.test(created.id()))
+                .isInstanceOf(ConnectionCommandException.class).hasMessage("MCP_CREDENTIAL_UNAVAILABLE");
+        org.mockito.Mockito.verifyNoInteractions(clientFactory);
+        assertThat(lifecycleService.findByRowId(created.id()).orElseThrow().status()).isEqualTo(ConnectionStatus.FAILED);
     }
 
     @Test

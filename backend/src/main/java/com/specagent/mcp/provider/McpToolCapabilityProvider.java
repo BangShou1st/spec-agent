@@ -38,7 +38,7 @@ import java.util.Optional;
  * 分类。未知永远不等于 NONE。
  */
 @Component
-public class McpToolCapabilityProvider implements CapabilityProvider {
+public class McpToolCapabilityProvider implements CapabilityProvider, com.specagent.capability.RecordedResultAuthorization {
 
     private final McpConnectionLookupPort connectionLookup;
     private final McpDiscoveryService discoveryService;
@@ -100,6 +100,16 @@ public class McpToolCapabilityProvider implements CapabilityProvider {
     }
 
     @Override
+    public void requireAuthorizedResult(com.specagent.capability.CapabilityInvocationRecord result) {
+        Map<String,Object> stored=result.result()==null?Map.of():result.result();
+        Object raw=stored.get("provenance");
+        if(!(raw instanceof Map<?,?> values)) throw new com.specagent.mcp.transport.McpTransportException("MCP_RESULT_SOURCE_CHANGED_OR_INACCESSIBLE");
+        @SuppressWarnings("unchecked") var provenance=(Map<String,Object>)values;
+        var guard=new com.specagent.mcp.runtime.McpObservationAuthorization(connectionLookup);
+        guard.require(guard.reference(result.capabilityId(),provenance));
+    }
+
+    @Override
     public CapabilityResult invoke(CapabilityInvocation invocation) {
         ResolvedTool resolved = resolve(invocation.capabilityId());
         if (resolved == null || !resolved.connection().agentVisible()) {
@@ -121,6 +131,8 @@ public class McpToolCapabilityProvider implements CapabilityProvider {
                 List.of(),
                 Map.of("kind", "MCP_TOOL",
                         "connectionId", resolved.connection().connectionId(),
+                        "connectionRowId", resolved.connection().rowId().toString(),
+                        "configurationVersion", resolved.connection().configurationVersion(),
                         "toolName", resolved.toolName()),
                 List.of());
     }

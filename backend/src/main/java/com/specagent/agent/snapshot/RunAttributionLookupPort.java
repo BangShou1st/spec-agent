@@ -14,6 +14,8 @@ import java.util.UUID;
  * 能力观察可见性判断,而不需要 run 仓库本身。
  */
 public interface RunAttributionLookupPort {
+    /** A routing hint only. Skill authority is subsequently checked against persisted Run facts. */
+    default UUID currentExecutingRun() { return null; }
 
     /** 查询归属,结果承载于 {@link CapabilityObservationVisibility.RunAttribution}。 */
     Optional<CapabilityObservationVisibility.RunAttribution> attributionOf(UUID runId);

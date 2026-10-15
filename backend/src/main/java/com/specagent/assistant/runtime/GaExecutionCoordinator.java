@@ -34,6 +34,12 @@ public class GaExecutionCoordinator {
             completion.accept(prepared,call(prepared,state),state);
         } catch(GlobalAssistantRunClaimedException ex) {
             // A duplicate dispatcher cannot fail or replace the owning execution.
+        } catch(ProtocolMismatchException ex) {
+            // 协议版本不兼容是部署错误(design §8):两端版本不同步,如实暴露
+            // 类型化错误码,绝不默认放行,也绝不伪装成不可用。
+            log.warn("GA protocol mismatch run={} detail={}", run, ex.getMessage());
+            completion.failed(run,prepared==null?null:prepared.model(),state,
+                    com.specagent.assistant.GlobalAssistantErrorCode.GA_PROTOCOL_MISMATCH);
         } catch(Exception ex) {
             log.warn("GA coordination failed run={} category={}",run,ex.getClass().getSimpleName());
             boolean unavailable=false;
@@ -42,12 +48,57 @@ public class GaExecutionCoordinator {
             completion.failed(run,prepared==null?null:prepared.model(),state,unavailable?"GA_PYTHON_UNAVAILABLE":"GA_EXECUTION_FAILED");
         }
     }
+
+    /**
+     * 执行信封与执行事件流各自需要的协议版本(design §8)。Python /health
+     * 以 {@code gaExecutionProtocolVersions} 公告本构建支持的范围;两者取
+     * 交集为空时必须在发起执行前失败——旧请求绝不默认放行。
+     */
+    private static final List<String> REQUIRED_PROTOCOL_VERSIONS =
+            List.of("ga-execution.v1", "ga-execution-event.v1");
+
+    /** 协议版本协商失败的类型化信号;区别于网络不可达。 */
+    static final class ProtocolMismatchException extends IOException {
+        ProtocolMismatchException(String message) { super(message); }
+    }
+
+    /**
+     * 发起执行前的协议协商:读取 Brain /health 的版本公告并核对必需版本。
+     * 健康端点读不到按不可达处理(由调用方的既有分类收敛);公告里缺任何
+     * 一个必需版本即拒绝执行。
+     */
+    private void negotiateProtocol(HttpClient client, URI base) throws IOException, InterruptedException {
+        HttpRequest request=HttpRequest.newBuilder(base.resolve("/health"))
+                .timeout(Duration.ofSeconds(3)).GET().build();
+        HttpResponse<String> response=client.send(request,HttpResponse.BodyHandlers.ofString());
+        if(response.statusCode()!=200)
+            throw new IOException("Brain health status " + response.statusCode());
+        var versions=new com.fasterxml.jackson.databind.ObjectMapper().readTree(response.body())
+                .path("gaExecutionProtocolVersions");
+        if(!versions.isArray())
+            throw new ProtocolMismatchException(
+                    "Brain /health does not advertise gaExecutionProtocolVersions; "
+                            + "the Python service predates the execution protocol negotiation");
+        for(String required : REQUIRED_PROTOCOL_VERSIONS) {
+            boolean found=false;
+            for(var advertised : versions) {
+                if(required.equals(advertised.asText())) { found=true; break; }
+            }
+            if(!found)
+                throw new ProtocolMismatchException(
+                        "Brain does not support required protocol version " + required
+                                + " (advertised: " + versions + ")");
+        }
+    }
     private List<String> call(GaExecutionPreparation.Prepared prepared,GaExecutionCompletion.StreamState state) throws Exception {
         URI base=URI.create(properties.getBaseUrl());
         if(!Set.of("http","https").contains(base.getScheme()) || base.getUserInfo()!=null || base.getQuery()!=null || base.getFragment()!=null)
             throw new IllegalArgumentException("Configured Brain origin required");
         var client=HttpClient.newBuilder().connectTimeout(Duration.ofMillis(properties.getConnectTimeoutMs()))
                 .followRedirects(HttpClient.Redirect.NEVER).build();
+        // 协议协商先于执行信封的发出:版本不兼容时绝不让一个本端无法解读的
+        // 请求进入 Brain 的执行路径(design §8"不默认允许旧请求")。
+        negotiateProtocol(client, base);
         var request=HttpRequest.newBuilder(base.resolve("/internal/v1/global-assistant/executions"))
                 .timeout(Duration.ofSeconds(180)).header("X-Spec-Agent-Internal-Token",properties.getInternalSecret())
                 .header("Content-Type","application/json").header("Accept","application/x-ndjson")

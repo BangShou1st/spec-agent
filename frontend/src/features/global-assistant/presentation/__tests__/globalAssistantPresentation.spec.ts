@@ -88,10 +88,31 @@ describe('ga error messages', () => {
   })
 })
 
-import { gaRetrievalStatusMessage } from '../globalAssistantPresentation'
-it('explains disabled, offline Ollama, storage and index readiness without claiming a search', () => {
-  expect(gaRetrievalStatusMessage('OLLAMA_UNAVAILABLE')).toContain('qwen3-embedding:0.6b')
+import { gaRetrievalStatusMessage, gaRetrievalStatusFixableInSettings } from '../globalAssistantPresentation'
+it('explains disabled, offline embedding, storage and index readiness without assuming a provider', () => {
+  // 旧聚合状态:通用指引,不再写死 Ollama/qwen3-embedding:0.6b。
+  expect(gaRetrievalStatusMessage('OLLAMA_UNAVAILABLE')).toContain('向量服务')
+  expect(gaRetrievalStatusMessage('OLLAMA_UNAVAILABLE')).not.toContain('qwen3')
   expect(gaRetrievalStatusMessage('STORE_UNAVAILABLE')).toContain('共享令牌')
   expect(gaRetrievalStatusMessage('HELP_INDEX_NOT_READY')).toContain('索引正在准备')
   expect(gaRetrievalStatusMessage('READY')).toBe('')
+})
+it('guides cloud credential loss to the retrieval settings, not Ollama installs', () => {
+  const info = { provider: 'OPENAI_COMPATIBLE', model: 'text-embedding-v4' }
+  const credential = gaRetrievalStatusMessage('EMBEDDING_CREDENTIAL_UNAVAILABLE', info)
+  expect(credential).toContain('凭据缺失')
+  expect(credential).toContain('知识检索设置')
+  expect(credential).not.toContain('Ollama')
+  expect(gaRetrievalStatusMessage('EMBEDDING_CONNECTION_FAILED', info)).toContain('无法连接向量服务（OPENAI_COMPATIBLE · text-embedding-v4）')
+  expect(gaRetrievalStatusMessage('EMBEDDING_MODEL_NOT_FOUND', { provider: 'OLLAMA', model: 'nomic-embed-text' })).toContain('nomic-embed-text')
+  expect(gaRetrievalStatusMessage('EMBEDDING_CONNECTION_FAILED')).not.toContain('（') // 原因未知时诚实省略身份
+  expect(gaRetrievalStatusMessage('CONFIGURED')).toBe('') // 已配置≠持续健康,不冒充
+})
+it('only links to retrieval settings for failures the settings page can fix', () => {
+  for (const status of ['OLLAMA_UNAVAILABLE', 'EMBEDDING_NOT_CONFIGURED', 'EMBEDDING_CREDENTIAL_UNAVAILABLE', 'EMBEDDING_CONNECTION_FAILED', 'EMBEDDING_MODEL_NOT_FOUND', 'EMBEDDING_TIMEOUT', 'EMBEDDING_UNAVAILABLE']) {
+    expect(gaRetrievalStatusFixableInSettings(status)).toBe(true)
+  }
+  for (const status of ['PYTHON_UNAVAILABLE', 'STORE_UNAVAILABLE', 'HELP_INDEX_NOT_READY', 'RETRIEVAL_UNAVAILABLE', 'DISABLED', 'READY']) {
+    expect(gaRetrievalStatusFixableInSettings(status)).toBe(false)
+  }
 })

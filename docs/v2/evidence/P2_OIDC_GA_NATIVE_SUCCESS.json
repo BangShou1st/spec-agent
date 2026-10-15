@@ -1,0 +1,76 @@
+{
+  "date": "2026-10-14",
+  "scenario": "Real OIDC + two JVM Workers + real Python broker + explicit test-only native GA transport fixture",
+  "environment": {
+    "database": "isolated spec_agent_p2_workers_20261014a",
+    "securityMode": "OIDC",
+    "securityProtocol": 13,
+    "postgres": "spec-agent-p2-auth 127.0.0.1:5546",
+    "keycloak": "127.0.0.1:8184/realms/spec-agent-p2",
+    "jar": "backend/build/p2-acceptance/runtime-nativefake-protocol13.jar",
+    "jarSha256": "3C75B697B58CFFCC791116D070464F197D208F8AD0A2861B4F13928EED23A37B",
+    "jvmA": {"port": 8383},
+    "jvmB": {"port": 8384},
+    "pythonBroker": {"port": 8103, "modelMode": "broker",
+      "gaExecutionProtocolVersions": ["ga-execution.v1", "ga-execution-event.v1"]},
+    "nativeFixture": "spec.agent.testing.ga-native-transport=fake (test profile only)",
+    "frontEnd": "http://127.0.0.1:8282 -> JVM A 8383"
+  },
+  "login": {
+    "tool": "browser-skill bsk",
+    "session": "mjsi",
+    "method": "real local Keycloak OIDC authorization-code flow; no exported cookies/CSRF/credentials",
+    "actorUserId": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+    "actorOrgId": "1c9daeb6-dd85-4944-9802-fe49e51d44f1"
+  },
+  "submission": {
+    "method": "browser-skill evaluate of the application API client after real OIDC login",
+    "script": "tools/p2_oidc_ga_batch.js",
+    "note": "authenticated concurrent API submission, not a full UI flow",
+    "createdRuns": 4
+  },
+  "results": {
+    "businessRuns": [
+      {"runId": "5d446723-6ebf-4ab2-ba75-8786a7e50d49", "status": "COMPLETED", "errorCode": null},
+      {"runId": "7c9c8aa4-b2e4-4ffc-8f42-fc91203edf49", "status": "COMPLETED", "errorCode": null},
+      {"runId": "0dd20c59-eec0-42c5-8858-9fdec9f3e488", "status": "COMPLETED", "errorCode": null},
+      {"runId": "a234760e-1844-460a-893c-751bc5e0fbc3", "status": "COMPLETED", "errorCode": null}
+    ],
+    "ledger": {"MODEL": {"SUCCEEDED": 4, "UNKNOWN": 4},
+      "note": "the 4 UNKNOWN are the previously retained failed §3.44 calls; they were NOT replayed and NOT reset"},
+    "budget": {"gaExecutionModelCallsCheck": "model_calls <= 6",
+      "perRunModelCalls": 1, "budgetReset": false},
+    "runtimeTasks": [
+      {"gaRunId": "7c9c8aa4-b2e4-4ffc-8f42-fc91203edf49", "state": "SUCCEEDED", "actorSource": "OIDC", "workerId": "40e40ffa-2f55-465f-be9e-d735c0f32377", "attemptCount": 1},
+      {"gaRunId": "0dd20c59-eec0-42c5-8858-9fdec9f3e488", "state": "SUCCEEDED", "actorSource": "OIDC", "workerId": "c91273f6-5f6d-4689-b857-901694578ea7", "attemptCount": 1},
+      {"gaRunId": "5d446723-6ebf-4ab2-ba75-8786a7e50d49", "state": "SUCCEEDED", "actorSource": "OIDC", "workerId": "c91273f6-5f6d-4689-b857-901694578ea7", "attemptCount": 1},
+      {"gaRunId": "a234760e-1844-460a-893c-751bc5e0fbc3", "state": "SUCCEEDED", "actorSource": "OIDC", "workerId": "40e40ffa-2f55-465f-be9e-d735c0f32377", "attemptCount": 1}
+    ],
+    "distinctWorkers": 2,
+    "actorUserOrgMatchAll": true,
+    "persistedEventsPerRun": 7,
+    "eventTypes": ["RUN_STARTED", "ANSWER_STREAM_STARTED", "ANSWER_DELTA", "ANSWER_DELTA", "ANSWER_DELTA", "ASSISTANT_COMPLETED", "RUN_COMPLETED"],
+    "assistantMessageContent": "这是原生流验收替身。权限与预算由真实宿主校验。此响应不代表真实模型能力。",
+    "providerLabel": "OpenCode Zen",
+    "modelId": "test-model",
+    "pythonBrokerRequests": {"POST /internal/v1/global-assistant/executions": 4, "allHttp200": true}
+  },
+  "findings": [
+    "GaNativeModelBroker performs authorization, budget reservation and ledger commit for real; only the native model stream output is replaced by the explicit test-only fixture",
+    "The generic FakeModelInferenceGateway does not cover the native GA stream; the fixture is the only override",
+    "Authority/budget/ledger remain real: reservation precedes the stream and ledger commits before executable calls are released"
+  ],
+  "limitations": [
+    "Native model output is a deterministic test-only fixture; this is NOT real-provider qualification and NOT production fallback",
+    "No in-flight cross-instance SSE live poller, in-flight revocation, slow client, kill-process takeover, DB outage or fleet key rotation/rollback acceptance in this scenario",
+    "Two workers are acceptance settings (15s lease, 200ms poll); no peak-capacity claim",
+    "Full P2 remains incomplete"
+  ],
+  "addendum": {
+    "date": "2026-10-14",
+    "note": "After this scenario, a further in-flight run (1e53f260-3ecd-428a-b744-2ba8ea2e4c80) with a 6s fixture delay exceeded the 15s task lease and left one more MODEL/UNKNOWN ledger row (call_sequence 300). The ledger UNKNOWN count in this file (4) is therefore a snapshot of the successful scenario only; the live count is now 5. See P2_LEASE_EXPIRY_HONEST_FAILURE.json.",
+    "ledgerUnknownAtSnapshot": 4,
+    "ledgerUnknownAfter": 5
+  },
+  "stageCompleted": false
+}

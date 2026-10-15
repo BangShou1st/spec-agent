@@ -1,3 +1,4 @@
+import { accessSession } from '@/features/access/accessSession'
 // 文件名:SkillsListView.spec.ts
 // 用途:Skills 列表页组件测试:mock Skill API,验证列表渲染、导入弹窗入口与页面操作。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -58,3 +59,5 @@ describe('SkillsListView', () => {
     expect(w.get('[data-test="review-staged-st1"]'))
   })
 })
+
+beforeEach(() => { accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'editor', orgId: 'org', displayName: 'Editor', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['ORG_MANAGE'], memberships: [] } })

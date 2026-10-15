@@ -38,13 +38,15 @@ public class ConnectionLifecycleService {
     private final ConnectionRepository repository;
     private final SecretStore secretStore;
     private final McpDiscoveryService discoveryService;
+    private final com.specagent.connection.access.ConnectionAccess access;
 
     public ConnectionLifecycleService(ConnectionRepository repository,
                                       SecretStore secretStore,
-                                      McpDiscoveryService discoveryService) {
+                                      McpDiscoveryService discoveryService,com.specagent.connection.access.ConnectionAccess access) {
         this.repository = repository;
         this.secretStore = secretStore;
         this.discoveryService = discoveryService;
+        this.access=access;
     }
 
     /** 供 API 响应使用的掩码凭据后缀;未配置凭据时返回 null。 */
@@ -59,24 +61,28 @@ public class ConnectionLifecycleService {
     @Transactional
     public Connection create(ConnectionKind kind, String name, Map<String, Object> config,
                              String secret) {
+        return createOwned(kind,name,config,secret,"ORG");
+    }
+    @Transactional
+    public Connection createOwned(ConnectionKind kind,String name,Map<String,Object> config,String secret,String ownerKind) {
+        String owner=ownerKind==null?"ORG":ownerKind;
+        UUID org=access.creationOrg(owner);
+        if(secret!=null && secret.isBlank()) throw new ConnectionValidationException("Secret must be omitted or non-blank");
         String validatedName = validatedName(name);
         Map<String, Object> validatedConfig = validatedConfig(kind, config);
         Connection connection = new Connection(
                 UUID.randomUUID(), "conn_" + Ids.random().toString().substring(0, 12),
                 validatedName, kind, ConnectionStatus.CREATED, false,
                 validatedConfig, null, null,
-                Instant.now(), Instant.now());
+                Instant.now(), Instant.now(),org,owner,"USER".equals(owner)?access.actor().userId():null,
+                secret==null?"NONE":"BEARER",1);
         repository.insert(connection);
         String credentialRef = null;
         if (secret != null && !secret.isBlank()) {
             credentialRef = secretStore.store(connection.id(), secret);
             repository.updateCredentialRef(connection.id(), credentialRef);
         }
-        return new Connection(
-                connection.id(), connection.connectionId(), connection.name(),
-                connection.kind(), connection.status(), connection.enabled(),
-                connection.config(), credentialRef, connection.lastError(),
-                connection.createdAt(), connection.updatedAt());
+        return repository.findById(connection.id()).orElseThrow();
     }
 
     /**
@@ -85,47 +91,51 @@ public class ConnectionLifecycleService {
      * 用独立事务单独执行。
      */
     public McpDiscovery test(UUID connectionId) {
+        access.manage(connectionId);
         Connection connection = requireConnection(connectionId);
         try {
             McpDiscovery discovery = discoveryService.discoverLive(
                     ConnectionMcpConnectionLookup.toTarget(connection));
-            markStatus(connection.id(), ConnectionStatus.TESTED, null);
+            markStatus(connection, ConnectionStatus.TESTED, null);
             return discovery;
         } catch (McpTransportException ex) {
-            markStatus(connection.id(), ConnectionStatus.FAILED, ex.getMessage());
+            markStatus(connection, ConnectionStatus.FAILED, ex.getMessage());
             throw new ConnectionCommandException(ex.getMessage());
         }
     }
 
     /** 连接:测试 + 持久化发现结果,状态置为 CONNECTED。 */
     public McpDiscovery connect(UUID connectionId) {
+        access.manage(connectionId);
         Connection connection = requireConnection(connectionId);
         try {
             McpDiscovery discovery = discoveryService.discoverLive(
                     ConnectionMcpConnectionLookup.toTarget(connection));
-            markStatus(connection.id(), ConnectionStatus.CONNECTED, null);
+            markStatus(connection, ConnectionStatus.CONNECTED, null);
             return discovery;
         } catch (McpTransportException ex) {
-            markStatus(connection.id(), ConnectionStatus.FAILED, ex.getMessage());
+            markStatus(connection, ConnectionStatus.FAILED, ex.getMessage());
             throw new ConnectionCommandException(ex.getMessage());
         }
     }
 
     @Transactional
-    void markStatus(UUID connectionId, ConnectionStatus status, String lastError) {
-        repository.updateStatus(connectionId, status, lastError);
+    void markStatus(Connection connection, ConnectionStatus status, String lastError) {
+        if (!repository.updateStatusIfCurrent(connection.id(), connection.configurationVersion(), status, lastError))
+            throw new ConnectionCommandException("MCP_CONNECTION_CHANGED_OR_INACCESSIBLE");
     }
 
     /** 从真实服务器重新拉取发现结果。 */
-    @Transactional
     public McpDiscovery refresh(UUID connectionId) {
+        access.manage(connectionId);
         Connection connection = requireConnection(connectionId);
-        discoveryService.invalidate(connection.id());
+        access.manage(connection.id(),()->discoveryService.invalidate(connection.id()));
         return connect(connectionId);
     }
 
     @Transactional
     public void enable(UUID connectionId) {
+        access.manage(connectionId);
         Connection connection = requireConnection(connectionId);
         if (!connection.status().agentVisible()) {
             throw new ConnectionCommandException(
@@ -139,16 +149,19 @@ public class ConnectionLifecycleService {
                                 + connection.name() + "' (disable it first)");
             }
         });
-        repository.updateEnabled(connection.id(), true);
+        long previousVersion = repository.updateEnabled(connection.id(), true);
+        discoveryService.advanceVisibilityVersion(connection.id(), previousVersion);
     }
 
     @Transactional
     public void disable(UUID connectionId) {
-        repository.updateEnabled(connectionId, false);
+        long previousVersion = repository.updateEnabled(connectionId, false);
+        discoveryService.advanceVisibilityVersion(connectionId, previousVersion);
     }
 
     @Transactional
     public void delete(UUID connectionId) {
+        access.manage(connectionId);
         Connection connection = requireConnection(connectionId);
         if (connection.credentialRef() != null) {
             secretStore.delete(connection.credentialRef());
@@ -200,6 +213,7 @@ public class ConnectionLifecycleService {
     @Transactional
     public Connection updateByConnectionId(String connectionId, String name, Map<String, Object> config, boolean hasName, boolean hasConfig, boolean hasSecret, String secret) {
         Connection current = requireByConnectionId(connectionId);
+        access.manage(current.id());
         String nextName = current.name();
         boolean nameChanged = false;
         if (hasName) {
@@ -235,6 +249,11 @@ public class ConnectionLifecycleService {
             });
         }
         String nextCredentialRef = current.credentialRef();
+        if(configChanged && !secretChanged && "BEARER".equals(current.authKind())) {
+            // A change of destination is not permission to forward the old credential there.
+            // Retain encrypted storage for explicit replacement/recovery, but unselect it and fail closed.
+            nextCredentialRef=null;
+        }
         if (secretChanged) {
             String newRef = secretStore.store(current.id(), secret);
             if (nextCredentialRef != null && !nextCredentialRef.isBlank()) {

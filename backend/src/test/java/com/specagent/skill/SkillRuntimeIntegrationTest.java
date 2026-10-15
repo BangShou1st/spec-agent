@@ -58,7 +58,10 @@ class SkillRuntimeIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired private com.specagent.agent.runtime.RunService runs;
+    @Autowired private com.specagent.workspace.project.ProjectDeletionService deletion;
     private UUID projectId;
+    private UUID runId;
 
     private static final String SKILL_MD = """
             ---
@@ -75,6 +78,8 @@ class SkillRuntimeIntegrationTest {
         clearSkillTables();
         Project project = projectService.createProject("Skill 集成测试项目");
         projectId = project.id();
+        runId = runs.createQueuedDraftQuestion(projectId).id();
+        runs.claimDecisionCycleRun(runId).orElseThrow();
     }
 
     @AfterEach
@@ -82,6 +87,8 @@ class SkillRuntimeIntegrationTest {
         // 提交式清理:已启用的 Skill 行绝不能在本测试类结束后残留,
         // 否则会改变共享此数据库的其他套件所看到的规划器能力暴露。
         clearSkillTables();
+        jdbcTemplate.update("UPDATE agent_runs SET status='failed' WHERE id=? AND status NOT IN ('completed','failed')",runId);
+        deletion.deleteProject(projectId);
     }
 
     private void clearSkillTables() {
@@ -126,7 +133,7 @@ class SkillRuntimeIntegrationTest {
 
         // 5. activate -> bounded instructions + resources
         SkillActivationService.ActivatedSkill activated = activationService.activate(
-                projectId, null, installed.skillId());
+                projectId, runId, installed.skillId());
         assertThat(activated.instructions()).contains("检查目标表的约束");
         assertThat(activated.resources()).containsExactly("references/checklist.md");
         assertThat(activated.versionNo()).isEqualTo(1);

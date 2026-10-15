@@ -31,6 +31,7 @@ public class HybridRetriever {
 
     private final RetrievalEntryRepository repository;
     private final VectorCandidateRetriever vectorCandidateRetriever;
+    private final com.specagent.retrieval.protocol.RetrievalGrantAuthorization authorization;
     private com.specagent.retrieval.protocol.SharedRetrievalHost shared;
     private com.specagent.retrieval.protocol.RetrievalStore store;
     private String engine="java-hybrid.v1";
@@ -46,9 +47,11 @@ public class HybridRetriever {
     public record Outcome(List<Candidate> candidates,Map<String,Object> state) {}
 
     public HybridRetriever(RetrievalEntryRepository repository,
-                           VectorCandidateRetriever vectorCandidateRetriever) {
+                           VectorCandidateRetriever vectorCandidateRetriever,
+                           com.specagent.retrieval.protocol.RetrievalGrantAuthorization authorization) {
         this.repository = repository;
         this.vectorCandidateRetriever = vectorCandidateRetriever;
+        this.authorization = authorization;
     }
 
     public List<Candidate> retrieve(RetrievalQuery query) {
@@ -76,6 +79,7 @@ public class HybridRetriever {
     }
 
     private List<Candidate> retrieveLegacy(RetrievalQuery query) {
+        var delegation=authorization.issue(query.projectId());
         Map<String, CandidateAccumulator> fused = new LinkedHashMap<>();
         if (query.scopes().contains(RetrievalScope.ROUTE)) {
             addLane(fused, "route-lexical", repository.lexical(
@@ -103,12 +107,17 @@ public class HybridRetriever {
                     "RESOURCE_CHUNK", List.of()));
         }
         addLane(fused, "vector", vectorCandidateRetriever.retrieve(query));
-        return fused.values().stream()
+        var result=fused.values().stream()
                 .map(CandidateAccumulator::toCandidate)
                 .sorted(Comparator.comparingInt((Candidate candidate) -> selectionTier(query, candidate.entry()))
                         .thenComparing(Comparator.comparingDouble(Candidate::rankScore).reversed())
                         .thenComparing(candidate -> candidate.entry().sourceRef()))
                 .toList();
+        authorization.validate(query.projectId(),com.specagent.common.Maps.of(
+                "actor_user_id",delegation.actor().userId(),"actor_org_id",delegation.actor().orgId(),
+                "actor_source",delegation.actor().source().name(),"execution_token",
+                delegation.token()==null?null:com.specagent.retrieval.protocol.RetrievalWire.write(delegation.token())));
+        return result;
     }
 
     /**

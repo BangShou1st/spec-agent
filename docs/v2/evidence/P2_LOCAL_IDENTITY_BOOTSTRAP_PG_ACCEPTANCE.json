@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-14",
+  "database": "isolated spec_agent_test",
+  "migration": "V89",
+  "securityProtocol": 11,
+  "scope": "LOCAL identity resolution performs no identity/membership writes; V61 remains one-time bootstrap; no deleted/disabled/downgraded membership resurrection",
+  "focusedRegression": {
+    "command": "gradlew.bat testNonLive --tests com.specagent.access.* --tests com.specagent.architecture.*",
+    "counts": {
+      "tests": 125,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 11
+    },
+    "newPostgresTests": 7
+  },
+  "fullRegression": {
+    "status": "passed",
+    "command": "SPEC_AGENT_REBUILD_PYTHON_ACCEPTANCE=true gradlew.bat testNonLive",
+    "duration": "2m 49s",
+    "counts": {
+      "tests": 1916,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 33,
+      "suites": 309
+    },
+    "scope": "all non-live backend with actual Java/Python rebuild Worker acceptance enabled; provider transport mocked"
+  },
+  "limitations": [
+    "New service instances exercise the first-resolution code path; not a two-JVM browser test",
+    "Remaining P2-C/D/E/F acceptance incomplete"
+  ],
+  "oldBinaryStartupRefusal": {
+    "jar": "runtime-v87-accepted-protocol9.jar",
+    "jarSha256": "9A8606FBC153E8A5A19D115BA4F64347CA1263F5475528EAE7928B140001BA90",
+    "databaseProtocol": 11,
+    "instanceProtocol": 9,
+    "flywayEnabled": false,
+    "reason": "Security protocol version mismatch: database=11, this instance=9",
+    "exitCode": 1,
+    "log": "backend/build/p2-acceptance/v89-old-protocol9-startup.log",
+    "limitation": "native v9 only; v10 rejection is a unit test. Does not fence already-running binaries; stop-all maintenance required."
+  },
+  "latestAcceptanceArtifact": {
+    "path": "backend/build/p2-acceptance/runtime-v89-accepted-protocol11.jar",
+    "sha256": "DCDFCD7C916754070A369DB83D7D810367C1A58D19021F3083D884AD479D0C04",
+    "buildPassed": true,
+    "buildCommand": "gradlew.bat bootJar",
+    "sameSourcesAsFinalPassedFullRegression": true,
+    "deployed": false,
+    "oidcBrowserAcceptance": false
+  }
+}

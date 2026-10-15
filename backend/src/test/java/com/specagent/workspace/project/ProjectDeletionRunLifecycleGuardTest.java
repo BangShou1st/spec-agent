@@ -153,7 +153,14 @@ class ProjectDeletionRunLifecycleGuardTest {
             }));
             assertThat(lockAcquired.await(10, TimeUnit.SECONDS)).isTrue();
             assertThatThrownBy(() -> runService.createQueuedDraftQuestion(p.id()))
-                    .isInstanceOf(IllegalArgumentException.class)
+                    .satisfies(error -> {
+                        if (error instanceof com.specagent.common.ApiException api) {
+                            assertThat(api.code()).isEqualTo("PROJECT_NOT_FOUND");
+                            assertThat(api.status()).isEqualTo(org.springframework.http.HttpStatus.NOT_FOUND);
+                        } else {
+                            assertThat(error).isInstanceOf(IllegalArgumentException.class);
+                        }
+                    })
                     .hasMessageContaining("Project not found");
             release.countDown();
             deleting.get(10, TimeUnit.SECONDS);

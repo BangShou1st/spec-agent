@@ -19,7 +19,7 @@ import java.util.UUID;
  * 副作用等级;二进制资源一律拒绝(一期只提供文本资源)。
  */
 @Component
-public class SkillReadResourceHostTool implements InternalCapabilityAdapter {
+public class SkillReadResourceHostTool implements InternalCapabilityAdapter, com.specagent.capability.GuardedCapabilityAdapter {
 
     public static final String CAPABILITY_ID = "skill.read_resource";
 
@@ -49,6 +49,15 @@ public class SkillReadResourceHostTool implements InternalCapabilityAdapter {
     }
 
     @Override
+    public void requireAuthorizedInvocation(CapabilityInvocation invocation) {
+        Object value=invocation.arguments().get("versionId");
+        UUID version;
+        try { version=value instanceof String text ? UUID.fromString(text) : null; }
+        catch (IllegalArgumentException ex) { throw new SkillResourceRejectedException("Invalid Skill version id"); }
+        resourceService.requireActivatedVersion(invocation.projectId(),invocation.runId(),version);
+    }
+
+    @Override
     public CapabilityResult invoke(CapabilityInvocation invocation) {
         Object rawVersion = invocation.arguments().get("versionId");
         Object rawPath = invocation.arguments().get("path");
@@ -71,7 +80,8 @@ public class SkillReadResourceHostTool implements InternalCapabilityAdapter {
                     "arguments.versionId is not a valid version id");
         }
         try {
-            SkillResourceService.ResourceRead read = resourceService.readResource(versionId, path);
+            SkillResourceService.ResourceRead read = resourceService.readActivatedResource(
+                    invocation.projectId(),invocation.runId(),versionId,path);
             return new CapabilityResult(
                     invocation.invocationId(), invocation.invocationKey(), CAPABILITY_ID,
                     CapabilityResult.Status.SUCCEEDED,

@@ -1,0 +1,378 @@
+{
+  "date": "2026-10-14",
+  "command": "SPRING_DATASOURCE_URL=jdbc:postgresql://127.0.0.1:5546/spec_agent_test gradlew.bat testNonLive",
+  "database": "isolated spec_agent_test on 127.0.0.1:5546",
+  "counts": {
+    "tests": 1944,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 34,
+    "suites": 312
+  },
+  "scope": "Current V91/protocol13 worktree including safe missing-resource 404, canonical YAML security/execution binding and connection ownership response contract",
+  "testContextCacheMaxSize": 6,
+  "stageCompleted": false,
+  "pythonRegression": {
+    "command": "agent-brain pytest",
+    "tests": 239,
+    "failures": 0,
+    "scope": "includes FastAPI/BrokerModelClient grant header forwarding, missing grant fail-closed and concurrent client isolation",
+    "historicalEvidence": true,
+    "rerunInThisBatch": false
+  },
+  "limitations": [
+    "OIDC two-API/two-Worker full permission/revocation/SSE acceptance remains pending",
+    "V91/protocol13 current-package Alice connection create/detail/delete browser smoke completed; member/revocation browser matrix remains pending",
+    "Fleet key rotation/rollback and full P2-C/D/E/F remain incomplete",
+    "34 skipped tests are reported honestly; Python rebuild cross-process acceptance environment was not enabled"
+  ],
+  "finalFocusedRegression": {
+    "command": "gradlew.bat testNonLive --tests com.specagent.access.* --tests com.specagent.architecture.*",
+    "counts": {
+      "tests": 115,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 10
+    },
+    "scope": "V71 protocol v2 admission, OIDC issuer match and admission reset; real PG migration and existing access/architecture tests"
+  },
+  "oldBinaryStartupRefusal": {
+    "jarSha256": "304bc7b4e097da3fed743c74b733407d7457ecae846a2204aa86ba8d2393185b",
+    "jar": "runtime-20261013-1405.jar (V67, security protocol 1)",
+    "database": "spec_agent_test migrated to V71, LOCAL, protocol 2",
+    "flywayEnabled": false,
+    "reason": "Security protocol version mismatch: database=2, this instance=1",
+    "exitCode": 1,
+    "scope": "actual JVM startup; migrations disabled so security admission is directly exercised",
+    "limitation": "does not fence already running old binaries; stop-all maintenance window mandatory"
+  },
+  "retrievalFocusedRegression": {
+    "command": "gradlew.bat testNonLive --tests com.specagent.retrieval.* --tests com.specagent.architecture.*",
+    "counts": {
+      "tests": 114,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 6,
+      "suites": 13
+    },
+    "scope": "V72 actor/permission and GA epoch/owner assertions; before final index-grant purpose restriction"
+  },
+  "indexServiceFocusedRegression": {
+    "command": "gradlew.bat testNonLive --tests com.specagent.retrieval.* --tests com.specagent.architecture.*",
+    "counts": {
+      "tests": 121,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 6,
+      "suites": 14
+    },
+    "scope": "V73/V74 service identity, active organization, late vector commit refusal, public help scope and DB composite FK/non-null constraints; existing corpus/project DB constraint verified with canonical foreign source"
+  },
+  "embeddingOrganizationFocusedRegression": {
+    "command": "gradlew.bat testNonLive --tests com.specagent.retrieval.* --tests com.specagent.modelsettings.* --tests com.specagent.architecture.*",
+    "counts": {
+      "tests": 185,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 6,
+      "suites": 25
+    },
+    "scope": "V75/V76 org config/approval/probe/key/rebuild, actual grant broker choosing per-org keys and late output refusal, provider transport mocked; no real Java/Python/provider process acceptance",
+    "newTests": 14
+  },
+  "protocolV3FocusedRegression": {
+    "command": "gradlew.bat testNonLive --tests com.specagent.access.* --tests com.specagent.architecture.*",
+    "counts": {
+      "tests": 115,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 10
+    },
+    "scope": "V77 real PG migration, v1/v2/future protocol mismatch and identity gates"
+  },
+  "protocol2JvmStartupRefusal": {
+    "jar": "runtime-v76-protocol2.jar",
+    "sha256": "076646a364f469a84699db394e3c214baa0ae5163c06e776c2601ca7697b2017",
+    "database": "isolated spec_agent_test, LOCAL, protocol 3",
+    "flywayEnabled": false,
+    "reason": "Security protocol version mismatch: database=3, this instance=2",
+    "exitCode": 1,
+    "alreadyRunningOldInstancesFenced": false
+  },
+  "rebuildLeaseFocusedRegression": {
+    "command": "SPEC_AGENT_REBUILD_PYTHON_ACCEPTANCE=true gradlew.bat testNonLive --tests com.specagent.retrieval.RebuildLeaseIntegrationTest --tests com.specagent.architecture.* --tests com.specagent.access.SecurityProtocolAdmissionTest",
+    "counts": {
+      "tests": 73,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 6
+    },
+    "scope": "V78/V79 real PG independent worker transactions, expiry/takeover/late vector commit/deletion lock order; real Python process through Java RPC to READY",
+    "leaseTests": 9,
+    "providerTransport": "mocked; no external paid provider call",
+    "twoJvmOidcAcceptance": false
+  },
+  "protocol3JvmStartupRefusal": {
+    "jar": "runtime-v77-protocol3.jar",
+    "sha256": "36f4395ea494e24c04d7f9885e8f81e73317f2b17a27666b926756d8714bdb9d",
+    "database": "isolated spec_agent_test, LOCAL, protocol 4",
+    "flywayEnabled": false,
+    "reason": "Security protocol version mismatch: database=4, this instance=3",
+    "exitCode": 1,
+    "alreadyRunningOldInstancesFenced": false
+  },
+  "historicalFullRegressions": [
+    {
+      "date": "2026-10-13",
+      "command": "SPEC_AGENT_REBUILD_PYTHON_ACCEPTANCE=true gradlew.bat testNonLive",
+      "counts": {
+        "tests": 1783,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 33,
+        "suites": 292
+      },
+      "scope": "V59 through V79 including rebuild lease/child grants, mixed authorization lock ordering for project deletion and actual Java/Python Worker RPC to READY (provider transport mocked)"
+    }
+  ],
+  "actualPythonRebuildQualification": {
+    "testcase": "actualPythonProcessCompletesBoundedWorkerRebuildThroughParentBoundRpc()",
+    "executed": true,
+    "skipped": false,
+    "failed": false,
+    "providerTransport": "mocked",
+    "qualificationEnvironment": "SPEC_AGENT_REBUILD_PYTHON_ACCEPTANCE=true"
+  },
+  "protocol6JvmStartupRefusal": {
+    "jar": "runtime-scope-protocol6.jar",
+    "sha256": "C2E7096EA9EC7B3ECB21067BB64402BA36C8AB8FF0844E113AE172BD2FF04CBB",
+    "database": "isolated spec_agent_test, LOCAL, protocol 7",
+    "flywayEnabled": false,
+    "reason": "Security protocol version mismatch: database=7, this instance=6",
+    "exitCode": 1,
+    "alreadyRunningOldInstancesFenced": false,
+    "limitation": "The preserved v6 probe contains the mutex prototype; this proves protocol rejection, not an unsafe-v6 writer race."
+  },
+  "currentRealPgSuites": {
+    "ConnectionOwnershipIntegrationTest": {
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "LocalAesSecretStoreTest": {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "RuntimeScopeMutexIntegrationTest": {
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "TaskWriteGuardTest": {
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "MultiWorkerSchedulingIntegrationTest": {
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "ProposalAcceptanceIntegrationTest": {
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "AgentProposalLifecycleConcurrencyIntegrationTest": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "fullRegressionCoversCurrentWorktree": true,
+  "sseAuthorizationFocusedRegression": {
+    "migration": "V85",
+    "counts": {
+      "tests": 267,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 26,
+      "suites": 32
+    },
+    "scope": "All assistant suites; per-event SSE authorization/session checks, SQL-bounded replay, authoritative cursor ordering, subscription bucket lifecycle and concurrent publish/poll",
+    "fullRegression": false
+  },
+  "protocol7JvmStartupRefusal": {
+    "jar": "runtime-v84-accepted-protocol7.jar",
+    "sha256": "88EA6A1A757499C9A0393E0C5594E98D62ABFEA47C59318F29F0DB5C1E182103",
+    "reason": "Security protocol version mismatch: database=8, this instance=7",
+    "exitCode": 1,
+    "flywayEnabled": false,
+    "alreadyRunningOldInstancesFenced": false
+  },
+  "previousFullRegressionV84": {
+    "date": "2026-10-14",
+    "command": "SPEC_AGENT_REBUILD_PYTHON_ACCEPTANCE=true gradlew.bat testNonLive",
+    "counts": {
+      "tests": 1851,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 33,
+      "suites": 302
+    },
+    "scope": "V59 through V84; connection ownership/auth intent/scoped ciphertext/startup migration, MCP live snapshot and cache fencing, proposal origin protection and shared project scope transaction mutex, full backend and actual Java/Python rebuild Worker RPC to READY (provider transport mocked)"
+  },
+  "skillOrganizationRegression": {
+    "evidence": "P2_SKILL_ORGANIZATION_PG_ACCEPTANCE.json",
+    "newPostgresTests": 10,
+    "newMirrorTests": 2,
+    "securityProtocolVersion": 9,
+    "migrationVersions": [
+      "86",
+      "87"
+    ],
+    "oldBinaryStartupRefusal": {
+      "jar": "runtime-v84-accepted-protocol7.jar",
+      "jarSha256": "88EA6A1A757499C9A0393E0C5594E98D62ABFEA47C59318F29F0DB5C1E182103",
+      "databaseProtocol": 9,
+      "instanceProtocol": 7,
+      "flywayEnabled": false,
+      "exitCode": 1,
+      "reason": "Security protocol version mismatch: database=9, this instance=7",
+      "log": "backend/build/p2-acceptance/v87-old-protocol7-startup.log",
+      "limitation": "Real protocol7 jar only; protocol8 refusal covered by unit test, not a native v8 artifact. Does not fence already-running old instances."
+    }
+  },
+  "skillRunSourceFocusedRegression": {
+    "counts": {
+      "tests": 284,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "suites": 41
+    },
+    "databaseMigration": "V88",
+    "securityProtocol": 10,
+    "fullRegression": "passed in final V89 full run"
+  },
+  "previousFullRegressionV87": {
+    "date": "2026-10-14",
+    "counts": {
+      "tests": 1877,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 33,
+      "suites": 305
+    },
+    "scope": "V59 through V87; entire non-live backend, SSE live replay authorization/bounded cursor/state cleanup, Skill organization roots and constrained children/management/configuration mutex, previous runtime/RPC/retrieval/MCP/proposal scope safeguards; actual Java/Python rebuild Worker acceptance enabled (provider transport mocked)",
+    "command": "SPEC_AGENT_REBUILD_PYTHON_ACCEPTANCE=true gradlew.bat testNonLive"
+  },
+  "localIdentityBootstrap": {
+    "evidence": "P2_LOCAL_IDENTITY_BOOTSTRAP_PG_ACCEPTANCE.json",
+    "newPostgresTests": 7,
+    "securityProtocol": 11
+  },
+  "latestOldBinaryStartupRefusal": {
+    "jar": "runtime-v89-accepted-protocol11.jar",
+    "jarSha256": "DCDFCD7C916754070A369DB83D7D810367C1A58D19021F3083D884AD479D0C04",
+    "databaseProtocol": 12,
+    "instanceProtocol": 11,
+    "flywayEnabled": false,
+    "exitCode": 1,
+    "reason": "Security protocol version mismatch: database=12, this instance=11",
+    "log": "backend/build/p2-acceptance/v90-old-protocol11-startup.log",
+    "limitation": "does not fence already-running binaries; stop-all maintenance required"
+  },
+  "latestAcceptanceArtifact": {
+    "path": "backend/build/p2-acceptance/runtime-v90-accepted-protocol12.jar",
+    "sha256": "0193334FD00D5B3B70B65886F8481D87B8F1BE565ACE1B90CBDEC9F4DACE855F",
+    "buildCommand": "gradlew.bat bootJar",
+    "buildPassed": true,
+    "sameSourcesAsFinalFullRegression": true,
+    "deployed": false,
+    "oidcBrowserAcceptance": false
+  },
+  "workspaceRpcSourceFocusedRegression": {
+    "counts": {
+      "tests": 106,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 9
+    },
+    "schema": "V90",
+    "securityProtocol": 12,
+    "fullRegression": "passed in final V90 run"
+  },
+  "previousFullRegressionV89": {
+    "counts": {
+      "tests": 1916,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 33,
+      "suites": 309
+    },
+    "scope": "V59 through V89; entire non-live backend, verified Run/continuation Skill authority, pre-claim/private-replay guards, JSONB identity collision refusal, immutable frozen Skill source authority, LOCAL initialization read-only and previous task/RPC/MCP/retrieval/proposal/SSE safeguards",
+    "command": "SPEC_AGENT_REBUILD_PYTHON_ACCEPTANCE=true gradlew.bat testNonLive"
+  },
+  "fullCoversCurrentWorktree": true,
+  "previousV90FullCounts": {
+    "tests": 1925,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 33,
+    "suites": 310
+  },
+  "postFullIncrement": {
+    "change": "Missing API path maps NoResourceFoundException to safe RESOURCE_NOT_FOUND HTTP404",
+    "focused": {
+      "tests": 67,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 5
+    },
+    "fullRerun": false
+  },
+  "deploymentBindingFocused": {
+    "command": "gradlew.bat testNonLive --tests *DeploymentPropertyBindingTest --tests *SecurityProtocolAdmissionTest",
+    "counts": {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 2
+    },
+    "scope": "Actual YAML property source loading and Spring Binder; no DB/JVM OIDC acceptance claimed"
+  },
+  "historicalFullRuns": [
+    {
+      "command": "SPEC_AGENT_REBUILD_PYTHON_ACCEPTANCE=true gradlew.bat testNonLive",
+      "counts": {
+        "tests": 1938,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 33,
+        "suites": 311
+      },
+      "scope": "V59 through V91; complete non-live backend regression including MCP recorded source authorization"
+    }
+  ],
+  "currentRuntimeJar": {
+    "path": "backend/build/p2-acceptance/runtime-current-connection.jar",
+    "sha256": "7CD0DB50CD012F56E097ED1CC9BC517813623C07DDBE333EC7D10C395043BDA2",
+    "database": "isolated spec_agent_p2_oidc_v91",
+    "port": 8381
+  }
+}

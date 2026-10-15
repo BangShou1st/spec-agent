@@ -3,6 +3,7 @@
 //       config 只承载非敏感的元数据,secret 绝不会出现在响应中。
 
 export interface ConnectionSummary {
+  ownerKind?: 'ORG' | 'USER'
   connectionId: string
   name: string
   kind: string
@@ -16,6 +17,7 @@ export interface ConnectionSummary {
 }
 
 export interface ConnectionDetail {
+  ownerKind?: 'ORG' | 'USER'
   connectionId: string
   name: string
   kind: string
@@ -67,6 +69,7 @@ export interface ConnectionResourceContent {
 }
 
 export interface CreateConnectionRequest {
+  ownerKind?: 'ORG' | 'USER'
   kind: string
   name: string
   config?: Record<string, unknown>

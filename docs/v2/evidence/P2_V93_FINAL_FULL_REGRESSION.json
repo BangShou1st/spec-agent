@@ -1,0 +1,13 @@
+{
+  "tests": 1972,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 34,
+  "suites": 318,
+  "fullCoversCurrentBackendWorktree": true,
+  "migrationsThrough": 93,
+  "log": "backend/build/p2-acceptance/resume-v93-final-full.log",
+  "jarSha256": "90a8b3991be2d9ddc86932d91eadbd5bf526e9073037646280c861e362f8b9a8",
+  "runtimeClassBytesUnchangedSinceFaultMatrix": true,
+  "comparedRuntimeClasses": 1091
+}

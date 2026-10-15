@@ -72,6 +72,19 @@ public class CapabilityInvocationRepository {
                 "createdAt", Timestamp.from(Instant.now()))) == 1;
     }
 
+    /** PostgreSQL JSONB equality preserves numeric semantics and ignores object key order. */
+    public boolean matchesIdentity(CapabilityInvocation invocation) {
+        return Boolean.TRUE.equals(jdbcTemplate.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM capability_invocations
+                  WHERE invocation_key=:key AND capability_id=:capability
+                    AND project_id IS NOT DISTINCT FROM CAST(:project AS uuid)
+                    AND run_id IS NOT DISTINCT FROM CAST(:run AS uuid)
+                    AND arguments=CAST(:arguments AS jsonb))
+                """,Maps.of("key",invocation.invocationKey(),"capability",invocation.capabilityId(),
+                "project",invocation.projectId(),"run",invocation.runId(),
+                "arguments",json.write(invocation.arguments())),Boolean.class));
+    }
+
     public void complete(UUID id, CapabilityResult result) {
         String sql = """
                 UPDATE capability_invocations

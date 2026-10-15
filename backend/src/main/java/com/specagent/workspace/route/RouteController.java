@@ -34,7 +34,8 @@ public class RouteController {
 
     @GetMapping
     public List<RouteResponse> listRoutes(@PathVariable UUID projectId) {
-        Project project = projectService.getProject(projectId)
+        // 可见性先于任何读取:不可见与不存在的项目统一 404 PROJECT_NOT_FOUND。
+        Project project = projectService.getProjectForActor(projectId)
                 .orElseThrow(() -> ApiException.notFound("PROJECT_NOT_FOUND", "Project not found"));
         return routeService.listRoutes(projectId).stream()
                 .map(route -> RouteResponse.from(route, route.isActive(project.activeRouteId())))

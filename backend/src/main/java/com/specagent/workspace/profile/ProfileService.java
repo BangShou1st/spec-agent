@@ -19,6 +19,9 @@ public class ProfileService {
             UUID.fromString("11111111-1111-1111-1111-111111111111");
 
     private final ProfileRepository profileRepository;
+    private com.specagent.access.OrganizationConfigurationScope scope;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setOrganizationScope(com.specagent.access.OrganizationConfigurationScope scope) {this.scope=scope;}
 
     public ProfileService(ProfileRepository profileRepository) {
         this.profileRepository = profileRepository;
@@ -28,8 +31,23 @@ public class ProfileService {
         return DEFAULT_PROFILE_ID;
     }
 
+    /**
+     * 组织内的默认画像 id。
+     *
+     * 项目创建必须用它而不是 {@link #getDefaultProfileId()}:冻结决定 #2 要求
+     * {@code project.default_profile_id} 引用<b>同组织</b>画像,并由复合外键
+     * 在数据库侧强制。对本地/存量组织,解析结果就是播种的模板行,单机行为不变;
+     * 对新组织,首次解析会复制一份组织内的画像。
+     */
+    public UUID getDefaultProfileIdForOrg(UUID orgId) {
+        if (orgId == null) {
+            throw new IllegalArgumentException("An organization is required for a default profile");
+        }
+        return profileRepository.ensureOrgDefaultProfile(orgId, DEFAULT_PROFILE_ID);
+    }
+
     public Optional<Profile> getDefaultProfile() {
-        return profileRepository.findById(DEFAULT_PROFILE_ID);
+        return profileRepository.findById(getDefaultProfileIdForOrg(scope.readOrg()));
     }
 
     public Optional<Profile> getProfile(UUID id) {

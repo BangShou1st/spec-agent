@@ -128,7 +128,7 @@ describe('workspace inspector contextual surface', () => {
     ui.setFocusRoute('rB')
     mockedGetRouteRequirementState.mockResolvedValue(makeRequirementState({ routeId: 'rB' }))
 
-    const wrapper = mount(WorkspaceInspector, { props: { nodeData: null } })
+    const wrapper = mount(WorkspaceInspector, { props: { canWrite: true, nodeData: null } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
@@ -138,7 +138,7 @@ describe('workspace inspector contextual surface', () => {
 
   it('no selection shows the project summary without top-level tabs', async () => {
     await loadStore()
-    const wrapper = mount(WorkspaceInspector, { props: { nodeData: null } })
+    const wrapper = mount(WorkspaceInspector, { props: { canWrite: true, nodeData: null } })
     expect(wrapper.find('[data-test="inspector-tabs"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="tab-details"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="tab-requirement"]').exists()).toBe(false)
@@ -149,7 +149,7 @@ describe('workspace inspector contextual surface', () => {
 
   it('a selected node shows the node inspector, not the summary', async () => {
     await loadStore()
-    const wrapper = mount(WorkspaceInspector, { props: { nodeData: nodeData() } })
+    const wrapper = mount(WorkspaceInspector, { props: { canWrite: true, nodeData: nodeData() } })
     expect(wrapper.find('[data-test="node-inspector"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="project-summary"]').exists()).toBe(false)
   })
@@ -157,7 +157,7 @@ describe('workspace inspector contextual surface', () => {
   it('a selected edge shows the edge view with readable route members', async () => {
     await loadStore()
     const wrapper = mount(WorkspaceInspector, {
-      props: {
+      props: { canWrite: true,
         nodeData: null,
         selectedEdge: { id: 'lineage:x', kind: 'lineage', relationType: null, routeIds: [] },
       },
@@ -168,7 +168,7 @@ describe('workspace inspector contextual surface', () => {
 
   it('project summary opens the requirement detail view and returns', async () => {
     await loadStore()
-    const wrapper = mount(WorkspaceInspector, { props: { nodeData: null } })
+    const wrapper = mount(WorkspaceInspector, { props: { canWrite: true, nodeData: null } })
     await wrapper.find('[data-test="open-requirements"]').trigger('click')
     expect(wrapper.find('[data-test="requirement-detail"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="project-summary"]').exists()).toBe(false)
@@ -180,7 +180,7 @@ describe('workspace inspector contextual surface', () => {
   it('secondary view toggles preserve keyboard focus', async () => {
     await loadStore()
     const wrapper = mount(WorkspaceInspector, {
-      props: { nodeData: null },
+      props: { canWrite: true, nodeData: null },
       attachTo: document.body,
     })
     await wrapper.find('[data-test="open-requirements"]').trigger('click')
@@ -194,7 +194,7 @@ describe('workspace inspector contextual surface', () => {
 
   it('selecting a node resets the secondary requirements view', async () => {
     await loadStore()
-    const wrapper = mount(WorkspaceInspector, { props: { nodeData: null } })
+    const wrapper = mount(WorkspaceInspector, { props: { canWrite: true, nodeData: null } })
     await wrapper.find('[data-test="open-requirements"]').trigger('click')
     expect(wrapper.find('[data-test="requirement-detail"]').exists()).toBe(true)
     await wrapper.setProps({ nodeData: nodeData() })
@@ -205,7 +205,7 @@ describe('workspace inspector contextual surface', () => {
   it('inspector shows the canonical Answer once and keeps readable membership', async () => {
     await loadStore()
     const wrapper = mount(WorkspaceInspector, {
-      props: {
+      props: { canWrite: true,
         nodeData: nodeData({
           node: makeNode({ id: 'n1', question: 'Shared node question' }),
           routeIds: ['rA', 'rB'],
@@ -237,7 +237,7 @@ describe('workspace inspector contextual surface', () => {
   it('current pending node keeps details but offers no fork or regenerate', async () => {
     await loadStore()
     const wrapper = mount(WorkspaceInspector, {
-      props: {
+      props: { canWrite: true,
         nodeData: nodeData({
           node: makeNode({ id: 'nC', question: 'Current pending question' }),
           isCurrent: true,
@@ -257,7 +257,7 @@ describe('workspace inspector contextual surface', () => {
   it('historical nodes offer fork and regenerate from the inspector', async () => {
     await loadStore()
     const wrapper = mount(WorkspaceInspector, {
-      props: {
+      props: { canWrite: true,
         nodeData: nodeData({ node: makeNode({ id: 'nOld', question: 'Historical question' }) }),
       },
     })
@@ -268,7 +268,7 @@ describe('workspace inspector contextual surface', () => {
   it('never renders spec content inside the inspector', async () => {
     await loadStore()
     mockedListRouteSpecs.mockResolvedValue([])
-    const wrapper = mount(WorkspaceInspector, { props: { nodeData: null } })
+    const wrapper = mount(WorkspaceInspector, { props: { canWrite: true, nodeData: null } })
     await wrapper.vm.$nextTick()
     expect(wrapper.find('[data-test="spec-snapshot-panel"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="generate-spec"]').exists()).toBe(false)

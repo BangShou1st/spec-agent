@@ -1,12 +1,13 @@
+import { accessSession } from '@/features/access/accessSession'
 // 文件名:ConnectionsList.spec.ts
 // 用途:连接列表组件测试:验证行内真实名称与状态文案渲染、select 与 disable 事件的抛出。
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ConnectionsList from '@/features/connections/components/ConnectionsList.vue'
 
 const conns = [
-  { connectionId: 'c1', name: 'Personal MCP', kind: 'CUSTOM_MCP', status: 'CONNECTED', enabled: true, config: { serverUrl: 'https://a/mcp' }, hasCredential: true, maskedSuffix: '****abcd', createdAt: 'x', updatedAt: 'x' },
-  { connectionId: 'c2', name: 'Dev', kind: 'CUSTOM_MCP', status: 'CREATED', enabled: false, config: { serverUrl: 'https://b/mcp' }, hasCredential: false, maskedSuffix: null, createdAt: 'x', updatedAt: 'x' },
+  { ownerKind: 'ORG' as const, connectionId: 'c1', name: 'Personal MCP', kind: 'CUSTOM_MCP', status: 'CONNECTED', enabled: true, config: { serverUrl: 'https://a/mcp' }, hasCredential: true, maskedSuffix: '****abcd', createdAt: 'x', updatedAt: 'x' },
+  { ownerKind: 'ORG' as const, connectionId: 'c2', name: 'Dev', kind: 'CUSTOM_MCP', status: 'CREATED', enabled: false, config: { serverUrl: 'https://b/mcp' }, hasCredential: false, maskedSuffix: null, createdAt: 'x', updatedAt: 'x' },
 ]
 
 describe('ConnectionsList', () => {
@@ -26,3 +27,5 @@ describe('ConnectionsList', () => {
     expect(w.emitted('disable')).toEqual([['c1']])
   })
 })
+
+beforeEach(() => { accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'editor', orgId: 'org', displayName: 'Editor', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['CREDENTIAL_MANAGE'], memberships: [] } })

@@ -23,6 +23,7 @@ import { actionsFor, type NodeAction } from '@/features/workspace/graph/nodeActi
 import RichAssistantText from '@/shared/ui/RichAssistantText.vue'
 
 const props = defineProps<{
+  canWrite?: boolean
   data: SpecAgentGraphNodeData
   selected?: boolean
   submitting: boolean
@@ -61,6 +62,7 @@ const emit = defineEmits<{
  */
 
 const inputDraftStore = useInputDraftStore()
+const canAnswer = computed(() => !!props.canWrite && props.data.canAnswer)
 
 // 直接从完整的草稿身份读取。Vue Flow 可以原地更新路线上下文,而不必替换
 // 节点或重新挂载 textarea。只有输入事件写草稿:focus/渲染变化绝不把旧的
@@ -70,7 +72,7 @@ const draft = computed(() => inputDraftStore.getDraft(
   props.data.projectId, draftNodeId.value, props.data.readingRouteId,
 ))
 function updateDraft(changes: Partial<InputDraft>): void {
-  if (!props.data.canAnswer) return
+  if (!canAnswer.value) return
   inputDraftStore.setDraft(props.data.projectId, draftNodeId.value, {
     selectedOptionId: null,
     freeText: '',
@@ -109,7 +111,7 @@ function toggleOption(optionId: string, checked: boolean): void {
 const node = computed(() => props.data.node)
 const primary = computed(() => props.data.primaryAnswer)
 const isPendingCard = computed(() =>
-  !props.data.canAnswer
+  !canAnswer.value
   && props.data.node.id.startsWith('pending:')
   && props.data.runtimeStatus != null,
 )
@@ -132,7 +134,7 @@ const presentationState = computed(() => {
   if (props.data.runtimeStatus === 'FAILED') return { label: runtimeStatusCopy(props.data.runtimeStatus), className: 'badge-danger' }
   if (props.data.runtimeStatus === 'RUNNING') return { label: runtimeStatusCopy(props.data.runtimeStatus), className: 'badge-open' }
   if (isPendingCard.value || props.data.runtimeStatus === 'PENDING') return { label: '待处理', className: 'badge-warn' }
-  if (props.data.canAnswer) return { label: '就绪', className: 'badge-ready' }
+  if (canAnswer.value) return { label: '就绪', className: 'badge-ready' }
   if (props.data.primaryAnswer) return { label: '已确认', className: 'badge-confirmed' }
   return { label: '待处理', className: 'badge-neutral' }
 })
@@ -161,7 +163,7 @@ const unansweredReadingTipLabel = computed(() => {
 })
 
 const canSubmit = computed(() => {
-  if (!props.data.canAnswer || props.submitting) return false
+  if (!canAnswer.value || props.submitting) return false
   const optionChosen = props.data.node.options.length > 0 && selectedOptionIds.value.length > 0
   const textGiven = props.data.node.allowFreeAnswer && freeText.value.trim().length > 0
   return optionChosen || textGiven
@@ -191,10 +193,11 @@ function submit(): void {
  * 还能沿原路线向前走。显式传阅读路线 id，绝不回落 Active。
  */
 const railActions = computed(() =>
-  actionsFor(props.data, { runPending: props.pending }),
+  actionsFor(props.data, { runPending: props.pending }).filter(action => props.canWrite || action.id === 'contextual-ai'),
 )
 
 function onAction(action: NodeAction): void {
+  if (!props.canWrite && action.id !== 'contextual-ai') return
   switch (action.id) {
     case 'draft-next-question':
       if (props.data.readingRouteId) emit('draft-next', props.data.readingRouteId)
@@ -288,14 +291,14 @@ function setReadingRoute(event: Event): void {
 
 <template>
   <GraphNodeShell
-    :show-actions="!isPendingCard && !data.canAnswer"
+    :show-actions="!isPendingCard && !canAnswer"
     :class="[
       {
-        'graph-question-node--current': data.canAnswer,
-        'graph-question-node--historical': !data.canAnswer,
+        'graph-question-node--current': canAnswer,
+        'graph-question-node--historical': !canAnswer,
         'graph-question-node--shared': data.isShared,
         'graph-question-node--selected': selected === true,
-        'graph-question-node--detailed': !data.canAnswer && showFullHistory,
+        'graph-question-node--detailed': !canAnswer && showFullHistory,
       },
     ]"
     data-test="graph-question-node"
@@ -314,7 +317,7 @@ function setReadingRoute(event: Event): void {
            完整成员在阅读路线下拉框与 Inspector 路线归属中查看。
            当前可回答节点保持原有上下文 chip。 -->
       <span
-        v-if="!data.canAnswer && data.isShared && data.routeMembership?.length"
+        v-if="!canAnswer && data.isShared && data.routeMembership?.length"
         class="graph-question-node__routes graph-question-node__routes--compact"
         :title="data.routeMembership.map((membership) => membership.label).join(' · ')"
         data-test="shared-membership"
@@ -393,12 +396,12 @@ function setReadingRoute(event: Event): void {
           />
           <p v-if="data.runtimeMessage" class="graph-runtime-error">{{ data.runtimeMessage }}</p>
           <button
-            v-if="data.runtimeStatus === 'FAILED' && data.pendingFailure"
+            v-if="canWrite && data.runtimeStatus === 'FAILED' && data.pendingFailure"
             class="btn btn-primary graph-action nodrag"
             data-test="retry-pending"
             :disabled="isFailureRetrying(data.pendingFailure.runId)"
             :aria-label="data.pendingFailure.actionLabel"
-            @click.stop="emit('retry-failure', data.pendingFailure)"
+            @click.stop="canWrite && emit('retry-failure', data.pendingFailure)"
           >
             {{ isFailureRetrying(data.pendingFailure.runId) ? '重试中…' : data.pendingFailure.actionLabel }}
           </button>
@@ -420,7 +423,7 @@ function setReadingRoute(event: Event): void {
       <!-- 当前可作答节点:直接进行作答交互。
            !isPendingCard 守卫:pending 投影已在上方完整渲染,此模板链对
            pending 卡片必须整体短路,否则紧凑历史分支会再渲染一次问题标题。 -->
-      <template v-if="!isPendingCard && data.canAnswer">
+      <template v-if="!isPendingCard && canAnswer">
         <h3 class="graph-node-question" data-test="question">{{ node.question }}</h3>
         <p v-if="node.purpose" class="graph-node-purpose">{{ node.purpose }}</p>
 
@@ -507,11 +510,11 @@ function setReadingRoute(event: Event): void {
         >
           <span class="badge badge-warn">{{ unansweredReadingTipLabel }} · 等待回答</span>
           <button
-            v-if="data.readingRouteId"
+            v-if="canWrite && data.readingRouteId"
             class="btn btn-primary graph-wake-answer nodrag"
             type="button"
             data-test="answer-this-question"
-            @click.stop="emit('activate-route', data.readingRouteId)"
+            @click.stop="canWrite && emit('activate-route', data.readingRouteId)"
           >
             回答这个问题
           </button>
@@ -554,11 +557,11 @@ function setReadingRoute(event: Event): void {
         >
           <span class="badge badge-warn">{{ unansweredReadingTipLabel }} · 等待回答</span>
           <button
-            v-if="data.readingRouteId"
+            v-if="canWrite && data.readingRouteId"
             class="btn btn-primary graph-wake-answer nodrag"
             type="button"
             data-test="answer-this-question"
-            @click.stop="emit('activate-route', data.readingRouteId)"
+            @click.stop="canWrite && emit('activate-route', data.readingRouteId)"
           >
             回答这个问题
           </button>
@@ -579,10 +582,11 @@ function setReadingRoute(event: Event): void {
            问 AI 失败→重试该查询 / 配置错误→前往模型设置。32px 图标常驻。
            刻意放在 v-if/v-else-if 内容链之外,绝不破坏分支互斥。 -->
       <NodeRecoveryBar
+        :locate-only="!canWrite"
         v-if="!isPendingCard && recoveryItems.length > 0"
         :items="recoveryItems"
         :is-retrying="isFailureRetrying"
-        @retry="(failure) => emit('retry-failure', failure)"
+        @retry="(failure) => canWrite && emit('retry-failure', failure)"
         @go-settings="emit('go-settings')"
         @locate="(failure) => emit('locate-failure', failure)"
       />

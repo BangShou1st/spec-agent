@@ -81,3 +81,7 @@
 搜索：填 key → 保存 → 按需测试；旧环境配置用“导入并保存”。检索：填写实际向量服务 → 测试 → 保存候选 → 选择帮助语料并重建 → 完成后“启用新索引”。详见 [使用说明](LOCAL_DEPLOYMENT_SERVICE_CONFIGURATION_GUIDE.md)。
 
 **尚未完成的真实联调：远程云端 Embeddings API。** API 模式的实现、确定性测试、浏览器两种表单和本地兼容接口故障/重试/激活链路已经完成；没有远程真实凭据，因此没有验证某一云供应商的真实权限、网络、费用或模型版本行为。未将本地夹具成功等同于这项验收。真实服务可能在相同模型名下改变权重，应使用版本化 ID；本次也不宣称检索质量评测通过。
+
+## 后续修复：故障指引按生效配置区分（2026-10-02）
+
+全局助手的检索就绪提示不再假设所有部署使用 Ollama/qwen3-embedding:0.6b：Python health 上报生效 Embedding 的具体可用性（未配置/凭据缺失/连接失败/模型不存在/超时/已配置），Java 透传并携带非敏感 provider/model，前端按生效配置生成指引并可跳转 `/settings/retrieval`；候选配置不参与生效索引的故障判断。详见 GLOBAL_ASSISTANT_SINGLE_ENGINE_IMPLEMENTATION_STATUS.md 同日小节。

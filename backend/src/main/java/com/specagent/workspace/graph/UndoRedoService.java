@@ -42,6 +42,11 @@ import java.util.UUID;
  */
 @Service
 public class UndoRedoService {
+    private com.specagent.workspace.project.ProjectService projectAccess;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setProjectAccess(com.specagent.workspace.project.ProjectService projectAccess) {
+        this.projectAccess=projectAccess;
+    }
 
     private final GraphOperationRepository operationRepository;
     private final NodeService nodeService;
@@ -85,6 +90,7 @@ public class UndoRedoService {
      * 可逆操作,这里也返回 false。
      */
     public boolean canUndo(UUID projectId) {
+        projectAccess.getProjectForActor(projectId);
         return latestByStatus(projectId, GraphOperation.Status.ACTIVE)
                 .map(op -> op.reversible())
                 .orElse(false);
@@ -92,6 +98,7 @@ public class UndoRedoService {
 
     /** 最近一次被撤销的操作若仍可重放则返回 true。 */
     public boolean canRedo(UUID projectId) {
+        projectAccess.getProjectForActor(projectId);
         return latestUndoneForRedo(projectId)
                 .map(op -> redoNotCutOff(projectId, op))
                 .orElse(false);
@@ -104,6 +111,7 @@ public class UndoRedoService {
         // 撤销绝不会作用于同一操作,撤销也绝不会与一次新变更交错出
         // 半应用的栈。被撤回目标节点的专属锁稍后在补偿路径内、任何
         // 撤回决策之前再取。
+        projectAccess.authorizeWrite(projectId);
         projectRepository.lockById(projectId);
         GraphOperation operation = latestByStatus(projectId, GraphOperation.Status.ACTIVE)
                 .orElseThrow(() -> new IllegalStateException("没有可撤销的操作"));
@@ -121,6 +129,7 @@ public class UndoRedoService {
 
     @Transactional
     public UndoRedoResult redo(UUID projectId) {
+        projectAccess.authorizeWrite(projectId);
         projectRepository.lockById(projectId);
         // 重做针对最近被撤销的操作(undoneAt 最大):与常见编辑器一致,
         // 最后撤销的就是最先重做的。用 createdAt 排序在多次撤销下

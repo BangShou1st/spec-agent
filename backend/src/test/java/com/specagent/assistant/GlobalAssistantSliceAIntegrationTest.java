@@ -122,13 +122,26 @@ class GlobalAssistantSliceAIntegrationTest {
     @Test
     void applicationScopedIdempotencyReplaysWithoutSecondExecution() {
         String key = "ga-test-" + UUID.randomUUID();
+        Map<String,Object> arguments=Map.of("title", "GA Idempotency " + UUID.randomUUID());
         CapabilityResult first = capabilities.invokeApplicationScoped(
-                key, "project.create", null, Map.of("title", "GA Idempotency " + UUID.randomUUID()));
+                key, "project.create", null, arguments);
         CapabilityResult replay = capabilities.invokeApplicationScoped(
-                key, "project.create", null, Map.of("title", "GA Idempotency " + UUID.randomUUID()));
+                key, "project.create", null, arguments);
         assertThat(first.status()).isEqualTo(CapabilityResult.Status.SUCCEEDED);
         assertThat(replay.status()).isEqualTo(CapabilityResult.Status.REPLAYED);
         assertThat(replay.content().get("projectId")).isEqualTo(first.content().get("projectId"));
+    }
+    @Test
+    void applicationScopedChangedArgumentsRefuseWithoutCreatingAnotherProject() {
+        String key="ga-test-"+UUID.randomUUID();
+        String firstTitle="GA identity first "+UUID.randomUUID(),secondTitle="GA identity second "+UUID.randomUUID();
+        CapabilityResult first=capabilities.invokeApplicationScoped(key,"project.create",null,Map.of("title",firstTitle));
+        CapabilityResult changed=capabilities.invokeApplicationScoped(key,"project.create",null,Map.of("title",secondTitle));
+        assertThat(first.status()).isEqualTo(CapabilityResult.Status.SUCCEEDED);
+        assertThat(changed.status()).isEqualTo(CapabilityResult.Status.FAILED);
+        assertThat(changed.content()).containsEntry("reason","CAPABILITY_INVOCATION_IDENTITY_MISMATCH");
+        assertThat(changed.content()).doesNotContainKey("projectId");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM projects WHERE title=?",Integer.class,secondTitle)).isZero();
     }
     @Test
     void singleActiveRunIsEnforcedByDatabase() {

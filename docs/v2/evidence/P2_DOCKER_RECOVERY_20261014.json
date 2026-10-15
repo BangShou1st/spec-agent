@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-14",
+  "scope": "Docker Desktop and isolated P2 acceptance dependencies",
+  "dockerServer": "29.8.0",
+  "postgresContainer": "spec-agent-p2-auth",
+  "postgresReady": true,
+  "latestAppliedMigration": "91",
+  "keycloakContainer": "spec-agent-p2-keycloak",
+  "keycloakDiscoveryHttpStatus": 200,
+  "issuer": "http://127.0.0.1:8184/realms/spec-agent-p2",
+  "repairs": [
+    "Stopped Docker installation-owned processes; terminated only docker-desktop WSL distribution; restarted Desktop hidden",
+    "Preserved inaccessible runtime socket directories by moving them to dated backups under LocalAppData/Docker",
+    "Temporarily renamed four report JSON files during Keycloak import; restored all four after readiness"
+  ],
+  "limitations": [
+    "Keycloak currently mounts the whole acceptance directory as import; future restarts require isolating realm.json from report JSON files",
+    "No application tests or browser acceptance executed by this environment recovery"
+  ],
+  "productionDatabaseModified": false,
+  "containersOrVolumesDeleted": false
+}

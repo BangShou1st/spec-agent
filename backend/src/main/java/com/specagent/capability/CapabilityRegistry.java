@@ -127,6 +127,18 @@ public class CapabilityRegistry {
         return Optional.empty();
     }
 
+    public void requireAuthorizedRecordedResult(CapabilityInvocationRecord result) {
+        for(CapabilityProvider provider:providers) {
+            if(provider.canHandle(result.capabilityId()) && provider instanceof RecordedResultAuthorization guard)
+                guard.requireAuthorizedResult(result);
+        }
+    }
+
+    public boolean hasRecordedResultAuthorization(String capabilityId) {
+        return providers.stream().anyMatch(provider -> provider.canHandle(capabilityId)
+                && provider instanceof RecordedResultAuthorization);
+    }
+
     /**
      * 把 Provider 拥有的能力桥接到传统适配器契约上,使执行/分发代码保持单一通路。
      * 描述符在每次查找时惰性解析,从而正确响应可用性变化。

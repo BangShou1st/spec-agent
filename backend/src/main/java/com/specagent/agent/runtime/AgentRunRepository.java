@@ -23,14 +23,30 @@ import java.util.UUID;
  */
 @Repository
 public class AgentRunRepository {
+    private WorkspaceRunActorRepository actors;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setActors(WorkspaceRunActorRepository actors) {this.actors=actors;}
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final Json json;
     private final RowMapper<AgentRun> rowMapper;
+    /**
+     * 所有权粒度。单执行器模式:全局代次比较(历史协议)。任务级模式(多 Worker,
+     * design §6.3):提交互斥已由 {@code TaskWriteGuard} 对 runtime_tasks 行取
+     * 排他锁建立,守卫不再做跨表子查询。
+     */
+    private final com.specagent.runtime.execution.ExecutionOwnershipMode ownershipMode;
 
     public AgentRunRepository(NamedParameterJdbcTemplate jdbcTemplate, Json json) {
+        this(jdbcTemplate, json, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AgentRunRepository(NamedParameterJdbcTemplate jdbcTemplate, Json json,
+                              com.specagent.runtime.execution.ExecutionOwnershipMode ownershipMode) {
         this.jdbcTemplate = jdbcTemplate;
         this.json = json;
+        this.ownershipMode = ownershipMode;
         this.rowMapper = (rs, rowNum) -> new AgentRun(
                 rs.getObject("id", UUID.class),
                 rs.getObject("project_id", UUID.class),
@@ -55,7 +71,7 @@ public class AgentRunRepository {
     }
 
     /**
-     * 所有权代次 > 0(执行器持有租约)时,run 状态写入必须在同一条 UPDATE
+     * 所有权代次 > 0(执行器持有所有权)时,run 状态写入必须在同一条 UPDATE
      * 内同时满足三个条件(第三轮复核 R3-A 的闭合):
      * <ol>
      *   <li>全局所有权代次仍等于本执行器的代次——接管一旦提交,旧执行器
@@ -63,16 +79,31 @@ public class AgentRunRepository {
      *   <li>run 行的认领代次不晚于本执行器代次;</li>
      *   <li>run 尚未终态——终态不可被任何执行器覆盖。</li>
      * </ol>
-     * 代次为 0(无租约进程)不追加条件:没有执行器之争,保持历史行为。
+     * 代次为 0(无所有权进程)不追加条件:没有执行器之争,保持历史行为。
      * 检查与写入在同一语句内完成,不存在"检查通过后暂停仍能写入"的窗口。
+     *
+     * <p><b>任务级所有权模式(多 Worker,design §6.3)。</b>全局代次不再是事实
+     * 来源:权威是 {@code runtime_tasks} 的行锁与执行 token。提交互斥由
+     * {@code TaskWriteGuard} 在同一事务的第一条语句处对任务行取排他锁完成
+     * (接管锁同一行),因此跨表子查询既不必要也会失效(任务执行代次与全局
+     * 代次无关)。守卫只保留"Run 未终态 + 认领代次不晚于本次执行代次"。
      */
     private static final String FENCED_STATUS_GUARD =
             " AND status NOT IN ('completed', 'failed')"
                     + " AND owner_epoch <= :ownerEpoch"
                     + " AND (SELECT epoch FROM executor_ownership WHERE id = 1) = :ownerEpoch";
 
-    private static String fencedStatusGuard(long ownerEpoch) {
-        return ownerEpoch > 0 ? FENCED_STATUS_GUARD : "";
+    /** 任务级所有权模式的守卫:互斥已由 runtime_tasks 行锁建立。 */
+    private static final String TASK_LEVEL_STATUS_GUARD =
+            " AND status NOT IN ('completed', 'failed')"
+                    + " AND owner_epoch <= :ownerEpoch";
+
+    private String fencedStatusGuard(long ownerEpoch) {
+        if (ownerEpoch <= 0) {
+            return "";
+        }
+        return ownershipMode != null && ownershipMode.taskLevel()
+                ? TASK_LEVEL_STATUS_GUARD : FENCED_STATUS_GUARD;
     }
 
     /** 认领写入的 SET 子句:把认领代次落到 run 行,供后续写入验证。 */
@@ -80,14 +111,21 @@ public class AgentRunRepository {
         return ownerEpoch > 0 ? ", owner_epoch = :ownerEpoch" : "";
     }
 
-    /** 认领语句的 WHERE 附加条件:丢锁执行器的认领必须落空(不能认领新任务)。 */
-    private static String fencedClaimGuard(long ownerEpoch) {
-        return ownerEpoch > 0
-                ? " AND (SELECT epoch FROM executor_ownership WHERE id = 1) = :ownerEpoch "
-                : " ";
+    /** 认领语句的 WHERE 附加条件:丢失所有权的执行器认领必须落空。 */
+    private String fencedClaimGuard(long ownerEpoch) {
+        if (ownerEpoch <= 0) {
+            return " ";
+        }
+        // 任务级模式下认领由 runtime_tasks 的候选扫描与容量/范围锁串行化,
+        // 这里不再比较与任务代次无关的全局代次。
+        return ownershipMode != null && ownershipMode.taskLevel()
+                ? " "
+                : " AND (SELECT epoch FROM executor_ownership WHERE id = 1) = :ownerEpoch ";
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public void save(AgentRun run) {
+        var actor=actors.authorizeCreation(run.projectId());
         String sql = """
                 INSERT INTO agent_runs (id, project_id, route_id, trigger_type, input_node_id,
                                         context_snapshot_id, produced_node_id, produced_answer_id,
@@ -121,6 +159,7 @@ public class AgentRunRepository {
                 "parentRunId", run.parentRunId(),
                 "rootRunId", run.rootRunId(),
                 "cycleIndex", run.cycleIndex()));
+        actors.capture(run.id(),actor);
     }
 
     /**
@@ -128,7 +167,9 @@ public class AgentRunRepository {
      * 否则不写任何数据并返回 false。由组合部分唯一索引裁决并发创建者——
      * 任何一方都不会看到约束冲突,且每个 project/key 只会落库一行。
      */
+    @org.springframework.transaction.annotation.Transactional
     public boolean insertIfAbsent(AgentRun run) {
+        var actor=actors.authorizeCreation(run.projectId());
         String sql = """
                 INSERT INTO agent_runs (id, project_id, route_id, trigger_type, input_node_id,
                                         context_snapshot_id, produced_node_id, produced_answer_id,
@@ -143,7 +184,7 @@ public class AgentRunRepository {
                 ON CONFLICT (project_id, idempotency_key)
                     WHERE idempotency_key IS NOT NULL DO NOTHING
                 """;
-        return jdbcTemplate.update(sql, Maps.of(
+        boolean inserted=jdbcTemplate.update(sql, Maps.of(
                 "id", run.id(),
                 "projectId", run.projectId(),
                 "routeId", run.routeId(),
@@ -164,6 +205,8 @@ public class AgentRunRepository {
                 "parentRunId", run.parentRunId(),
                 "rootRunId", run.rootRunId(),
                 "cycleIndex", run.cycleIndex())) == 1;
+        if(inserted) actors.capture(run.id(),actor);
+        return inserted;
     }
 
     /** 加载同一项目内幂等创建竞争中的"胜出"run(即实际落库的那条)。 */
@@ -261,15 +304,17 @@ public class AgentRunRepository {
      * 执行归属在受理事务中;原始 run 只是补记产出的持久化效果引用,
      * 供续跑协调器判断。状态与 trace 保持终态化时的原样。
      */
-    public void attachApprovalProducedNode(UUID runId, UUID producedNodeId) {
+    public void attachApprovalProducedNode(UUID runId, UUID projectId, UUID producedNodeId) {
         String sql = """
                 UPDATE agent_runs
                 SET produced_node_id = :producedNodeId
-                WHERE id = :runId
+                WHERE id = :runId AND project_id = :projectId AND status IN ('completed','failed')
                 """;
-        jdbcTemplate.update(sql, Maps.of(
+        int changed = jdbcTemplate.update(sql, Maps.of(
                 "runId", runId,
+                "projectId", projectId,
                 "producedNodeId", producedNodeId));
+        if (changed != 1) throw new ProposalExecutionConflictException();
     }
 
     /**
@@ -374,6 +419,12 @@ public class AgentRunRepository {
     public Optional<AgentRun> findById(UUID id) {
         String sql = "SELECT * FROM agent_runs WHERE id = :id";
         return jdbcTemplate.query(sql, Maps.of("id", id), rowMapper).stream().findFirst();
+    }
+
+    /** 接受提案的来源锁，必须先于项目/图业务行锁。 */
+    public Optional<AgentRun> findByIdForUpdate(UUID id) {
+        return jdbcTemplate.query("SELECT * FROM agent_runs WHERE id=:id FOR UPDATE",
+                Maps.of("id", id), rowMapper).stream().findFirst();
     }
 
     public List<AgentRun> findByProject(UUID projectId) {

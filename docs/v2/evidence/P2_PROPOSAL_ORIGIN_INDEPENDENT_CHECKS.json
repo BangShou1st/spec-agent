@@ -1,0 +1,21 @@
+{
+  "date": "2026-10-14",
+  "command": "backend/gradlew.bat testNonLive --tests com.specagent.agent.runtime.ProposalOriginGuardTest --tests com.specagent.agent.policy.AgentProposalVisibilityTest --tests com.specagent.connection.credentials.* --tests com.specagent.connection.McpCredentialResolverAdapterTest --tests com.specagent.mcp.* --tests com.specagent.architecture.* --tests com.specagent.access.SecurityProtocolAdmissionTest",
+  "counts": {
+    "tests": 118,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": 14
+  },
+  "scope": "Origin task/Run terminal and project checks, proposal visibility error parity, restricted approval writer architecture gate; previous MCP/crypto tests included",
+  "databaseAcceptance": "not run; no Docker/WSL restart per user instruction",
+  "pendingIntegrationCases": [
+    "Nonterminal origin cannot mutate graph/proposal or request continuation",
+    "Cross-project origin cannot receive approval effects",
+    "Full existing proposal/continuation regression"
+  ],
+  "g7Closed": false,
+  "remainingG7": "Project execution scope coordination with other Runs in both scheduler modes and real concurrent database verification",
+  "stageCompleted": false
+}

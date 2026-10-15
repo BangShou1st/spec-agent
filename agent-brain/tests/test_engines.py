@@ -170,7 +170,7 @@ def test_broker_client_sends_internal_token_and_no_api_key():
 
     client = BrokerModelClient(
         "http://broker.invalid/internal/v1/model-inference", "shared-secret",
-        http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)), execution_grant="x" * 43)
     completion = client.complete(
         RUN_ID, "DECISION",
         [ChatMessage(role="system", content="s"), ChatMessage(role="user", content="u")])
@@ -190,7 +190,7 @@ def test_broker_client_error_status_raises_typed_error_without_retry():
 
     client = BrokerModelClient(
         "http://broker.invalid/internal/v1/model-inference", "shared-secret",
-        http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)), execution_grant="x" * 43)
     with pytest.raises(ModelClientError):
         client.complete(RUN_ID, "STATE_UPDATE", [ChatMessage(role="user", content="u")])
     assert calls["count"] == 1  # 没有隐藏的重试

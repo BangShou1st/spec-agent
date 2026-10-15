@@ -24,6 +24,11 @@ import java.util.UUID;
  */
 @Repository
 public class ProjectRepository implements ProjectActiveRoutePort, ProjectRowLockPort {
+    private com.specagent.access.IdentityModeProperties identityMode;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setIdentityMode(com.specagent.access.IdentityModeProperties identityMode) {
+        this.identityMode=identityMode;
+    }
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final RowMapper<Project> rowMapper;
@@ -40,17 +45,9 @@ public class ProjectRepository implements ProjectActiveRoutePort, ProjectRowLock
     }
 
     public void save(Project project) {
-        String sql = """
-                INSERT INTO projects (id, title, active_route_id, default_profile_id, created_at, updated_at)
-                VALUES (:id, :title, :activeRouteId, :defaultProfileId, :createdAt, :updatedAt)
-                """;
-        jdbcTemplate.update(sql, Maps.of(
-                "id", project.id(),
-                "title", project.title(),
-                "activeRouteId", project.activeRouteId(),
-                "defaultProfileId", project.defaultProfileId(),
-                "createdAt", Timestamp.from(project.createdAt()),
-                "updatedAt", Timestamp.from(project.updatedAt())));
+        if (identityMode==null) throw new IllegalStateException("Project attribution configuration is required");
+        var actor=com.specagent.access.OwnershipAttribution.currentOrDefault(identityMode.accessMode());
+        save(project,actor.orgId(),actor.userId());
     }
 
     public void updateActiveRoute(UUID projectId, UUID activeRouteId, Instant updatedAt) {
@@ -74,6 +71,149 @@ public class ProjectRepository implements ProjectActiveRoutePort, ProjectRowLock
                 "projectId", projectId,
                 "title", title,
                 "updatedAt", Timestamp.from(updatedAt)));
+    }
+
+    /**
+     * 带组织归属的项目插入(第二阶段 §4.2)。
+     *
+     * {@code org_id} / {@code created_by} 是授权归属的事实来源:读路径按
+     * {@code org_id} 过滤,因此创建时<b>必须</b>落上归属,否则新项目对
+     * 任何人都不可见(失败关闭方向,但会造成创建即消失)。
+     */
+    public void save(Project project, UUID orgId, UUID createdBy) {
+        String sql = """
+                INSERT INTO projects (id, title, active_route_id, default_profile_id,
+                                      org_id, created_by, created_at, updated_at)
+                VALUES (:id, :title, :activeRouteId, :defaultProfileId,
+                        :orgId, :createdBy, :createdAt, :updatedAt)
+                """;
+        jdbcTemplate.update(sql, Maps.of(
+                "id", project.id(),
+                "title", project.title(),
+                "activeRouteId", project.activeRouteId(),
+                "defaultProfileId", project.defaultProfileId(),
+                "orgId", orgId,
+                "createdBy", createdBy,
+                "createdAt", Timestamp.from(project.createdAt()),
+                "updatedAt", Timestamp.from(project.updatedAt())));
+    }
+
+    /**
+     * 项目创建者自动成为该项目 MANAGER。
+     *
+     * 这是"新项目至少有一个可治理者"的最小事实:设计不允许组织管理员凭
+     * 管理角色暗中读取项目正文,因此必须由创建行为本身产生项目角色,否则
+     * 新建项目在 OIDC 模式下会没有任何人能读取。
+     */
+    public void grantProjectManager(UUID projectId, UUID userId, UUID orgId) {
+        jdbcTemplate.update("""
+                INSERT INTO project_members (project_id, user_id, org_id, role)
+                VALUES (:projectId, :userId, :orgId, 'MANAGER')
+                ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'MANAGER'
+                """, Maps.of("projectId", projectId, "userId", userId, "orgId", orgId));
+    }
+
+    /** 项目的所属组织;不存在或归属未定时为 empty。 */
+    public Optional<UUID> findOrgId(UUID projectId) {
+        String sql = "SELECT org_id FROM projects WHERE id = :id";
+        return jdbcTemplate.query(sql, Maps.of("id", projectId),
+                (rs, rowNum) -> rs.getObject("org_id", UUID.class)).stream().findFirst();
+    }
+
+    /**
+     * 列出组织内的全部项目。这是唯一的"列表"入口形式:项目列表必须按
+     * 组织过滤,否则任一用户可枚举其他组织的项目标题(P2-A 清单 G1)。
+     */
+    public List<Project> findAllInOrg(UUID orgId) {
+        String sql = "SELECT * FROM projects WHERE org_id = :orgId ORDER BY created_at, id";
+        return jdbcTemplate.query(sql, Maps.of("orgId", orgId), rowMapper);
+    }
+
+    public List<Project> findByTitleContainingInOrg(UUID orgId, String rawTitle) {
+        String escaped = rawTitle
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
+        String pattern = "%" + escaped + "%";
+        String sql = "SELECT * FROM projects WHERE org_id = :orgId AND title ILIKE :pattern "
+                + "ESCAPE '\\' ORDER BY created_at, id";
+        return jdbcTemplate.query(sql, Maps.of("orgId", orgId, "pattern", pattern), rowMapper);
+    }
+
+    /** 标题唯一性必须在组织范围内判定:不同组织可以同名(设计 §4.2)。 */
+    public boolean existsVisibleTitle(UUID orgId,UUID userId,boolean unrestricted,String title,UUID exclude) {
+        return Boolean.TRUE.equals(jdbcTemplate.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM projects p WHERE p.org_id=:org
+                    AND LOWER(p.title)=LOWER(:title) AND (CAST(:exclude AS uuid) IS NULL OR p.id<>:exclude)
+                    AND (:unrestricted OR EXISTS(SELECT 1 FROM project_members m
+                        WHERE m.project_id=p.id AND m.user_id=:user)))
+                """,Maps.of("org",orgId,"user",userId,"unrestricted",unrestricted,"title",title,"exclude",exclude),Boolean.class));
+    }
+
+    public boolean existsByTitleIgnoreCaseInOrg(UUID orgId, String title) {
+        String sql = "SELECT COUNT(*) FROM projects WHERE org_id = :orgId AND lower(title) = lower(:title)";
+        Integer count = jdbcTemplate.queryForObject(sql, Maps.of("orgId", orgId, "title", title), Integer.class);
+        return count != null && count > 0;
+    }
+
+    public boolean existsByTitleIgnoreCaseInOrg(UUID orgId, String title, UUID excludeProjectId) {
+        String sql = "SELECT COUNT(*) FROM projects WHERE org_id = :orgId "
+                + "AND lower(title) = lower(:title) AND id <> :excludeId";
+        Integer count = jdbcTemplate.queryForObject(sql,
+                Maps.of("orgId", orgId, "title", title, "excludeId", excludeProjectId), Integer.class);
+        return count != null && count > 0;
+    }
+
+    /**
+     * 主体在组织内<b>可见</b>的项目(列表与搜索的候选来源)。
+     *
+     * 必须同时按两个维度过滤,缺一不可:
+     * <ul>
+     *   <li>组织 —— 跨组织不可见;</li>
+     *   <li>项目访问权限 —— 同组织但<b>没有项目角色</b>的用户也不能看到
+     *       标题、数量与预览。"同组织即可见"会让组织成为一条隐式的项目
+     *       读取授权。</li>
+     * </ul>
+     *
+     * {@code unrestrictedInOrg} 只对受限本地身份适配器产生的 LOCAL 主体
+     * 为真(单机交付语义),不由组织 id 推导,因此 OIDC 用户拿不到。
+     *
+     * 过滤发生在 SQL 内而不是取回后筛:数量与排序本身就是信息。
+     */
+    public List<Project> findVisibleInOrg(UUID orgId, UUID userId, boolean unrestrictedInOrg) {
+        if (unrestrictedInOrg) {
+            return findAllInOrg(orgId);
+        }
+        String sql = """
+                SELECT p.* FROM projects p
+                WHERE p.org_id = :orgId
+                  AND EXISTS (SELECT 1 FROM project_members m
+                              WHERE m.project_id = p.id AND m.user_id = :userId)
+                ORDER BY p.created_at, p.id
+                """;
+        return jdbcTemplate.query(sql, Maps.of("orgId", orgId, "userId", userId), rowMapper);
+    }
+
+    public List<Project> findVisibleByTitleContaining(UUID orgId, UUID userId,
+                                                      boolean unrestrictedInOrg, String rawTitle) {
+        if (unrestrictedInOrg) {
+            return findByTitleContainingInOrg(orgId, rawTitle);
+        }
+        String escaped = rawTitle
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
+        String pattern = "%" + escaped + "%";
+        String sql = """
+                SELECT p.* FROM projects p
+                WHERE p.org_id = :orgId
+                  AND EXISTS (SELECT 1 FROM project_members m
+                              WHERE m.project_id = p.id AND m.user_id = :userId)
+                  AND p.title ILIKE :pattern ESCAPE '\\'
+                ORDER BY p.created_at, p.id
+                """;
+        return jdbcTemplate.query(sql,
+                Maps.of("orgId", orgId, "userId", userId, "pattern", pattern), rowMapper);
     }
 
     public Optional<Project> findById(UUID id) {

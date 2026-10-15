@@ -173,16 +173,38 @@ class LoopbackBindingGuardStartupTest {
                 .hasStackTraceContaining("no bind address");
     }
 
-    /** 显式知情部署开关对实际绑定校验同样生效(知情的通配部署被放行)。 */
+    /**
+     * 显式知情部署开关对实际绑定校验同样生效(知情的通配部署被放行)。
+     *
+     * 第二阶段起必须同时处于 OIDC 模式:一个布尔开关不能替代登录,
+     * LOCAL 模式按设计仅限回环,因此这里显式声明自带认证层。
+     */
     @Test
     void explicitRiskSwitchCoversActualBindVerification() {
         var context = app(DeclaredNonLoopbackApp.class).run(
-                "--spec.agent.security.allow-non-loopback=true");
+                "--spec.agent.security.allow-non-loopback=true",
+                "--spec.agent.security.mode=OIDC");
         try {
             assertThat(((ServletWebServerApplicationContext) context)
                     .getWebServer().getPort()).isPositive();
         } finally {
             context.close();
         }
+    }
+
+    /**
+     * LOCAL 模式 + 知情开关仍必须拒绝非回环绑定。
+     *
+     * 这是第二阶段对"回环绑定事实上承担了访问控制"这一隐患的闭合:
+     * 改绑网络地址会同时移除网络隔离与那股隐式授权,而 LOCAL 模式没有
+     * 自己的登录边界,所以拒绝发生在监听之前。
+     */
+    @Test
+    void localModeRefusesNonLoopbackEvenWhenDeclaredInformed() {
+        assertThatThrownBy(() -> app(DeclaredNonLoopbackApp.class).run(
+                        "--spec.agent.security.allow-non-loopback=true",
+                        "--spec.agent.security.mode=LOCAL"))
+                .hasStackTraceContaining("loopback-only")
+                .hasStackTraceContaining("OIDC");
     }
 }

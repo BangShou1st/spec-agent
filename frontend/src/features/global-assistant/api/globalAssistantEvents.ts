@@ -5,6 +5,7 @@
 
 import { isGaTerminalEventType, type GaEventEnvelope } from './globalAssistant'
 import { API_BASE_URL } from '@/shared/http/client'
+import { identityHeaders } from '@/shared/http/requestIdentity'
 
 export interface GaStreamHandlers {
   onEvent: (event: GaEventEnvelope) => void
@@ -84,7 +85,8 @@ export function openGaEventStream(
     try {
       response = await fetch(API_BASE_URL + '/global-assistant/runs/' + runId + '/events', {
         method: 'GET',
-        headers: { Accept: 'text/event-stream', 'Last-Event-ID': String(Math.max(0, fromSequence)) },
+        headers: { ...identityHeaders(), Accept: 'text/event-stream', 'Last-Event-ID': String(Math.max(0, fromSequence)) },
+        credentials: 'same-origin',
         signal: controller.signal,
       })
     } catch (err) {

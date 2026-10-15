@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-14",
+  "scenario": "In-flight authorization revocation (project-scoped) on an isolated acceptance database",
+  "environment": {
+    "database": "isolated spec_agent_p2_workers_20261014a",
+    "jar": "backend/build/p2-acceptance/runtime-heartbeatfix-wid-protocol13.jar",
+    "jarSha256": "6DE299B06BF7BFA7D793059450B38B474C1872DE7E5C01975699F6C1A8B940F4",
+    "frontEnd": "8282 -> A 8383", "workers": {"A": "eea6300e", "B": "bd0dc231"},
+    "deterministicDelay": "[[delay-decision-ms:30000]] armed by an ANSWER_TIP free text (engine=fake only)"
+  },
+  "productPathUsed": {
+    "revocationTrigger": "DELETE /api/v1/projects/{projectId}/members/{userId} (ProjectMemberManagementService.remove) -> AuthorizationRevocationOutbox.append(user,org)",
+    "convergence": "RuntimeAuthorizationRevoker.poll (1s) -> scheduler.cancelIf -> lifecycle terminalization -> outbox.complete",
+    "note": "the UI/API revocation path was used, not a raw DB write; the removal happened ~5.1s after the answer run started, while it was still in flight (phase DECIDING)"
+  },
+  "observed": {
+    "runtimeTask": {"state": "CANCELLED", "lastErrorCode": null, "attemptCount": 1,
+      "attemptOutcome": "CANCELLED", "failureReason": "cancelled by the control plane"},
+    "businessRun": {"id": "fcb6ac6b-1411-480b-8669-a0d3ff9043b4", "operation": "ANSWER_TIP",
+      "status": "failed", "completedAt": "2026-10-14 23:43:00.065906"},
+    "outboxPendingAfter": 0,
+    "outboxRowsAllProcessed": true
+  },
+  "defectFound": {
+    "id": "LATE_WRITE_AFTER_TERMINAL",
+    "summary": "After the run was terminalized as FAILED (event RUN_FAILED, reason TASK_CANCELLED, at 23:43:00.071), the same cancelled run continued and appended non-terminal events ~25.6s later: PROPOSAL_CREATED, PROCESS_NOTE, EXECUTING, PROCESS_NOTE at 23:43:25.70. The task lease was already revoked and the run already terminal.",
+    "whyItHappened": "The deterministic delay is a plain Thread.sleep that does not observe task cancellation; when it returned, the in-flight answer cycle persisted a REQUEST_USER_INPUT proposal and appended events to an already-terminal run. The equivalent production shape is a long model call returning after cancellation.",
+    "whyItMatters": "This is exactly the late-result-rejection requirement: a terminal run must not accept late non-terminal writes. The persisted event stream diverges from the SSE contract (a client closes on the terminal event and never sees events 8-11); sequence stays contiguous but ordering/closure semantics are violated.",
+    "notFixed": true,
+    "needsAudit": "Whether the business-cycle event append path is covered by TaskWriteGuard.lockOwnedTask / ExecutionFence for cancelled (not just taken-over) tasks."
+  },
+  "otherFinding": {
+    "id": "LAST_ACTIVE_OWNER_CANNOT_LEAVE",
+    "summary": "DELETE /organizations/{org}/members/{alice} returns a product error: 'The last active OWNER cannot leave the organization'.",
+    "implication": "Organization-level self-revocation is unreachable for a single-member org; a real in-flight org-scoped revocation acceptance would need a second OWNER/member (and a second identity session). This is a correct fail-closed invariant, not a defect."
+  },
+  "limitations": [
+    "The 30s delay is a test-only deterministic fixture; production timing differs",
+    "SSE terminal event was not observed live in this scenario (revocation ends the session and the delay path is the target)",
+    "The project f5cd6745-af30-43c3-a6b3-420d96071961 and the earlier 42563250-... were left revoked in the isolated acceptance DB as test artifacts",
+    "No DB-outage, slow-client or kill-process takeover acceptance in this scenario",
+    "Full P2 remains incomplete"
+  ],
+  "stageCompleted": false
+}

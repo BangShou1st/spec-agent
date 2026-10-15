@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-14",
+  "implemented": [
+    "Actor/org/organization-capabilities/resource and live permission scope for member requests",
+    "Ignore stale list/write/error/finalizer after identity, resource or permission change or unmount",
+    "Project membership GET and mutation UI require confirmed PROJECT_MANAGE",
+    "Project URL follows projectId prop rather than initial capture",
+    "Organization OWNER assignment/change/remove checks ORG_OWNER in handlers",
+    "Organization removal uses scoped UiConfirmDialog; pending confirmation and drafts clear on revocation",
+    "Temporary project permission recheck hides controls but retains draft; old writes cannot resume after recheck"
+  ],
+  "validation": {
+    "typecheck": "passed",
+    "newTests": 9,
+    "focusedWithProjectAccess": 17,
+    "fullFrontend": {
+      "passed": 941,
+      "skipped": 1,
+      "filesPassed": 116,
+      "filesSkipped": 1
+    },
+    "mechanicalUiDetector": []
+  },
+  "browser": {
+    "session": "vfzi",
+    "tool": "browser-skill bsk",
+    "organizationOwnerReadAndCancelConfirmation": "passed",
+    "projectRevocation": {
+      "session": "vfzi",
+      "tool": "browser-skill bsk",
+      "database": "isolated spec_agent_p2_oidc_v91",
+      "initialRole": "MANAGER",
+      "roleChangeThroughUi": true,
+      "limitation": "Role recovery uses exact isolated DB row restore, not a product regrant flow",
+      "roleDuringRevocation": "VIEWER",
+      "revokedObservation": "@vom 1\n@view 1508x810\n@layers 1 focus=L1\nL1 page\n  RootWebArea \"Spec Agent\"\n    banner \"Spec Agent 组织 alice Acceptance\"\n      StaticText \"Spec Agent\"\n      navigation \"全局导航\"\n        @e1 link \"项目\"\n        @e2 link \"设置\"\n      LabelText \"组织\"\n        StaticText \"组织\"\n        @e3 combobox \"当前组织 [has-submenu]\" =\"1c9daeb6-dd85-4944-9802-fe49e51d44f1\"\n      group \"alice Acceptance\"\n        DisclosureTriangle \"alice Acceptance\"\n          StaticText \"alice Acceptance\"\n      @e4 button \"退出\"\n      @e5 button \"打开或关闭全局助手\"\n    main \"项目成员 查看者可以阅读；编辑者可以修改画布；管理者还可以管理项目与成员。 你没有项目成员管理权限。\"\n      @e6 link \"返回项目\"\n      heading \"项目成员\"\n        StaticText \"项目成员\"\n      paragraph \"查看者可以阅读；编辑者可以修改画布；管理者还可以管理项目与成员。\"\n        StaticText \"查看者可以阅读；编辑者可以修改画布；管理者还可以管理项目与成员。\"\n      paragraph \"你没有项目成员管理权限。\"\n        StaticText \"你没有项目成员管理权限。\"",
+      "projectFormAbsent": true,
+      "privateMemberListAbsent": true,
+      "screenshot": "E:/project/spec-agent/backend/build/p2-acceptance/project-members-revoked.png",
+      "restoredRole": "MANAGER"
+    },
+    "recoveryVerified": {
+      "databaseRole": "MANAGER",
+      "browserRole": "MANAGER",
+      "membersAndAddFormReturned": true
+    },
+    "sessionPreserved": true
+  },
+  "limitations": [
+    "Only local isolated OIDC clone with current protocol13 package; no enterprise deployment",
+    "Original CLI capture hit Windows GBK decode error; switched to explicit UTF-8 capture and rechecked confirmed VIEWER before final exact-row MANAGER restore",
+    "Restoration uses isolated DB recovery, not product regrant; no production data changed",
+    "Does not prove organization membership live revocation, two-Worker, SSE or queued-task convergence",
+    "Server authorization remains authoritative; full P2 incomplete"
+  ]
+}

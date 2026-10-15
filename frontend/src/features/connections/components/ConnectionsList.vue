@@ -4,12 +4,13 @@
        "..." 菜单提供启用/禁用/删除(删除需二次确认);busyId 用于禁用正在操作的行按钮。
 -->
 <script setup lang="ts">
-import { ref } from 'vue'
+import { canManageConnection } from '../connectionPermissions'
+import { ref, watch } from 'vue'
 import { connectionStatusText as connectionStatusCopy } from '@/shared/lib/statusCopy'
 import { connectionKindLabel } from '@/shared/lib/managementCopy'
 import type { ConnectionSummary } from '@/features/connections/api/connectionTypes'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   connections: ConnectionSummary[]
   loading: boolean
   busyId?: string | null
@@ -23,6 +24,7 @@ const emit = defineEmits<{
 }>()
 
 const confirmingId = ref<string | null>(null)
+watch(() => confirmingId.value && canManageConnection(props.connections.find(c => c.connectionId === confirmingId.value)), allowed => { if (!allowed) confirmingId.value = null }, { flush: 'sync' })
 
 function endpointOf(c: ConnectionSummary): string {
   const u = c.config?.serverUrl
@@ -51,15 +53,15 @@ function statusClass(c: ConnectionSummary): string {
         </button>
         <span class="st" :class="statusClass(c)" :data-test="`connection-status-${c.connectionId}`">
           <span class="st__dot" aria-hidden="true"></span>{{ statusText(c) }}</span>
-        <details class="conns-more" :data-test="`connection-more-${c.connectionId}`">
+        <details v-if="canManageConnection(c)" class="conns-more" :data-test="`connection-more-${c.connectionId}`">
           <summary aria-label="More actions">...</summary>
           <div class="conns-more__actions">
-            <button v-if="!c.enabled" type="button" class="btn" :disabled="busyId === c.connectionId" :data-test="`connection-enable-${c.connectionId}`" @click="emit('enable', c.connectionId)">启用</button>
-            <button v-else type="button" class="btn" :disabled="busyId === c.connectionId" :data-test="`connection-disable-${c.connectionId}`" @click="emit('disable', c.connectionId)">禁用</button>
+            <button v-if="!c.enabled" type="button" class="btn" :disabled="busyId === c.connectionId" :data-test="`connection-enable-${c.connectionId}`" @click="canManageConnection(c) && emit('enable', c.connectionId)">启用</button>
+            <button v-else type="button" class="btn" :disabled="busyId === c.connectionId" :data-test="`connection-disable-${c.connectionId}`" @click="canManageConnection(c) && emit('disable', c.connectionId)">禁用</button>
             <button v-if="confirmingId !== c.connectionId" type="button" class="btn" :disabled="busyId === c.connectionId" :data-test="`connection-delete-${c.connectionId}`" @click="confirmingId = c.connectionId">删除</button>
             <span v-else class="conns-confirm">
               <span>删除该连接及其发现缓存？</span>
-              <button type="button" class="btn btn-danger" :disabled="busyId === c.connectionId" :data-test="`connection-delete-confirm-${c.connectionId}`" @click="emit('remove', c.connectionId); confirmingId = null">确认删除</button>
+              <button type="button" class="btn btn-danger" :disabled="busyId === c.connectionId" :data-test="`connection-delete-confirm-${c.connectionId}`" @click="canManageConnection(c) && emit('remove', c.connectionId); confirmingId = null">确认删除</button>
               <button type="button" class="btn" :data-test="`connection-delete-cancel-${c.connectionId}`" @click="confirmingId = null">取消</button>
             </span>
           </div>

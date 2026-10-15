@@ -1,6 +1,7 @@
+import { accessSession } from '@/features/access/accessSession'
 // 文件名:SkillsList.spec.ts
 // 用途:Skills 列表组件测试:验证行内名称/描述/来源渲染与启用开关、删除事件。
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SkillsList from '@/features/skills/components/SkillsList.vue'
 
@@ -10,6 +11,15 @@ const skills = [
 ]
 
 describe('SkillsList', () => {
+  it('keeps navigation and state readable but denies lifecycle changes to a member', async () => {
+    accessSession.identity!.orgCapabilities = []
+    const w = mount(SkillsList, { props: { skills, loading: false } })
+    await w.get('[data-test="skill-select-s1"]').trigger('click')
+    expect(w.emitted('select')?.[0]).toEqual(['s1'])
+    expect(w.get('[data-test="skill-disable-s1"]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-test="skill-delete-s1"]').exists()).toBe(false)
+    expect(w.emitted('disable')).toBeUndefined()
+  })
   it('renders rows with a switch and a text status', () => {
     const w = mount(SkillsList, { props: { skills, loading: false } })
     expect(w.get('[data-test="skill-row-s1"]'))
@@ -43,3 +53,5 @@ describe('SkillsList', () => {
     expect(w.emitted('remove')).toEqual([['s1']])
   })
 })
+
+beforeEach(() => { accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'editor', orgId: 'org', displayName: 'Editor', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['ORG_MANAGE'], memberships: [] } })

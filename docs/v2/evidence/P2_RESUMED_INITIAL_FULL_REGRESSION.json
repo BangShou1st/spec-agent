@@ -1,0 +1,12 @@
+{
+  "tests": 1962,
+  "failures": 1,
+  "errors": 0,
+  "skipped": 34,
+  "suites": 314,
+  "stage": "resumed handed-over code before current stream/cancel/HTTP-boundary fixes",
+  "failedTests": [
+    "com.specagent.architecture.ArchitectureTests.httpSurfaceMustNotReferenceModelInternalsInProduction()"
+  ],
+  "datasourceFix": "Explicit SPRING_DATASOURCE_URL/USERNAME/PASSWORD; SPEC_AGENT_DB_PASSWORD does not override the test profile literal password"
+}

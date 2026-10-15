@@ -4,6 +4,7 @@
        资源阅读器弹窗,以及删除的二次确认;数据由 skillsStore 按路由参数 skillId 加载。
 -->
 <script setup lang="ts">
+import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { managementErrorMessage } from '@/shared/http/errorCopy'
@@ -18,9 +19,12 @@ import { useSkillsStore } from '@/features/skills/state/skillsStore'
 
 const props = defineProps<{ skillId: string }>()
 const store = useSkillsStore()
+const canManage = useOrganizationCapability('ORG_MANAGE')
+
 const router = useRouter()
 
 const confirmingDelete = ref(false)
+watch(canManage, allowed => { if (!allowed) confirmingDelete.value = false }, { flush: 'sync' })
 const busy = ref(false)
 
 const working = computed(() => busy.value || store.actionLoading)
@@ -44,6 +48,7 @@ function readResource(path: string): void {
 }
 
 async function toggle(): Promise<void> {
+  if (!canManage.value) return;
   if (!store.detail) return
   busy.value = true
   await (store.detail.enabled ? store.disable(props.skillId) : store.enable(props.skillId))
@@ -51,6 +56,7 @@ async function toggle(): Promise<void> {
 }
 
 async function remove(): Promise<void> {
+  if (!canManage.value) return;
   busy.value = true
   const ok = await store.remove(props.skillId)
   busy.value = false
@@ -83,19 +89,19 @@ async function remove(): Promise<void> {
         <div class="detail-actions">
           <ToggleSwitch
             :checked="store.detail.enabled"
-            :disabled="working"
+            :disabled="!canManage || working"
             :title="store.detail.enabled ? '停用该 Skill' : '启用该 Skill'"
             :data-test="store.detail.enabled ? 'skill-detail-disable' : 'skill-detail-enable'"
             status-test-id="skill-detail-status"
             @toggle="toggle"
           />
-          <button type="button" class="icon-btn" title="删除该 Skill" data-test="skill-detail-delete" :disabled="working" @click="confirmingDelete = true">
+          <button type="button" class="icon-btn" title="删除该 Skill" v-if="canManage" data-test="skill-detail-delete" :disabled="!canManage || working" @click="confirmingDelete = true">
             <AppIcon name="trash" />
           </button>
         </div>
       </header>
       <UiConfirmDialog
-        :open="confirmingDelete"
+        :open="canManage && confirmingDelete"
         title="删除该 Skill？"
         description="删除该 Skill 及其全部版本？此操作不可撤销"
         confirm-label="确认删除"

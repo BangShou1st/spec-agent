@@ -194,7 +194,65 @@ def test_health_keeps_lexical_ready_when_ollama_is_unavailable():
         def verify(self, timeout): raise EmbeddingUnavailable()
     health = SharedRetrieval(HealthyStore(), DownEmbedding()).health()
     assert health.ready and health.store_ready and not health.ollama_ready
+    assert health.embedding_status == "EMBEDDING_UNAVAILABLE"
     assert health.profile is None and health.ollama_version is None
+
+
+def test_health_distinguishes_cloud_credential_from_local_service_faults():
+    class HealthyStore:
+        def health(self): return True
+
+    class FakeActiveStore(HealthyStore):
+        def __init__(self, active):
+            self.active = active
+        def active_embedding(self): return self.active
+
+    from spec_agent_brain.retrieval.configured_embedding import approval
+
+    # The v2 approval payload needs a host-signed semantic dict; build one via the real validator.
+    semantic = {"provider": "OPENAI_COMPATIBLE", "modelTag": "text-embedding-v4", "modelDigest": None,
+                "serviceIdentity": "https://api.example/v1", "dimensions": 3, "queryStrategy": "raw-text.v1",
+                "queryInstruction": "", "documentStrategy": "raw-text.v1", "normalization": "l2", "truncate": False,
+                "splitterVersion": "host-source-granularity.v1", "indexSchemaVersion": "retrieval-index.v3"}
+    from spec_agent_brain.wire import canonical_hash
+    payload = {"profileId": canonical_hash(semantic), "semantic": semantic,
+               "config": {"provider": "OPENAI_COMPATIBLE", "baseUrl": "https://api.example/v1", "model": "text-embedding-v4",
+                          "timeoutSeconds": 30, "batchSize": 8, "queryStrategy": "raw-text.v1"},
+               "serviceRevision": 1}
+    value = json.loads(json.dumps(approval(payload)))
+
+    cleared = SharedRetrieval(FakeActiveStore({**value, "available": False}), Embedding()).health()
+    assert cleared.embedding_status == "EMBEDDING_CREDENTIAL_UNAVAILABLE" and not cleared.ollama_ready
+    assert cleared.profile["provider"] == "OPENAI_COMPATIBLE" and cleared.profile["modelTag"] == "text-embedding-v4"
+
+    configured = SharedRetrieval(FakeActiveStore({**value, "available": True}), Embedding()).health()
+    assert configured.embedding_status == "CONFIGURED" and configured.ollama_ready
+    assert configured.ollama_version == "openai-compatible"  # 配置存在不冒充真实服务健康
+
+    class UnreachableActiveStore(FakeActiveStore):
+        def active_embedding(self):
+            raise RetrievalError("RETRIEVAL_UNAVAILABLE")
+
+    unreachable = SharedRetrieval(UnreachableActiveStore(value), Embedding()).health()
+    assert unreachable.embedding_status == "RETRIEVAL_UNAVAILABLE" and not unreachable.ollama_ready
+
+
+def test_health_maps_local_ollama_fault_codes_verbatim():
+    class HealthyStore:
+        def health(self): return True
+    class ModelMissingEmbedding:
+        def verify(self, timeout): raise EmbeddingUnavailable("EMBEDDING_MODEL_NOT_FOUND")
+    health = SharedRetrieval(HealthyStore(), ModelMissingEmbedding()).health()
+    assert health.embedding_status == "EMBEDDING_MODEL_NOT_FOUND" and not health.ollama_ready
+
+
+def test_health_contract_accepts_legacy_payload_without_embedding_status():
+    from spec_agent_brain.retrieval.contracts import RetrievalHealth
+    legacy = {"protocolVersion": "retrieval.v1", "retrievalEngineVersion": "python-rag.v1", "ready": True,
+              "storeReady": True, "ollamaReady": False, "ollamaVersion": None, "profile": None,
+              "embeddingConcurrency": 1, "maxBatch": 16}
+    health = RetrievalHealth.model_validate(legacy)
+    assert health.embedding_status is None  # 旧生产者可省略,消费者视为原因未知
 
 
 def test_vector_distance_is_python_owned_and_host_bounded():

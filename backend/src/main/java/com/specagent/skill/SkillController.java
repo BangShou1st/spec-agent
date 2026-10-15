@@ -182,7 +182,7 @@ public class SkillController {
     @PostMapping("/{skillId}/enable")
     public ResponseEntity<Void> enable(@PathVariable String skillId) {
         Skill skill = queryService.findSkill(skillId)
-                .orElseThrow(() -> new SkillImportException("Skill not found: " + skillId));
+                .orElseThrow(() -> com.specagent.access.AccessDeniedException.notVisible("Skill not found"));
         importService.enable(skill.id());
         return ResponseEntity.noContent().build();
     }
@@ -190,7 +190,7 @@ public class SkillController {
     @PostMapping("/{skillId}/disable")
     public ResponseEntity<Void> disable(@PathVariable String skillId) {
         Skill skill = queryService.findSkill(skillId)
-                .orElseThrow(() -> new SkillImportException("Skill not found: " + skillId));
+                .orElseThrow(() -> com.specagent.access.AccessDeniedException.notVisible("Skill not found"));
         importService.disable(skill.id());
         return ResponseEntity.noContent().build();
     }
@@ -198,7 +198,7 @@ public class SkillController {
     @DeleteMapping("/{skillId}")
     public ResponseEntity<Void> delete(@PathVariable String skillId) {
         Skill skill = queryService.findSkill(skillId)
-                .orElseThrow(() -> new SkillImportException("Skill not found: " + skillId));
+                .orElseThrow(() -> com.specagent.access.AccessDeniedException.notVisible("Skill not found"));
         importService.delete(skill.id());
         return ResponseEntity.noContent().build();
     }
@@ -213,7 +213,7 @@ public class SkillController {
     public ResponseEntity<ResourceReadResponse> readResource(
             @PathVariable String skillId, @RequestParam("path") String path) {
         Skill skill = queryService.findSkill(skillId)
-                .orElseThrow(() -> new SkillImportException("Skill not found: " + skillId));
+                .orElseThrow(() -> com.specagent.access.AccessDeniedException.notVisible("Skill not found"));
         if (skill.currentVersionId() == null) {
             throw new SkillImportException("Skill has no installed version: " + skillId);
         }

@@ -35,6 +35,16 @@ dependencies {
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    // ---------------------------------------------------------------------
+    // 第二阶段（身份/权限/凭证隔离）安全基础。
+    //
+    // Security 与 Session 由 com.specagent.access 独占使用：业务模块通过
+    // ActorContext / AuthorizationGuard 端口接入，不直接依赖 Security 类型。
+    // spring-session-jdbc 让 API 多实例共享会话（不要求粘性会话，也刻意
+    // 不引入 Redis —— 只有测量证明有压力后才替换会话存储）。
+    implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
+    implementation("org.springframework.session:spring-session-jdbc")
     // Pure-Java git client for HTTPS Skill imports. JGit never runs git
     // hooks, never initializes submodules, and never smudges LFS content
     // automatically — the import-security posture the Skill runtime requires.
@@ -60,6 +70,15 @@ implementation("io.modelcontextprotocol.sdk:mcp:0.18.4")
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // 第二阶段（身份/权限）给测试 classpath 增加了 Spring Security 与
+    // Spring Session，每个 @SpringBootTest 上下文都更重。Gradle 的默认测试堆
+    // 在全量套件的上下文缓存下会抛 OutOfMemoryError，而失败形态是大量
+    // "上下文加载失败"，看起来像大范围回归、实际是资源不足。
+    // 3g 是当前套件实测可稳定的初值：只影响测试 JVM，不改动产品运行参数。
+    maxHeapSize = "3g"
+    // Each cached integration context owns a JDBC pool and a mode-admission connection.
+    // Bound their total below the isolated PostgreSQL limit, including dual API acceptance processes.
+    systemProperty("spring.test.context.cache.maxSize", "6")
 }
 
 // The default `test` task never runs live-provider suites. Live behavior is
@@ -110,6 +129,8 @@ tasks.register<Test>("evalRetrievalFast") {
 }
 
 tasks.register<Test>("testNonLive") {
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
     group = "verification"
     description = "Runs the complete backend test suite except explicit live-provider suites and the cross-language exit gate."
     useJUnitPlatform()

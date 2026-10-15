@@ -46,6 +46,7 @@ def test_broker_timeout_is_distinct_error_type():
         broker_url="http://broker.invalid/internal/v1/model-inference",
         internal_secret="test-secret",
         http_client=TimeoutClient(),
+        execution_grant="x" * 43,
     )
     with pytest.raises(BrokerTimeoutError) as raised:
         client.complete("run-1", "STATE_UPDATE", [])
@@ -63,6 +64,7 @@ def test_broker_connect_timeout_is_also_timeout():
         broker_url="http://broker.invalid/internal/v1/model-inference",
         internal_secret="test-secret",
         http_client=ConnectTimeoutClient(),
+        execution_grant="x" * 43,
     )
     with pytest.raises(BrokerTimeoutError):
         client.complete("run-1", "STATE_UPDATE", [])
@@ -79,6 +81,7 @@ def test_broker_generic_http_error_stays_model_client_error():
         broker_url="http://broker.invalid/internal/v1/model-inference",
         internal_secret="test-secret",
         http_client=GenericErrorClient(),
+        execution_grant="x" * 43,
     )
     with pytest.raises(ModelClientError) as raised:
         client.complete("run-1", "STATE_UPDATE", [])

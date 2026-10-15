@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
+import { useSettingsRequestFence } from '@/features/access/useSettingsRequestFence'
+import { PrivateIdentityExpiredError } from '@/shared/state/privateIdentity'
+
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import SettingsCard from '@/shared/ui/SettingsCard.vue'
 import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'
@@ -6,11 +10,14 @@ import Summary from '@/features/model-settings/components/ProviderSummaryItem.vu
 import { services, type EmbeddingConfig, type Probe, type Rebuild, type RetrievalSettings } from './api'
 import { serviceError, serviceMessage } from './presentation'
 
+const canManage = useOrganizationCapability('CREDENTIAL_MANAGE')
+const requests = useSettingsRequestFence()
 const saved = ref<RetrievalSettings | null>(null)
 const form = reactive<EmbeddingConfig>({ provider: 'OLLAMA', baseUrl: 'http://127.0.0.1:11434', model: '', timeoutSeconds: 30, batchSize: 8, queryStrategy: 'raw-text.v1' })
 const key = ref(''), replacing = ref(false), confirming = ref(false), confirmDiscard = ref(false), selected = ref(true)
 const busy = ref('load'), error = ref<{ code: string } | null>(null), indexError = ref<{ code: string } | null>(null)
 const result = ref<Probe | null>(null), notice = ref('')
+watch(canManage, allowed => { if (!allowed) { key.value = ''; replacing.value = false; confirming.value = false; confirmDiscard.value = false } }, { flush: 'sync' })
 const job = computed(() => saved.value?.index.job)
 const pendingCandidate = computed(() => !!saved.value?.service.candidateProfile && saved.value.service.candidateProfile !== saved.value.index.activeProfile)
 const building = computed(() => job.value?.state === 'QUEUED' || job.value?.state === 'RUNNING')
@@ -34,57 +41,60 @@ watch(() => form.provider, (provider, old) => {
 }, { flush: 'sync' })
 watch(() => form.baseUrl, () => { key.value = '' }, { flush: 'sync' })
 async function action(name: string, work: () => Promise<void>, index = false) {
+  if (!requests.current() || (!canManage.value && !['load', 'refresh'].includes(name))) return
   if (busy.value && name !== 'load') return
   busy.value = name; error.value = null; indexError.value = null; notice.value = ''
-  try { await work() } catch (e) { if (index) indexError.value = serviceError(e); else error.value = serviceError(e) } finally { busy.value = '' }
+  try { await work() } catch (e) { if (!(e instanceof PrivateIdentityExpiredError)) { if (index) indexError.value = serviceError(e); else error.value = serviceError(e) } } finally { busy.value = '' }
 }
 function hydrate(value: RetrievalSettings) {
   saved.value = value
   if (value.service.config) Object.assign(form, value.service.config)
   key.value = ''; replacing.value = false; confirming.value = false; confirmDiscard.value = false
 }
-async function load() { await action('load', async () => hydrate(await services.retrieval())) }
+async function load() { await action('load', async () => hydrate(await requests.run(() => services.retrieval()))) }
 function payload() { return { config: { ...form }, revision: saved.value?.service.revision ?? 0, ...(key.value ? { apiKey: key.value } : {}) } }
 async function test() {
   await action('test', async () => {
-    result.value = await services.testRetrieval(payload())
+    result.value = await requests.run(() => services.testRetrieval(payload()))
     if (!result.value.success) error.value = { code: result.value.code }
-    if (result.value.target === 'SAVED') saved.value = await services.retrieval()
+    if (result.value.target === 'SAVED') saved.value = await requests.run(() => services.retrieval())
   })
 }
 async function save() {
   await action('save', async () => {
-    const value = await services.saveRetrieval({ ...payload(), ...(result.value?.success && result.value.testId ? { testId: result.value.testId } : {}) })
+    const value = await requests.run(() => services.saveRetrieval({ ...payload(), ...(result.value?.success && result.value.testId ? { testId: result.value.testId } : {}) }))
     hydrate(value); result.value = null
     notice.value = value.service.candidateProfile ? '已保存并验证候选配置。当前检索保持不变，请重建所选帮助索引。' : '已保存候选配置。请测试连接，通过后再重建所选索引。'
   })
 }
 async function clear() {
-  await action('clear', async () => { hydrate(await services.clearEmbeddingCredential(saved.value?.service.revision ?? 0)); notice.value = '已清除远程凭据。相关远程调用停止；已有索引数据保留。' })
+  await action('clear', async () => { hydrate(await requests.run(() => services.clearEmbeddingCredential(saved.value?.service.revision ?? 0))); notice.value = '已清除远程凭据。相关远程调用停止；已有索引数据保留。' })
 }
 async function rebuild() {
   await action('rebuild', async () => {
     if (!saved.value?.service.candidateProfile || !selected.value) return
-    saved.value = await services.rebuild(saved.value.index.corpusId, saved.value.service.candidateProfile)
+    const corpusId = saved.value.index.corpusId, profile = saved.value.service.candidateProfile
+    saved.value = await requests.run(() => services.rebuild(corpusId, profile))
   }, true)
 }
-async function retry() { await action('retry', async () => { if (job.value) saved.value = await services.retry(job.value.id) }, true) }
-async function activate() { await action('activate', async () => { if (job.value) saved.value = await services.activate(job.value.id) }, true) }
+async function retry() { await action('retry', async () => { const id = job.value?.id; if (id) saved.value = await requests.run(() => services.retry(id)) }, true) }
+async function activate() { await action('activate', async () => { const id = job.value?.id; if (id) saved.value = await requests.run(() => services.activate(id)) }, true) }
 async function discard() {
   await action('discard', async () => {
     if (!job.value) return
-    saved.value = await services.discard(job.value.id)
+    const id = job.value.id
+    saved.value = await requests.run(() => services.discard(id))
     confirmDiscard.value = false
   }, true)
 }
-async function refresh() { await action('refresh', async () => { saved.value = await services.retrieval() }, true) }
+async function refresh() { await action('refresh', async () => { saved.value = await requests.run(() => services.retrieval()) }, true) }
 onMounted(async () => {
   await load()
   if (disposed) return
   timer = setInterval(async () => {
     if (busy.value || polling || !building.value) return
     polling = true
-    try { const next = await services.retrieval(); if (!disposed) saved.value = next } catch (e) { indexError.value = serviceError(e) } finally { polling = false }
+    try { const next = await requests.run(() => services.retrieval()); if (!disposed) saved.value = next } catch (e) { indexError.value = serviceError(e) } finally { polling = false }
   }, 1500)
 })
 onUnmounted(() => { disposed = true; if (timer) clearInterval(timer); key.value = '' })
@@ -102,7 +112,7 @@ onUnmounted(() => { disposed = true; if (timer) clearInterval(timer); key.value 
         <Summary label="凭据" :value="saved?.service.maskedKey ?? (saved?.service.config?.provider === 'OPENAI_COMPATIBLE' ? '未配置' : '本地 Ollama 通常无需密钥')" />
         <Summary label="最近验证" :value="saved?.service.testCode === 'OK' ? '已验证（仅代表测试时可用）' : saved?.service.testCode ? '上次验证未通过' : '尚未验证'" />
       </template>
-      <form class="settings-form" @submit.prevent="save">
+      <form v-if="canManage" class="settings-form" @submit.prevent="save">
         <div class="settings-field"><label class="settings-field__label" for="embedding-provider">服务类型</label><select id="embedding-provider" v-model="form.provider" class="settings-control" :disabled="!!busy || !saved"><option value="OLLAMA">Ollama</option><option value="OPENAI_COMPATIBLE">OpenAI-compatible Embeddings API</option></select></div>
         <div class="settings-field"><label class="settings-field__label" for="embedding-url">服务地址</label><input id="embedding-url" v-model="form.baseUrl" class="settings-control" type="url" :disabled="!!busy || !saved" :placeholder="form.provider === 'OLLAMA' ? 'http://127.0.0.1:11434' : 'https://你的服务地址/v1'" aria-describedby="embedding-url-hint" /><span id="embedding-url-hint" class="settings-field__hint">{{ form.provider === 'OLLAMA' ? '请自行启动 Ollama 并安装模型。容器内 localhost 指向容器自身；远程地址需在启动配置中设为可信。' : '填写 API 基础地址，应用会调用其 /embeddings 接口。服务会接收所选语料文本，请使用你信任的供应商。' }}</span></div>
         <div class="settings-field"><label class="settings-field__label" for="embedding-model">Embedding 模型</label><input id="embedding-model" v-model="form.model" class="settings-control" :disabled="!!busy || !saved" placeholder="填写该服务实际提供的向量模型名称" required maxlength="240" /><span class="settings-field__hint">不会自动下载模型。聊天模型测试成功不代表可以生成文本向量。</span></div>
@@ -117,7 +127,7 @@ onUnmounted(() => { disposed = true; if (timer) clearInterval(timer); key.value 
         <p v-if="result?.success" role="status" class="service-settings__notice">测试成功，实际返回 {{ result.dimensions }} 维。{{ result.target === 'DRAFT' ? '请保存候选配置。' : '可以重建所选索引。' }}</p>
         <p v-if="notice" role="status" class="service-settings__notice">{{ notice }}</p>
       </form>
-      <template #footer>
+      <template v-if="canManage" #footer>
         <div v-if="confirming" class="service-settings__confirmation" role="group" aria-label="确认清除 Embedding 凭据"><p>清除远程凭据后，使用它的远程向量请求将停止。索引数据会保留。</p><button class="btn btn-danger settings-action" :disabled="!!busy" @click="clear">确认清除</button><button class="btn settings-action" :disabled="!!busy" @click="confirming = false">取消</button></div>
         <template v-else><button v-if="saved?.service.configured" class="btn service-settings__danger settings-action" :disabled="!!busy" @click="confirming = true">清除凭据</button><button class="btn settings-action" :disabled="!!busy || !saved || !form.model || !form.baseUrl" @click="test">{{ busy === 'test' ? '正在测试…' : '测试连接' }}</button><button class="btn btn-primary settings-action" :disabled="!!busy || !saved || !form.model || !form.baseUrl" @click="save">{{ busy === 'save' ? '正在保存…' : '保存候选配置' }}</button></template>
       </template>
@@ -131,20 +141,20 @@ onUnmounted(() => { disposed = true; if (timer) clearInterval(timer); key.value 
         <Summary label="候选配置" :value="saved?.service.config?.model ?? '尚未保存'" ellipsis />
         <Summary label="待处理事项" :value="building ? '等待索引准备完成' : job?.state === 'READY' ? `启用或放弃新索引（${saved?.index.jobModel ?? '未知模型'}）` : job?.state === 'FAILED' ? '修复服务后重试；仍使用原索引' : saved?.service.candidateProfile && saved.service.candidateProfile !== saved.index.activeProfile ? '新配置待建立索引' : saved?.service.config && !saved.service.candidateProfile ? '测试已保存配置' : '无需处理'" />
       </template>
-      <label class="service-settings__toggle"><input v-model="selected" type="checkbox" :disabled="!!busy || building" />全局助手产品帮助</label>
+      <label v-if="canManage" class="service-settings__toggle"><input v-model="selected" type="checkbox" :disabled="!!busy || building" />全局助手产品帮助</label>
       <p class="settings-field__hint">来自应用随包帮助文档，不包括你的项目内容。不会自动迁移全部项目。</p>
       <p v-if="building || job?.state === 'READY'" class="service-settings__notice" role="status">{{ jobLabel }} · 已处理 {{ job?.processed ?? 0 }}{{ job?.total ? ` / ${job.total}` : '' }} 个片段。关闭页面后任务仍由后端继续处理。</p>
-      <p v-if="job?.state === 'FAILED'" class="settings-field__hint">重建失败，仍使用原索引。修复服务后可重试同一任务。</p>
+      <p v-if="canManage && job?.state === 'FAILED'" class="settings-field__hint">重建失败，仍使用原索引。修复服务后可重试同一任务。</p>
       <p v-if="job?.state === 'ACTIVE'" class="service-settings__notice" role="status">{{ pendingCandidate ? '候选配置尚未启用，帮助检索仍使用当前索引。请重建并启用所选索引。' : saved?.service.config && !saved.service.candidateProfile ? '当前索引保持生效。候选配置需先通过测试，再判断是否需要重建。' : '新索引已启用，后续帮助检索使用新配置。' }}</p>
       <template #footer>
         <button class="btn settings-action" :disabled="!!busy" @click="refresh">刷新状态</button>
-        <button v-if="job?.state === 'FAILED'" class="btn settings-action" :disabled="!!busy" @click="retry">{{ busy === 'retry' ? '正在重试…' : '重试失败任务' }}</button>
-        <template v-if="job?.state === 'READY'">
+        <button v-if="canManage && job?.state === 'FAILED'" class="btn settings-action" :disabled="!!busy" @click="retry">{{ busy === 'retry' ? '正在重试…' : '重试失败任务' }}</button>
+        <template v-if="canManage && job?.state === 'READY'">
           <button class="btn btn-primary settings-action" :disabled="!!busy" @click="activate">{{ busy === 'activate' ? '正在启用…' : '启用新索引' }}</button>
           <button v-if="!confirmDiscard" class="btn settings-action" :disabled="!!busy" @click="confirmDiscard = true">放弃该索引</button>
           <template v-else><button class="btn btn-danger settings-action" :disabled="!!busy" @click="discard">{{ busy === 'discard' ? '正在放弃…' : '确认放弃' }}</button><button class="btn settings-action" :disabled="!!busy" @click="confirmDiscard = false">取消</button></template>
         </template>
-        <button v-else class="btn btn-primary settings-action" :disabled="!!busy || !selected || !saved?.service.candidateProfile || building" @click="rebuild">{{ building ? '索引准备中…' : '重建所选索引' }}</button>
+        <button v-else-if="canManage" class="btn btn-primary settings-action" :disabled="!!busy || !selected || !saved?.service.candidateProfile || building" @click="rebuild">{{ building ? '索引准备中…' : '重建所选索引' }}</button>
       </template>
     </SettingsCard>
   </section>

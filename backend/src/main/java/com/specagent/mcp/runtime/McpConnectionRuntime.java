@@ -24,11 +24,14 @@ public class McpConnectionRuntime {
 
     private final McpClientFactory clientFactory;
     private final McpCredentialResolver credentialResolver;
+    private final McpConnectionLookupPort connectionLookup;
 
     public McpConnectionRuntime(McpClientFactory clientFactory,
-                                McpCredentialResolver credentialResolver) {
+                                McpCredentialResolver credentialResolver,
+                                McpConnectionLookupPort connectionLookup) {
         this.clientFactory = clientFactory;
         this.credentialResolver = credentialResolver;
+        this.connectionLookup = connectionLookup;
     }
 
     public McpDiscovery testAndDiscover(McpConnectionTarget connection) {
@@ -44,8 +47,81 @@ public class McpConnectionRuntime {
 
     /** 基于连接的配置 + 凭据,打开一个可用的协议会话。 */
     public McpClientFactory.Session openSession(McpConnectionTarget connection) {
+        requireCurrent(connection);
         String authHeader = resolveAuthHeader(connection);
-        return clientFactory.open(connection.serverUrl(), Map.of(), authHeader);
+        requireCurrent(connection);
+        McpClientFactory.Session session = clientFactory.open(connection.serverUrl(), Map.of(), authHeader);
+        try {
+            requireCurrent(connection);
+            return new GuardedSession(connection, session);
+        } catch (RuntimeException ex) {
+            try { session.close(); } catch (RuntimeException ignored) { }
+            throw ex;
+        }
+    }
+
+    /** 每次查询重新验证当前主体；旧配置不得在轮换、禁用或撤权后继续使用。 */
+    public void requireCurrent(McpConnectionTarget expected) {
+        try {
+            if (expected == null || !connectionLookup.findByRowId(expected.rowId())
+                    .filter(expected::equals).isPresent()) {
+                throw new McpTransportException("MCP_CONNECTION_CHANGED_OR_INACCESSIBLE");
+            }
+        } catch (McpTransportException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw new McpTransportException("MCP_CONNECTION_CHANGED_OR_INACCESSIBLE");
+        }
+    }
+
+    public McpConnectionTarget requireVisibleTarget(java.util.UUID rowId) {
+        try {
+            return connectionLookup.findByRowId(rowId).orElseThrow(() ->
+                    new McpTransportException("MCP_CONNECTION_CHANGED_OR_INACCESSIBLE"));
+        } catch (McpTransportException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw new McpTransportException("MCP_CONNECTION_CHANGED_OR_INACCESSIBLE");
+        }
+    }
+
+    private final class GuardedSession implements McpClientFactory.Session {
+        private final McpConnectionTarget target;
+        private final McpClientFactory.Session delegate;
+
+        private GuardedSession(McpConnectionTarget target, McpClientFactory.Session delegate) {
+            this.target = target;
+            this.delegate = delegate;
+        }
+
+        @Override public McpDiscovery discover() {
+            requireCurrent(target);
+            McpDiscovery result = delegate.discover();
+            requireCurrent(target);
+            return result;
+        }
+
+        @Override public McpToolResult callTool(String name, Map<String, Object> arguments) {
+            requireAgentAccess();
+            McpToolResult result = delegate.callTool(name, arguments);
+            requireAgentAccess();
+            return result;
+        }
+
+        @Override public com.specagent.mcp.domain.McpResourceContent readResource(String uri) {
+            requireAgentAccess();
+            var result = delegate.readResource(uri);
+            requireAgentAccess();
+            return result;
+        }
+
+        private void requireAgentAccess() {
+            requireCurrent(target);
+            if (!target.agentVisible())
+                throw new McpTransportException("MCP_CONNECTION_CHANGED_OR_INACCESSIBLE");
+        }
+
+        @Override public void close() { delegate.close(); }
     }
 
     public McpToolResult callTool(McpConnectionTarget connection, String toolName,
@@ -74,9 +150,15 @@ public class McpConnectionRuntime {
     }
 
     private String resolveAuthHeader(McpConnectionTarget connection) {
+        if(!"NONE".equals(connection.authKind()) && !"BEARER".equals(connection.authKind()))
+            throw new McpTransportException("MCP_CREDENTIAL_UNAVAILABLE");
+        if("NONE".equals(connection.authKind()) && connection.credentialRef()!=null && !connection.credentialRef().isBlank())
+            throw new McpTransportException("MCP_CREDENTIAL_UNAVAILABLE");
+        if("BEARER".equals(connection.authKind()) && (connection.credentialRef()==null || connection.credentialRef().isBlank()))
+            throw new McpTransportException("MCP_CREDENTIAL_UNAVAILABLE");
         String token = credentialResolver.resolveOrNull(connection.credentialRef());
-        // 引用缺失或凭据行已消失时解析为 null——会话以未认证方式继续,
-        // 与既有行为保持一致。
+        if(connection.credentialRef()!=null && !connection.credentialRef().isBlank()
+                && (token==null || token.isBlank())) throw new McpTransportException("MCP_CREDENTIAL_UNAVAILABLE");
         return token == null ? null : "Bearer " + token;
     }
 }

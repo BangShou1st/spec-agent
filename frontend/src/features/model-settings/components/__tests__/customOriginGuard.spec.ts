@@ -1,3 +1,4 @@
+import { accessSession } from '@/features/access/accessSession'
 // 文件名:customOriginGuard.spec.ts
 // 用途:自定义 Provider 凭据复用来源守卫(R1)的前端回归:
 //       sameOrigin 与后端语义一致;Base URL 改到不同来源时表单要求
@@ -51,6 +52,7 @@ describe('sameOrigin semantics match the backend guard', () => {
 
 describe('CustomProviderForm origin-change credential guard', () => {
   beforeEach(() => {
+    accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'editor', orgId: 'org', displayName: 'Editor', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['CREDENTIAL_MANAGE'], memberships: [] }
     setActivePinia(createPinia())
     vi.clearAllMocks()
   })

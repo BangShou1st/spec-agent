@@ -1,5 +1,6 @@
 package com.specagent.assistant.conversation;
 
+import com.specagent.access.AuthorizationGuard;
 import com.specagent.common.Json;
 import com.fasterxml.jackson.core.type.TypeReference;
 import java.util.Map;
@@ -18,6 +19,11 @@ import org.springframework.transaction.annotation.Transactional;
  * 模型、不挑选工具、不推送 SSE——那些是 runtime 层的职责。其中
  * createRunWithUserMessage 把 Run 与当轮用户消息放在同一事务里原子创建,
  * 由 api/runtime 层在事务提交后再调度执行。
+ *
+ * <b>第二阶段(身份/权限)</b>:会话私有性在 {@code requireThread} 这个
+ * 唯一收口点上强制——GA 会话默认私有,组织管理员也不能直接读取他人的
+ * 私有会话(设计 §5)。收敛在收口点而不是逐个入口,是为了让"新增一个
+ * 会话读取入口"不会静默漏检。
  */
 @Service
 public class GlobalAssistantConversationService {
@@ -28,23 +34,29 @@ public class GlobalAssistantConversationService {
     private final GlobalAssistantRunRepository runs;
     private final Json json;
     private final GlobalAssistantThreadListRepository threadLists;
+    private final AuthorizationGuard guard;
     public GlobalAssistantConversationService(
             GlobalAssistantThreadRepository threads,
             GlobalAssistantMessageRepository messages,
             GlobalAssistantRunRepository runs,
             Json json,
-            GlobalAssistantThreadListRepository threadLists) {
+            GlobalAssistantThreadListRepository threadLists,
+            AuthorizationGuard guard) {
         this.threads = threads;
         this.messages = messages;
         this.runs = runs;
         this.json = json;
         this.threadLists = threadLists;
+        this.guard = guard;
     }
     @Transactional
     public GlobalAssistantThread createThread() {
         return threads.create();
     }
     public Optional<GlobalAssistantThread> findThread(UUID threadId) {
+        // 私有性判定:会话详情是正文级派生数据(标题/摘要/工作状态)的入口,
+        // 不能只靠"知道 threadId"。没有这道检查,列表被收紧了而详情仍可直读。
+        guard.requireThreadOwnership(threadId);
         return threads.findById(threadId);
     }
     @Transactional
@@ -120,7 +132,21 @@ public class GlobalAssistantConversationService {
     public void writeSummary(UUID threadId, String summary, int expectedVersion) {
         threads.updateSummary(threadId, summary, expectedVersion);
     }
+    /**
+     * 主体视角的会话读取:先判定私有性再返回。
+     *
+     * 控制器与运行时都必须走这条;{@link #findThread(UUID)} 只做存在性查询,
+     * 供<b>已完成授权</b>的内部组合使用。
+     */
+    public Optional<GlobalAssistantThread> findThreadOwned(UUID threadId) {
+        guard.requireThreadOwnership(threadId);
+        return threads.findById(threadId);
+    }
+
     private GlobalAssistantThread requireThread(UUID threadId) {
+        // 会话私有性的唯一收口点:会话读取/追加/建 Run 都必须先经过这里。
+        // 非属主按"会话不存在"处理,不区分"不存在"与"不是你的会话"。
+        guard.requireThreadOwnership(threadId);
         return threads.findById(threadId)
                 .orElseThrow(() -> new IllegalArgumentException("Global assistant thread not found: " + threadId));
     }

@@ -4,6 +4,7 @@
        展示下一步动作按钮(测试/连接/启用/刷新)与提示文案,操作通过事件交给父组件执行。
 -->
 <script setup lang="ts">
+import { canManageConnection } from '../connectionPermissions'
 import { computed } from 'vue'
 import { managementErrorMessage } from '@/shared/http/errorCopy'
 import type { ConnectionDetail } from '@/features/connections/api/connectionTypes'
@@ -24,6 +25,7 @@ const emit = defineEmits<{
 
 type Phase = 'created' | 'tested' | 'connected' | 'enabled' | 'failed'
 
+const canManage = computed(() => canManageConnection(props.detail))
 const phase = computed<Phase>(() => {
   if (props.detail.enabled) return 'enabled'
   if (props.detail.status === 'FAILED') return 'failed'
@@ -46,13 +48,13 @@ const hint = computed(() => {
 <template>
   <section class="lifecycle" data-test="lifecycle-action">
     <p class="lifecycle-hint" data-test="lifecycle-hint">{{ hint }}</p>
-    <div class="lifecycle-row">
-      <button v-if="phase === 'created' || phase === 'failed'" type="button" class="btn btn-primary" data-test="lifecycle-test" :disabled="working" @click="emit('test')">{{ working ? '测试中…' : '测试连接' }}</button>
-      <button v-else-if="phase === 'tested'" type="button" class="btn btn-primary" data-test="lifecycle-connect" :disabled="working" @click="emit('connect')">{{ working ? '连接中…' : '连接' }}</button>
-      <button v-else-if="phase === 'connected'" type="button" class="btn btn-primary" data-test="lifecycle-enable" :disabled="working" @click="emit('enable')">{{ working ? '启用中…' : '启用' }}</button>
+    <div v-if="canManage" class="lifecycle-row">
+      <button v-if="phase === 'created' || phase === 'failed'" type="button" class="btn btn-primary" data-test="lifecycle-test" :disabled="working" @click="canManage && emit('test')">{{ working ? '测试中…' : '测试连接' }}</button>
+      <button v-else-if="phase === 'tested'" type="button" class="btn btn-primary" data-test="lifecycle-connect" :disabled="working" @click="canManage && emit('connect')">{{ working ? '连接中…' : '连接' }}</button>
+      <button v-else-if="phase === 'connected'" type="button" class="btn btn-primary" data-test="lifecycle-enable" :disabled="working" @click="canManage && emit('enable')">{{ working ? '启用中…' : '启用' }}</button>
       <span v-else class="enabled-line" data-test="lifecycle-enabled">
         <span class="st st--on"><span class="st__dot" aria-hidden="true"></span>已启用</span>
-        <button type="button" class="btn" data-test="lifecycle-refresh" :disabled="working" @click="emit('refresh')">{{ working ? '刷新中…' : '刷新' }}</button>
+        <button type="button" class="btn" data-test="lifecycle-refresh" :disabled="working" @click="canManage && emit('refresh')">{{ working ? '刷新中…' : '刷新' }}</button>
       </span>
     </div>
     <p v-if="error" class="lifecycle-error" data-test="lifecycle-error">{{ managementErrorMessage(error.code, error.message) }}</p>

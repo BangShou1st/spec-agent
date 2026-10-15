@@ -5,6 +5,13 @@ spring:
     async:
       # Native GA broker streams share the host's absolute 180-second execution fence.
       request-timeout: 180s
+  task:
+    scheduling:
+      # 除独立心跳执行器之外，共享的 @Scheduled 线程池也必须多于一个：执行线程
+      # 在长模型调用中阻塞时，撤销、跨实例 SSE 补发、准入核验等调度不能被一起
+      # 饿死。缺失时 Boot 默认单线程，长任务会连带停掉这些收敛路径。
+      pool:
+        size: 4
   profiles:
     active: local
   datasource:
@@ -17,6 +24,17 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
     validate-on-migrate: true
+  session:
+    # 第二阶段：会话存在 PostgreSQL（表由 Flyway V60 建立），因此 API 多实例
+    # 不要求粘性会话。现阶段不为会话额外引入 Redis；只有测量证明确有压力后
+    # 才替换会话存储。
+    # initialize-schema 必须为 never：本项目的 schema 事实源只能是
+    # db/migration（validate-on-migrate 已开启），让 Boot 自动建表会产生
+    # 两套不可审计的 DDL。
+    jdbc:
+      initialize-schema: never
+    # 空闲超时初值 30 分钟（待评估参数，不是承载承诺）。
+    timeout: ${SPEC_AGENT_SECURITY_IDLE_TIMEOUT:30m}
 
 server:
   port: ${SERVER_PORT:8080}
@@ -33,7 +51,7 @@ management:
         include: health,info
   endpoint:
     health:
-      show-details: always
+      show-details: never
 
 logging:
   level:
@@ -48,6 +66,20 @@ spec:
     retrieval-enabled: ${SPEC_AGENT_GA_RETRIEVAL_ENABLED:true}
     engine: ${SPEC_AGENT_GLOBAL_ASSISTANT_ENGINE:langchain-ga.v1}
   agent:
+    security:
+      # 第二阶段：身份模式。默认 LOCAL —— 单机回环绑定 + 显式本地 user/org。
+      # LOCAL 不是匿名管理员：每个请求都绑定到可禁用、可审计的本地主体。
+      # 切换到 OIDC 是显式的部署动作：停全部实例 -> 改写 security_mode 登记行
+      # -> 启动新舰队。缺配置时拒绝启动，绝不自动回退 LOCAL。
+      mode: ${SPEC_AGENT_SECURITY_MODE:LOCAL}
+      # 单配置 issuer；数据结构（user_identities.issuer）允许以后接多个。
+      issuer-uri: ${SPEC_AGENT_SECURITY_ISSUER_URI:}
+      # 数据库范围的身份模式准入校验。生产不得关闭（测试豁免见 application-test.yml）。
+      mode-admission-enabled: ${SPEC_AGENT_SECURITY_MODE_ADMISSION_ENABLED:true}
+      # 绝对登录期限初值 8 小时（待评估参数，不是承载承诺）。
+      absolute-timeout: ${SPEC_AGENT_SECURITY_ABSOLUTE_TIMEOUT:8h}
+      local-org-name: ${SPEC_AGENT_SECURITY_LOCAL_ORG_NAME:Local Workspace}
+      local-user-name: ${SPEC_AGENT_SECURITY_LOCAL_USER_NAME:Local User}
     action-eligibility:
       mode: ${SPEC_AGENT_ACTION_ELIGIBILITY_MODE:enforced}
     model:
@@ -156,3 +188,47 @@ spec:
       # Explicit opt-in for localhost HTTP MCP servers (test/local tooling).
       # Default off; the shared outbound policy otherwise blocks loopback.
       allow-localhost-http: ${SPEC_AGENT_MCP_ALLOW_LOCALHOST_HTTP:false}
+    # ---------------------------------------------------------------------------
+    # 多 Worker 持久化调度(见 docs/v2/PHASE1_MULTI_WORKER_EXECUTION_DESIGN.md)。
+    # 全部为可配置的实验初值:只有测量之后才能成为承载承诺,容量数字不承诺
+    # 具体用户数或生产吞吐。
+    #
+    # multi-worker-enabled 是"选择哪一套调度器"的总开关,也是禁止新旧调度器
+    # 混跑的强制点:未启用时公共调度层既不登记任务也不参与认领(否则任务永无人
+    # 消费,配额会被虚假积压占满),旧调度器行为与历史完全一致。启用后全库单
+    # 执行器租约不再取得,所有权下沉到任务级执行代次 + 租约 + 任务行排他锁。
+    # ---------------------------------------------------------------------------
+    execution:
+      multi-worker-enabled: ${SPEC_AGENT_MULTI_WORKER_ENABLED:false}
+      # 数据库范围的调度模式准入协议(design §11"禁止新旧调度器混跑"的强制形式):
+      # 启动时校验 runtime_execution_mode 登记的模式与本实例一致,不一致拒绝启动;
+      # 任务级实例(含 API-only)另持 executor 键的共享 advisory lock,使旧单执行器
+      # 实例无法进入舰队(反之亦然)。模式切换走维护窗口:停全部实例、显式改写
+      # 登记行、再启动新舰队。仅供测试关闭;生产不得关闭。
+      mode-admission-enabled: ${SPEC_AGENT_EXECUTION_MODE_ADMISSION:true}
+      # 准入共享锁的周期验证间隔(连接死亡/锁被撤销后 fail-closed 闩锁)。
+      admission-verify-interval-ms: ${SPEC_AGENT_EXECUTION_ADMISSION_VERIFY_MS:5000}
+      # 本进程实际空闲执行槽(本地并发上限,不是全局限额)。
+      local-slots: ${SPEC_AGENT_EXECUTION_LOCAL_SLOTS:2}
+      # 租约与心跳:续租间隔必须显著小于租约时长。
+      lease-seconds: ${SPEC_AGENT_EXECUTION_LEASE_SECONDS:60}
+      heartbeat-seconds: ${SPEC_AGENT_EXECUTION_HEARTBEAT_SECONDS:10}
+      # 认领轮询与过期扫描。
+      claim-interval-ms: ${SPEC_AGENT_EXECUTION_CLAIM_INTERVAL_MS:500}
+      expiry-scan-interval-ms: ${SPEC_AGENT_EXECUTION_EXPIRY_SCAN_INTERVAL_MS:5000}
+      # 每次扫描的候选上限(有界扫描,避免同一个繁忙项目挡住其他项目)。
+      claim-scan-limit: ${SPEC_AGENT_EXECUTION_CLAIM_SCAN_LIMIT:8}
+      # 有界恢复次数。
+      max-attempts: ${SPEC_AGENT_EXECUTION_MAX_ATTEMPTS:3}
+      # 绝对总截止时间:首次实际执行时固定,恢复绝不重置。
+      workspace-timeout-seconds: ${SPEC_AGENT_EXECUTION_WORKSPACE_TIMEOUT_SECONDS:900}
+      global-assistant-timeout-seconds: ${SPEC_AGENT_EXECUTION_GA_TIMEOUT_SECONDS:180}
+      # 队列与范围容量上限(入队前检查,数据库级串行化)。
+      max-queued-tasks: ${SPEC_AGENT_EXECUTION_MAX_QUEUED_TASKS:1000}
+      max-queued-per-scope: ${SPEC_AGENT_EXECUTION_MAX_QUEUED_PER_SCOPE:20}
+      # 优雅退出:到上限后停止续租与新调用,留给新 Worker 按账本恢复。
+      shutdown-drain-seconds: ${SPEC_AGENT_EXECUTION_SHUTDOWN_DRAIN_SECONDS:30}
+      # GA 自动恢复是"两步走"的第二步(design §7):默认关闭,租约过期的 GA 任务
+      # 一律诚实失败。只有经过故障验证后才应开启——即便开启,存在未决(RESERVED/
+      # UNKNOWN)调用时仍会拒绝接管,因为外部副作用可能已经发生。
+      ga-recovery-enabled: ${SPEC_AGENT_EXECUTION_GA_RECOVERY_ENABLED:false}

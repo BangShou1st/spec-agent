@@ -30,6 +30,9 @@ import java.util.UUID;
  */
 @Service
 public class RouteService {
+    private com.specagent.access.AuthorizationGuard access;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setAccess(com.specagent.access.AuthorizationGuard access) { this.access=access; }
 
     private final RouteRepository routeRepository;
     private final ProjectActiveRoutePort projectPort;
@@ -89,6 +92,7 @@ public class RouteService {
      */
     @Transactional
     public void transitionLifecycle(UUID projectId, UUID routeId, RouteLifecycleStatus target) {
+        access.lockProjectWrite(projectId);
         projectPort.lockProject(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         requireTransition(route, target);
@@ -98,6 +102,7 @@ public class RouteService {
     /** 供撤销/重做补偿使用的活跃路线指针恢复。 */
     @Transactional
     public void setActiveRoutePointer(UUID projectId, UUID routeId) {
+        access.lockProjectWrite(projectId);
         projectPort.lockProject(projectId);
         projectPort.updateActiveRoute(projectId, routeId, Instant.now());
         assertActiveRouteInvariant(projectId);
@@ -128,6 +133,7 @@ public class RouteService {
      */
     @Transactional
     public void setActiveRoute(UUID projectId, UUID routeId) {
+        access.lockProjectWrite(projectId);
         projectPort.lockProject(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         if (route.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
@@ -145,6 +151,7 @@ public class RouteService {
      */
     @Transactional
     public void archiveRoute(UUID projectId, UUID routeId) {
+        access.lockProjectWrite(projectId);
         projectPort.lockProject(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         requireTransition(route, RouteLifecycleStatus.ARCHIVED);
@@ -162,6 +169,7 @@ public class RouteService {
      */
     @Transactional
     public void softDeleteRoute(UUID projectId, UUID routeId) {
+        access.lockProjectWrite(projectId);
         projectPort.lockProject(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         requireTransition(route, RouteLifecycleStatus.DELETED);
@@ -179,6 +187,7 @@ public class RouteService {
      */
     @Transactional
     public void restoreRoute(UUID projectId, UUID routeId) {
+        access.lockProjectWrite(projectId);
         projectPort.lockProject(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         requireTransition(route, RouteLifecycleStatus.OPEN);
@@ -222,6 +231,7 @@ public class RouteService {
         // 与 archive/restore/activate 及图变更串行化:分叉要读来源路线的
         // 生命周期并创建新的活跃路线,所以必须在任何状态读取之前持有
         // 项目行锁(顺序:project → node/route → mutation)。
+        access.lockProjectWrite(projectId);
         projectPort.lockProject(projectId);
         Node sourceNode = nodeRepository.findById(sourceNodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Node not found: " + sourceNodeId));
@@ -280,6 +290,7 @@ public class RouteService {
     @Transactional
     public Route startRouteFromNode(UUID projectId, UUID nodeId, String label) {
         // 与 fork 一样串行化:任何读取/变更前先拿项目锁。
+        access.lockProjectWrite(projectId);
         projectPort.lockProject(projectId);
         Node node = nodeRepository.findById(nodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Node not found: " + nodeId));
@@ -332,6 +343,7 @@ public class RouteService {
                                   UUID sourceRouteId,
                                   UUID targetNodeId,
                                   String label) {
+        access.lockProjectWrite(projectId);
         projectPort.lockProject(projectId);
         Node targetNode = requireNodeInProject(projectId, targetNodeId);
         Route sourceRoute = requireExplorationSource(projectId, sourceRouteId);
@@ -418,6 +430,7 @@ public class RouteService {
         // 路线标记为 superseded 并改变活跃路线,所以在任何状态读取之前
         // 先取项目行锁。stale-tip 检查在该锁内进行,并发的 continuation
         // 不可能在决策与提交之间推进来源 tip。
+        access.lockProjectWrite(projectId);
         projectPort.lockProject(projectId);
         Node targetNode = requireNodeInProject(projectId, targetNodeId);
         if (targetNode.parentNodeId() == null) {

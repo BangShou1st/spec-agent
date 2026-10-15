@@ -90,4 +90,13 @@ public class GlobalAssistantRunEventRepository {
                 "SELECT * FROM global_assistant_run_events WHERE run_id = :runId AND sequence > :cursor ORDER BY sequence",
                 Maps.of("runId", runId, "cursor", cursor), rowMapper);
     }
+
+    public List<GlobalAssistantRunEvent> findAfter(UUID runId, int cursor, int limit) {
+        if (cursor < 0 || limit < 1 || limit > 200)
+            throw new IllegalArgumentException("Invalid bounded event cursor");
+        return jdbc.query("""
+                SELECT * FROM global_assistant_run_events
+                WHERE run_id=:runId AND sequence>:cursor ORDER BY sequence LIMIT :limit
+                """, Maps.of("runId", runId, "cursor", cursor, "limit", limit), rowMapper);
+    }
 }

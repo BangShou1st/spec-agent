@@ -1,6 +1,7 @@
 // 文件名:client.ts
 // 用途:Phase 6 API 的统一类型化 HTTP 客户端与 ApiError 类型:每个响应都按稳定的 API 错误契约解析,不匹配契约的内容一律回退为通用文案,绝不泄漏原始响应体。
 import type { ApiErrorPayload, ApiFieldError } from '@/shared/contracts/types'
+import { identityHeaders } from './requestIdentity'
 
 /*
  * 呈现给 UI 的类型化 API 失败。`message` 始终可以安全渲染:它要么是后端
@@ -39,8 +40,8 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
  * 解析;任何不符合契约的内容都变成通用前端兜底,而不是泄漏原始响应体。
  */
 class ApiClient {
-  async get<T>(path: string): Promise<T> {
-    return this.request<T>(path, { method: 'GET' })
+  async get<T>(path: string, options?: Pick<RequestInit, 'signal'>): Promise<T> {
+    return this.request<T>(path, { ...options, method: 'GET' })
   }
 
   async post<T>(path: string, body?: unknown): Promise<T> {
@@ -88,7 +89,9 @@ class ApiClient {
   private async request<T>(path: string, init: RequestInit): Promise<T> {
     let response: Response
     try {
-      response = await fetch(`${API_BASE_URL}${path}`, init)
+      const headers = new Headers(init.headers)
+      for (const [key, value] of Object.entries(identityHeaders(init.method))) headers.set(key, value)
+      response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers, credentials: 'same-origin' })
     } catch {
       throw new ApiError(GENERIC_ERROR_MESSAGE, 'NETWORK_ERROR', 0)
     }
@@ -119,6 +122,9 @@ class ApiClient {
       } catch {
         throw new ApiError(GENERIC_ERROR_MESSAGE, 'INVALID_RESPONSE', response.status)
       }
+    }
+    if (response.status === 401 && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('spec-agent-session-expired'))
     }
 
     throw await this.toApiError(response)

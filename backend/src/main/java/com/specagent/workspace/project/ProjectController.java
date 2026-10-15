@@ -30,6 +30,10 @@ import java.util.UUID;
  * 用途:项目 API:创建、获取、列出项目,以及活跃项目状态视图。
  * 控制器绝不直接访问 repository;超出单一服务的组合逻辑放在
  * {@link ProjectRuntimeQueryService} 中。
+ *
+ * <b>第二阶段(身份/权限)</b>:控制器只做身份解析与参数转换,资源授权
+ * 在 {@link ProjectService} 内完成——因此后台任务与内部 RPC 若走同一服务
+ * 也会被同样校验。
  */
 @RestController
 @RequestMapping("/api/v1/projects")
@@ -59,7 +63,7 @@ public class ProjectController {
         }
     }
 
-    /** 重命名项目;路线状态、答案与历史完全不受影响。 */
+    /** 重命名项目;路线状态、答案与历史完全不受影响。需要 PROJECT_MANAGE。 */
     @PutMapping("/{projectId}/title")
     public ProjectResponse renameProject(@PathVariable UUID projectId,
                                          @Valid @RequestBody RenameProjectRequest request) {
@@ -75,7 +79,7 @@ public class ProjectController {
 
     @GetMapping("/{projectId}")
     public ProjectResponse getProject(@PathVariable UUID projectId) {
-        Project project = projectService.getProject(projectId)
+        Project project = projectService.getProjectForActor(projectId)
                 .orElseThrow(() -> ApiException.notFound("PROJECT_NOT_FOUND", "Project not found"));
         return ProjectResponse.from(project);
     }
@@ -90,6 +94,9 @@ public class ProjectController {
 
     @GetMapping("/{projectId}/active")
     public ActiveProjectStateResponse getActiveState(@PathVariable UUID projectId) {
+        // 可见性先于任何读取:活跃状态包含项目正文派生信息。
+        projectService.getProjectForActor(projectId)
+                .orElseThrow(() -> ApiException.notFound("PROJECT_NOT_FOUND", "Project not found"));
         return runtimeQueryService.getActiveState(projectId);
     }
 
@@ -97,6 +104,7 @@ public class ProjectController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteProject(@PathVariable UUID projectId) {
         try {
+            projectService.authorizeDelete(projectId);
             deletionService.deleteProject(projectId);
         } catch (IllegalArgumentException ex) {
             throw ApiException.notFound("PROJECT_NOT_FOUND", "Project not found");

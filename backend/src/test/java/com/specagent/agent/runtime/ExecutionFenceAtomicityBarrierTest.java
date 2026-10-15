@@ -86,15 +86,20 @@ class ExecutionFenceAtomicityBarrierTest {
     @AfterEach
     void cleanUp() throws Exception {
         worker.shutdownNow();
-        assertThat(worker.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
-        for (ExecutorLease lease : leases) {
-            try {
-                lease.destroy();
-            } catch (Exception expectedAfterLoss) {
-                // 丢锁后的 destroy 释放会失败——所有权已不在本进程手中。
+        try {
+            assertThat(worker.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            // A failed barrier assertion must not leave session locks behind and
+            // turn every subsequent ownership test into a misleading failure.
+            for (ExecutorLease lease : leases) {
+                try {
+                    lease.destroy();
+                } catch (Exception expectedAfterLoss) {
+                    // 丢锁后的 destroy 释放会失败——所有权已不在本进程手中。
+                }
             }
+            leases.clear();
         }
-        leases.clear();
         jdbc.getJdbcTemplate().update("DELETE FROM review_business_effect");
         for (UUID projectId : touchedProjectIds) {
             jdbc.update("DELETE FROM agent_run_events WHERE run_id IN "
@@ -144,13 +149,19 @@ class ExecutionFenceAtomicityBarrierTest {
         };
     }
 
+    @Autowired WorkspaceExecutionAuthorization authorization;
+
     private AgentRunService service(AgentRunRepository repository, ExecutorLease lease) {
-        return new AgentRunService(repository, new ExecutionFence(providerOf(lease), jdbc),
+        var service=new AgentRunService(repository, new ExecutionFence(providerOf(lease), jdbc),
                 new TransactionTemplate(txManager));
+        service.setAuthorization(authorization);
+        return service;
     }
 
     private AgentRunService service(ExecutionFence fence) {
-        return new AgentRunService(agentRunRepository, fence, new TransactionTemplate(txManager));
+        var service=new AgentRunService(agentRunRepository, fence, new TransactionTemplate(txManager));
+        service.setAuthorization(authorization);
+        return service;
     }
 
     private AgentRunService service(ExecutorLease lease) {
@@ -215,17 +226,16 @@ class ExecutionFenceAtomicityBarrierTest {
     }
 
     /** 等待目标 SQL 真正进入 PostgreSQL 的行锁等待(与复核反例同一判定)。 */
-    private void awaitSqlWaitingInsidePostgres(String databaseName, String sqlPattern)
+    private void awaitSqlWaitingInsidePostgres(String sqlPattern)
             throws SQLException, InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
         while (System.nanoTime() < deadline) {
             try (Connection admin = dataSource.getConnection();
                  PreparedStatement ps = admin.prepareStatement(
                          "SELECT EXISTS(SELECT 1 FROM pg_stat_activity "
-                                 + "WHERE datname = ? AND wait_event_type = 'Lock' "
+                                 + "WHERE datname = current_database() AND wait_event_type = 'Lock' "
                                  + "AND query ILIKE ?)")) {
-                ps.setString(1, databaseName);
-                ps.setString(2, sqlPattern);
+                ps.setString(1, sqlPattern);
                 try (ResultSet rs = ps.executeQuery()) {
                     rs.next();
                     if (rs.getBoolean(1)) {
@@ -327,7 +337,7 @@ class ExecutionFenceAtomicityBarrierTest {
         }));
 
         // 确定性屏障:检查点 UPDATE 已在 PostgreSQL 内等待行锁
-        awaitSqlWaitingInsidePostgres("spec_agent_test", "%UPDATE agent_runs%");
+        awaitSqlWaitingInsidePostgres("%UPDATE agent_runs%");
 
         // 接管的代次递增此刻必须被 FOR SHARE 挡住:短超时探测必然锁超时
         try (Connection probe = dataSource.getConnection()) {

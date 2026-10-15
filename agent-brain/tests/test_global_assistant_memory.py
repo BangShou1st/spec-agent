@@ -60,3 +60,30 @@ def test_framework_summary_failure_does_not_retry_or_fabricate_summary():
     with pytest.raises(BrokerError, match="GA_BUDGET_EXHAUSTED"):
         graph.invoke({"messages": history(uuid4())}, {"configurable": {"thread_id": str(e.thread_id)}})
     assert len(broker.requests) == 1 and broker.requests[0].call_type == "SUMMARY"
+
+
+def test_failed_tool_results_never_become_retained_facts():
+    from spec_agent_brain.global_assistant.memory import IdentityMemory
+    failed = ToolMessage(tool_call_id="bad", content=json.dumps({"status": "FAILED", "errorCode": "WEB_TIMEOUT",
+        "content": {"candidates": [{"projectId": str(uuid4()), "title": "失败不算事实"}]},
+        "sourceRefs": ["project:failed"]}))
+    succeeded = ToolMessage(tool_call_id="ok", content=json.dumps({"status": "SUCCEEDED", "content": {"candidates": [
+        {"projectId": str(uuid4()), "title": "成功才算事实"}]}, "sourceRefs": ["project:kept"]}))
+    facts = IdentityMemory().before_model({"messages": [failed, succeeded], "ga_facts": {}}, None)["ga_facts"]
+    assert facts["sourceRefs"] == ["project:kept"]
+    assert list(facts["projects"].values()) == ["成功才算事实"]
+    assert "失败不算事实" not in json.dumps(facts)
+
+
+def test_summary_prompt_marks_goal_changes_without_fabricating_completion():
+    from spec_agent_brain.global_assistant.memory import HostSummarization
+
+    class RetryStub:
+        _llm_type = "stub"
+        def with_retry(self, **kwargs):
+            return self
+
+    middleware = HostSummarization(model=RetryStub())
+    assert "continuation answers" in middleware.summary_prompt  # 补充/澄清不等于替换目标
+    assert "superseded" in middleware.summary_prompt
+    assert "Never summarize failed or unconfirmed tool attempts as completed actions" in middleware.summary_prompt

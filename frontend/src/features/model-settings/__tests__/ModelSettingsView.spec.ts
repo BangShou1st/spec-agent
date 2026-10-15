@@ -1,3 +1,4 @@
+import { accessSession } from '@/features/access/accessSession'
 // 文件名:ModelSettingsView.spec.ts
 // 用途:模型设置页组件测试:切换到 OpenCode Zen Tab 后验证保存/测试流程、
 //       必须显式选模型、状态胶囊语义,以及已配置且未换密钥时免重输密钥的保存路径。
@@ -42,6 +43,7 @@ async function mountOnOpenCodeTab(): Promise<ReturnType<typeof mount>> {
 
 describe('ModelSettingsView', () => {
   beforeEach(() => {
+    accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'editor', orgId: 'org', displayName: 'Editor', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['CREDENTIAL_MANAGE'], memberships: [] }
     setActivePinia(createPinia())
     vi.clearAllMocks()
     mockedGet.mockResolvedValue({ configured: false, maskedKey: null, selectedModel: null })

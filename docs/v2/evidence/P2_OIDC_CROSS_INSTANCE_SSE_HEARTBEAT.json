@@ -1,0 +1,83 @@
+{
+  "date": "2026-10-14",
+  "scenario": "Runtime-task lease heartbeat fix + cross-instance in-flight SSE live delivery",
+  "environment": {
+    "database": "isolated spec_agent_p2_workers_20261014a",
+    "securityMode": "OIDC",
+    "securityProtocol": 13,
+    "jar": "backend/build/p2-acceptance/runtime-heartbeatfix-wid-protocol13.jar",
+    "jarSha256": "6DE299B06BF7BFA7D793059450B38B474C1872DE7E5C01975699F6C1A8B940F4",
+    "jvmA": {"port": 8383, "workerId": "eea6300e-4ad1-4acb-a14a-a260201a6e8c"},
+    "jvmB": {"port": 8384, "workerId": "bd0dc231-cc2c-4d43-bad0-52a4c54c3b57"},
+    "brain": {"port": 8103, "modelMode": "broker"},
+    "viteA": "8282 -> A 8383", "viteB": "8286 -> B 8384",
+    "nativeFixture": "ga-native-transport=fake, ga-native-fragment-delay-ms=6000",
+    "workerLeaseSeconds": 15, "heartbeatSeconds": 3, "heartbeatPeriodSeconds": 3,
+    "workerLogLine": "Lease heartbeat started: every 3s (lease 15s)"
+  },
+  "defectFixed": {
+    "finding": "RuntimeTaskScheduler.heartbeat() had no caller and no renewal loop; any execution longer than lease-seconds was recovered as LEASE_EXPIRED with EXECUTION_OUTCOME_UNKNOWN.",
+    "designReference": "PHASE1_MULTI_WORKER_EXECUTION_DESIGN.md §6.4 (independent bounded heartbeat executor)",
+    "secondaryFinding": "All @Scheduled methods shared Spring Boot's default single-thread scheduler, so a blocking execution also starved the cross-instance SSE catch-up and revocation pollers.",
+    "fix": [
+      "Added ExecutionHeartbeatRegistry (in-flight token registry) and LeaseHeartbeat (dedicated single-thread ScheduledExecutorService, not the model-call thread, not shared @Scheduled)",
+      "WorkspaceMultiWorkerDriver and GaMultiWorkerDriver register/unregister the claim around adapter.execute (try/finally)",
+      "On renewal failure the registry marks ownership lost and stops renewing; DB conditional renewal stays the authority",
+      "spring.task.scheduling.pool.size=4 so scheduled convergence paths are not starved by a blocking execution"
+    ],
+    "noMigration": "lease_until / heartbeat_at already exist; behaviour fix only, no data-format or security-boundary change",
+    "newFocusTests": ["MultiWorkerSchedulingIntegrationTest.heartbeatRenewsLeaseWhileExecutionBlocksBeyondLease",
+                      "MultiWorkerSchedulingIntegrationTest.heartbeatMarksOwnershipLostWhenLeaseAlreadyExpired"]
+  },
+  "scenarios": [
+    {
+      "name": "long execution survives the lease via heartbeat",
+      "runId": "695a3caa-31a4-46ac-82f1-083362555653",
+      "businessStatus": "COMPLETED",
+      "elapsedSeconds": 20,
+      "ledger": {"kind": "MODEL", "status": "SUCCEEDED", "callSequence": 301, "modelCalls": 1},
+      "executor": "B",
+      "note": "same 6s-fixture run previously produced LEASE_EXPIRED; with the fix it completes honestly"
+    },
+    {
+      "name": "cross-instance in-flight SSE live delivery",
+      "runId": "b75defb2-1a05-4e81-bf41-ed72f4174b12",
+      "executor": "A (eea6300e)",
+      "sseSubscriber": "B (8384 via 8286)",
+      "businessStatus": "COMPLETED",
+      "ledger": {"kind": "MODEL", "status": "SUCCEEDED", "modelCalls": 1},
+      "runtimeTaskState": "SUCCEEDED",
+      "events": [
+        {"sequence": 1, "type": "RUN_STARTED", "atMs": 45},
+        {"sequence": 2, "type": "ANSWER_STREAM_STARTED", "atMs": 46},
+        {"sequence": 3, "type": "ANSWER_DELTA", "atMs": 47},
+        {"sequence": 4, "type": "ANSWER_DELTA", "atMs": 600},
+        {"sequence": 5, "type": "ANSWER_DELTA", "atMs": 6696},
+        {"sequence": 6, "type": "ASSISTANT_COMPLETED", "atMs": 7720},
+        {"sequence": 7, "type": "RUN_COMPLETED", "atMs": 7727}
+      ],
+      "finding": "The run was executed by A while the SSE connection lived on B; B delivered live deltas and the terminal event via the DB-cursor catch-up poller (1s interval). Sequence numbers are contiguous with no gap or duplicate."
+    },
+    {
+      "name": "cursor reconnect (Last-Event-ID)",
+      "runId": "b75defb2-1a05-4e81-bf41-ed72f4174b12",
+      "fromSequence": 2,
+      "received": [3, 4, 5, 6, 7],
+      "finding": "Reconnect from cursor 2 replays exactly the events after the cursor and no earlier ones"
+    }
+  ],
+  "regression": {
+    "focusedCommand": "testNonLive --tests com.specagent.runtime.execution.* --tests com.specagent.agent.runtime.* --tests com.specagent.assistant.runtime.* --tests com.specagent.architecture.* bootJar",
+    "tests": 300, "failures": 0, "errors": 0, "skipped": 0, "suites": 50,
+    "database": "isolated spec_agent_test on 127.0.0.1:5546"
+  },
+  "liveWorkerIdLogging": "WorkerPollingGate now logs the per-process worker UUID so runtime_tasks.worker_id can be mapped to an instance (design §9); the OIDC /api/health redaction is unchanged",
+  "limitations": [
+    "Native model output is a deterministic test-only fixture; not real-provider qualification",
+    "Production defaults are lease 60s / heartbeat 10s; the acceptance used 15s/3s so a single blocking fragment exceeds the lease quickly",
+    "No revocation, slow-client, kill-process takeover, DB-outage or fleet key rotation/rollback acceptance in this scenario",
+    "The 6s fixture delay is an acceptance setting, not a capacity claim",
+    "Full P2 remains incomplete"
+  ],
+  "stageCompleted": false
+}

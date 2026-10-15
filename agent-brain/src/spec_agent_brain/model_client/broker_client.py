@@ -10,6 +10,9 @@
 from typing import Optional, Sequence
 
 import httpx
+import re
+
+WORKSPACE_RPC_GRANT_VERSION = "workspace-rpc-grant.v1"
 
 from .base import BrokerTimeoutError, ChatMessage, Completion, ModelClientError, require_call_type, require_roles
 
@@ -21,10 +24,17 @@ class BrokerModelClient:
         internal_secret: str,
         timeout_seconds: float = 120.0,
         http_client: Optional[httpx.Client] = None,
+        execution_grant: Optional[str] = None,
     ):
         self._broker_url = broker_url
         self._internal_secret = internal_secret
+        self._execution_grant = execution_grant
+        self._owns_client = http_client is None
         self._client = http_client or httpx.Client(timeout=timeout_seconds)
+
+    def close(self) -> None:
+        if self._owns_client:
+            self._client.close()
 
     def complete(
         self,
@@ -35,6 +45,8 @@ class BrokerModelClient:
     ) -> Completion:
         require_call_type(call_type)
         require_roles(messages)
+        if self._execution_grant is None or re.fullmatch(r"[A-Za-z0-9_-]{43}", self._execution_grant) is None:
+            raise ModelClientError("workspace execution grant is required")
         payload = {
             "protocolVersion": "model-inference.v1",
             "runId": run_id,
@@ -42,7 +54,8 @@ class BrokerModelClient:
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "maxOutputTokens": max_output_tokens,
         }
-        headers = {"X-Spec-Agent-Internal-Token": self._internal_secret}
+        headers = {"X-Spec-Agent-Internal-Token": self._internal_secret,
+                   "X-Spec-Agent-Execution-Grant": self._execution_grant}
         try:
             response = self._client.post(self._broker_url, json=payload, headers=headers)
         except httpx.TimeoutException as exc:

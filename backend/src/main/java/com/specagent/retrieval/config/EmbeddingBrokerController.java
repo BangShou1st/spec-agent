@@ -18,8 +18,10 @@ public class EmbeddingBrokerController {
     private final RetrievalIndexJobs jobs;
     private final EmbeddingSettings settings;
     private final EmbeddingTransport transport;
-    public EmbeddingBrokerController(BrainConnectionSettings auth,RetrievalStore store,RetrievalIndexJobs jobs,EmbeddingSettings settings,EmbeddingTransport transport) {
+    private final com.specagent.access.IdentityModeProperties mode;
+    public EmbeddingBrokerController(BrainConnectionSettings auth,RetrievalStore store,RetrievalIndexJobs jobs,EmbeddingSettings settings,EmbeddingTransport transport,com.specagent.access.IdentityModeProperties mode) {
         this.auth=auth; this.store=store; this.jobs=jobs; this.settings=settings; this.transport=transport;
+        this.mode=mode;
     }
     private Envelope request(String body) {
         try {
@@ -38,7 +40,9 @@ public class EmbeddingBrokerController {
         if(!authorized(token)) return ResponseEntity.status(401).build();
         var id=store.activeHelpProfile();
         if(PROFILE.equals(id)) return ResponseEntity.ok(Map.of("legacy",true));
-        var p=settings.profile(id); boolean available=true;
+        if(mode.accessMode()!=com.specagent.access.AccessMode.LOCAL)
+            return ResponseEntity.status(409).body(Map.of("errorCode","EMBEDDING_NOT_CONFIGURED"));
+        var p=settings.profileForOrg(com.specagent.access.LocalPrincipalIds.ORG_ID,id); boolean available=true;
         if(p.config().provider().equals("OPENAI_COMPATIBLE")) {
             try { var key=settings.key(p); available=key!=null&&!key.isBlank() || EmbeddingSettings.localApi(p.config()); }
             catch(RuntimeException ex) { available=false; }
@@ -55,7 +59,11 @@ public class EmbeddingBrokerController {
             var request=request(body); id=request.requestId(); var scope=store.guard(request);
             if(request instanceof IndexBatch batch) jobs.validateGrant(batch);
             if(request instanceof Search search && !search.query().equals(scope.query())) throw new IllegalStateException("STALE_SCOPE_GRANT");
-            var profile=settings.profile(request.profileId());
+            UUID org=store.embeddingOrganization(request);
+            if(request.workload().kind().equals("INDEX_JOB") && scope.projectId()==null
+                    && mode.accessMode()!=com.specagent.access.AccessMode.LOCAL)
+                throw new IllegalStateException("EMBEDDING_NOT_CONFIGURED");
+            var profile=settings.profileForOrg(org,request.profileId());
             if(!compute) return ResponseEntity.ok(Map.of("profileId",profile.profileId(),"semantic",profile.semantic(),"config",profile.config(),"serviceRevision",profile.serviceRevision()));
             if(!profile.config().provider().equals("OPENAI_COMPATIBLE")) throw new IllegalStateException("UNSUPPORTED_PROFILE");
             List<String> texts=request instanceof IndexBatch batch?batch.sources().stream().map(IndexSource::text).toList():List.of(((Search)request).query());

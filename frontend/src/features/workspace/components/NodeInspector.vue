@@ -27,7 +27,7 @@ import { useRouter } from 'vue-router'
  * 任意节点都可以发起上下文 AI 查询（"问 AI"）：查询使用该节点的 lineage
  * 与显式阅读路线作为上下文，回答不修改 Graph。
  */
-const props = defineProps<{ data: SpecAgentGraphNodeData | null }>()
+const props = defineProps<{ data: SpecAgentGraphNodeData | null; canWrite?: boolean }>()
 
 const emit = defineEmits<{
   fork: [nodeId: string]
@@ -107,10 +107,11 @@ const INSPECTOR_ACTION_TEST_IDS: Record<NodeActionId, string> = {
 
 const inspectorActions = computed(() => {
   if (!props.data || props.data.node.kind !== 'INTERACTION') return []
-  return actionsFor(props.data).filter((action) => INSPECTOR_ACTION_IDS.includes(action.id))
+  return actionsFor(props.data).filter((action) => INSPECTOR_ACTION_IDS.includes(action.id) && (props.canWrite || action.id === 'contextual-ai'))
 })
 
 function onInspectorAction(action: NodeAction): void {
+  if (!props.canWrite && action.id !== 'contextual-ai') return
   if (!props.data) return
   switch (action.id) {
     case 'fork-node':
@@ -211,6 +212,7 @@ async function ask(): Promise<void> {
 }
 
 async function acceptProposal(): Promise<void> {
+  if (!props.canWrite) return
   const proposalId = queryResult.value?.proposalId
   if (!proposalId || acceptingProposal.value) return
   acceptingProposal.value = true
@@ -222,6 +224,7 @@ async function acceptProposal(): Promise<void> {
 }
 
 async function rejectProposal(): Promise<void> {
+  if (!props.canWrite) return
   const proposalId = queryResult.value?.proposalId
   if (!proposalId || rejectingProposal.value) return
   rejectingProposal.value = true
@@ -341,6 +344,7 @@ function relationDirectionLabel(relation: {
           <template v-else-if="queryResult.status === 'AWAITING_APPROVAL'">
             <div data-test="agent-proposal">
               <AgentProposalCard
+                :can-write="canWrite"
                 :action-family="queryResult.actionFamily ?? null"
                 :message="queryResult.message"
                 :node-context="proposalNodeContext"

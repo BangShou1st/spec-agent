@@ -79,10 +79,10 @@ public class ConnectionController {
     @PostMapping
     public ResponseEntity<ConnectionResponse> createConnection(
             @RequestBody CreateConnectionRequest request) {
-        Connection connection = lifecycleService.create(
+        Connection connection = lifecycleService.createOwned(
                 ConnectionKind.fromCode(request.kind()), request.name(),
                 request.config() == null ? Map.of() : request.config(),
-                request.secret());
+                request.secret(),request.ownerKind());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ConnectionResponse.from(connection, maskedSuffix(connection)));
     }
@@ -213,28 +213,29 @@ public class ConnectionController {
 
     public record ConnectionResponse(String connectionId, String name, String kind,
                                      String status, boolean enabled, Map<String, Object> config,
-                                     boolean hasCredential, String maskedSuffix, Instant createdAt, Instant updatedAt) {
+                                     boolean hasCredential, String maskedSuffix, Instant createdAt, Instant updatedAt,
+                                     String ownerKind) {
         static ConnectionResponse from(Connection connection, String maskedSuffix) {
             Map<String, Object> safeConfig = connection.config() == null ? Map.of() : Map.copyOf(connection.config());
             boolean hasCredential = connection.credentialRef() != null && !connection.credentialRef().isBlank();
             return new ConnectionResponse(connection.connectionId(), connection.name(),
                     connection.kind().code(), connection.status().code(),
                     connection.enabled(), safeConfig, hasCredential, maskedSuffix,
-                    connection.createdAt(), connection.updatedAt());
+                    connection.createdAt(), connection.updatedAt(), connection.ownerKind());
         }
     }
 
     public record ConnectionDetailResponse(String connectionId, String name, String kind,
                                            String status, boolean enabled, Map<String, Object> config,
                                            boolean hasCredential, String maskedSuffix,
-                                           String lastError, Instant createdAt, Instant updatedAt) {
+                                           String lastError, Instant createdAt, Instant updatedAt, String ownerKind) {
         static ConnectionDetailResponse from(Connection connection, String maskedSuffix) {
             Map<String, Object> safeConfig = connection.config() == null ? Map.of() : Map.copyOf(connection.config());
             boolean hasCredential = connection.credentialRef() != null && !connection.credentialRef().isBlank();
             return new ConnectionDetailResponse(connection.connectionId(), connection.name(),
                     connection.kind().code(), connection.status().code(),
                     connection.enabled(), safeConfig, hasCredential,
-                    maskedSuffix, connection.lastError(), connection.createdAt(), connection.updatedAt());
+                    maskedSuffix, connection.lastError(), connection.createdAt(), connection.updatedAt(), connection.ownerKind());
         }
     }
 
@@ -256,6 +257,6 @@ public class ConnectionController {
     }
 
     public record CreateConnectionRequest(String kind, String name,
-                                          Map<String, Object> config, String secret) {
+                                          Map<String, Object> config, String secret,String ownerKind) {
     }
 }

@@ -3,7 +3,7 @@
   用途:空项目的画布起始占位:提供"起草第一个问题"与"先写下想法"两个入口。
 -->
 <script setup lang="ts">
-defineProps<{ drafting: boolean; ideaPending?: boolean }>()
+defineProps<{ drafting: boolean; canWrite?: boolean; ideaPending?: boolean }>()
 defineEmits<{ draft: []; 'add-idea': [] }>()
 </script>
 
@@ -14,8 +14,8 @@ defineEmits<{ draft: []; 'add-idea': [] }>()
   <div class="graph-start-placeholder" data-test="graph-start-placeholder">
     <div class="graph-start-placeholder__content" data-layout-role="start-placeholder">
       <h2 class="graph-start-placeholder__title">开始需求澄清</h2>
-      <p class="graph-start-placeholder__hint">还没有任何内容。可以先起草问题，也可以先写下自己的想法</p>
-      <div class="graph-start-placeholder__actions">
+      <p class="graph-start-placeholder__hint">{{ canWrite ? '还没有任何内容。可以先起草问题，也可以先写下自己的想法' : '此项目暂时还没有内容' }}</p>
+      <div v-if="canWrite" class="graph-start-placeholder__actions">
         <button
           class="btn btn-primary"
           data-test="draft-question"

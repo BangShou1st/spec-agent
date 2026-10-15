@@ -20,6 +20,7 @@ export interface InputDraft {
 }
 
 export const INPUT_DRAFT_STORAGE_KEY = 'spec-agent:input-drafts:v1'
+export const INPUT_DRAFT_IDENTITY_KEY = 'spec-agent:input-drafts:owner:v1'
 
 function isInputDraft(value: unknown): value is InputDraft {
   if (typeof value !== 'object' || value === null) return false
@@ -58,6 +59,8 @@ function draftKey(
 
 export const useInputDraftStore = defineStore('inputDraft', () => {
   const drafts = ref<Map<string, InputDraft>>(restoreDrafts())
+  let identity: string | null = null
+  try { identity = sessionStorage.getItem(INPUT_DRAFT_IDENTITY_KEY) } catch { /* Storage may be unavailable. */ }
 
   function persistDrafts(): void {
     try {
@@ -103,5 +106,25 @@ export const useInputDraftStore = defineStore('inputDraft', () => {
 
   const draftCount = computed(() => drafts.value.size)
 
-  return { drafts, setDraft, getDraft, clearDraft, draftCount }
+  function clearProject(projectId: string): void {
+    for (const key of drafts.value.keys()) {
+      if (key.startsWith(`${projectId}:`)) drafts.value.delete(key)
+    }
+    persistDrafts()
+  }
+
+  /** Bind before authenticated routes render; never adopt legacy anonymous drafts. */
+  function bindIdentity(next: string | null): void {
+    if (next !== identity || next === null) {
+      drafts.value.clear()
+      persistDrafts()
+    }
+    identity = next
+    try {
+      if (next === null) sessionStorage.removeItem(INPUT_DRAFT_IDENTITY_KEY)
+      else sessionStorage.setItem(INPUT_DRAFT_IDENTITY_KEY, next)
+    } catch { /* Ownership remains enforced in memory. */ }
+  }
+
+  return { drafts, setDraft, getDraft, clearDraft, clearProject, bindIdentity, draftCount }
 })

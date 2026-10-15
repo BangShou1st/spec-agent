@@ -131,6 +131,32 @@ class CapabilityConcurrencyIntegrationTest {
     }
 
     @Test
+    void reusedKeyCannotReplayAnotherProjectRunCapabilityOrArguments() {
+        String key=KEY_PREFIX+Ids.random();
+        UUID run=UUID.randomUUID();
+        capabilityRuntime.invoke(key,"test.counting",project.id(),run,Map.of("value",1));
+        for (CapabilityResult result:List.of(
+                capabilityRuntime.invoke(key,"test.counting",UUID.randomUUID(),run,Map.of("value",1)),
+                capabilityRuntime.invoke(key,"test.counting",project.id(),UUID.randomUUID(),Map.of("value",1)),
+                capabilityRuntime.invoke(key,"no.such.capability",project.id(),run,Map.of("value",1)),
+                capabilityRuntime.invoke(key,"test.counting",project.id(),run,Map.of("value",2)))) {
+            assertThat(result.status()).isEqualTo(CapabilityResult.Status.FAILED);
+            assertThat(result.content()).containsEntry("reason","CAPABILITY_INVOCATION_IDENTITY_MISMATCH");
+            assertThat(result.content()).doesNotContainKey("ok");
+        }
+        assertThat(CountingCapabilityConfig.EXECUTIONS.get()).isEqualTo(1);
+    }
+
+    @Test
+    void replayIdentityUsesJsonNumericMeaningRatherThanJavaNumberClass() {
+        String key=KEY_PREFIX+Ids.random();
+        capabilityRuntime.invoke(key,"test.counting",project.id(),null,Map.of("value",1L));
+        assertThat(capabilityRuntime.invoke(key,"test.counting",project.id(),null,Map.of("value",1)).status())
+                .isEqualTo(CapabilityResult.Status.REPLAYED);
+        assertThat(CountingCapabilityConfig.EXECUTIONS.get()).isEqualTo(1);
+    }
+
+    @Test
     void succeededReplayNeverReExecutesAdapter() {
         String key = KEY_PREFIX + Ids.random();
 

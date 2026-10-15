@@ -1,3 +1,4 @@
+import { accessSession } from '@/features/access/accessSession'
 // 文件名:ProviderSettingsSection.spec.ts
 // 用途:Provider 设置区组件测试:胶囊 Tab 与创建/编辑弹窗的行为,
 //       包括弹窗不卸载底层卡片、取消不跳 Tab、编辑模式下显示名称可改、
@@ -43,6 +44,7 @@ async function mountSection(): Promise<ReturnType<typeof mount>> {
 
 describe('ProviderSettingsSection custom pill entry', () => {
   beforeEach(() => {
+    accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'editor', orgId: 'org', displayName: 'Editor', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['CREDENTIAL_MANAGE'], memberships: [] }
     vi.clearAllMocks()
     vi.mocked(getActiveProvider).mockResolvedValue({ activeProvider: 'OPENCODE_ZEN' })
   })
@@ -195,6 +197,7 @@ describe('custom provider dialog is one flat flow', () => {
   }
 
   beforeEach(() => {
+    accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'editor', orgId: 'org', displayName: 'Editor', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['CREDENTIAL_MANAGE'], memberships: [] }
     vi.clearAllMocks()
     vi.mocked(getActiveProvider).mockResolvedValue({ activeProvider: 'CUSTOM' })
   })

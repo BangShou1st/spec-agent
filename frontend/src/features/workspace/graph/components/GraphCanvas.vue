@@ -61,6 +61,7 @@ import { resolveRouteFocusIntent } from '@/features/workspace/graph/graphInterac
  * Vue Flow `fitView`,这样刷新绝不会基于过期/缺失的节点测量做适配。
  */
 const props = defineProps<{
+  canWrite?: boolean
   view: GraphWorkspaceView | null
   activeNodeId: string | null
   submitting: boolean
@@ -775,6 +776,7 @@ function onPaneClick(event?: MouseEvent): void {
  * 被忽略。
  */
 function onConnect(connection: Connection): void {
+  if (!props.canWrite) return
   const endpointOf = (
     flowNodeId: string | null | undefined,
   ): { canonicalNodeId: string; floating: boolean } | null => {
@@ -949,15 +951,16 @@ const isEmptyProject = computed(() =>
 <template>
   <div ref="rootEl" class="graph-canvas" data-test="graph-canvas" :data-viewport-settled="viewportSettledRevision > 0 ? String(viewportSettledRevision) : undefined">
     <GraphToolbar
+      :can-write="canWrite"
       @zoom-in="zoomIn"
       @zoom-out="zoomOut"
       @fit-view="fitView"
       @auto-layout="requestAutoLayout"
       @show-all="showAll"
-      @add-idea="emit('add-idea')"
-      @add-resource="emit('add-resource')"
-      @undo="emit('undo')"
-      @redo="emit('redo')"
+      @add-idea="canWrite && emit('add-idea')"
+      @add-resource="canWrite && emit('add-resource')"
+      @undo="canWrite && emit('undo')"
+      @redo="canWrite && emit('redo')"
     />
 
     <div v-if="isolatedRouteLabel" class="graph-canvas__isolate-chip" data-test="isolate-chip">
@@ -979,7 +982,7 @@ const isEmptyProject = computed(() =>
       <VueFlow
         v-model:nodes="flowNodes"
         v-model:edges="flowEdges"
-        :nodes-connectable="true"
+        :nodes-connectable="!!canWrite"
         :connection-mode="ConnectionMode.Loose"
         :edges-updatable="false"
         :multi-selection-key-code="['Meta', 'Control']"
@@ -1006,24 +1009,26 @@ const isEmptyProject = computed(() =>
         </template>
         <template #node-question="nodeProps: NodeProps<SpecAgentGraphNodeData>">
           <GraphQuestionNode
+            :can-write="canWrite"
             :data="nodeProps.data"
             :selected="nodeProps.selected"
             :submitting="submitting"
             :pending="pending"
-            @submit-answer="(payload) => emit('submit-answer', payload)"
+            @submit-answer="(payload) => canWrite && emit('submit-answer', payload)"
             @focus-route="(routeId) => graphUi.setFocusRoute(routeId)"
-            @fork="(id) => emit('fork', id)"
-            @reanswer="(id) => emit('reanswer', id)"
-            @regenerate="(id) => emit('regenerate', id)"
-            @disconnect="(id) => emit('disconnect', id)"
+            @fork="(id) => canWrite && emit('fork', id)"
+            @reanswer="(id) => canWrite && emit('reanswer', id)"
+            @regenerate="(id) => canWrite && emit('regenerate', id)"
+            @disconnect="(id) => canWrite && emit('disconnect', id)"
             @contextual-ai="(id) => emitContextualAi(id, nodeProps.data.visualNodeKey)"
-            @retry-failure="(failure) => emit('retry-failure', failure)"
-            @activate-route="(routeId) => emit('activate-route', routeId)"
-            @draft-next="(routeId) => emit('draft-next', routeId)"
+            @retry-failure="(failure) => canWrite && emit('retry-failure', failure)"
+            @activate-route="(routeId) => canWrite && emit('activate-route', routeId)"
+            @draft-next="(routeId) => canWrite && emit('draft-next', routeId)"
           />
         </template>
         <template #node-knowledge="nodeProps: NodeProps<SpecAgentGraphNodeData>">
           <GraphKnowledgeNode
+            :can-write="canWrite"
             :data="nodeProps.data"
             :selected="nodeProps.selected"
             @contextual-ai="(id) => emitContextualAi(id, nodeProps.data.visualNodeKey)"
@@ -1033,10 +1038,11 @@ const isEmptyProject = computed(() =>
     </div>
 
     <GraphStartPlaceholder
+      :can-write="canWrite"
       v-else-if="isEmptyProject"
       :drafting="drafting"
-      @draft="emit('draft')"
-      @add-idea="emit('add-idea')"
+      @draft="canWrite && emit('draft')"
+      @add-idea="canWrite && emit('add-idea')"
     />
 
     <p v-if="!view" class="muted graph-canvas__loading">正在加载工作区…</p>

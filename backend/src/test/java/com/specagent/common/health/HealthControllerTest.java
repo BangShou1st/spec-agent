@@ -2,6 +2,7 @@ package com.specagent.common.health;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -14,8 +15,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * 测试目标:验证健康检查端点 /api/health 返回 UP 状态、服务名与时间戳,
  * 确保基础健康检查可用。
+ *
+ * {@code addFilters = false} 是刻意的:第二阶段引入 Spring Security 后,
+ * {@code @WebMvcTest} 切片会应用 Spring Boot 的<b>默认</b>安全链(本切片不加载
+ * {@code com.specagent.access.security} 下的真实链),于是 /api/health 会变成
+ * 401,而它在这条测试里要验证的是健康 JSON 的语义,不是安全边界。
+ *
+ * 安全边界(健康端点无需认证即可达)由真实安全链所在的集成测试覆盖:
+ * {@code com.specagent.access.AccessAuthorizationIntegrationTest}。不要用
+ * 这个切片测试代替那条断言。
  */
 @WebMvcTest(HealthController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
 @org.springframework.test.context.TestPropertySource(
         properties = "spec.agent.brain.worker.enabled=true")

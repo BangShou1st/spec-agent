@@ -125,6 +125,20 @@ public class AgentInputSnapshotBuilder {
     private final Json json;
     private final RetrievalContextService retrievalContextService;
     private final WorkingContextSelector workingContextSelector;
+    private SkillObservationAuthorization skillSourceAuthorization;
+    private org.springframework.transaction.support.TransactionTemplate sourceTransactions;
+    private com.specagent.capability.RecordedMcpSourcePort mcpSourceAuthorization;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setMcpSourceAuthorization(com.specagent.capability.RecordedMcpSourcePort authorization) {
+        this.mcpSourceAuthorization=authorization;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setSkillSourceAuthorization(SkillObservationAuthorization authorization,
+            org.springframework.transaction.support.TransactionTemplate transactions) {
+        this.skillSourceAuthorization=authorization;this.sourceTransactions=transactions;
+    }
 
     public AgentInputSnapshotBuilder(NodeRepository nodeRepository,
                                      AnswerRepository answerRepository,
@@ -235,12 +249,13 @@ public class AgentInputSnapshotBuilder {
                             + snapshot.id() + ": " + ex.getMessage());
         }
         if (!snapshot.id().toString().equals(projection.snapshotId())
-                || !snapshot.contextHash().equals(projection.contextHash())) {
+                || !snapshot.contextHash().equals(projection.contextHash())
+                || !snapshot.projectId().equals(projection.projectId())) {
             throw new FrozenProjectionCorruptedException(
                     "Frozen input projection identity mismatch for snapshot "
                             + snapshot.id() + " — payload belongs to another snapshot context");
         }
-        return projection;
+        return withAuthorizedSkillSources(snapshot.projectId(),projection.capabilityResults(),()->projection);
     }
 
     /**
@@ -250,6 +265,11 @@ public class AgentInputSnapshotBuilder {
      */
     private AgentInputSnapshot freezeOrAdopt(ContextSnapshot snapshot,
                                              LiveProjection liveProjection) {
+        return withAuthorizedSkillSources(snapshot.projectId(),liveProjection.snapshot().capabilityResults(),
+                ()->freezeAuthorizedProjection(snapshot,liveProjection));
+    }
+
+    private AgentInputSnapshot freezeAuthorizedProjection(ContextSnapshot snapshot,LiveProjection liveProjection) {
         AgentInputSnapshot projection = liveProjection.snapshot();
         String payload = AgentContracts.write(projection);
         if (payload.length() > MAX_FROZEN_PAYLOAD_CHARS) {
@@ -675,9 +695,35 @@ public class AgentInputSnapshotBuilder {
                         snapshot.routeId(), lineage,
                         runsById.get(record.runId()),
                         CapabilityObservationVisibility.referencedNodeIds(record)))
+                .filter(record -> skillSourceVisible(snapshot.projectId(),capabilityResultView(record)))
                 .limit(RECENT_CAPABILITY_RESULTS_LIMIT)
                 .map(this::capabilityResultView)
                 .toList();
+    }
+
+    private boolean skillSourceVisible(UUID project,CapabilityResultView result) {
+        if(result.capabilityId().startsWith("mcp.")) {
+            return mcpSourceAuthorization!=null && sourceTransactions!=null
+                    && Boolean.TRUE.equals(sourceTransactions.execute(tx -> mcpSourceAuthorization.visible(result.capabilityId(),result.provenance())));
+        }
+        if (skillSourceAuthorization!=null) return skillSourceAuthorization.visible(project,result);
+        // Manually constructed test builders do not gain a bypass for private sources.
+        return !Set.of("skill.activate","skill.read_resource").contains(result.capabilityId());
+    }
+
+    private AgentInputSnapshot withAuthorizedSkillSources(UUID project,List<CapabilityResultView> results,
+            java.util.function.Supplier<AgentInputSnapshot> operation) {
+        boolean hasSkillBody=results.stream().anyMatch(result -> result.capabilityId().startsWith("mcp.")
+                || (skillSourceAuthorization!=null ? skillSourceAuthorization.carriesPrivateBody(result)
+                : Set.of("skill.activate","skill.read_resource").contains(result.capabilityId())));
+        if (!hasSkillBody) return operation.get();
+        if (skillSourceAuthorization==null || sourceTransactions==null) throw new FrozenSourceAuthorizationRefusedException();
+        return sourceTransactions.execute(tx -> {
+            for (CapabilityResultView result:results) {
+                if (!skillSourceVisible(project,result)) throw new FrozenSourceAuthorizationRefusedException();
+            }
+            return operation.get();
+        });
     }
 
     private CapabilityObservationVisibility.RunAttribution loadRunAttribution(UUID runId) {

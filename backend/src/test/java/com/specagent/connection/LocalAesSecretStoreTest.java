@@ -33,6 +33,8 @@ class LocalAesSecretStoreTest {
     private NamedParameterJdbcTemplate namedJdbc;
     @Autowired
     private Json json;
+    @Autowired
+    private com.specagent.connection.credentials.ConnectionCredentialEncryptionMigrator migrator;
 
     @Test
     void storeRoundTripsAndMasks() {
@@ -85,12 +87,56 @@ class LocalAesSecretStoreTest {
         jdbcTemplate.update("DELETE FROM connections WHERE id = ?", connectionId);
     }
 
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void copyingPersistedCiphertextToAnotherConnectionFailsAuthentication() {
+        UUID a = insertConnectionRow(), b = insertConnectionRow();
+        String source = secretStore.store(a, "private-token-a");
+        String target = secretStore.store(b, "private-token-b");
+        jdbcTemplate.update("""
+                UPDATE connection_credentials SET encrypted_secret=(
+                    SELECT encrypted_secret FROM connection_credentials WHERE ref=?) WHERE ref=?
+                """, source, target);
+        assertThatThrownBy(() -> secretStore.resolve(target))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("MCP credential scope or master key does not match");
+        assertThat(secretStore.resolve(source)).isEqualTo("private-token-a");
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void startupMigrationUpgradesLegacyCipherAndInvalidatesSelectedConnection() throws Exception {
+        UUID connection = insertConnectionRow();
+        String ref = secretStore.store(connection, "legacy-token");
+        byte[] iv = new byte[12];
+        var cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE,
+                new javax.crypto.spec.SecretKeySpec(java.util.Base64.getDecoder().decode(
+                        "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="), "AES"),
+                new javax.crypto.spec.GCMParameterSpec(128, iv));
+        byte[] ciphertext = cipher.doFinal("legacy-token".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        String legacy = java.util.Base64.getEncoder().encodeToString(
+                java.nio.ByteBuffer.allocate(iv.length + ciphertext.length).put(iv).put(ciphertext).array());
+        jdbcTemplate.update("UPDATE connection_credentials SET encrypted_secret=? WHERE ref=?", legacy, ref);
+        jdbcTemplate.update("UPDATE connections SET credential_ref=?,auth_kind='BEARER' WHERE id=?", ref, connection);
+        long before = jdbcTemplate.queryForObject("SELECT configuration_version FROM connections WHERE id=?", Long.class, connection);
+        assertThatThrownBy(() -> secretStore.resolve(ref)).isInstanceOf(IllegalStateException.class);
+        migrator.run(null);
+        assertThat(secretStore.resolve(ref)).isEqualTo("legacy-token");
+        assertThat(jdbcTemplate.queryForObject("SELECT encrypted_secret FROM connection_credentials WHERE ref=?", String.class, ref))
+                .startsWith("enc:mcp:v2:");
+        long after = jdbcTemplate.queryForObject("SELECT configuration_version FROM connections WHERE id=?", Long.class, connection);
+        assertThat(after).isGreaterThan(before);
+        migrator.run(null);
+        assertThat(jdbcTemplate.queryForObject("SELECT configuration_version FROM connections WHERE id=?", Long.class, connection)).isEqualTo(after);
+    }
+
     private UUID insertConnectionRow() {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
                 "INSERT INTO connections (id, connection_id, name, kind, status,"
                         + " enabled, config, credential_ref, last_error,"
-                        + " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
+                        + " created_at, updated_at,org_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(),'00000000-0000-4000-8000-000000000001')",
                 id, "conn_" + id.toString().substring(0, 12),
                 "secret-test-" + id.toString().substring(0, 8),
                 "CUSTOM_MCP", "CREATED", false, "{}", null, null);

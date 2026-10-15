@@ -36,6 +36,9 @@ import java.util.UUID;
  *       拓扑提交是确定性的。 */
 @Component
 public class RunWorker {
+    private WorkspaceExecutionAuthorization authorization;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setAuthorization(WorkspaceExecutionAuthorization authorization) {this.authorization=authorization;}
 
     private static final Logger LOG = LoggerFactory.getLogger(RunWorker.class);
 
@@ -99,15 +102,56 @@ public class RunWorker {
      * {@link ContinuationDispatchService#process}。
      */
     public void executeRun(AgentRun run) {
-        // 执行入口的同步所有权验证:租约丢失(数据库重启、会话被终止等)
-        // 后,本进程绝不继续执行新认领的 run。
+        executeDelegated(run,false);
+    }
+
+    /**
+     * 接管入口(design §7):执行一个由<b>任务级所有权</b>认领的 run。
+     *
+     * <p>与 {@link #executeRun(AgentRun)} 的唯一区别是<b>不做 "必须是
+     * RUNNING" 的门禁</b>。原因:恢复只改变调度状态,不回退业务进度,因此一个
+     * 被接管的任务,其业务 Run 可能已经是 {@code PERSISTED}(典型:Answer 已
+     * 落库、STATE_UPDATE 失败)。那时严格门禁会把接管误判为"绕过认领"。
+     *
+     * <p>安全性由任务级护栏提供,而不是由状态门禁提供:
+     * <ul>
+     *   <li>调用方必须已持有该任务的排他锁(认领事务已按 token 核实);</li>
+     *   <li>终态 run 仍然被拒绝——终态绝不被任何执行器覆盖;</li>
+     *   <li>周期服务内的一切受保护写入都会以 token 去数据库重新核实所有权,
+     *       因此旧执行器即便走到这里也无法提交结果。</li>
+     * </ul>
+     */
+    public void executeClaimedRun(AgentRun run) {
+        executeDelegated(run,true);
+    }
+
+    private void executeDelegated(AgentRun run,boolean takeover) {
         executionFence.assertOwnership();
-        AgentRun latest = agentRunService.getRun(run.id()).orElse(run);
-        if (latest.status() != AgentRunStatus.RUNNING) {
-            throw new IllegalStateException(
-                    "RunWorker only executes freshly claimed RUNNING runs: " + run.id()
-                            + " is " + latest.status());
+        try {
+            var actor=authorization.authorize(run.id());
+            try(var context=com.specagent.access.ActorContextHolder.bind(actor)) {
+            WorkspaceExecutionContext.runWith(run.id(),()-> {
+                executionFence.assertOwnership();
+                AgentRun latest=agentRunService.getRun(run.id()).orElse(run);
+                if(!takeover && latest.status()!=AgentRunStatus.RUNNING)
+                    throw new IllegalStateException("RunWorker only executes freshly claimed RUNNING runs: "+run.id());
+                if(latest.status().isTerminal()) throw new IllegalStateException("Refusing to execute terminal run "+run.id());
+                dispatch(latest);
+            });
+            }
+        } catch(com.specagent.runtime.execution.ExecutionScopeUnavailableException unavailable) {
+            // No context/model work started; fail with metadata instead of leaving a claimed legacy Run stuck RUNNING.
+            agentRunFailureService.fail(run.id(),"\"execution scope unavailable\"",RunFailureReasons.EXECUTION_SCOPE_UNAVAILABLE);
+            throw unavailable;
+        } catch(com.specagent.access.AccessDeniedException refused) {
+            // Only a fixed control-plane failure is allowed after delegation refusal; never late model output.
+            agentRunFailureService.fail(run.id(),"\"authorization refused\"","AUTHORIZATION_REFUSED");
+            throw refused;
         }
+    }
+
+    /** 按触发类型分发到对应周期服务(两个入口共用的唯一分派点)。 */
+    private void dispatch(AgentRun latest) {
         switch (latest.triggerType()) {
             case ANSWER_CYCLE -> executeAnswerCycle(latest);
             case NODE_QUERY -> executeNodeQuery(latest);

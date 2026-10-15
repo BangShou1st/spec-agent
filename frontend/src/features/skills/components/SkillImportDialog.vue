@@ -5,7 +5,8 @@
        事件交由父组件处理。
 -->
 <script setup lang="ts">
-import { ref, toRef } from 'vue'
+import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
+import { ref, toRef, watch } from 'vue'
 import { useDialogReset } from '@/shared/ui/useDialogForm'
 import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'
 import UiDialogShell from '@/shared/ui/UiDialogShell.vue'
@@ -14,6 +15,8 @@ import UiFilePicker from '@/shared/ui/UiFilePicker.vue'
 import { managementErrorMessage } from '@/shared/http/errorCopy'
 import type { SkillsStoreError } from '@/features/skills/state/skillsStore'
 import type { GitSkillCandidate } from '@/features/skills/api/skillTypes'
+
+const canManage = useOrganizationCapability('ORG_MANAGE')
 const props = defineProps<{
   open: boolean
   staging: boolean
@@ -33,6 +36,7 @@ const gitRef = ref('')
 const gitSubPath = ref('')
 let picked: File | null = null
 const pickedName = ref('')
+watch(canManage, allowed => { if (!allowed) { picked = null; pickedName.value = ''; gitUrl.value = ''; gitRef.value = ''; gitSubPath.value = '' } }, { flush: 'sync' })
 useDialogReset(toRef(props, 'open'), () => {
   mode.value = 'zip'
   gitUrl.value = ''
@@ -42,8 +46,10 @@ useDialogReset(toRef(props, 'open'), () => {
   pickedName.value = ''
 })
 function onPick(f: File): void { picked = f; pickedName.value = f.name }
-function submitZip(): void { if (picked) emit('submit-zip', picked) }
+function submitZip(): void {
+  if (!canManage.value) return; if (picked) emit('submit-zip', picked) }
 function submitGit(): void {
+  if (!canManage.value) return;
   const url = gitUrl.value.trim()
   if (!url) return
   const r = gitRef.value.trim()
@@ -51,6 +57,7 @@ function submitGit(): void {
   emit('submit-git', url, r ? r : undefined, sub ? sub : undefined)
 }
 function discoverGit(): void {
+  if (!canManage.value) return;
   const url = gitUrl.value.trim()
   if (!url) return
   const r = gitRef.value.trim()
@@ -62,7 +69,7 @@ function pickCandidate(candidate: GitSkillCandidate): void {
 }
 </script>
 <template>
-  <UiDialogShell :open="open" title="添加 Skill" description="从 ZIP 或 Git 导入，仅解析不执行其中脚本" test-id="import-dialog" @close="emit('close')">
+  <UiDialogShell :open="canManage && open" title="添加 Skill" description="从 ZIP 或 Git 导入，仅解析不执行其中脚本" test-id="import-dialog" @close="emit('close')">
     <div class="import-tabs" role="tablist" aria-label="导入方式">
       <button type="button" role="tab" :aria-selected="mode === 'zip'" class="import-tab" :class="{ active: mode === 'zip' }" data-test="import-tab-zip" @click="mode = 'zip'">从 ZIP 导入</button>
       <button type="button" role="tab" :aria-selected="mode === 'git'" class="import-tab" :class="{ active: mode === 'git' }" data-test="import-tab-git" @click="mode = 'git'">从 Git 导入</button>

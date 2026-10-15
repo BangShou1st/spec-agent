@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-14",
+  "command": "backend/gradlew.bat testNonLive --tests com.specagent.mcp.* --tests com.specagent.connection.McpCredentialResolverAdapterTest --tests com.specagent.architecture.* --tests com.specagent.access.SecurityProtocolAdmissionTest",
+  "counts": {
+    "tests": 96,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": 10
+  },
+  "scope": "Database-independent MCP runtime/cache fencing, credential adapter, protocol v5 admission and architecture gates; compileTestJava includes pending PostgreSQL tests",
+  "migrations": {
+    "V80": "applied in isolated test database before outage",
+    "V81": "written, not applied/verified",
+    "V82": "written, not applied/verified"
+  },
+  "databaseAcceptance": "pending; Docker/WSL engine unavailable and PG protocol handshake times out; user requested no restart",
+  "pendingIntegrationTests": {
+    "class": "ConnectionOwnershipIntegrationTest",
+    "tests": 10
+  },
+  "fullRegressionBaseline": {
+    "version": "V79",
+    "tests": 1783,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 33,
+    "coversCurrentChanges": false
+  },
+  "limitations": [
+    "Nullable SQL CASE cast fix has not been database-verified",
+    "Actual old protocol4 JVM startup refusal not run",
+    "No OIDC/browser acceptance for these changes",
+    "Connection credential AAD and key rotation remain pending"
+  ],
+  "stageCompleted": false
+}

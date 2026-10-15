@@ -23,13 +23,21 @@ public record Connection(
         String credentialRef,
         String lastError,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        UUID orgId,String ownerKind,UUID ownerUserId,String authKind,long configurationVersion) {
+
+    public Connection(UUID id,String connectionId,String name,ConnectionKind kind,ConnectionStatus status,boolean enabled,
+            Map<String,Object> config,String credentialRef,String lastError,Instant createdAt,Instant updatedAt) {
+        this(id,connectionId,name,kind,status,enabled,config,credentialRef,lastError,createdAt,updatedAt,null,"ORG",null,
+                credentialRef==null || credentialRef.isBlank()?"NONE":"BEARER",1);
+    }
 
     public Connection {
         config = config == null ? Map.of() : Map.copyOf(config);
     }
 
     public boolean agentVisible() {
-        return enabled && status.agentVisible();
+        return enabled && status.agentVisible()
+                && (!"BEARER".equals(authKind) || (credentialRef!=null && !credentialRef.isBlank()));
     }
 }

@@ -29,6 +29,7 @@ interface SelectedEdge {
 }
 
 const props = defineProps<{
+  canWrite?: boolean
   nodeData: SpecAgentGraphNodeData | null
   selectedEdge?: SelectedEdge | null
 }>()
@@ -121,6 +122,7 @@ function edgeRouteLabel(routeId: string): string {
 
     <div ref="inspectorBody" class="inspector-body">
       <NodeInspector
+        :can-write="canWrite"
         v-if="nodeData && !selectedEdge"
         :data="nodeData"
         @fork="emit('fork', $event)"

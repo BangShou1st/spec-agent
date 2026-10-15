@@ -40,14 +40,7 @@ public class SkillActivationService {
      */
     @Transactional
     public ActivatedSkill activate(UUID projectId, UUID runId, String skillId) {
-        Skill skill = queryService.findSkill(skillId)
-                .orElseThrow(() -> new SkillNotVisibleException(skillId));
-        if (!skill.enabled()) {
-            throw new SkillNotVisibleException(skillId);
-        }
-        if (skill.currentVersionId() == null) {
-            throw new SkillNotVisibleException(skillId);
-        }
+        Skill skill = requireActivation(projectId,runId,skillId);
         SkillVersion version = queryService.findVersion(skill.currentVersionId())
                 .orElseThrow(() -> new SkillImportException(
                         "Skill current version missing: " + skillId));
@@ -64,6 +57,16 @@ public class SkillActivationService {
         return new ActivatedSkill(skill.skillId(), skill.name(), version.id(),
                 version.versionNo(), version.contentHash(), instructions,
                 resourceInventory(version.id()));
+    }
+
+    /** Runtime calls this before claiming/replaying a capability invocation. */
+    public Skill requireActivation(UUID projectId, UUID runId, String skillId) {
+        if (projectId==null || runId==null || skillId==null || skillId.isBlank())
+            throw new SkillNotVisibleException("current Run");
+        repository.requireRunExecution(projectId,runId);
+        return repository.findEnabledSkillForActivation(skillId)
+                .filter(Skill::enabled).filter(skill -> skill.currentVersionId()!=null)
+                .orElseThrow(() -> new SkillNotVisibleException(skillId));
     }
 
     private java.util.List<String> resourceInventory(UUID versionId) {

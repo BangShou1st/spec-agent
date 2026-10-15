@@ -1,0 +1,15 @@
+{
+  "database": "spec_agent_p2_v92_gap_rejection",
+  "sourceDatabase": "spec_agent_p2_workers_20261015a",
+  "jarSha256": "3627d62bb9145fd0f010a238e7247aed7aa160dba8abbc828dd2c59f9103d81c",
+  "exitCode": 1,
+  "expectedReasonFound": true,
+  "facts": {
+    "unattributedProjectCount": 1,
+    "successfulV92": 0,
+    "orgStillNullable": true
+  },
+  "passed": true,
+  "meaning": "Existing ownership gaps abort migration transaction; no implicit legacy attribution or partial schema tightening",
+  "log": "E:\\project\\spec-agent\\backend\\build\\p2-acceptance\\spec_agent_p2_v92_gap_rejection\\reject.log"
+}

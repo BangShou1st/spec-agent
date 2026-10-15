@@ -52,6 +52,18 @@
 - [AGENT_RAG_TECHNOLOGY_REVIEW.md](AGENT_RAG_TECHNOLOGY_REVIEW.md) — 2026-10-01 技术演进评审：现代 Agent/RAG 路径、Agentic RAG / GraphRAG / Deep Agents 的适用条件与版本升级门槛；不重置当前实施阶段。
 - [GLOBAL_ASSISTANT_TUTORIAL_REVIEW.md](GLOBAL_ASSISTANT_TUTORIAL_REVIEW.md) — 2026-10-02 本地教程源码评审：工具轨迹、正文与推理的区分、按轮次组织过程展示及新 event streaming 的隔离评估；未修改业务实现。
 
+### 多 Worker 执行架构专项
+
+- [PHASE1_MULTI_WORKER_EXECUTION_DESIGN.md](PHASE1_MULTI_WORKER_EXECUTION_DESIGN.md) — 2026-10-11 第一阶段目标设计：数据库持久化调度、多 Worker 并行、按任务隔离所有权；保留两套 Agent 业务流程与既有不可变事实模型。
+- [PHASE1_A_EXECUTION_ENTRY_INVENTORY.md](PHASE1_A_EXECUTION_ENTRY_INVENTORY.md) — P1-A 交付物：冻结的执行协议、全部认领/写入/取消入口盘点、锁顺序与风险清单。
+- [PHASE1_MULTI_WORKER_IMPLEMENTATION_STATUS.md](PHASE1_MULTI_WORKER_IMPLEMENTATION_STATUS.md) — 实施记录：P1-A~P1-D 的落地内容、测试证据、未完成项与回退方式。**总开关 `spec.agent.execution.multi-worker-enabled` 默认关闭，行为与历史逐字一致。**
+
+### 身份与权限隔离专项
+
+- [PHASE2_IDENTITY_AUTHORIZATION_DESIGN.md](PHASE2_IDENTITY_AUTHORIZATION_DESIGN.md) — 2026-10-12 第二阶段目标设计：Spring Security + OIDC、Spring Session JDBC 共享会话、组织/项目双层角色、Agent 执行期重新授权、检索/记忆/缓存/工具数据隔离与凭证归属。**目标设计，按 P2-A~P2-F 分批生效**；真实实现与验收边界以实施记录为准。
+- [PHASE2_A_PERMISSION_ENTRY_INVENTORY.md](PHASE2_A_PERMISSION_ENTRY_INVENTORY.md) — P2-A 交付物：冻结授权判定协议与合并锁顺序、全部 HTTP/RPC/导出/检索/工具/缓存归属盘点、数据迁移方案，以及 13 项已定位到代码的实证漏点。**只读盘点，未修改业务代码。**
+- [PHASE2_IMPLEMENTATION_STATUS.md](PHASE2_IMPLEMENTATION_STATUS.md) — 实施记录：P2-B 已实施，P2-C/D/E 持续推进、P2-F 部分验收；当前包括执行委托、动态授权、组织配置/凭证、MCP、SSE 和 Skill 隔离。**第二阶段整体未完成**；各项实现、自动测试、真实进程/浏览器证据分开登记，当前边界以记录 §0/§8 为准。
+
 ## 3. 当前代码必须保留的基础能力
 
 V2 迁移不得无理由重写：

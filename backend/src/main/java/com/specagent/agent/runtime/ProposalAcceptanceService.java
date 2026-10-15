@@ -51,6 +51,14 @@ import java.util.UUID;
  */
 @Service
 public class ProposalAcceptanceService {
+    private ProposalOriginGuard originGuard;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setOriginGuard(ProposalOriginGuard originGuard) { this.originGuard = originGuard; }
+    private com.specagent.workspace.project.ProjectService projectAccess;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setProjectAccess(com.specagent.workspace.project.ProjectService projectAccess) {
+        this.projectAccess=projectAccess;
+    }
 
     private static final Logger LOG = LoggerFactory.getLogger(ProposalAcceptanceService.class);
 
@@ -104,7 +112,9 @@ public class ProposalAcceptanceService {
      * 在一个事务内接受并执行 pending proposal。执行失败时 proposal 保持
      * PROPOSED 状态,用户可以在底层问题解决后重试。
      *
-     * 加锁顺序为 project → proposal → graph:先取 project 行锁(从
+     * 加锁顺序为 task → authorization scope → origin Run → project → proposal → graph。
+     * 原始任务和 Run 必须已终态；授权前先核实读取可见性，避免跨项目探测。
+     * 先取 project 行锁(从
      * 不可变的 proposal 元数据解析出项目之后),再锁定并重读 proposal 行,
      * 最后做图变更。这与所有其他图写入方的"project 优先"顺序
      * ({@link GraphCommandService}、{@code UndoRedoService})一致,因此
@@ -115,19 +125,25 @@ public class ProposalAcceptanceService {
     public AcceptedProposalResult acceptAndExecute(UUID proposalId, String decidedBy) {
         // 1. 从不可变的 proposal 元数据解析项目(不加锁)。
         AgentProposal metadata = proposalService.getProposal(proposalId)
-                .orElseThrow(() -> new IllegalArgumentException("Proposal not found: " + proposalId));
+                .orElseThrow(() -> com.specagent.common.ApiException.notFound("PROPOSAL_NOT_FOUND", "Proposal not found"));
         UUID projectId = metadata.projectId();
+        projectAccess.getProjectForActor(projectId);
+        originGuard.lockTaskBeforeAuthorization(metadata.runId());
+        originGuard.lockProjectBeforeAuthorization(projectId);
+        projectAccess.authorizeWrite(projectId);
+        UUID persistedOriginRunId = originGuard.lockOriginAfterAuthorization(metadata.runId(), projectId)
+                .map(AgentRun::id).orElse(null);
         // 2. 与项目内所有其他图写入方串行化。
         projectRepository.lockById(projectId);
         // 3. 取到 project 锁后,再锁定并重读 proposal 行。唯一的"赢家仲裁"
         //    发生在这里:行锁会持有到本事务提交或回滚为止,并发 racing 的
         //    accept/reject/expire 会排在它后面,然后再观察已提交的结果。
         AgentProposal stored = proposalService.getProposalForUpdate(proposalId)
-                .orElseThrow(() -> new IllegalArgumentException("Proposal not found: " + proposalId));
+                .orElseThrow(() -> com.specagent.common.ApiException.notFound("PROPOSAL_NOT_FOUND", "Proposal not found"));
         if (stored.status() != ProposalStatus.PROPOSED) {
             throw new ProposalAlreadyDecidedException(stored.status().code());
         }
-        if (!stored.projectId().equals(projectId)) {
+        if (!stored.projectId().equals(projectId) || !java.util.Objects.equals(stored.runId(), metadata.runId())) {
             throw new IllegalArgumentException(
                     "Proposal project changed between reads: " + proposalId);
         }
@@ -186,13 +202,10 @@ public class ProposalAcceptanceService {
         // 对应持久化 run 行的 run id(仅 proposal 的流程)。只有真正持久化过
         // 的 run 才算 origin:续跑效果与返回的 originRunId 共用这一个闸门,
         // API 绝不会把幽灵 run 交给前端去轮询。
-        UUID persistedOriginRunId = stored.runId() != null
-                && agentRunRepository.findById(stored.runId()).isPresent()
-                ? stored.runId() : null;
         if (persistedOriginRunId != null) {
             if (result.producedNodeId() != null) {
                 agentRunRepository.attachApprovalProducedNode(
-                        persistedOriginRunId, result.producedNodeId());
+                        persistedOriginRunId, projectId, result.producedNodeId());
             }
             eventService.append(persistedOriginRunId, AgentRunPhase.COMPLETED,
                     "ACCEPTANCE_EXECUTED", Map.of(

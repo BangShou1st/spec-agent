@@ -34,7 +34,7 @@ describe('connectionsStore', () => {
 
   it('loads list and detail with tools', async () => {
     api.listConnections.mockResolvedValue([{ connectionId: 'conn_1' } as never])
-    api.getConnection.mockResolvedValue({ connectionId: 'conn_1' } as never)
+    api.getConnection.mockResolvedValue({ connectionId: 'conn_1', enabled: true, status: 'CONNECTED' } as never)
     api.listConnectionTools.mockResolvedValue([{ name: 't' }] as never)
     const store = useConnectionsStore()
     await store.loadList()
@@ -61,4 +61,18 @@ describe('connectionsStore', () => {
     expect(created?.connectionId).toBe('conn_9')
     expect(store.list).toHaveLength(1)
   })
+})
+
+
+it('loads a newly created connection without requesting unavailable capability APIs', async () => {
+  setActivePinia(createPinia())
+  vi.clearAllMocks()
+  api.getConnection.mockResolvedValue({ connectionId: 'new', enabled: false, status: 'CREATED' } as never)
+  const store = useConnectionsStore()
+  store.tools = [{ name: 'old-private-tool' }] as never
+  await store.loadDetail('new')
+  expect(store.detail?.connectionId).toBe('new')
+  expect(store.tools).toEqual([])
+  expect(api.listConnectionTools).not.toHaveBeenCalled()
+  expect(store.error).toBeNull()
 })

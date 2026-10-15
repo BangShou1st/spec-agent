@@ -23,12 +23,14 @@ import static org.junit.jupiter.api.Assertions.*;
 class LocalServiceSettingsIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired ModelCredentialCrypto crypto;
+    @Autowired com.specagent.access.OrganizationConfigurationScope configurationScope;
     @Autowired EmbeddingSettings settings;
     @Autowired EmbeddingRebuilds rebuilds;
     @Autowired RetrievalStore store;
     @Autowired RetrievalIndexJobs jobs;
     @Autowired CuratedHelpSources help;
     @Autowired RetrievalSourceJobs sources;
+    @Autowired com.specagent.assistant.conversation.GlobalAssistantConversationService conversations;
     @BeforeEach void clean() {
         jdbc.update("DELETE FROM embedding_rebuilds");
         jdbc.update("DELETE FROM embedding_service_settings"); jdbc.update("DELETE FROM embedding_service_revisions");
@@ -40,18 +42,18 @@ class LocalServiceSettingsIntegrationTest {
         return settings.register(config(model),dim,null,settings.revision());
     }
     @Test void searchIsEncryptedAndOmittedKeyPreservesExplicitClearNeverResurrectsEnvironment() {
-        var search=new SearchSettings(jdbc,crypto,"fixture-environment-key");
+        var search=new SearchSettings(jdbc,crypto,"fixture-environment-key",configurationScope);
         assertTrue(search.snapshot().configured()); assertEquals("ENVIRONMENT",search.view().get("source"));
         search.save(true,null,true,0L);
         String stored=jdbc.queryForObject("SELECT api_key FROM search_settings",String.class);
-        assertTrue(stored.startsWith("enc:v1:")); assertFalse(stored.contains("fixture-environment-key"));
+        assertTrue(stored.startsWith("enc:v2:")); assertFalse(stored.contains("fixture-environment-key"));
         assertFalse(write(search.view()).contains("fixture-environment-key"));
         assertEquals("fixture-environment-key",search.snapshot().key());
         search.save(false,null,false,1L); assertFalse(search.snapshot().configured());
         search.save(true,null,false,2L); assertEquals("fixture-environment-key",search.snapshot().key());
         assertThrows(IllegalStateException.class,()->search.clear(1L));
         search.clear(3L);
-        var restarted=new SearchSettings(jdbc,crypto,"fixture-environment-key");
+        var restarted=new SearchSettings(jdbc,crypto,"fixture-environment-key",configurationScope);
         assertFalse(restarted.snapshot().configured()); assertNull(restarted.snapshot().key());
         restarted.save(true,null,false,4L); assertFalse(restarted.snapshot().configured());
         restarted.save(true,"replacement-key",false,5L); assertEquals("replacement-key",restarted.snapshot().key());
@@ -71,7 +73,7 @@ class LocalServiceSettingsIntegrationTest {
         assertEquals("replacement-embedding-key",settings.key(first));
         var next=approved("model-b",3); assertNotEquals(first.profileId(),next.profileId());
         assertFalse(write(first).contains("fixture-embedding-secret"));
-        assertTrue(jdbc.queryForObject("SELECT bool_and(api_key LIKE 'enc:v1:%') FROM embedding_service_revisions",Boolean.class));
+        assertTrue(jdbc.queryForObject("SELECT bool_and(api_key LIKE 'enc:v2:%') FROM embedding_service_revisions",Boolean.class));
         settings.clearCredential(settings.revision());
         assertThrows(IllegalStateException.class,()->settings.key(first));
         assertThrows(IllegalStateException.class,()->settings.key(next));
@@ -108,6 +110,9 @@ class LocalServiceSettingsIntegrationTest {
         var p=approved("model-a",3); UUID pending=jobs.prepareGeneration(corpus,p.profileId());
         var batch=jobs.claim(corpus,pending).orElseThrow(); assertEquals("retrieval.v2",batch.protocolVersion());
         assertEquals(p.profileId(),batch.profileId());
+        var enumerate=new Candidates(batch.protocolVersion(),batch.requestId(),batch.workload(),batch.scopeGrant(),
+                batch.profileId(),batch.indexGeneration(),batch.deadline(),"",List.of("project-lexical"),8,null,0.65);
+        assertEquals("STALE_SCOPE_GRANT",assertThrows(IllegalStateException.class,()->store.candidates(enumerate)).getMessage());
         var source=batch.sources().getFirst();
         var invalid=new IndexVector(source.entryId(),source.sourceRef(),source.sourceVersion(),source.contentHash(),source.location(),vector(4));
         var response=new IndexResult(batch.protocolVersion(),batch.requestId(),batch.workload(),batch.scopeGrant(),batch.profileId(),batch.indexGeneration(),batch.deadline(),batch.jobId(),batch.leaseId(),batch.expectedVersion(),List.of(invalid));
@@ -123,9 +128,16 @@ class LocalServiceSettingsIntegrationTest {
         assertEquals(pending,jdbc.queryForObject("SELECT active_generation FROM retrieval_index_heads WHERE corpus_id=?",UUID.class,corpus));
         // A foreign vector dimension in the SAME table must never reach the distance operator.
         insertHelp(help.document("resources"),pending,approved("other-model",4).profileId(),4);
-        var issued=store.issueHelp("项目",8,UUID.randomUUID());
-        jdbc.update("UPDATE retrieval_scope_grants SET workload_kind='CONTEXT_PROJECTION' WHERE id=?",issued.scopeGrant().grantId());
-        var workload=new Workload("CONTEXT_PROJECTION",issued.workload().id(),1);
+        UUID thread=conversations.createThread().id();
+        UUID run=conversations.createRun(thread,"fixture","fixture","fixture").id();
+        jdbc.update("UPDATE global_assistant_runs SET status='RUNNING' WHERE id=?",run);
+        jdbc.update("""
+                INSERT INTO ga_executions(run_id,thread_id,model_binding_id,provider,model,settings_revision,
+                    execution_epoch,lease_id,deadline)
+                VALUES(?,?,?,'OPENCODE_ZEN','fake','fixture',1,?,now()+interval '3 minutes')
+                """,run,thread,UUID.randomUUID(),UUID.randomUUID());
+        var issued=store.issueHelp("项目",8,run);
+        var workload=issued.workload();
         var request=new Candidates(issued.protocolVersion(),issued.requestId(),workload,issued.scopeGrant(),issued.profileId(),issued.indexGeneration(),issued.deadline(),issued.query(),List.of("vector"),8,vector(3),0.65);
         assertEquals(1,store.candidates(request).lanes().getFirst().entries().size());
         var wrong=new Candidates(issued.protocolVersion(),issued.requestId(),workload,issued.scopeGrant(),issued.profileId(),issued.indexGeneration(),issued.deadline(),issued.query(),List.of("vector"),8,vector(4),0.65);
@@ -140,7 +152,7 @@ class LocalServiceSettingsIntegrationTest {
         jdbc.update("DELETE FROM retrieval_entries WHERE corpus_id=?",corpus);
         UUID old=store.ensureHelpGeneration(); insertHelp(help.document("projects"),old,PROFILE,1024);
         var a=approved("model-a",3); UUID ready=jobs.prepareGeneration(corpus,a.profileId());
-        jdbc.update("INSERT INTO embedding_rebuilds(id,corpus_id,profile_id,expected_head_version,state) VALUES(?,?,?,0,'READY')",ready,corpus,a.profileId());
+        jdbc.update("INSERT INTO embedding_rebuilds(id,org_id,corpus_id,profile_id,expected_head_version,state) VALUES(?,?,?,?,0,'READY')",ready,a.orgId(),corpus,a.profileId());
         jdbc.update("UPDATE retrieval_entries SET pending_embedding=embedding,pending_profile_id=?,pending_generation=? WHERE corpus_id=?",a.profileId(),ready,corpus);
         assertEquals("model-a",rebuilds.view().get("jobModel"));
         var b=approved("model-b",3);

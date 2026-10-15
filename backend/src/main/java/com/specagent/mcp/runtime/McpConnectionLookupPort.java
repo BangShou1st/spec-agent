@@ -13,11 +13,16 @@ import java.util.UUID;
  */
 public interface McpConnectionLookupPort {
 
-    /** 返回全部已保存连接的投影(可见性过滤由消费方负责)。 */
+    /** 返回当前主体可见的连接投影;组织/个人过滤必须在候选 SQL 内完成。 */
     List<McpConnectionTarget> list();
 
     /** 按内部行 id 查找。 */
     Optional<McpConnectionTarget> findByRowId(UUID rowId);
+
+    /** Result-source checks hold ownership and connection locks to transaction completion. */
+    default Optional<McpConnectionTarget> lockVisibleResultSource(UUID rowId) {
+        throw new com.specagent.mcp.transport.McpTransportException("MCP_RESULT_SOURCE_GUARD_UNAVAILABLE");
+    }
 
     /** 按对外的产品级连接 id({@code conn_...})查找。 */
     Optional<McpConnectionTarget> findByConnectionId(String connectionId);

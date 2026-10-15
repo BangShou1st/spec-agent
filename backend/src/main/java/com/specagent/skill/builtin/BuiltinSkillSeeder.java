@@ -21,6 +21,9 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
+import com.specagent.access.AccessMode;
+import com.specagent.access.IdentityModeProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 文件名:BuiltinSkillSeeder.java
@@ -63,6 +66,11 @@ public class BuiltinSkillSeeder implements ApplicationRunner {
         this.repository = repository;
     }
 
+    private IdentityModeProperties identityMode;
+
+    @Autowired
+    public void setIdentityMode(IdentityModeProperties identityMode) { this.identityMode = identityMode; }
+
     @Override
     public void run(ApplicationArguments args) {
         try {
@@ -79,6 +87,7 @@ public class BuiltinSkillSeeder implements ApplicationRunner {
      * 安装索引中列出的所有包,返回本次新启用的包名(已启用的包不计入)。
      */
     public List<String> seed() {
+        if (identityMode != null && identityMode.accessMode() != AccessMode.LOCAL) return List.of();
         List<String> newlyEnabled = new ArrayList<>();
         for (Map.Entry<String, List<String>> entry : readIndex().entrySet()) {
             String packageName = entry.getKey();

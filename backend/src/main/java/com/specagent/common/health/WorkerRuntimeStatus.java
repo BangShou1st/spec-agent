@@ -33,4 +33,35 @@ public interface WorkerRuntimeStatus {
     default String getExecutorLeaseLostReason() {
         return null;
     }
+
+    /**
+     * 是否运行在多 Worker 任务级所有权模式(design §9)。默认 false。
+     * 该模式下没有全库租约,"租约丢失"不再是本进程的失败形态——执行可用性
+     * 由任务级 token 与轮询开放状态表达。
+     */
+    default boolean isMultiWorkerTaskOwnership() {
+        return false;
+    }
+
+    /**
+     * 调度模式准入是否已永久丢失(design §11 的模式准入协议)。默认 false
+     * (未启用准入或单执行器模式没有可丢失的会话锁)。
+     */
+    default boolean isExecutionModeAdmissionLost() {
+        return false;
+    }
+
+    /** 模式准入丢失原因;未丢失时为 null。 */
+    default String getExecutionModeAdmissionLostReason() {
+        return null;
+    }
+
+    /**
+     * 本进程的执行身份(design §9:日志与可观测性按 taskId/runId/workerId/epoch
+     * 关联)。每次启动生成新 UUID;多 Worker 部署用它把 runtime_tasks.worker_id
+     * 映射到具体实例。默认 null(无执行身份的进程)。
+     */
+    default String getWorkerId() {
+        return null;
+    }
 }

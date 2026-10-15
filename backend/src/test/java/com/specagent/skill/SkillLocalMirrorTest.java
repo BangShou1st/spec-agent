@@ -38,6 +38,31 @@ class SkillLocalMirrorTest {
     }
 
     @Test
+    void oidcModeNeverProjectsOrRemovesTenantFiles() throws Exception {
+        var mode = new com.specagent.access.IdentityModeProperties();
+        mode.setMode("OIDC");
+        mirror.setIdentityMode(mode);
+        mirror.mirrorVersion("sk_private", 1, List.of(
+                new SkillSourceFile("SKILL.md", "private".getBytes(), FileKind.SKILL_MD)));
+        assertThat(Files.exists(tempDir.resolve("sk_private"))).isFalse();
+        Path existing = tempDir.resolve("sk_existing");
+        Files.createDirectories(existing);
+        Files.writeString(existing.resolve("keep.txt"), "keep");
+        mirror.removeSkill("sk_existing");
+        assertThat(Files.readString(existing.resolve("keep.txt"))).isEqualTo("keep");
+    }
+
+    @Test
+    void localDeploymentDoesNotProjectAnExplicitOidcActorsOrganization() {
+        var actor = com.specagent.access.ActorContext.oidc(java.util.UUID.randomUUID(), java.util.UUID.randomUUID());
+        try(var ignored = com.specagent.access.ActorContextHolder.bind(actor)) {
+            mirror.mirrorVersion("sk_other_org", 1, List.of(
+                    new SkillSourceFile("SKILL.md", "private".getBytes(), FileKind.SKILL_MD)));
+        }
+        assertThat(Files.exists(tempDir.resolve("sk_other_org"))).isFalse();
+    }
+
+    @Test
     void mirrorsPackageFilesUnderSkillVersionDirectory() throws Exception {
         mirror.mirrorVersion("sk_abc123", 1, List.of(
                 new SkillSourceFile("SKILL.md", "manifest".getBytes(), FileKind.SKILL_MD),

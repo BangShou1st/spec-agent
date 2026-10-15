@@ -53,10 +53,38 @@ public class GlobalAssistantApplicationService {
     private final ThreadActivityService activity;
     private final ConversationDeleteService deletes;
     private final RunDispatcher dispatcher;
+    /**
+     * 公共调度层的 GA 入队端口。未启用任务级调度时为 no-op(单实例行为不变)。
+     */
+    private final GaTaskEnqueuer taskEnqueuer;
+    /**
+     * 单实例构造器(测试与历史装配使用):不接入公共调度层。
+     * 生产装配使用下面的 {@code ObjectProvider} 变体。
+     */
     public GlobalAssistantApplicationService(GlobalAssistantConversationService conversations,
             GlobalAssistantRunRepository runs,
             GlobalAssistantRunLifecycleService lifecycle, TurnHandoffService handoff,
-            ThreadActivityService activity, ConversationDeleteService deletes, RunDispatcher dispatcher) {
+            ThreadActivityService activity, ConversationDeleteService deletes,
+            RunDispatcher dispatcher) {
+        this(conversations, runs, lifecycle, handoff, activity, deletes, dispatcher,
+                (GaTaskEnqueuer) null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public GlobalAssistantApplicationService(GlobalAssistantConversationService conversations,
+            GlobalAssistantRunRepository runs,
+            GlobalAssistantRunLifecycleService lifecycle, TurnHandoffService handoff,
+            ThreadActivityService activity, ConversationDeleteService deletes, RunDispatcher dispatcher,
+            org.springframework.beans.factory.ObjectProvider<GaTaskEnqueuer> taskEnqueuer) {
+        this(conversations, runs, lifecycle, handoff, activity, deletes, dispatcher,
+                taskEnqueuer == null ? null : taskEnqueuer.getIfAvailable());
+    }
+
+    private GlobalAssistantApplicationService(GlobalAssistantConversationService conversations,
+            GlobalAssistantRunRepository runs,
+            GlobalAssistantRunLifecycleService lifecycle, TurnHandoffService handoff,
+            ThreadActivityService activity, ConversationDeleteService deletes, RunDispatcher dispatcher,
+            GaTaskEnqueuer taskEnqueuer) {
         this.conversations = conversations;
         this.runs = runs;
         this.lifecycle = lifecycle;
@@ -64,6 +92,7 @@ public class GlobalAssistantApplicationService {
         this.activity = activity;
         this.deletes = deletes;
         this.dispatcher = dispatcher;
+        this.taskEnqueuer = taskEnqueuer;
     }
     public GlobalAssistantThread createThread() {
         return conversations.createThread();
@@ -80,11 +109,23 @@ public class GlobalAssistantApplicationService {
         return conversations.listMessages(threadId);
     }
     public GlobalAssistantRun requireRun(UUID runId) {
-        return runs.findById(runId)
+        GlobalAssistantRun run = runs.findById(runId)
                 .orElseThrow(() -> ApiException.notFound("RUN_NOT_FOUND", "Run not found"));
+        try { requireThread(run.threadId()); }
+        catch (com.specagent.access.AccessDeniedException denied) {
+            if (!denied.concealed()) throw denied;
+            throw ApiException.notFound("RUN_NOT_FOUND", "Run not found");
+        }
+        return run;
     }
     public java.util.Optional<GlobalAssistantRun> findRun(UUID runId) {
-        return runs.findById(runId);
+        return runs.findById(runId).filter(run -> {
+            try { requireThread(run.threadId()); return true; }
+            catch (com.specagent.access.AccessDeniedException denied) {
+                if (denied.concealed()) return false;
+                throw denied;
+            }
+        });
     }
     public GlobalAssistantRun createRun(UUID threadId, String message,
             GaHostContext.UiRequest uiRequest) {
@@ -98,6 +139,16 @@ public class GlobalAssistantApplicationService {
         }
         GlobalAssistantRun run;
         try {
+            if (taskEnqueuer != null && taskEnqueuer.schedulingActive()) {
+                // 多 Worker:Run + 用户消息 + 调度任务 + 持久化执行输入在同一事务内
+                // 提交(design §6.1)。提交后由公共调度层认领,本进程不再直接派发;
+                // 进程崩溃也不会丢任务或丢输入。
+                run = taskEnqueuer.createRunWithTask(threadId, trimmed,
+                        GaHostContext.PROMPT_VERSION,
+                        GaHostContext.CONTEXT_PROJECTION_VERSION,
+                        GlobalAssistantToolCatalog.FINGERPRINT, uiRequest);
+                return runs.findById(run.id()).orElseThrow();
+            }
             run = conversations.createRunWithUserMessage(threadId, trimmed,
                     GaHostContext.PROMPT_VERSION,
                     GaHostContext.CONTEXT_PROJECTION_VERSION,

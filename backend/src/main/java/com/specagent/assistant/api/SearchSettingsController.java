@@ -20,6 +20,7 @@ public class SearchSettingsController {
     @PutMapping public Map<String,Object> save(@RequestBody Save body) { return settings.save(body.enabled(),body.apiKey(),body.importEnvironment(),body.revision()); }
     @DeleteMapping public Map<String,Object> clear(@RequestParam(required=false) Long revision) { return settings.clear(revision); }
     @PostMapping("/test") public Map<String,Object> test(@RequestBody Test body) {
+        settings.requireManagement();
         var snapshot=settings.snapshot(); String key=body.apiKey()==null?snapshot.key():SearchSettings.validateKey(body.apiKey());
         var result=tavily.testConnection(key==null?"":key);
         String code=result.errorCode()==null?"OK":result.errorCode();

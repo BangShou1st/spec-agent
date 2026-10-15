@@ -6,6 +6,8 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, h } from 'vue'
 import WorkspaceView from '@/features/workspace/WorkspaceView.vue'
+import { apiClient } from '@/shared/http/client'
+import { useInputDraftStore } from '@/features/workspace/state/inputDraftStore'
 import { useGraphUiStore } from '@/features/workspace/state/graphUiStore'
 import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'
 import {
@@ -66,6 +68,7 @@ const mockedGetProjectGraph = vi.mocked(getProjectGraph)
 const mockedCreateAgentRun = vi.mocked(createAgentRun)
 const mockedGetAgentRun = vi.mocked(getAgentRun)
 const mockedListRouteSpecs = vi.mocked(listRouteSpecs)
+const originalApiGet = apiClient.get.bind(apiClient)
 
 /**
  * GraphCanvas 替身:真实 Vue Flow 无法在 jsdom 中渲染;外壳测试只覆盖装配接线,
@@ -180,7 +183,36 @@ async function mountWorkspace(projectId = 'p1') {
 }
 
 describe('WorkspaceView graph shell', () => {
+  it('purges private state and rejects an old graph response after read access is lost', async () => {
+    mockViews()
+    const { wrapper } = await mountWorkspace()
+    const store = useWorkspaceStore()
+    const drafts = useInputDraftStore()
+    drafts.setDraft('p1', 'n1', { selectedOptionId: null, freeText: 'private draft' })
+    let finishOld!: (graph: GraphWorkspaceView) => void
+    mockedGetProjectGraph.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve }))
+    const pending = store.refreshWorkspace()
+    vi.mocked(apiClient.get).mockImplementation(<T>(path: string): Promise<T> =>
+      path.endsWith('/access') ? Promise.reject(new Error('permission lost')) : originalApiGet<T>(path))
+    window.dispatchEvent(new Event('focus'))
+    await flushPromises()
+    expect(wrapper.find('[data-test="workspace-center"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="project-access-unavailable"]').exists()).toBe(true)
+    expect(store.graphView).toBeNull()
+    expect(store.project).toBeNull()
+    expect(store.specsByRoute).toEqual({})
+    expect(store.projectId).toBeNull()
+    expect(drafts.getDraft('p1', 'n1')).toBeUndefined()
+    finishOld(makeGraphWorkspaceView())
+    await pending
+    expect(store.graphView).toBeNull()
+    wrapper.unmount()
+  })
   beforeEach(() => {
+    vi.spyOn(apiClient, 'get').mockImplementation(<T>(path: string): Promise<T> =>
+      path.endsWith('/access')
+        ? Promise.resolve({ capabilities: ['PROJECT_READ', 'PROJECT_WRITE', 'PROJECT_MANAGE'] } as T)
+        : originalApiGet<T>(path))
     localStorage.clear()
     vi.clearAllMocks()
     locateSpy.mockReset()

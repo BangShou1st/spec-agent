@@ -6,7 +6,7 @@
        在 graphUiStore;并承载恢复提示、提案卡、Spec Dock 与各类操作弹窗。
 -->
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'
 import AgentProposalCard from '@/features/workspace/components/AgentProposalCard.vue'
@@ -44,6 +44,8 @@ import NodeRecoveryBar, { type RecoveryItem } from '@/features/workspace/graph/c
 import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'
 import type { SpecExportVariant } from '@/features/workspace/api/spec'
 import type { RegenerateNodeRequest, SubmitAnswerRequest } from '@/shared/contracts/types'
+import { useProjectAccess } from '@/features/access/useProjectAccess'
+import { useInputDraftStore } from '@/features/workspace/state/inputDraftStore'
 
 /**
  * 图优先的工作台外壳,固定 路线/画布/检查器 三区。
@@ -60,6 +62,11 @@ const graphUi = useGraphUiStore()
 const runRegistry = useRunRegistryStore()
 const router = inject(routerKey, null)
 const canvasRef = ref<InstanceType<typeof GraphCanvas> | null>(null)
+const projectAccess = useProjectAccess(toRef(props, 'projectId'))
+const canManageProject = projectAccess.canManage
+const canWriteProject = projectAccess.canWrite
+const canReadProject = projectAccess.canRead
+const readAccessDenied = ref(false)
 const specDockRef = ref<InstanceType<typeof SpecDock> | null>(null)
 
 const forkDialogOpen = ref(false)
@@ -99,6 +106,7 @@ onUnmounted(() => {
  * 可编辑元素聚焦时不劫持——文本编辑的原生撤销优先于图撤销。
  */
 function handleGlobalKeydown(event: KeyboardEvent): void {
+  if (!canWriteProject.value) return
   if (!(event.ctrlKey || event.metaKey) || event.altKey) return
   const target = event.target as HTMLElement | null
   if (target
@@ -309,6 +317,7 @@ const confirmableNodeContext = (inputNodeId: string | null): string | null => {
   return title ? title.slice(0, 30) : null
 }
 async function handleAcceptConfirmable(proposalId: string): Promise<void> {
+  if (!canWriteProject.value) return
   confirmingProposalId.value = proposalId
   try {
     await store.acceptConfirmableProposal(proposalId)
@@ -317,6 +326,7 @@ async function handleAcceptConfirmable(proposalId: string): Promise<void> {
   }
 }
 async function handleRejectConfirmable(proposalId: string): Promise<void> {
+  if (!canWriteProject.value) return
   confirmingProposalId.value = proposalId
   try {
     await store.rejectConfirmableProposal(proposalId)
@@ -688,6 +698,7 @@ watch(
 )
 
 async function handleGenerateSpec(): Promise<void> {
+  if (!canWriteProject.value) return
   const generated = await store.generateSpec()
   if (generated) {
     graphUi.setFocusRoute(store.activeRoute?.id ?? null)
@@ -761,6 +772,7 @@ const reanswerFinalized = computed(() => {
  * "同步状态"对 manual retry 意图执行对账(检查状态,绝不盲重试)。
  */
 async function handleRecoveryAction(action: RecoveryAction): Promise<void> {
+  if (!canWriteProject.value) { await store.refreshWorkspace(); return }
   if (action === 'reconcile-answer') {
     await store.reconcileAnswerOutcome()
   } else if (action === 'resume-answer') {
@@ -811,16 +823,19 @@ async function focusAfterMutation(): Promise<void> {
 }
 
 async function handleDraft(): Promise<void> {
+  if (!canWriteProject.value) return
   await store.draftQuestion()
 }
 
 /** 显式路线的"起草下一个问题"：路线卡菜单 / 已回答末端节点 / 末端知识卡发起。 */
 async function handleDraftNext(routeId: string): Promise<void> {
+  if (!canWriteProject.value) return
   await store.draftQuestion(routeId)
 }
 
 /** "+ 想法"：创建独立想法（不与任何节点连接），聚焦并直接进入编辑。 */
 async function handleAddIdea(): Promise<void> {
+  if (!canWriteProject.value) return
   const nodeId = await store.createIdea()
   if (!nodeId) return
   await nextTick()
@@ -837,6 +852,7 @@ function handleRelationProposal(payload: {
   sourceNodeId: string
   targetNodeId: string
 }): void {
+  if (!canWriteProject.value) return
   graphUi.setPendingRelation(payload)
 }
 
@@ -861,6 +877,7 @@ async function handleConnectFloating(payload: {
   floatingNodeId: string
   anchorNodeId: string
 }): Promise<void> {
+  if (!canWriteProject.value) return
   if (!store.graphView) return
   const view = store.graphView
   const anchorNode = view.nodes.find((node) => node.id === payload.anchorNodeId)
@@ -902,6 +919,7 @@ async function handleRelationConfirm(payload: {
   targetNodeId: string
   relationType: string
 }): Promise<void> {
+  if (!canWriteProject.value) return
   // 先关 proposal(用户已确认方向/类型),再持久化;失败由 store.error 呈现。
   graphUi.clearPendingRelation()
   const ok = await store.createSemanticRelation(
@@ -924,20 +942,24 @@ async function handleCreateFloatingResource(
   subtype: 'TEXT' | 'URL' | 'FILE',
   content: Record<string, unknown>,
 ): Promise<void> {
+  if (!canWriteProject.value) return
   const ok = await store.createFloatingResource(subtype, content)
   if (ok) resourceDialogOpen.value = false
 }
 
 async function handleAnswer(payload: SubmitAnswerRequest): Promise<void> {
+  if (!canWriteProject.value) return
   await store.submitAnswer(payload)
 }
 
 function handleFork(nodeId: string): void {
+  if (!canWriteProject.value) return
   forkNodeId.value = nodeId
   forkDialogOpen.value = true
 }
 
 function handleReanswer(nodeId: string): void {
+  if (!canWriteProject.value) return
   reanswerNodeId.value = nodeId
   reanswerDialogOpen.value = true
 }
@@ -948,6 +970,7 @@ function handleReanswer(nodeId: string): void {
  * 多条路线共享时要求先选定查看路线，绝不猜测。
  */
 async function handleDisconnect(nodeId: string): Promise<void> {
+  if (!canWriteProject.value) return
   const view = store.graphView
   if (!view) return
   const node = view.nodes.find((candidate) => candidate.id === nodeId)
@@ -980,6 +1003,7 @@ async function handleDisconnect(nodeId: string): Promise<void> {
 }
 
 function handleRegenerate(nodeId: string): void {
+  if (!canWriteProject.value) return
   regenerateNodeId.value = nodeId
   regenerateDialogOpen.value = true
 }
@@ -990,6 +1014,7 @@ function handleRegenerate(nodeId: string): void {
  * Active/first/latest。激活是纯 route activation，不创建 RESUME 分支。
  */
 async function handleActivateRouteForAnswer(routeId: string): Promise<void> {
+  if (!canWriteProject.value) return
   if (!routeId) {
     store.error = {
       code: 'SOURCE_ROUTE_REQUIRED',
@@ -1033,6 +1058,7 @@ function handleContextualAi(target: ContextualAiTarget): void {
 }
 
 async function handleForkSubmit(label: string | null): Promise<void> {
+  if (!canWriteProject.value) return
   if (!forkNodeId.value) {
     return
   }
@@ -1047,6 +1073,7 @@ async function handleForkSubmit(label: string | null): Promise<void> {
 }
 
 async function handleReanswerSubmit(label: string | null): Promise<void> {
+  if (!canWriteProject.value) return
   if (!reanswerNodeId.value) return
   const sourceRouteId = reanswerSourceRoute.value?.id
   if (!sourceRouteId) return
@@ -1063,10 +1090,12 @@ async function handleReanswerSubmit(label: string | null): Promise<void> {
 /** Fork 的前置条件是显式的、弹窗内的本地操作。每条命令都在弹窗保持打开期间
  * 刷新规范状态;任何命令都不会被串成一次隐式的 Fork。 */
 async function handleForkRestore(routeId: string): Promise<void> {
+  if (!canWriteProject.value) return
   await store.restoreRoute(routeId)
 }
 
 async function handleRegenerateSubmit(payload: RegenerateNodeRequest): Promise<void> {
+  if (!canWriteProject.value) return
   if (!regenerateNodeId.value) {
     return
   }
@@ -1090,6 +1119,7 @@ function openConfirm(kind: 'archive', routeId: string): void {
 
 /** 归档是唯一的"收起路线"动作（软删除入口已移除）；归档后默认从视图隐藏。 */
 async function confirmDestructive(): Promise<void> {
+  if (!canWriteProject.value) return
   if (!confirmAction.value || !confirmRouteId.value) {
     return
   }
@@ -1099,11 +1129,28 @@ async function confirmDestructive(): Promise<void> {
     confirmRouteId.value = null
   }
 }
+watch([canReadProject, projectAccess.loading], ([readable, checking]) => {
+  if (checking) return
+  if (!readable && !readAccessDenied.value) {
+    readAccessDenied.value = true
+    // Increment the existing project epoch before clearing identity: all old
+    // loads, refreshes and run polls must discard their late responses.
+    store.beginProject(props.projectId)
+    store.projectId = null
+    useInputDraftStore().clearProject(props.projectId)
+    graphUi.clearPendingRelation()
+    forkDialogOpen.value = resourceDialogOpen.value = reanswerDialogOpen.value = regenerateDialogOpen.value = false
+    confirmAction.value = confirmRouteId.value = forkNodeId.value = regenerateNodeId.value = reanswerNodeId.value = null
+  } else if (readable && readAccessDenied.value) {
+    readAccessDenied.value = false
+    void store.loadWorkspace(props.projectId)
+  }
+}, { flush: 'sync' })
 </script>
 
 <template>
   <div class="workspace-shell" data-test="workspace-shell">
-    <div v-if="!store.loading" class="workspace-shell__body workspace-shell__body--fixed" data-test="workspace-center">
+    <div v-if="canReadProject && !readAccessDenied && !store.loading" class="workspace-shell__body workspace-shell__body--fixed" data-test="workspace-center">
       <ResizableSidebar
         side="left"
         :open="graphUi.leftSidebarOpen"
@@ -1114,22 +1161,27 @@ async function confirmDestructive(): Promise<void> {
         @update:width="graphUi.setLeftSidebar({ open: graphUi.leftSidebarOpen, width: $event })"
       >
         <RouteSidebar
+          :can-write="canWriteProject"
           :routes="store.graphView?.routes ?? []"
           :active-route-id="store.activeRoute?.id ?? null"
           :command-pending="store.routeCommandPending"
           :pending-route-command="store.pendingRouteCommand"
           :draft-blocked-route-ids="draftBlockedRouteIds"
           @locate-route="handleLocateRoute"
-          @activate="store.activateRoute($event)"
-          @restore="store.restoreRoute($event)"
-          @archive="openConfirm('archive', $event)"
-          @draft-next="handleDraftNext"
+          @activate="canWriteProject && store.activateRoute($event)"
+          @restore="canWriteProject && store.restoreRoute($event)"
+          @archive="canWriteProject && openConfirm('archive', $event)"
+          @draft-next="canWriteProject && handleDraftNext($event)"
         />
       </ResizableSidebar>
 
       <div class="workspace-shell__center">
         <header class="workspace-shell__header" data-test="workspace-project-badge">
           <h1 class="workspace-shell__title">{{ store.project?.title ?? '工作区' }}</h1>
+          <span v-if="!projectAccess.loading.value && !canWriteProject" class="muted" role="status">
+            {{ projectAccess.failed.value ? '暂时无法确认项目权限，请刷新重试' : '你拥有此项目的查看权限' }}
+          </span>
+          <button v-if="canManageProject" class="btn btn--ghost" @click="router?.push(`/projects/${projectId}/members`)">项目成员</button>
         </header>
 
         <div class="workspace-shell__status-layer">
@@ -1149,6 +1201,7 @@ async function confirmDestructive(): Promise<void> {
           <!-- D2：回答/决策周期的"待确认提案"全局呈现面。没有它，策略层
                要求确认的意图变更对用户完全不可见，提案只能永远挂在库里。 -->
           <AgentProposalCard
+          :can-write="canWriteProject"
             v-for="proposal in store.pendingConfirmableProposals"
             :key="proposal.proposalId"
             :action-family="proposal.actionFamily"
@@ -1179,6 +1232,7 @@ async function confirmDestructive(): Promise<void> {
         </div>
         <div class="workspace-shell__graph-region">
           <GraphCanvas
+            :can-write="canWriteProject"
             ref="canvasRef"
             class="workspace-shell__canvas"
             :view="store.graphView"
@@ -1216,6 +1270,7 @@ async function confirmDestructive(): Promise<void> {
         </div>
 
         <SpecDock
+          :can-write="canWriteProject"
           ref="specDockRef"
           :reading-route-id="specReadingRouteId"
           :reading-route-label="specReadingRouteLabel"
@@ -1246,6 +1301,7 @@ async function confirmDestructive(): Promise<void> {
         @update:width="graphUi.setRightSidebar({ open: graphUi.rightSidebarOpen, width: $event })"
       >
         <WorkspaceInspector
+          :can-write="canWriteProject"
           :node-data="selectedNodeData"
           :selected-edge="selectedEdgeData"
           @fork="handleFork"
@@ -1255,9 +1311,11 @@ async function confirmDestructive(): Promise<void> {
       </ResizableSidebar>
     </div>
 
-    <p v-if="store.loading" class="muted workspace-shell__loading">正在加载工作区…</p>
+    <p v-if="readAccessDenied" role="alert" data-test="project-access-unavailable">暂时无法读取此项目，请确认权限或稍后重试。</p>
+    <p v-else-if="store.loading || projectAccess.loading.value" class="muted workspace-shell__loading">正在加载工作区…</p>
 
     <ResourceDialog
+      v-if="canReadProject && !readAccessDenied"
       :open="resourceDialogOpen"
       :pending="store.graphCommandPending"
       :route-empty="(store.activeRoute?.tipNodeId ?? null) === null"
@@ -1266,6 +1324,7 @@ async function confirmDestructive(): Promise<void> {
     />
 
     <RouteActionDialog
+      v-if="canReadProject && !readAccessDenied"
       mode="fork"
       :open="forkDialogOpen"
       :node="forkNodeData"
@@ -1278,6 +1337,7 @@ async function confirmDestructive(): Promise<void> {
     />
 
       <RegenerateNodeDialog
+      v-if="canReadProject && !readAccessDenied"
         :open="regenerateDialogOpen"
         :node="regenerateNodeData"
         :source-route-id="regenerateSourceRoute?.id ?? null"
@@ -1287,6 +1347,7 @@ async function confirmDestructive(): Promise<void> {
       />
 
     <RouteActionDialog
+      v-if="canReadProject && !readAccessDenied"
       mode="reanswer"
       :open="reanswerDialogOpen"
       :node="reanswerNodeData"
@@ -1295,10 +1356,11 @@ async function confirmDestructive(): Promise<void> {
       :finalized="reanswerFinalized"
       @close="reanswerDialogOpen = false"
       @submit="handleReanswerSubmit"
-      @restore-source="store.restoreRoute($event)"
+      @restore-source="canWriteProject && store.restoreRoute($event)"
     />
 
     <ConfirmRouteActionDialog
+      v-if="canReadProject && !readAccessDenied"
       :open="confirmAction !== null && confirmRouteId !== null"
       :kind="confirmAction ?? 'archive'"
       :route-label="confirmRouteId ? store.graphView?.routes.find((r) => r.id === confirmRouteId)?.label ?? null : null"
@@ -1308,6 +1370,7 @@ async function confirmDestructive(): Promise<void> {
     />
 
     <RelationProposalDialog
+      v-if="canReadProject && !readAccessDenied"
       :open="graphUi.pendingRelation !== null"
       :source-node-id="graphUi.pendingRelation?.sourceNodeId ?? null"
       :target-node-id="graphUi.pendingRelation?.targetNodeId ?? null"

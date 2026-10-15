@@ -60,6 +60,19 @@ class ApiErrorHandlingIntegrationTest {
                 .andExpect(jsonPath("$.timestamp").exists());
     }
 
+    @Test
+    void missingEndpointReturnsSafeNotFoundRatherThanInternalError() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/missing/" + PROBE_SECRET))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("Resource not found"))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andReturn();
+        assertThat(result.getResponse().getContentAsString())
+                .doesNotContain(PROBE_SECRET)
+                .doesNotContain("NoResourceFoundException");
+    }
+
     @TestConfiguration
     static class ProbeConfig {
 

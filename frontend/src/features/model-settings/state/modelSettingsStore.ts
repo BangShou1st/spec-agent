@@ -3,6 +3,7 @@
 //       保存(密钥+模型)/改模型/校验,以及"已存选中项在拉取前保持可见"等展示规则。
 
 import { defineStore } from 'pinia'
+import { identityScopedStore, privateIdentityWork, PrivateIdentityExpiredError } from '@/shared/state/privateIdentity'
 import { toDisplayError } from '@/shared/http/displayError'
 import {
   getOpenCodeSettings,
@@ -23,6 +24,8 @@ const displayError: (err: unknown) => ModelSettingsError = toDisplayError
 
 export const useModelSettingsStore = defineStore('modelSettings', {
   state: () => ({
+    identityEpoch: 0,
+    privateIdentity: null as string | null,
     status: null as OpenCodeSettingsStatus | null,
     // 暴露的全部模型(免费+付费)及免费子集;UI 默认展示完整列表,
     // 可通过"仅免费"开关过滤。
@@ -54,6 +57,13 @@ export const useModelSettingsStore = defineStore('modelSettings', {
     },
   },
   actions: {
+    bindIdentity(identity: string | null): void {
+      if (identity === this.privateIdentity && identity !== null) return
+      const epoch = this.identityEpoch + 1
+      this.$reset()
+      this.identityEpoch = epoch
+      this.privateIdentity = identity
+    },
     /**
      * 与 OpenRouter 卡同一条规则：已保存的选中模型在（重新）拉取列表之前必须
      * 保持可见。否则列表为空的那段时间里，卡片会闪出「暂无可用模型」并把选择框
@@ -74,120 +84,185 @@ export const useModelSettingsStore = defineStore('modelSettings', {
       }
     },
     async loadStatus(): Promise<void> {
-      this.loading = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        this.status = await getOpenCodeSettings()
-        this.selectedModel = this.status.selectedModel
-        this.allModels = []
-        this.freeModels = []
-        this.modelUnavailable = false
+      identityStore.loading = true
+      identityStore.error = null
+      try {
+        identityStore.status = await privateIdentityWork(identityStore, identityEpoch, () => (getOpenCodeSettings()))
+        identityStore.selectedModel = identityStore.status.selectedModel
+        identityStore.allModels = []
+        identityStore.freeModels = []
+        identityStore.modelUnavailable = false
         // 已存的(密钥,模型)对在写入它的 save/changeModel 中已被证明可达,
         // 因此初始视为已校验,直到某次测试给出相反结论。
-        this.validated = this.status.configured
+        identityStore.validated = identityStore.status.configured
         // 拉取之前先把已保存的模型放回可见列表，避免刷新期间闪空态。
-        this.ensurePersistedVisible()
+        identityStore.ensurePersistedVisible()
         // 该守护保持旧的隔离测试替身兼容;生产模块始终暴露已存密钥端点。
-        if (this.status.configured && typeof listOpenCodeModels === 'function') {
-          await this.refreshModels()
+        if (identityStore.status.configured && typeof listOpenCodeModels === 'function') {
+          await privateIdentityWork(identityStore, identityEpoch, () => (identityStore.refreshModels()))
         }
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
       } finally {
-        this.loading = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.loading = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return }
+        throw identityError
       }
     },
 
     async probe(apiKey: string): Promise<string[]> {
-      if (this.probing || !apiKey.trim()) return []
-      this.probing = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        const result = await probeOpenCode(apiKey.trim())
+      if (identityStore.probing || !apiKey.trim()) return []
+      identityStore.probing = true
+      identityStore.error = null
+      try {
+        const result = await privateIdentityWork(identityStore, identityEpoch, () => (probeOpenCode(apiKey.trim())))
         // 兼容旧后端：没有 allModels 时回退到 freeModels（只展示免费列表）。
         const all = Array.isArray(result.allModels) ? result.allModels : result.freeModels
-        this.allModels = [...all]
-        this.freeModels = [...(result.freeModels ?? [])]
+        identityStore.allModels = [...all]
+        identityStore.freeModels = [...(result.freeModels ?? [])]
         // 探测只负责发现可选项,绝不替用户做选择。
-        this.selectedModel = null
-        this.changingCredential = true
-        this.modelUnavailable = false
-        return this.freeModels
+        identityStore.selectedModel = null
+        identityStore.changingCredential = true
+        identityStore.modelUnavailable = false
+        return identityStore.freeModels
       } catch (err) {
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
         // 候选密钥探测失败时,保持之前的工作状态与成功的模型列表不动。
-        this.error = displayError(err)
+        identityStore.error = displayError(err)
         return []
       } finally {
-        this.probing = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.probing = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return [] }
+        throw identityError
       }
     },
 
     async save(apiKey: string, selectedModel: string): Promise<boolean> {
-      if (this.saving || !apiKey.trim() || !selectedModel) return false
-      this.saving = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        this.status = await saveOpenCode(apiKey.trim(), selectedModel)
-        this.allModels = []
-        this.freeModels = []
-        this.selectedModel = this.status.selectedModel
-        this.changingCredential = false
-        this.modelUnavailable = false
+      if (identityStore.saving || !apiKey.trim() || !selectedModel) return false
+      identityStore.saving = true
+      identityStore.error = null
+      try {
+        identityStore.status = await privateIdentityWork(identityStore, identityEpoch, () => (saveOpenCode(apiKey.trim(), selectedModel)))
+        identityStore.allModels = []
+        identityStore.freeModels = []
+        identityStore.selectedModel = identityStore.status.selectedModel
+        identityStore.changingCredential = false
+        identityStore.modelUnavailable = false
         // 服务端在 upsert 之前已对这一对(密钥,模型)重新校验过。
-        this.validated = true
-        await this.refreshModels()
+        identityStore.validated = true
+        await privateIdentityWork(identityStore, identityEpoch, () => (identityStore.refreshModels()))
         return true
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
         return false
       } finally {
-        this.saving = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.saving = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
 
     async refreshModels(): Promise<boolean> {
-      if (this.loadingModels || typeof listOpenCodeModels !== 'function') return false
-      this.loadingModels = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        const result = await listOpenCodeModels()
+      if (identityStore.loadingModels || typeof listOpenCodeModels !== 'function') return false
+      identityStore.loadingModels = true
+      identityStore.error = null
+      try {
+        const result = await privateIdentityWork(identityStore, identityEpoch, () => (listOpenCodeModels()))
         // 兼容旧后端：没有 allModels 时回退到 freeModels（只展示免费列表）。
         const all = Array.isArray(result.allModels) ? result.allModels : result.freeModels
-        this.allModels = [...all]
-        this.freeModels = [...(result.freeModels ?? [])]
-        const visible = this.freeOnly && this.freeModels.length > 0 ? this.freeModels : this.allModels
-        this.modelUnavailable = Boolean(
-          this.status?.selectedModel && !visible.includes(this.status.selectedModel),
+        identityStore.allModels = [...all]
+        identityStore.freeModels = [...(result.freeModels ?? [])]
+        const visible = identityStore.freeOnly && identityStore.freeModels.length > 0 ? identityStore.freeModels : identityStore.allModels
+        identityStore.modelUnavailable = Boolean(
+          identityStore.status?.selectedModel && !visible.includes(identityStore.status.selectedModel),
         )
-        this.selectedModel = this.status?.selectedModel ?? null
+        identityStore.selectedModel = identityStore.status?.selectedModel ?? null
         // 与新列表合并后再放回已保存项：不可用判定用的是「真实列表」（上一行），
         // 可见性注入发生在判定之后，所以注入不会掩盖真正的不可用。
-        this.ensurePersistedVisible()
+        identityStore.ensurePersistedVisible()
         return true
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
         return false
       } finally {
-        this.loadingModels = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.loadingModels = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
 
     async saveModel(selectedModel: string): Promise<boolean> {
-      if (this.saving || !this.status?.configured || !selectedModel) return false
-      this.saving = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        this.status = await saveOpenCodeModel(selectedModel)
-        this.selectedModel = this.status.selectedModel
-        this.modelUnavailable = false
+      if (identityStore.saving || !identityStore.status?.configured || !selectedModel) return false
+      identityStore.saving = true
+      identityStore.error = null
+      try {
+        identityStore.status = await privateIdentityWork(identityStore, identityEpoch, () => (saveOpenCodeModel(selectedModel)))
+        identityStore.selectedModel = identityStore.status.selectedModel
+        identityStore.modelUnavailable = false
         // changeModel 在写入前会对照实时目录重新校验。
-        this.validated = true
+        identityStore.validated = true
         return true
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
         return false
       } finally {
-        this.saving = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.saving = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
 
@@ -196,22 +271,35 @@ export const useModelSettingsStore = defineStore('modelSettings', {
      * 绝不修改已保存的配置,因此失败时工作中的设置原样保留。
      */
     async validate(): Promise<boolean> {
-      if (this.validating || typeof validateOpenCode !== 'function') {
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (identityStore.validating || typeof validateOpenCode !== 'function') {
         return false
       }
-      this.validating = true
-      this.error = null
+      identityStore.validating = true
+      identityStore.error = null
       try {
-        this.status = await validateOpenCode()
-        this.selectedModel = this.status.selectedModel
-        this.validated = true
+        identityStore.status = await privateIdentityWork(identityStore, identityEpoch, () => (validateOpenCode()))
+        identityStore.selectedModel = identityStore.status.selectedModel
+        identityStore.validated = true
         return true
       } catch (err) {
-        this.error = displayError(err)
-        this.validated = false
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
+        identityStore.validated = false
         return false
       } finally {
-        this.validating = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.validating = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
 

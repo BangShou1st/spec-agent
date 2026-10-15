@@ -24,6 +24,15 @@ function routeView(id: string, lifecycleStatus: GraphWorkspaceRouteView['lifecyc
 }
 
 describe('route sidebar', () => {
+  it('keeps reading navigation but hides runtime commands when permission is absent', () => {
+    setActivePinia(createPinia())
+    const wrapper = mount(RouteSidebar, {
+      props: { routes: [routeView('r1', 'open', ['n1'])], activeRouteId: 'r1',
+        commandPending: false, pendingRouteCommand: null },
+    })
+    expect(wrapper.find('[data-test="view-actions-group"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="runtime-actions-group"]').exists()).toBe(false)
+  })
   beforeEach(() => {
     localStorage.clear()
     setActivePinia(createPinia())
@@ -38,7 +47,7 @@ describe('route sidebar', () => {
     activeRouteId = 'r1',
   ) {
     return mount(RouteSidebar, {
-      props: { routes, activeRouteId, commandPending: false, pendingRouteCommand: null },
+      props: { routes, activeRouteId, commandPending: false, pendingRouteCommand: null, canWrite: true },
     })
   }
 
@@ -118,7 +127,7 @@ describe('route sidebar', () => {
       { ...routeView('r5', 'open', ['n1']), label: null, branchType: null, isActive: false },
     ]
     const wrapper = mount(RouteSidebar, {
-      props: { routes, activeRouteId: 'r4', commandPending: false, pendingRouteCommand: null },
+      props: { routes, activeRouteId: 'r4', commandPending: false, pendingRouteCommand: null, canWrite: true },
     })
     const text = (id: string) => wrapper.find(`[data-route-id="${id}"] .route-card__label`).text()
     expect(text('r1')).toBe('分支路线')
@@ -137,7 +146,7 @@ describe('route sidebar', () => {
       routeView('r4', 'deleted', ['n1', 'n5']),
     ]
     const wrapper = mount(RouteSidebar, {
-      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null, canWrite: true },
     })
     // 生命周期筛选收进闭合的 overflow；open 路线默认不展示常驻徽标。
     wrapper.get('[data-test="route-filters"]').element.setAttribute('open', '')
@@ -156,7 +165,7 @@ describe('route sidebar', () => {
   it('marks focus and active with independent text labels instead of color only', async () => {
     const routes = [routeView('r1', 'open', ['n1']), routeView('r2', 'open', ['n1'])]
     const wrapper = mount(RouteSidebar, {
-      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null, canWrite: true },
     })
     useGraphUiStore().setFocusRoute('r2')
     await nextTick()
@@ -172,7 +181,7 @@ describe('route sidebar', () => {
   it('separates view-only actions from runtime route actions', () => {
     const routes = [routeView('r1', 'open', ['n1'])]
     const wrapper = mount(RouteSidebar, {
-      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null, canWrite: true },
     })
     expect(wrapper.find('[data-test="view-actions-group"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="runtime-actions-group"]').exists()).toBe(true)
@@ -181,7 +190,7 @@ describe('route sidebar', () => {
   it('locate emits only a viewport request and never changes focus', async () => {
     const routes = [routeView('r1', 'open', ['n1']), routeView('r2', 'open', ['n1'])]
     const wrapper = mount(RouteSidebar, {
-      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null, canWrite: true },
     })
     const route = wrapper.find('[data-route-id="r2"]')
     route.get('[data-test="route-more"]').element.setAttribute('open', '')
@@ -193,7 +202,7 @@ describe('route sidebar', () => {
   it('clicking a route card focuses it and requests viewport location', async () => {
     const routes = [routeView('r1', 'open', ['n1']), routeView('r2', 'open', ['n1'])]
     const wrapper = mount(RouteSidebar, {
-      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null, canWrite: true },
     })
     await wrapper.find('[data-route-id="r2"] .route-card__label').trigger('click')
     expect(useGraphUiStore().focusRouteId).toBe('r2')
@@ -203,7 +212,7 @@ describe('route sidebar', () => {
   it('card-click focus changes only the browser reading context', async () => {
     const routes = [routeView('r1', 'open', ['n1']), routeView('r2', 'open', ['n1'])]
     const wrapper = mount(RouteSidebar, {
-      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null, canWrite: true },
     })
     await wrapper.find('[data-route-id="r2"] .route-card__label').trigger('click')
     expect(useGraphUiStore().focusRouteId).toBe('r2')
@@ -220,7 +229,7 @@ describe('route sidebar', () => {
       routeView('r3', 'open', ['n3']),
     ]
     const wrapper = mount(RouteSidebar, {
-      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null, canWrite: true },
     })
     const graphUi = useGraphUiStore()
     // 运行路线的浏览器态由 reconcile 对齐后端指针（reconcile 需要完整的
@@ -239,7 +248,7 @@ describe('route sidebar', () => {
   it('runtime actions emit the route id upward', async () => {
     const routes = [routeView('r2', 'open', ['n1'])]
     const wrapper = mount(RouteSidebar, {
-      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null, canWrite: true },
     })
     const route = wrapper.find('[data-route-id="r2"]')
     route.get('[data-test="route-more"]').element.setAttribute('open', '')
@@ -250,7 +259,7 @@ describe('route sidebar', () => {
   it('lifecycle filters toggle through the ui store', async () => {
     const routes = [routeView('r1', 'open', ['n1'])]
     const wrapper = mount(RouteSidebar, {
-      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null, canWrite: true },
     })
     wrapper.get('[data-test="route-filters"]').element.setAttribute('open', '')
     await wrapper.get('[data-test="filter-archived"]').setValue(false)
@@ -263,7 +272,7 @@ describe('route sidebar', () => {
       routeView('r2', 'archived', ['n1']),
     ]
     const wrapper = mount(RouteSidebar, {
-      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null, canWrite: true },
     })
     // 归档默认隐藏 → 先勾选筛选让它可见，才能被聚焦。
     wrapper.get('[data-test="route-filters"]').element.setAttribute('open', '')
@@ -283,7 +292,7 @@ describe('route sidebar', () => {
       routeView('r3', 'open', ['n1']),
     ]
     const wrapper = mount(RouteSidebar, {
-      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null, canWrite: true },
     })
     const graphUi = useGraphUiStore()
     // 归档现在默认隐藏（DEFAULT_FILTERS.archived = false）：无法被聚焦。

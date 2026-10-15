@@ -21,7 +21,11 @@ public record McpConnectionTarget(
         String connectionId,
         boolean agentVisible,
         String serverUrl,
-        String credentialRef) {
+        String credentialRef,String authKind,long configurationVersion) {
+    public McpConnectionTarget(UUID rowId,String connectionId,boolean agentVisible,String serverUrl,String credentialRef) {
+        this(rowId,connectionId,agentVisible,serverUrl,credentialRef,
+                credentialRef==null || credentialRef.isBlank()?"NONE":"BEARER",1);
+    }
 
     /** 绝不允许诊断输出回显凭据引用。 */
     @Override

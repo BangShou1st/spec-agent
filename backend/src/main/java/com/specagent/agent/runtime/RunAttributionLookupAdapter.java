@@ -24,6 +24,9 @@ public class RunAttributionLookupAdapter implements RunAttributionLookupPort {
     }
 
     @Override
+    public UUID currentExecutingRun() { return WorkspaceExecutionContext.currentRun(); }
+
+    @Override
     public Optional<CapabilityObservationVisibility.RunAttribution> attributionOf(UUID runId) {
         return agentRunRepository.findById(runId)
                 .map(run -> new CapabilityObservationVisibility.RunAttribution(

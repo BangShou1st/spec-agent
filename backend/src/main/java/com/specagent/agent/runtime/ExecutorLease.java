@@ -70,8 +70,15 @@ public class ExecutorLease implements DisposableBean {
 
     private static final Logger log = LoggerFactory.getLogger(ExecutorLease.class);
 
-    /** 数据库范围固定的执行器租约键(任选常量,全库唯一语义)。 */
-    public static final long LOCK_KEY = 736_251_904_113L;
+    /**
+     * 数据库范围固定的执行器租约键(任选常量,全库唯一语义)。
+     *
+     * <p>常量的事实来源已迁至 {@link com.specagent.runtime.execution.RuntimeExecutionProtocol}:
+     * 任务级模式({@code ExecutionModeAdmission})持有同一把键的<b>共享</b>会话锁,
+     * 与本类持有的<b>排他</b>锁互斥——旧单执行器实例因此无法进入任务级舰队,
+     * 反之亦然(design §11"禁止新旧调度器混跑"的强制形式)。
+     */
+    public static final long LOCK_KEY = com.specagent.runtime.execution.RuntimeExecutionProtocol.EXECUTOR_LOCK_KEY;
 
     /**
      * owned() 的数据库验证结果缓存窗口。轮询 tick(默认 2s)之间的
@@ -81,6 +88,12 @@ public class ExecutorLease implements DisposableBean {
 
     private final DataSource dataSource;
     private final String lockDescription;
+
+    /**
+     * 多 Worker 模式(design §5.1、§10):不取全库 advisory lock,不表达全局
+     * 所有权代次。任务级所有权由 runtime_tasks 的执行代次 + 租约 + 行锁承担。
+     */
+    private final boolean multiWorker;
 
     /** PostgreSQL 把单个 bigint 键拆成 (classid, objid) 两个 int4 存储。 */
     private static final long CLASS_ID = LOCK_KEY >>> 32;
@@ -99,11 +112,34 @@ public class ExecutorLease implements DisposableBean {
     private volatile boolean lost;
     private volatile String lostReason;
 
+    /** 测试与单实例手工构造:显式单执行器模式。 */
+    public ExecutorLease(DataSource dataSource, String datasourceUrl) {
+        this(dataSource, datasourceUrl, false);
+    }
+
+    /**
+     * Spring 装配入口。
+     *
+     * @param multiWorkerEnabled 多 Worker 模式(design §5.1、§10):不取全库
+     *       单执行器 advisory lock,{@link #epoch()} 恒为 0,{@link #owned()}
+     *       恒为 true。任务级所有权由 {@code runtime_tasks} 的执行代次 + 租约
+     *       + 任务行排他锁承担。默认 false,单实例部署行为与历史完全一致。
+     */
+    @org.springframework.beans.factory.annotation.Autowired
     public ExecutorLease(DataSource dataSource,
-                         @Value("${spring.datasource.url:}") String datasourceUrl) {
+                         @Value("${spring.datasource.url:}") String datasourceUrl,
+                         @Value("${spec.agent.execution.multi-worker-enabled:false}")
+                         boolean multiWorkerEnabled) {
         this.dataSource = dataSource;
         this.lockDescription = datasourceUrl == null || datasourceUrl.isBlank()
                 ? "database" : datasourceUrl;
+        this.multiWorker = multiWorkerEnabled;
+        if (this.multiWorker) {
+            log.info("Multi-worker execution enabled on {}: the database-wide single-executor "
+                    + "lease is NOT taken; ownership is enforced per runtime task",
+                    lockDescription);
+            return;
+        }
         try {
             acquire();
         } catch (SQLException ex) {
@@ -112,6 +148,11 @@ public class ExecutorLease implements DisposableBean {
                     "Executor lease could not be acquired on " + lockDescription
                             + ": " + ex.getMessage(), ex);
         }
+    }
+
+    /** 是否运行在多 Worker 任务级所有权模式。 */
+    public boolean isMultiWorker() {
+        return multiWorker;
     }
 
     private void acquire() throws SQLException {
@@ -158,15 +199,22 @@ public class ExecutorLease implements DisposableBean {
 
     /** 本执行器的所有权代次(fencing token);run 写入的所有权条件携带它。 */
     public long epoch() {
-        return epoch;
+        // 多 Worker:不做全库代次比较;任务级 token 才是权威。
+        return multiWorker ? 0L : epoch;
     }
 
     /**
      * 所有权是否仍在本进程手中。内存判定 + 最近一次数据库验证的缓存读;
      * 缓存过期时执行一次 pg_locks 验证。丢失是永久的:返回 false 之后
      * 本实例不会再报告 owned。
+     *
+     * <p>多 Worker 模式恒为 true:本进程没有全库租约可丢,任务级所有权由
+     * runtime_tasks 的 token 校验负责。
      */
     public boolean owned() {
+        if (multiWorker) {
+            return true;
+        }
         if (lost || leaseConnection == null) {
             return false;
         }
@@ -188,6 +236,10 @@ public class ExecutorLease implements DisposableBean {
      * 据此回滚,绝不提交新执行器接管后的业务结果)。
      */
     public void assertOwned() {
+        if (multiWorker) {
+            // 多 Worker 没有全库租约可断言;任务级所有权由 TaskWriteGuard 核实。
+            return;
+        }
         if (lost) {
             throw new LeaseLostException(lostReason);
         }
@@ -286,6 +338,9 @@ public class ExecutorLease implements DisposableBean {
 
     @Override
     public void destroy() throws Exception {
+        if (multiWorker) {
+            return;
+        }
         if (!lost && leaseConnection != null) {
             lastVerifiedNanos = 0L;
             try (Statement statement = leaseConnection.createStatement()) {

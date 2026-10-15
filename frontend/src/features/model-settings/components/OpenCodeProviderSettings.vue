@@ -6,7 +6,8 @@
        请求形态的差异(绝对直连 https://opencode.ai/zen/v1、自带请求头)由后端传输层特判。
 -->
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
+import { computed, onMounted, ref, watch } from 'vue'
 import ProviderCard from './ProviderCard.vue'
 import ProviderModelField from './ProviderModelField.vue'
 import ProviderSummaryItem from './ProviderSummaryItem.vue'
@@ -26,8 +27,10 @@ import { providerCardState } from '@/features/model-settings/presentation/provid
 type RetryAction = 'load' | 'models' | 'probe' | 'save' | null
 
 const store = useModelSettingsStore()
+const canManage = useOrganizationCapability('CREDENTIAL_MANAGE')
 const providers = useProviderSettingsStore()
 const apiKey = ref('')
+watch(canManage, allowed => { if (!allowed) apiKey.value = '' }, { flush: 'sync' })
 const retryAction = ref<RetryAction>(null)
 
 const isActive = computed(() => providers.activeProvider === 'OPENCODE_ZEN')
@@ -42,15 +45,15 @@ const state = computed(() => providerCardState(
 ))
 
 const showCredentialForm = computed(() => !configured.value || store.changingCredential)
-const canProbe = computed(() => apiKey.value.trim().length > 0 && !store.probing && !store.saving)
+const canProbe = computed(() => canManage.value && apiKey.value.trim().length > 0 && !store.probing && !store.saving)
 /** 保存动作同时会在服务端验证可达性,所以是"保存并测试"一步完成。 */
-const canSave = computed(() => store.selectedModel !== null
+const canSave = computed(() => canManage.value && store.selectedModel !== null
   && store.displayModels.includes(store.selectedModel)
   && !store.modelUnavailable
   && !store.saving && !store.probing && !store.validating
   && (showCredentialForm.value ? apiKey.value.trim().length > 0 : true))
-const canValidate = computed(() => configured.value && !store.validating && !store.saving)
-const canActivate = computed(() => configured.value && store.validated
+const canValidate = computed(() => canManage.value && configured.value && !store.validating && !store.saving)
+const canActivate = computed(() => canManage.value && configured.value && store.validated
   && !isActive.value && !providers.activating)
 const authenticationFailed = computed(() =>
   store.error?.code.toUpperCase().includes('AUTHENTICATION') ?? false)
@@ -74,6 +77,7 @@ async function refreshModels(): Promise<void> {
 }
 
 async function probe(): Promise<void> {
+  if (!canManage.value) return
   retryAction.value = 'probe'
   await store.probe(apiKey.value)
   if (!store.error) {
@@ -82,6 +86,7 @@ async function probe(): Promise<void> {
 }
 
 async function saveAndTest(): Promise<void> {
+  if (!canManage.value) return
   if (!store.selectedModel) {
     return
   }
@@ -106,6 +111,7 @@ async function cancelCredentialChange(): Promise<void> {
 }
 
 async function retryLastAction(): Promise<void> {
+  if (!canManage.value) { await loadStatus(); return }
   if (authenticationFailed.value || store.error?.code.toUpperCase().includes('NOT_CONFIGURED')) {
     store.beginCredentialChange()
     retryAction.value = null
@@ -129,6 +135,7 @@ async function retryLastAction(): Promise<void> {
 }
 
 async function activate(): Promise<void> {
+  if (!canManage.value) return
   await providers.activate('OPENCODE_ZEN')
 }
 
@@ -157,7 +164,7 @@ onMounted(() => {
       <button
         class="btn settings-action"
         type="button"
-        data-test="opencode-change-key"
+        v-if="canManage" data-test="opencode-change-key"
         :disabled="store.probing || store.saving"
         @click="store.beginCredentialChange()"
       >
@@ -165,7 +172,7 @@ onMounted(() => {
       </button>
     </template>
 
-    <div v-if="showCredentialForm" class="settings-form settings-form--credential">
+    <div v-if="canManage && showCredentialForm" class="settings-form settings-form--credential">
       <label class="settings-field" for="opencode-api-key">
         <span class="settings-field__label">{{ configured ? '新 API Key' : 'API Key' }}</span>
         <span class="settings-field__hint">密钥只用于验证和保存，不会显示完整内容</span>
@@ -197,7 +204,7 @@ onMounted(() => {
         test-id="opencode-model"
         :model-value="store.selectedModel"
         :models="store.displayModels"
-        :disabled="store.displayModels.length === 0 || store.saving"
+        :disabled="!canManage || store.displayModels.length === 0 || store.saving"
         :loading="store.loadingModels"
         :free-only="store.freeOnly"
         free-toggle-id="opencode-free-only"
@@ -206,7 +213,7 @@ onMounted(() => {
           : '展示当前可用模型；保存前会做连通性验证'"
         :empty-text="configured ? '暂无可用模型，请点击“刷新模型”' : '暂无可用模型，请先验证 Key'"
         :warning-text="store.modelUnavailable ? '已保存的模型当前不可用，请重新选择' : null"
-        @update:model-value="store.selectedModel = $event"
+        @update:model-value="canManage && (store.selectedModel = $event)"
         @update:free-only="store.setFreeOnly"
       />
       <div v-if="configured" class="settings-form__action-row">
@@ -236,7 +243,7 @@ onMounted(() => {
       <button
         class="btn btn-primary settings-action"
         type="button"
-        data-test="opencode-save-test"
+        v-if="canManage" data-test="opencode-save-test"
         :disabled="!canSave"
         @click="saveAndTest"
       >
@@ -245,16 +252,16 @@ onMounted(() => {
       <button
         class="btn settings-action"
         type="button"
-        data-test="opencode-validate"
+        v-if="canManage" data-test="opencode-validate"
         :disabled="!canValidate"
-        @click="() => store.validate()"
+        @click="() => canManage && store.validate()"
       >
         {{ store.validating ? '测试中…' : '重新测试' }}
       </button>
       <button
         class="btn settings-action"
         type="button"
-        data-test="opencode-activate"
+        v-if="canManage" data-test="opencode-activate"
         :disabled="!canActivate"
         :title="isActive ? '已是当前 Provider' : '通过服务端校验后设为当前 Provider'"
         @click="activate"

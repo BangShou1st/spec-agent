@@ -1,0 +1,66 @@
+{
+  "date": "2026-10-13",
+  "environment": {
+    "idp": "isolated Keycloak spec-agent-p2",
+    "database": "isolated spec_agent_p2_oidc on port 5546",
+    "apiPorts": [
+      8281,
+      8282
+    ],
+    "frontendPort": 8511,
+    "runtimeSchema": "V67",
+    "runtimeJar": "backend/build/p2-acceptance/runtime-20261013-1405.jar",
+    "workersEnabled": false,
+    "browserDriver": "bsk"
+  },
+  "observed": [
+    {
+      "scenario": "Alice auth code login and create organization/project via UI",
+      "result": "passed"
+    },
+    {
+      "scenario": "Same browser session recognized by independent API B",
+      "result": "passed",
+      "userId": "8c08a75d-dcf3-32e0-9172-8661d53e538f"
+    },
+    {
+      "scenario": "Logout through frontend/API A then request API B /api/me",
+      "result": "passed",
+      "observedErrorCode": "UNAUTHENTICATED"
+    },
+    {
+      "scenario": "Bob distinct Keycloak login and create own organization via UI",
+      "result": "passed",
+      "userId": "f2fabe0b-2e96-3144-bcfc-1e580f5de236"
+    },
+    {
+      "scenario": "Bob project list does not contain Alice project",
+      "result": "passed"
+    },
+    {
+      "scenario": "Bob GET Alice project vs nonexistent project through API B",
+      "result": "passed",
+      "observedErrorCodeBoth": "PROJECT_NOT_FOUND"
+    },
+    {
+      "scenario": "Alice floating idea create undo redo",
+      "result": "passed",
+      "coverage": "only this operation, not full connection matrix"
+    },
+    {
+      "scenario": "Project members desktop/mobile rendering",
+      "result": "passed",
+      "coverage": "manual screenshots with bsk, no role mutation matrix"
+    }
+  ],
+  "notValidated": [
+    "OIDC two Worker execution and RPC chain",
+    "all permission endpoints and role mutation scenarios",
+    "live cross-instance SSE with revocation",
+    "credential/MCP/retrieval/memory end-to-end isolation",
+    "full connection matrix",
+    "migration rollback",
+    "enterprise IdP and TLS"
+  ],
+  "stageCompleted": false
+}

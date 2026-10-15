@@ -1,0 +1,64 @@
+{
+  "date": "2026-10-14",
+  "database": "isolated spec_agent_test on 127.0.0.1:5546",
+  "migration": "V90",
+  "securityProtocol": 12,
+  "migrationSuccess": true,
+  "focusedRegression": {
+    "command": "gradlew.bat testNonLive --tests com.specagent.agent.broker.* --tests com.specagent.agent.decision.RemotePythonDecisionEngineFailClosedTest --tests com.specagent.architecture.* --tests com.specagent.access.SecurityProtocolAdmissionTest",
+    "counts": {
+      "tests": 106,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 9
+    },
+    "newPostgresTests": 9
+  },
+  "fullRegression": {
+    "status": "passed",
+    "command": "SPEC_AGENT_REBUILD_PYTHON_ACCEPTANCE=true gradlew.bat testNonLive",
+    "duration": "2m 48s",
+    "counts": {
+      "tests": 1925,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 33,
+      "suites": 310
+    },
+    "scope": "full non-live backend; real Java/Python rebuild Worker acceptance enabled; provider transport mocked"
+  },
+  "scope": [
+    "pin immutable frozen input identity/hash and Skill versions on host-issued grants",
+    "revalidate at issue/admit/completion before private events",
+    "decline deleted or disabled sources and altered/deleted frozen input",
+    "retain UNKNOWN and consumed budget after late completion refusal"
+  ],
+  "limitations": [
+    "Direct grant/receipt tests; no provider call or provider cancellation proof",
+    "Non-Skill sources and model session namespace remain incomplete",
+    "Real OIDC two-API/two-Worker/browser and migration rollback acceptance pending",
+    "No dev/production DB migrations, deployment, commits or pushes"
+  ],
+  "stageComplete": false,
+  "oldBinaryStartupRefusal": {
+    "jar": "runtime-v89-accepted-protocol11.jar",
+    "jarSha256": "DCDFCD7C916754070A369DB83D7D810367C1A58D19021F3083D884AD479D0C04",
+    "databaseProtocol": 12,
+    "instanceProtocol": 11,
+    "flywayEnabled": false,
+    "exitCode": 1,
+    "reason": "Security protocol version mismatch: database=12, this instance=11",
+    "log": "backend/build/p2-acceptance/v90-old-protocol11-startup.log",
+    "limitation": "does not fence already-running binaries; stop-all maintenance required"
+  },
+  "latestAcceptanceArtifact": {
+    "path": "backend/build/p2-acceptance/runtime-v90-accepted-protocol12.jar",
+    "sha256": "0193334FD00D5B3B70B65886F8481D87B8F1BE565ACE1B90CBDEC9F4DACE855F",
+    "buildCommand": "gradlew.bat bootJar",
+    "buildPassed": true,
+    "sameSourcesAsFinalFullRegression": true,
+    "deployed": false,
+    "oidcBrowserAcceptance": false
+  }
+}

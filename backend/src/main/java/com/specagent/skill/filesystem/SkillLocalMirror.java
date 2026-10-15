@@ -6,6 +6,8 @@ import com.specagent.skill.importing.SkillSourceFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import com.specagent.access.*;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -46,6 +48,19 @@ public class SkillLocalMirror {
                 : configured).toAbsolutePath().normalize();
     }
 
+    private IdentityModeProperties identityMode;
+
+    @Autowired
+    public void setIdentityMode(IdentityModeProperties identityMode) { this.identityMode = identityMode; }
+
+    private boolean localProjectionAllowed() {
+        if (identityMode != null && identityMode.accessMode() != AccessMode.LOCAL) return false;
+        ActorContext actor = ActorContextHolder.current();
+        return actor == null || (actor.source() == ActorSource.LOCAL
+                && LocalPrincipalIds.ORG_ID.equals(actor.orgId())
+                && LocalPrincipalIds.USER_ID.equals(actor.userId()));
+    }
+
     /** 供诊断与测试使用的镜像根目录。 */
     public Path root() {
         return root;
@@ -57,7 +72,7 @@ public class SkillLocalMirror {
      * 权威字节覆盖(镜像只是投影,永远不是数据源)。
      */
     public void mirrorVersion(String skillId, int versionNo, List<SkillSourceFile> files) {
-        if (!properties.isLocalMirrorEnabled() || files == null || files.isEmpty()) {
+        if (!localProjectionAllowed() || !properties.isLocalMirrorEnabled() || files == null || files.isEmpty()) {
             return;
         }
         try {
@@ -97,7 +112,7 @@ public class SkillLocalMirror {
 
     /** 删除整个 skill 目录(在 skill 被删除时调用)。 */
     public void removeSkill(String skillId) {
-        if (!properties.isLocalMirrorEnabled()) {
+        if (!localProjectionAllowed() || !properties.isLocalMirrorEnabled()) {
             return;
         }
         Path dir;

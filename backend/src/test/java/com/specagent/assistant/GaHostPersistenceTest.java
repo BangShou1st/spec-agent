@@ -23,14 +23,14 @@ class GaHostPersistenceTest {
     @Autowired GaCheckpointStore checkpoints;
     @Autowired ConversationDeleteService deletion;
     @Autowired JdbcTemplate jdbc;
+    @Autowired com.specagent.assistant.conversation.GlobalAssistantConversationService conversations;
     private final ObjectMapper mapper = new ObjectMapper();
     UUID thread, run, lease;
     GaExecutionStore.Scope scope;
 
     @BeforeEach void fixture() {
-        thread = UUID.randomUUID(); run = UUID.randomUUID(); lease = UUID.randomUUID();
-        jdbc.update("INSERT INTO global_assistant_threads(id) VALUES(?)", thread);
-        jdbc.update("INSERT INTO global_assistant_runs(id,thread_id,status) VALUES(?,?,'CREATED')", run, thread);
+        thread = conversations.createThread().id(); lease = UUID.randomUUID();
+        run = conversations.createRun(thread,"ga.v1","ga.v1","v1").id();
         scope = new GaExecutionStore.Scope(run, 1, lease);
         executions.initialize(scope, new GaExecutionStore.Binding(thread, UUID.randomUUID(), "OPENCODE_ZEN", "test-model",
                 "test-revision", Instant.now().plusSeconds(120), List.of()));

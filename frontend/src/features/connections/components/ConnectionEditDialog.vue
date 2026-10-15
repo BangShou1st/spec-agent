@@ -4,7 +4,8 @@
        只提交发生变化的字段(save 事件),无变化时直接关闭。
 -->
 <script setup lang="ts">
-import { ref, toRef } from 'vue'
+import { ref, toRef, computed, watch } from 'vue'
+import { canManageConnection } from '../connectionPermissions'
 import { useDialogReset } from '@/shared/ui/useDialogForm'
 import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'
 import UiDialogShell from '@/shared/ui/UiDialogShell.vue'
@@ -17,6 +18,8 @@ const emit = defineEmits<{ (e: 'close'): void; (e: 'save', payload: { name?: str
 const name = ref('')
 const serverUrl = ref('')
 const secret = ref('')
+const canManage = computed(() => canManageConnection(props.detail))
+watch(canManage, allowed => { if (!allowed) { name.value = ''; serverUrl.value = ''; secret.value = '' } }, { flush: 'sync' })
 useDialogReset(toRef(props, 'open'), () => {
   if (!props.detail) return
   name.value = props.detail.name
@@ -24,10 +27,10 @@ useDialogReset(toRef(props, 'open'), () => {
   serverUrl.value = typeof u === 'string' ? u : ''
   secret.value = ''
 })
-function submit(): void { if (props.saving) return; const patch: { name?: string; serverUrl?: string; secret?: string } = {}; if (props.detail && name.value.trim() && name.value.trim() !== props.detail.name) patch.name = name.value.trim(); const u = serverUrl.value.trim(); const cur = typeof (props.detail as unknown as { config?: { serverUrl?: unknown } })?.config?.serverUrl === 'string' ? ((props.detail as unknown as { config: { serverUrl: string } }).config.serverUrl) : ''; if (u && u !== cur) patch.serverUrl = u; if (secret.value) patch.secret = secret.value; if (Object.keys(patch).length === 0) { emit('close'); return } emit('save', patch) }
+function submit(): void { if (!canManage.value) return; if (props.saving) return; const patch: { name?: string; serverUrl?: string; secret?: string } = {}; if (props.detail && name.value.trim() && name.value.trim() !== props.detail.name) patch.name = name.value.trim(); const u = serverUrl.value.trim(); const cur = typeof (props.detail as unknown as { config?: { serverUrl?: unknown } })?.config?.serverUrl === 'string' ? ((props.detail as unknown as { config: { serverUrl: string } }).config.serverUrl) : ''; if (u && u !== cur) patch.serverUrl = u; if (secret.value) patch.secret = secret.value; if (Object.keys(patch).length === 0) { emit('close'); return } emit('save', patch) }
 </script>
 <template>
-  <UiDialogShell :open="open" title="编辑连接" description="仅改名可保持当前状态；修改地址或凭证后需要重新测试、连接并启用" test-id="connection-edit-dialog" @close="emit('close')">
+  <UiDialogShell :open="canManage && open" title="编辑连接" description="仅改名可保持当前状态；修改地址或凭证后需要重新测试、连接并启用" test-id="connection-edit-dialog" @close="emit('close')">
     <UiFormField label="名称" html-for="conn-edit-name">
       <input id="conn-edit-name" v-model="name" class="settings-control" type="text" autocomplete="off" maxlength="128" data-test="edit-name" />
     </UiFormField>

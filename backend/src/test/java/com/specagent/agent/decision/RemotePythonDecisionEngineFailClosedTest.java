@@ -62,6 +62,15 @@ class RemotePythonDecisionEngineFailClosedTest {
         properties.setBaseUrl("http://localhost:" + server.getAddress().getPort());
         properties.setInternalSecret("test-secret");
         engine = new RemotePythonDecisionEngine(properties);
+        wireGrants(engine);
+    }
+
+    private void wireGrants(RemotePythonDecisionEngine target) {
+        var grants=org.mockito.Mockito.mock(com.specagent.agent.broker.WorkspaceRpcGrants.class);
+        org.mockito.Mockito.when(grants.issue(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyInt(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any()))
+            .thenReturn(new com.specagent.agent.broker.WorkspaceRpcGrants.Ticket("x".repeat(43)));
+        target.setGrants(grants);
     }
 
     private void sleepIfSlow() {
@@ -141,6 +150,7 @@ class RemotePythonDecisionEngineFailClosedTest {
         properties.setConnectTimeoutMs(200);
         properties.setReadTimeoutSeconds(1);
         RemotePythonDecisionEngine isolated = new RemotePythonDecisionEngine(properties);
+        wireGrants(isolated);
         Throwable failure = catchThrowable(() -> isolated.runDecision(request()));
 
         assertThat(failure).isInstanceOf(AgentBrainUnavailableException.class);
@@ -195,6 +205,7 @@ class RemotePythonDecisionEngineFailClosedTest {
         properties.setConnectTimeoutMs(500);
         properties.setReadTimeoutSeconds(1);
         RemotePythonDecisionEngine impatient = new RemotePythonDecisionEngine(properties);
+        wireGrants(impatient);
         latencyMillis.set(5_000L);
         responseBody.set(Files.readString(FIXTURES.resolve("decision-response-valid.json")));
 

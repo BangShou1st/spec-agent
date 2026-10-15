@@ -1,3 +1,4 @@
+import { accessSession } from '@/features/access/accessSession'
 import { mount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SearchView from '../SearchSettingsView.vue'
@@ -11,10 +12,52 @@ const retrieval: RetrievalSettings = {
 }
 const wrappers: ReturnType<typeof mount>[] = []
 function button(wrapper: ReturnType<typeof mount>, text: string) { return wrapper.findAll('button').find(b => b.text() === text)! }
-beforeEach(() => { vi.spyOn(services, 'search').mockResolvedValue(structuredClone(search)); vi.spyOn(services, 'retrieval').mockResolvedValue(structuredClone(retrieval)) })
+beforeEach(() => { accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'editor', orgId: 'org', displayName: 'Editor', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['CREDENTIAL_MANAGE'], memberships: [] };  vi.spyOn(services, 'search').mockResolvedValue(structuredClone(search)); vi.spyOn(services, 'retrieval').mockResolvedValue(structuredClone(retrieval)) })
 afterEach(() => { wrappers.forEach(w => w.unmount()); wrappers.length = 0; vi.restoreAllMocks() })
 
 describe('service settings credential and index semantics', () => {
+  it('keeps search status readable but does not expose writes to a member', async () => {
+    accessSession.identity!.orgCapabilities = []
+    const save = vi.spyOn(services, 'saveSearch')
+    const w = mount(SearchView); wrappers.push(w); await flushPromises()
+    expect(w.text()).toContain('••••1234')
+    expect(w.find('input[type="password"]').exists()).toBe(false)
+    expect(button(w, '保存')).toBeUndefined()
+    expect(button(w, '测试连接')).toBeUndefined()
+    expect(button(w, '清除配置')).toBeUndefined()
+    expect(save).not.toHaveBeenCalled()
+  })
+  it('keeps index status and refresh readable but hides activation for a member', async () => {
+    accessSession.identity!.orgCapabilities = []
+    vi.mocked(services.retrieval).mockResolvedValue({ ...retrieval, index: { ...retrieval.index,
+      job: { id: 'ready', profile_id: 'p', state: 'READY', processed: 3, total: 3, error_code: null } } })
+    const w = mount(RetrievalView); wrappers.push(w); await flushPromises()
+    expect(w.text()).toContain('old-model')
+    expect(button(w, '刷新状态')).toBeDefined()
+    expect(button(w, '启用新索引')).toBeUndefined()
+    expect(button(w, '放弃该索引')).toBeUndefined()
+    expect(w.find('#embedding-key').exists()).toBe(false)
+  })
+  it('does not follow up an old search probe after the identity changes', async () => {
+    let finish!: (value: Awaited<ReturnType<typeof services.testSearch>>) => void
+    vi.spyOn(services, 'testSearch').mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const w = mount(SearchView); wrappers.push(w); await flushPromises()
+    const reads = vi.mocked(services.search).mock.calls.length
+    await button(w, '测试连接').trigger('click')
+    accessSession.identity = { ...accessSession.identity!, userId: 'another-user' }
+    finish({ success: true, code: 'OK', target: 'SAVED' }); await flushPromises()
+    expect(services.search).toHaveBeenCalledTimes(reads)
+    expect(w.text()).not.toContain('连接测试成功')
+  })
+  it('does not follow up a probe that finishes after its settings page unmounts', async () => {
+    let finish!: (value: Awaited<ReturnType<typeof services.testSearch>>) => void
+    vi.spyOn(services, 'testSearch').mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const w = mount(SearchView); await flushPromises()
+    const reads = vi.mocked(services.search).mock.calls.length
+    await button(w, '测试连接').trigger('click'); w.unmount()
+    finish({ success: true, code: 'OK', target: 'SAVED' }); await flushPromises()
+    expect(services.search).toHaveBeenCalledTimes(reads)
+  })
   it('omits retained credentials, keeps testing separate from saving, and confirms explicit clear', async () => {
     const save = vi.spyOn(services, 'saveSearch').mockResolvedValue(search)
     const test = vi.spyOn(services, 'testSearch').mockResolvedValue({ success: true, code: 'OK', target: 'SAVED' })

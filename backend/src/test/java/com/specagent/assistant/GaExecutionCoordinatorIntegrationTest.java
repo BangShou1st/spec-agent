@@ -43,6 +43,7 @@ class GaExecutionCoordinatorIntegrationTest {
     @Autowired GlobalAssistantRunLifecycleService lifecycle;
     @Autowired GaBrainSettings properties;
     @Autowired JdbcTemplate jdbc;
+    @Autowired com.specagent.access.OrganizationConfigurationScope orgScope;
     @LocalServerPort int port;
     @MockBean OpenCodeSettingsRepository settings;
     @MockBean OpenCodeZenTransport transport;
@@ -732,7 +733,9 @@ class GaExecutionCoordinatorIntegrationTest {
         var host=new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(source);
         var crypto=new ModelCredentialCrypto(System.getenv().getOrDefault("SPEC_AGENT_SECRET_MASTER_KEY",""),"",
                 System.getenv().getOrDefault("SPEC_AGENT_GA_QUALIFICATION_KEY_FILE","data/secret-master.key"));
-        var target=new JdbcOpenCodeSettingsRepository(host,crypto).find().orElseThrow();
+        var repository = new JdbcOpenCodeSettingsRepository(host,crypto);
+        repository.setOrgScope(orgScope);
+        var target=repository.find().orElseThrow();
         when(settings.find()).thenReturn(Optional.of(target));
         var snapshot=catalogs.current();
         var readonly=catalogs.snapshot(snapshot.descriptors().stream().filter(d->allowed.contains(d.capabilityId())).toList());

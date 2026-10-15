@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-14",
+  "candidateProtocol": 13,
+  "database": "spec_agent_p2_oidc_v91 only",
+  "browserSession": "hasg",
+  "capture": "backend/build/p2-acceptance/v91-project-role-revocation-capture.json",
+  "verified": [
+    "Existing authenticated org OWNER loses project listing on API A when its project membership is removed",
+    "API B reads actual /api/v1/projects/{id}: concealed PROJECT_NOT_FOUND",
+    "Restoring exact original membership re-enables read without a fresh login",
+    "Original member row restored and checked"
+  ],
+  "fixture": "Direct SQL remove/restore of one exact backed-up project_members row; not the production membership-management transaction",
+  "limits": [
+    "Does not prove authorization outbox cancellation or worker convergence",
+    "Original mistaken /api/projects path produced INTERNAL_ERROR; corrected path used for authorization evidence",
+    "Missing endpoint handler fix not yet running in saved protocol13 candidate",
+    "Frontend write controls and full worker/SSE matrix remain incomplete"
+  ],
+  "missingEndpointFocusedRegression": {
+    "tests": 67,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": 5
+  }
+}

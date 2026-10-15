@@ -4,6 +4,7 @@
        提供安装与拒绝操作;评审以只读方式查看,不执行其中任何脚本。
 -->
 <script setup lang="ts">
+import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
 import { computed } from 'vue'
 import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'
 import UiDialogShell from '@/shared/ui/UiDialogShell.vue'
@@ -13,6 +14,8 @@ import { formatBytes } from '@/shared/lib/managementCopy'
 import type { StagedImportDetail, StagedImportView } from '@/features/skills/api/skillTypes'
 import type { SkillsStoreError } from '@/features/skills/state/skillsStore'
 
+
+const canManage = useOrganizationCapability('ORG_MANAGE')
 const props = defineProps<{
   open: boolean
   staged: StagedImportView | null
@@ -75,8 +78,8 @@ const displayName = computed(() => {
     </details>
     <ApiErrorBanner v-if="error" :message="managementErrorMessage(error.code, error.message)" data-test="staged-error" />
     <template #actions>
-      <button type="button" class="btn btn-primary" data-test="install-staged" :disabled="working" @click="emit('install')">{{ working ? '正在安装…' : '安装' }}</button>
-      <button type="button" class="btn" data-test="reject-staged" :disabled="working" @click="emit('reject')">拒绝</button>
+      <button type="button" class="btn btn-primary" v-if="canManage" data-test="install-staged" :disabled="working" @click="canManage && emit('install')">{{ working ? '正在安装…' : '安装' }}</button>
+      <button type="button" class="btn" v-if="canManage" data-test="reject-staged" :disabled="working" @click="canManage && emit('reject')">拒绝</button>
     </template>
   </UiDialogShell>
 </template>

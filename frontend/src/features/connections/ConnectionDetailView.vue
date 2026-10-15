@@ -5,6 +5,7 @@
        数据全部来自 connectionsStore,按路由参数 connectionId 加载。
 -->
 <script setup lang="ts">
+import { canManageConnection, canReadConnectionCapabilities } from './connectionPermissions'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { managementErrorMessage } from '@/shared/http/errorCopy'
@@ -18,10 +19,12 @@ import { useConnectionsStore } from '@/features/connections/state/connectionsSto
 
 const props = defineProps<{ connectionId: string }>()
 const store = useConnectionsStore()
+const canManage = computed(() => canManageConnection(store.detail))
 const router = useRouter()
 
 const editOpen = ref(false)
 const confirmingDelete = ref(false)
+watch(canManage, allowed => { if (!allowed) { editOpen.value = false; confirmingDelete.value = false } }, { flush: 'sync' })
 
 const endpoint = computed(() => {
   const u = store.detail?.config?.serverUrl
@@ -31,14 +34,24 @@ const endpoint = computed(() => {
 function load(): void {
   confirmingDelete.value = false
   void store.loadDetail(props.connectionId)
-  void store.loadResources(props.connectionId)
-  void store.loadPrompts(props.connectionId)
 }
 
 onMounted(load)
 watch(() => props.connectionId, load)
+watch(() => store.detail, detail => {
+  if (detail?.connectionId === props.connectionId && canReadConnectionCapabilities(detail)) {
+    void store.loadResources(props.connectionId)
+    void store.loadPrompts(props.connectionId)
+  } else {
+    store.resources = []
+    store.prompts = []
+    store.resourceContent = null
+  }
+})
+
 
 async function saveEdit(patch: { name?: string; serverUrl?: string; secret?: string }): Promise<void> {
+  if (!canManage.value) return
   const body: Record<string, unknown> = {}
   if (patch.name !== undefined) body.name = patch.name
   if (patch.serverUrl !== undefined) body.config = { serverUrl: patch.serverUrl }
@@ -46,12 +59,11 @@ async function saveEdit(patch: { name?: string; serverUrl?: string; secret?: str
   const ok = await store.update(props.connectionId, body)
   if (ok) {
     editOpen.value = false
-    void store.loadResources(props.connectionId)
-    void store.loadPrompts(props.connectionId)
   }
 }
 
 async function remove(): Promise<void> {
+  if (!canManage.value) return
   const ok = await store.remove(props.connectionId)
   if (ok) void router.push('/settings/connections')
 }
@@ -72,7 +84,7 @@ async function remove(): Promise<void> {
       <header class="detail-head">
         <div><h2 data-test="connection-detail-name">{{ store.detail.name }}</h2>
         <p class="muted">{{ connectionKindLabel(store.detail.kind) }} · {{ endpoint }}</p></div>
-      <button type="button" class="btn" data-test="edit-connection" @click="store.clearError(); editOpen = true">编辑连接</button>
+      <button type="button" class="btn" v-if="canManage" data-test="edit-connection" @click="store.clearError(); editOpen = true">编辑连接</button>
       </header>
       <dl class="detail-meta">
         <div><dt>服务器地址</dt><dd data-test="connection-endpoint">{{ endpoint }}</dd></div>
@@ -82,10 +94,10 @@ async function remove(): Promise<void> {
         :detail="store.detail"
         :working="store.actionLoading"
         :error="store.error"
-        @test="store.test(props.connectionId)"
-        @connect="store.connect(props.connectionId)"
-        @refresh="store.refresh(props.connectionId)"
-        @enable="store.enable(props.connectionId)"
+        @test="canManage && store.test(props.connectionId)"
+        @connect="canManage && store.connect(props.connectionId)"
+        @refresh="canManage && store.refresh(props.connectionId)"
+        @enable="canManage && store.enable(props.connectionId)"
       />
       <ConnectionCapabilityBrowser
         :tools="store.tools"
@@ -95,11 +107,11 @@ async function remove(): Promise<void> {
         @read-resource="(uri) => store.readResource(props.connectionId, uri)"
         @close-resource="store.resourceContent = null"
       />
-      <section class="danger-zone" data-test="danger-zone">
+      <section v-if="canManage" class="danger-zone" data-test="danger-zone">
         <h3>危险操作</h3>
         <p class="muted">禁用随时可恢复。删除会移除连接及其发现缓存，且不可撤销</p>
         <div class="danger-row">
-          <button v-if="store.detail.enabled" type="button" class="btn" data-test="connection-disable" :disabled="store.actionLoading" @click="store.disable(props.connectionId)">禁用</button>
+          <button v-if="store.detail.enabled" type="button" class="btn" data-test="connection-disable" :disabled="store.actionLoading" @click="canManage && store.disable(props.connectionId)">禁用</button>
           <button v-if="!confirmingDelete" type="button" class="btn" data-test="connection-delete" :disabled="store.actionLoading" @click="confirmingDelete = true">删除</button>
           <span v-else class="delete-confirm">
             <span>删除该连接及其发现缓存？此操作不可撤销</span>
@@ -108,7 +120,7 @@ async function remove(): Promise<void> {
           </span>
         </div>
       </section>
-      <ConnectionEditDialog :open="editOpen" :detail="store.detail" :saving="store.actionLoading" :error="store.error" @close="editOpen = false" @save="saveEdit" />
+      <ConnectionEditDialog :open="canManage && editOpen" :detail="store.detail" :saving="store.actionLoading" :error="store.error" @close="editOpen = false" @save="saveEdit" />
     </template>
   </section>
 </template>

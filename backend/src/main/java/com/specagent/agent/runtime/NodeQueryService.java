@@ -74,6 +74,8 @@ public class NodeQueryService {
     private final AgentProposalService proposalService;
     private final AgentRunEventService eventService;
     private final AgentRunTerminalizationService terminalizationService;
+    private final ExecutionFence executionFence;
+    private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
     public NodeQueryService(AgentRunService agentRunService,
                             AgentRunFailureService agentRunFailureService,
@@ -84,7 +86,9 @@ public class NodeQueryService {
                             ActionExecutor actionExecutor,
                             AgentProposalService proposalService,
                             AgentRunEventService eventService,
-                            AgentRunTerminalizationService terminalizationService) {
+                            AgentRunTerminalizationService terminalizationService,
+                            ExecutionFence executionFence,
+                            org.springframework.transaction.support.TransactionTemplate transactionTemplate) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -95,6 +99,8 @@ public class NodeQueryService {
         this.proposalService = proposalService;
         this.eventService = eventService;
         this.terminalizationService = terminalizationService;
+        this.executionFence = executionFence;
+        this.transactionTemplate = transactionTemplate;
     }
 
     public record NodeQueryResult(UUID runId, String status, String message, UUID proposalId) {
@@ -166,13 +172,28 @@ public class NodeQueryService {
                             Map.of("actionFamily", proposal.actionFamily()));
                     return new NodeQueryResult(runId, "not_confirmable", null, null);
                 }
-                AgentProposal agentProposal = proposalService.createProposal(
-                        proposal, runId, run.projectId(), routeId);
-                terminalizationService.completeWithEvent(runId, AgentRunStatus.COMPLETED,
-                        trace + "\nawaiting_approval:" + agentProposal.id(),
-                        AgentRunPhase.AWAITING_APPROVAL, "AWAITING_APPROVAL", Map.of(
-                                "proposalId", agentProposal.id().toString(),
-                                "actionFamily", proposal.actionFamily()));
+                // 提案、其 PROPOSAL_CREATED 事件与 run 的 AWAITING_APPROVAL
+                // 终态化收敛到同一个受保护短事务(与 DecisionExecutionService
+                // 相同协议):第一条数据库语句经 ExecutionFence 取 task 所有权
+                // 行锁并核实动态授权,再写业务行。撤权/接管若发生在早前的
+                // 失权检查之后,本事务在取锁处即被整体拒绝——绝不留下"提案
+                // 已提交、终态化被拒"的部分结果(模型调用不在事务内,保持
+                // 统一锁序与短事务边界)。
+                final String awaitingTrace = trace + "\nawaiting_approval:";
+                AgentProposal agentProposal = transactionTemplate.execute(tx -> {
+                    executionFence.lockOwnershipForWrite();
+                    AgentProposal created = proposalService.createProposal(
+                            proposal, runId, run.projectId(), routeId);
+                    eventService.append(runId, AgentRunPhase.PROPOSAL_CREATED, "PROPOSAL_CREATED", Map.of(
+                            "actionFamily", proposal.actionFamily(),
+                            "proposalId", created.id().toString()));
+                    terminalizationService.completeWithEvent(runId, AgentRunStatus.COMPLETED,
+                            awaitingTrace + created.id(),
+                            AgentRunPhase.AWAITING_APPROVAL, "AWAITING_APPROVAL", Map.of(
+                                    "proposalId", created.id().toString(),
+                                    "actionFamily", proposal.actionFamily()));
+                    return created;
+                });
                 return new NodeQueryResult(runId, "awaiting_approval", null, agentProposal.id());
             }
 

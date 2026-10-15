@@ -141,12 +141,16 @@ def test_parallel_model_calls_are_rejected_before_any_host_action():
         graph.invoke({"messages": [HumanMessage(content=e.content)]}, config)
 
 
-def test_unknown_tool_is_rejected_without_host_action():
+def test_unavailable_capability_is_bounded_observation_without_host_action():
     e = execution()
-    broker = ScriptBroker([response(calls=[ToolCall(id="c1", name="forbidden", arguments={})])])
-    graph, config, _ = setup_agent(e, broker, lambda r: pytest.fail("unknown tool reached host"))
-    with pytest.raises(BrokerError, match="catalog"):
-        graph.invoke({"messages": [HumanMessage(content=e.content)]}, config)
+    broker = ScriptBroker([response(calls=[ToolCall(id="c1", name="web_search", arguments={"query": "x"})]),
+                           response(content="联网检索未配置")])
+    graph, config, _ = setup_agent(e, broker, lambda r: pytest.fail("unavailable capability reached host"))
+    result = graph.invoke({"messages": [HumanMessage(content=e.content)]}, config)
+    tool = next(m for m in result["messages"] if isinstance(m, ToolMessage))
+    assert tool.status == "error" and "CAPABILITY_UNAVAILABLE" in tool.content
+    assert result["messages"][-1].content == "联网检索未配置"
+    assert len(broker.requests) == 2
 
 
 def test_cancel_after_model_result_prevents_tool_action():
@@ -223,3 +227,26 @@ def test_multiple_read_only_calls_keep_separate_arguments_results_and_follow_up(
     tools = [m for m in broker.requests[-1].messages if m.role=="tool"]
     assert {m.tool_call_id for m in tools} == {"read-one","read-two"}
     assert result["messages"][-1].content == "done"
+
+
+def test_context_organization_reaches_every_model_call_with_labeled_sections():
+    e = execution()
+    broker = ScriptBroker([response(calls=[ToolCall(id="c1", name="project_search", arguments={"query": "项目"})]),
+                           response(content="完成")])
+    def invoke(request):
+        return CapabilityResponse(protocolVersion="ga-capability-result.v1", toolCallId=request.tool_call_id,
+                                  status="SUCCEEDED", content={"projects": [{"projectId": str(uuid4()), "title": "A"}]},
+                                  sourceRefs=["project:verified"])
+    graph, config, _ = setup_agent(e, broker, invoke)
+    graph.invoke({"messages": [HumanMessage(content=e.content, id=str(e.message_id))]}, config)
+    first = broker.requests[0].messages[0].content
+    second = broker.requests[1].messages[0].content
+    for system in (first, second):
+        assert "Context boundaries" in system
+        assert "latest user message updates the current goal" in system
+        assert "CONTINUE it" in system  # 澄清/补充不等于替换目标
+        assert "explicitly cancels, replaces it or the messages conflict" in system
+        assert "Host-validated UI identity data for this turn" in system
+    assert "Retained successful host tool observations" in second
+    assert "project:verified" in second  # 成功观察被保留并带来源
+    assert "A" in second

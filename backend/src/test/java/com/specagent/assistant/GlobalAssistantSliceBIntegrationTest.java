@@ -25,8 +25,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -153,8 +155,13 @@ class GlobalAssistantSliceBIntegrationTest {
         }
     }
     @Autowired com.specagent.assistant.tool.GlobalAssistantCatalogService catalogService;
+    @SpyBean com.specagent.assistant.tool.TavilyWebService web;
     @Test
     void modelCatalogHoldsExactlyTheV1Tools() {
+        // 对运行环境封闭:用户机器可能配置了 Tavily key(环境变量或设置库),
+        // 目录会按设计把 web 工具纳入模型可见列表;本断言只关心 V1 核心目录,
+        // 显式桩掉 web 配置,避免测试结果依赖宿主机环境。
+        Mockito.doReturn(false).when(web).configured();
         assertThat(catalogService.modelCatalog().stream()
                         .map(com.specagent.capability.CapabilityDescriptor::capabilityId).toList())
                 .containsExactlyInAnyOrder(

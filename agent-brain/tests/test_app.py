@@ -36,6 +36,12 @@ def test_health_reports_protocol_and_mode(settings):
     assert body["status"] == "ok"
     assert body["protocolVersion"] == "agent-input.v2"
     assert body["modelMode"] == "fake"
+    # GA 执行协议能力公告(design §8):Java 发起执行前据此协商,
+    # Literal 字面量与公告必须同步演进。
+    assert body["gaExecutionProtocolVersions"] == [
+        "ga-execution.v1",
+        "ga-execution-event.v1",
+    ]
     assert body["invocations"] == {
         "stateUpdates": 0,
         "decisions": 0,

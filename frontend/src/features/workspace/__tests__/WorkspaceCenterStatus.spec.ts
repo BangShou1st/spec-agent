@@ -5,6 +5,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, h } from 'vue'
 import WorkspaceView from '@/features/workspace/WorkspaceView.vue'
+import { apiClient } from '@/shared/http/client'
 import { useGraphUiStore } from '@/features/workspace/state/graphUiStore'
 import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'
 import {
@@ -64,6 +65,7 @@ const mockedGetActiveState = vi.mocked(getActiveState)
 const mockedListRoutes = vi.mocked(listRoutes)
 const mockedGetRequirementState = vi.mocked(getRequirementState)
 const mockedGetProjectGraph = vi.mocked(getProjectGraph)
+const originalApiGet = apiClient.get.bind(apiClient)
 
 const GraphCanvasStub = defineComponent({
   name: 'GraphCanvas',
@@ -118,6 +120,10 @@ async function mountWorkspace(projectId = 'p1') {
 
 describe('WorkspaceView unified center status', () => {
   beforeEach(() => {
+    vi.spyOn(apiClient, 'get').mockImplementation(<T>(path: string): Promise<T> =>
+      path.endsWith('/access')
+        ? Promise.resolve({ capabilities: ['PROJECT_READ', 'PROJECT_WRITE'] } as T)
+        : originalApiGet<T>(path))
     localStorage.clear()
     vi.clearAllMocks()
   })

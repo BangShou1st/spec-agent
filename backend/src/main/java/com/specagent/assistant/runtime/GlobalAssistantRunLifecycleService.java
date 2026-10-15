@@ -26,6 +26,16 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class GlobalAssistantRunLifecycleService {
+    /** Control-plane terminalization writes metadata only, never revoked conversation content. */
+    @Transactional
+    public void failWithoutContent(UUID runId,String errorCode,String reason) {
+        GlobalAssistantRun run=runs.lockById(runId);
+        if(run.status().isTerminal()) return;
+        events.append(runId,GlobalAssistantEventType.RUN_FAILED,Map.of(
+                "errorCode",errorCode,"reason",reason==null?"Execution stopped":reason));
+        runs.terminalize(runId,GlobalAssistantRunStatus.FAILED,errorCode);
+        publishTerminal(run.threadId(),runId,"FAILED");
+    }
     private final GlobalAssistantRunRepository runs;
     private final GlobalAssistantConversationService conversations;
     private final GlobalAssistantRunEventService events;
@@ -120,6 +130,7 @@ public class GlobalAssistantRunLifecycleService {
     @Transactional
     public void cancelAndTerminalize(UUID runId) {
         GlobalAssistantRun run = runs.lockById(runId);
+        if (run.status().isTerminal()) return;
         events.append(runId, GlobalAssistantEventType.RUN_CANCELLED, Map.of());
         runs.terminalize(runId, GlobalAssistantRunStatus.CANCELLED, GlobalAssistantErrorCode.RUN_CANCELLED);
         publishTerminal(run.threadId(), runId, "CANCELLED");

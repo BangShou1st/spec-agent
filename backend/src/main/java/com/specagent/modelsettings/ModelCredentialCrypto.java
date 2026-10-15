@@ -49,6 +49,7 @@ import java.util.Map;
 public class ModelCredentialCrypto {
 
     static final String PREFIX = "enc:v1:";
+    static final String SCOPED_PREFIX = "enc:v2:";
     private static final int GCM_TAG_BITS = 128;
     private static final int IV_BYTES = 12;
 
@@ -56,12 +57,19 @@ public class ModelCredentialCrypto {
     private final String primaryId;
     private final Map<String, SecretKey> keysById = new LinkedHashMap<>();
 
+    public ModelCredentialCrypto(String masterKeyB64,String fallbackKeysB64,String keyFile) {
+        this(masterKeyB64,fallbackKeysB64,keyFile,"LOCAL");
+    }
+    @org.springframework.beans.factory.annotation.Autowired
     public ModelCredentialCrypto(
             @Value("${spec.agent.secret.master-key:${SPEC_AGENT_SECRET_MASTER_KEY:}}")
             String masterKeyB64,
             @Value("${spec.agent.secret.master-key-fallback:}") String fallbackKeysB64,
             @Value("${spec.agent.secret.master-key-file:./data/secret-master.key}")
-            String keyFile) {
+            String keyFile,
+            @Value("${spec.agent.security.mode:LOCAL}") String mode) {
+        if("OIDC".equalsIgnoreCase(mode) && (masterKeyB64==null || masterKeyB64.isBlank()))
+            throw new IllegalStateException("OIDC deployment requires an explicit shared master key; local generation is disabled");
         List<String> raws = new ArrayList<>();
         if (masterKeyB64 != null && !masterKeyB64.isBlank()) {
             raws.add(masterKeyB64.strip());
@@ -88,7 +96,54 @@ public class ModelCredentialCrypto {
 
     /** 是否为该组件管理的密文;明文(迁移前数据)返回 false。 */
     public boolean isEncrypted(String stored) {
-        return stored != null && stored.startsWith(PREFIX);
+        return stored != null && (stored.startsWith(PREFIX) || stored.startsWith(SCOPED_PREFIX));
+    }
+
+    /** The authentication tag binds the ciphertext to its organization, row and purpose. */
+    public String encryptScoped(String plaintext, java.util.UUID org, String table, Object row) {
+        if (plaintext == null || plaintext.isEmpty()) return plaintext;
+        byte[] aad = credentialContext(org, table, row);
+        try {
+            byte[] iv = new byte[IV_BYTES];
+            new SecureRandom().nextBytes(iv);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, primary, new GCMParameterSpec(GCM_TAG_BITS, iv));
+            cipher.updateAAD(aad);
+            byte[] ciphertext = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
+            byte[] payload = java.nio.ByteBuffer.allocate(iv.length + ciphertext.length)
+                    .put(iv).put(ciphertext).array();
+            return SCOPED_PREFIX + primaryId + ":" + Base64.getEncoder().encodeToString(payload);
+        } catch (GeneralSecurityException ex) {
+            throw new IllegalStateException("Model credential encryption failed", ex);
+        }
+    }
+
+    public String decryptScoped(String stored, java.util.UUID org, String table, Object row) {
+        byte[] aad = credentialContext(org, table, row);
+        if (stored == null || !stored.startsWith(SCOPED_PREFIX)) return decrypt(stored);
+        String body = stored.substring(SCOPED_PREFIX.length());
+        int separator = body.indexOf(':');
+        if (separator <= 0) throw new IllegalStateException("Model credential ciphertext is malformed");
+        SecretKey key = keysById.get(body.substring(0, separator));
+        if (key == null) throw new IllegalStateException("Model credential master key is unavailable");
+        try {
+            byte[] payload = Base64.getDecoder().decode(body.substring(separator + 1));
+            if (payload.length < IV_BYTES + GCM_TAG_BITS / 8)
+                throw new IllegalStateException("Model credential ciphertext is malformed");
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_BITS, payload, 0, IV_BYTES));
+            cipher.updateAAD(aad);
+            return new String(cipher.doFinal(payload, IV_BYTES, payload.length - IV_BYTES), StandardCharsets.UTF_8);
+        } catch (GeneralSecurityException | IllegalArgumentException ex) {
+            throw new IllegalStateException("Model credential scope or master key does not match", ex);
+        }
+    }
+
+    private static byte[] credentialContext(java.util.UUID org, String table, Object row) {
+        java.util.Objects.requireNonNull(org, "Credential organization is required");
+        java.util.Objects.requireNonNull(table, "Credential purpose is required");
+        java.util.Objects.requireNonNull(row, "Credential row is required");
+        return (org + "\u0000" + table + "\u0000" + row + "\u0000api_key").getBytes(StandardCharsets.UTF_8);
     }
 
     /** 明文 → 密文;null/空串原样返回(无密钥列的合法空态)。 */
@@ -117,10 +172,12 @@ public class ModelCredentialCrypto {
      * 绝不返回垃圾数据。
      */
     public String decrypt(String stored) {
+        if (stored != null && stored.startsWith(SCOPED_PREFIX))
+            throw new IllegalStateException("Scoped credential requires its organization and purpose");
         if (stored == null || stored.isEmpty() || !stored.startsWith(PREFIX)) {
             return stored;
         }
-        String body = stored.substring(PREFIX.length());
+        String body = stored.substring(stored.startsWith(SCOPED_PREFIX) ? SCOPED_PREFIX.length() : PREFIX.length());
         int sep = body.indexOf(':');
         if (sep <= 0) {
             throw new IllegalStateException("Model credential ciphertext is malformed");
@@ -153,7 +210,7 @@ public class ModelCredentialCrypto {
         if (!isEncrypted(stored)) {
             return null;
         }
-        String body = stored.substring(PREFIX.length());
+        String body = stored.substring(stored.startsWith(SCOPED_PREFIX) ? SCOPED_PREFIX.length() : PREFIX.length());
         int sep = body.indexOf(':');
         return sep <= 0 ? null : body.substring(0, sep);
     }

@@ -19,6 +19,7 @@ public class HelpCorpusJobs {
         this.help=help; this.store=store; this.sources=sources; this.jdbc=jdbc;
     }
     @Transactional public Optional<SplitRequest> claim(UUID generation) {
+        store.captureRebuild(CuratedHelpSources.CORPUS,generation);
         if(jdbc.queryForList("SELECT id FROM retrieval_index_generations WHERE corpus_id=:corpus AND id=:generation AND state IN ('ACTIVE','PREPARING') FOR UPDATE",Map.of("corpus",CuratedHelpSources.CORPUS,"generation",generation)).size()!=1)
             throw new IllegalStateException("INDEX_GENERATION_MISMATCH");
         for(var document:help.documents()) {
@@ -42,6 +43,7 @@ public class HelpCorpusJobs {
         return document;
     }
     @Transactional public boolean commit(SplitResult result) {
+        store.authorizeRebuildForJob(result.jobId());
         var rows=jdbc.queryForList("SELECT * FROM retrieval_index_jobs WHERE id=:id FOR UPDATE",Map.of("id",result.jobId()));
         if(rows.size()!=1) throw new IllegalStateException("STALE_WORKLOAD");
         var row=rows.getFirst(); var request=read(row.get("request").toString(),SplitRequest.class);

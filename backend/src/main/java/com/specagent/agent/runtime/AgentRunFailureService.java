@@ -53,6 +53,60 @@ public class AgentRunFailureService {
         this.eventService = eventService;
     }
 
+    /**
+     * 失败终态化的执行方式(design §6.3 点名的自等待风险)。
+     *
+     * <p><b>单执行器模式</b>:沿用 {@code REQUIRES_NEW}。它之所以不自死锁,
+     * 靠的是 {@code executor_ownership} 上的 <b>FOR SHARE</b> 与外层共享锁
+     * 互相兼容——共享锁之间不等待。这是历史协议,行为保持不变。
+     *
+     * <p><b>任务级模式(多 Worker)</b>:{@link com.specagent.runtime.execution.TaskWriteGuard}
+     * 对 {@code runtime_tasks} 行取的是<b>排他</b>锁。若外层业务事务已持有该行
+     * 锁,内层 {@code REQUIRES_NEW}(另一条连接)再取同一行就是自等待——排他
+     * 锁与自身不兼容。因此任务级模式改用<b>单条短超时语句</b>设置
+     * {@code lock_timeout}:正常情况下失败路径运行时外层执行事务已经结束/回滚
+     * (周期服务的执行事务在内层模板里收敛),锁是空闲的;万一外层仍持有该行,
+     * 内层会在超时后立即失败并如实上报 {@code OWNERSHIP_REFUSED},由当前合法
+     * 所有者按租约收敛——绝不无限期挂住。
+     */
+    private static final String FAILURE_LOCK_TIMEOUT = "1500ms";
+
+    /**
+     * 事务内设置锁超时的端口(仅任务级模式使用)。用 setter 注入而不是构造器,
+     * 保持既有 3 参构造器(测试直接 new 的场景)不变。
+     */
+    private org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate jdbc;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJdbc(org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    /**
+     * 任务级模式下把本事务的锁等待上限压到很短(design §6.3)。
+     *
+     * <p>正常情况下失败路径运行时外层执行事务已经结束/回滚,任务行锁是空闲的;
+     * 万一外层仍持有该行(排他锁与自身不兼容),这里会在超时后立即失败并如实
+     * 上报 {@code OWNERSHIP_REFUSED},由当前合法所有者按租约收敛——绝不无限期
+     * 挂住整个执行线程。
+     */
+    private void applyTaskLevelLockTimeout() {
+        if (jdbc == null || !executionFence.multiWorker()) {
+            return;
+        }
+        try {
+            jdbc.getJdbcTemplate().execute("SET LOCAL lock_timeout = '" + FAILURE_LOCK_TIMEOUT + "'");
+        } catch (RuntimeException ignored) {
+            // 设置失败不改变协议:最坏情况退化为普通锁等待,由租约与
+            // statement_timeout 兜底。
+        }
+    }
+
+    /** 从执行线程取当前 token(任务级模式的所有权来源)。 */
+    private com.specagent.runtime.execution.ExecutionToken currentToken() {
+        return com.specagent.runtime.execution.ExecutionTokenContext.current().orElse(null);
+    }
+
     /** 一次失败终态化的结果分类。 */
     public enum FailureOutcome {
         /** 条件更新生效:本次失败确实发生,事件已在同一事务内追加。 */
@@ -89,11 +143,25 @@ public class AgentRunFailureService {
 
     private FailureOutcome doFail(UUID runId, String trace, String reason,
                                   java.util.Map<String, Object> payload) {
+        applyTaskLevelLockTimeout();
         long epoch;
         try {
             epoch = executionFence.lockOwnershipForWrite();
         } catch (ExecutorLease.LeaseLostException lost) {
             // 已知丢锁/接管已发生:业务解释交由当前合法所有者。
+            return FailureOutcome.OWNERSHIP_REFUSED;
+        } catch (com.specagent.runtime.execution.TaskOwnershipLostException lost) {
+            // 任务级模式:token 缺失或已被接管。旧执行器绝不写入失败终态——
+            // 业务恢复属于当前合法所有者(design §7)。
+            return FailureOutcome.OWNERSHIP_REFUSED;
+        } catch (com.specagent.access.AccessDeniedException revoked) {
+            return FailureOutcome.OWNERSHIP_REFUSED;
+        } catch (org.springframework.dao.PessimisticLockingFailureException lockTimeout) {
+            // 任务级模式下的锁超时:外层执行事务仍持有任务行排他锁。诚实上报
+            // 拒绝而不是挂住;当前所有者会按租约与终态收敛该 Run。
+            return FailureOutcome.OWNERSHIP_REFUSED;
+        } catch (org.springframework.dao.DataAccessException dbUnavailable) {
+            // 数据库不可达:绝不假装失败已生效。
             return FailureOutcome.OWNERSHIP_REFUSED;
         }
         int rows = agentRunRepository.fail(runId, trace, epoch);

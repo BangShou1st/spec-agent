@@ -1,0 +1,20 @@
+{
+  "tests": 1967,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 34,
+  "suites": 316,
+  "fullCoversCurrentBackendWorktree": false,
+  "log": "backend/build/p2-acceptance/resume-final-backend-full.log",
+  "jarSha256": "cbcc5f1ba1c9e7cbe0c1ca7983065215a2a168f2f482600088300fd6e9438846",
+  "fullCoversCurrentProductionCode": false,
+  "additionalTestAddedAfterFullRun": "GlobalAssistantSlowSocketIntegrationTest (test source only; production code unchanged)",
+  "additionalRealSocketTest": {
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "coveredThroughMigration": 91,
+  "supersededBy": "P2_V93_FINAL_FULL_REGRESSION.json"
+}

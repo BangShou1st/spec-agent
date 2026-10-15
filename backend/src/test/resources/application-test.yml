@@ -17,6 +17,12 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
     validate-on-migrate: true
+  session:
+    # 会话表由 Flyway V60 建立；显式禁止 Boot 自动建表，避免测试库出现
+    # 两套不可审计的 DDL。
+    jdbc:
+      initialize-schema: never
+    timeout: 30m
 
 server:
   port: 0
@@ -42,6 +48,11 @@ spec:
   global-assistant:
     retrieval-enabled: false
   agent:
+    security:
+      # 测试档显式 LOCAL：既有测试不驱动登录流程。身份模式准入仍会校验数据库
+      # 登记行（V59 默认 LOCAL），因此"模式分歧拒绝启动"这条路径在测试里真实生效。
+      mode: LOCAL
+      mode-admission-enabled: true
     retrieval:
       embedding:
         worker:

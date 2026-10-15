@@ -4,11 +4,14 @@
        并提供进入详情与删除入口;busyId 用于禁用正在操作的行。
 -->
 <script setup lang="ts">
-import { ref } from 'vue'
+import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
+import { ref, watch } from 'vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import ToggleSwitch from '@/shared/ui/ToggleSwitch.vue'
 import type { SkillSummary } from '@/features/skills/api/skillTypes'
 
+
+const canManage = useOrganizationCapability('ORG_MANAGE')
 withDefaults(defineProps<{
   skills: SkillSummary[]
   loading: boolean
@@ -23,6 +26,7 @@ const emit = defineEmits<{
 }>()
 
 const confirmingId = ref<string | null>(null)
+watch(canManage, allowed => { if (!allowed) confirmingId.value = null }, { flush: 'sync' })
 
 function mark(name: string): string {
   const t = (name ?? '').trim()
@@ -51,14 +55,14 @@ function mark(name: string): string {
           <span class="skills-desc">{{ skill.description }}</span>
         </button>
 
-        <span v-if="confirmingId === skill.skillId" class="skills-confirm">
+        <span v-if="canManage && confirmingId === skill.skillId" class="skills-confirm">
           <span class="skills-confirm__text">删除该 Skill 及其全部版本？</span>
           <button
             type="button"
             class="btn btn-danger"
-            :disabled="busyId === skill.skillId"
+            :disabled="!canManage || busyId === skill.skillId"
             :data-test="`skill-delete-confirm-${skill.skillId}`"
-            @click="emit('remove', skill.skillId); confirmingId = null"
+            @click="canManage && emit('remove', skill.skillId); confirmingId = null"
           >删除</button>
           <button
             type="button"
@@ -71,18 +75,18 @@ function mark(name: string): string {
         <template v-else>
           <ToggleSwitch
             :checked="skill.enabled"
-            :disabled="busyId === skill.skillId"
+            :disabled="!canManage || busyId === skill.skillId"
             :title="skill.enabled ? '停用该 Skill' : '启用该 Skill'"
             :data-test="skill.enabled ? `skill-disable-${skill.skillId}` : `skill-enable-${skill.skillId}`"
             :status-test-id="`skill-status-${skill.skillId}`"
-            @toggle="skill.enabled ? emit('disable', skill.skillId) : emit('enable', skill.skillId)"
+            @toggle="canManage && (skill.enabled ? emit('disable', skill.skillId) : emit('enable', skill.skillId))"
           />
           <button
             type="button"
             class="skill-icon-btn"
-            :disabled="busyId === skill.skillId"
+            :disabled="!canManage || busyId === skill.skillId"
             title="删除该 Skill"
-            :data-test="`skill-delete-${skill.skillId}`"
+            v-if="canManage" :data-test="`skill-delete-${skill.skillId}`"
             @click="confirmingId = skill.skillId"
           >
             <AppIcon name="trash" />

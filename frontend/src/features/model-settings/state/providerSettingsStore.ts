@@ -3,6 +3,7 @@
 //       以及设置页内"正在查看哪个配置 Tab"的会话级状态(查看绝不等于激活)。
 
 import { defineStore } from 'pinia'
+import { identityScopedStore, privateIdentityWork, PrivateIdentityExpiredError } from '@/shared/state/privateIdentity'
 import { toDisplayError } from '@/shared/http/displayError'
 import { activateProvider, getActiveProvider, type ModelProvider } from '@/features/model-settings/api/modelProviders'
 
@@ -15,6 +16,8 @@ const displayError: (err: unknown) => ProviderSettingsError = toDisplayError
 
 export const useProviderSettingsStore = defineStore('providerSettings', {
   state: () => ({
+    identityEpoch: 0,
+    privateIdentity: null as string | null,
     activeProvider: 'OPENCODE_ZEN' as ModelProvider,
     // Custom 通过末尾的 “+” 弹窗进入，不再是常驻 Tab；默认看第一个预设。
     viewing: 'OPENCODE_ZEN' as ModelProvider,
@@ -25,21 +28,41 @@ export const useProviderSettingsStore = defineStore('providerSettings', {
     error: null as ProviderSettingsError | null,
   }),
   actions: {
+    bindIdentity(identity: string | null): void {
+      if (identity === this.privateIdentity && identity !== null) return
+      const epoch = this.identityEpoch + 1
+      this.$reset()
+      this.identityEpoch = epoch
+      this.privateIdentity = identity
+    },
     async loadActive(): Promise<void> {
-      this.loading = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        const res = await getActiveProvider()
-        this.activeProvider = res.activeProvider
+      identityStore.loading = true
+      identityStore.error = null
+      try {
+        const res = await privateIdentityWork(identityStore, identityEpoch, () => (getActiveProvider()))
+        identityStore.activeProvider = res.activeProvider
         // 首次进入（本会话没手动选过 Tab）时，直接展示当前正在使用的
         // Provider 卡片，而不是永远停在 OpenCode Zen。
-        if (!this.viewTouched) {
-          this.viewing = res.activeProvider
+        if (!identityStore.viewTouched) {
+          identityStore.viewing = res.activeProvider
         }
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
       } finally {
-        this.loading = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.loading = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return }
+        throw identityError
       }
     },
     view(provider: ModelProvider): void {
@@ -48,20 +71,33 @@ export const useProviderSettingsStore = defineStore('providerSettings', {
       this.viewTouched = true
     },
     async activate(provider: ModelProvider): Promise<boolean> {
-      if (this.activating) {
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (identityStore.activating) {
         return false
       }
-      this.activating = true
-      this.error = null
+      identityStore.activating = true
+      identityStore.error = null
       try {
-        const res = await activateProvider(provider)
-        this.activeProvider = res.activeProvider
+        const res = await privateIdentityWork(identityStore, identityEpoch, () => (activateProvider(provider)))
+        identityStore.activeProvider = res.activeProvider
         return true
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
         return false
       } finally {
-        this.activating = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.activating = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
     clearError(): void {

@@ -93,7 +93,7 @@ class GraphWorkspaceQueryServiceTest {
         Answer answer = new Answer(UUID.randomUUID(), projectId, routeId, rootId,
                 root.options().get(0).id().toString(), "answer", "user", NOW);
 
-        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(projectService.getProjectForActor(projectId)).thenReturn(java.util.Optional.of(project));
         when(routeService.listRoutes(projectId)).thenReturn(List.of(route));
         when(nodeService.getNode(rootId)).thenReturn(java.util.Optional.of(root));
         when(nodeService.getNode(childId)).thenReturn(java.util.Optional.of(child));
@@ -140,7 +140,7 @@ class GraphWorkspaceQueryServiceTest {
         Answer answerB = new Answer(sharedAnswerId, projectId, routeAId, bId,
                 "opt", "B answer", "user", NOW);
 
-        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(projectService.getProjectForActor(projectId)).thenReturn(java.util.Optional.of(project));
         when(routeService.listRoutes(projectId)).thenReturn(List.of(routeA, routeB));
         when(nodeService.getNode(aId)).thenReturn(java.util.Optional.of(a));
         when(nodeService.getNode(bId)).thenReturn(java.util.Optional.of(b));
@@ -191,7 +191,7 @@ class GraphWorkspaceQueryServiceTest {
         Answer answer = new Answer(sharedAnswerId, projectId, routeAId, bId,
                 "opt", "B answer", "user", NOW);
 
-        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(projectService.getProjectForActor(projectId)).thenReturn(java.util.Optional.of(project));
         when(routeService.listRoutes(projectId)).thenReturn(List.of(routeA, routeB));
         when(nodeService.getNode(aId)).thenReturn(java.util.Optional.of(a));
         when(nodeService.getNode(bId)).thenReturn(java.util.Optional.of(b));
@@ -232,7 +232,7 @@ class GraphWorkspaceQueryServiceTest {
         Answer answerB = new Answer(UUID.randomUUID(), projectId, routeAId, bId,
                 "opt", "B answer", "user", NOW);
 
-        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(projectService.getProjectForActor(projectId)).thenReturn(java.util.Optional.of(project));
         when(routeService.listRoutes(projectId)).thenReturn(List.of(routeA, routeB));
         when(nodeService.getNode(aId)).thenReturn(java.util.Optional.of(a));
         when(nodeService.getNode(bId)).thenReturn(java.util.Optional.of(b));
@@ -273,7 +273,7 @@ class GraphWorkspaceQueryServiceTest {
         Answer answer2 = new Answer(UUID.randomUUID(), projectId, routeBId, bId,
                 "opt", "second answer", "user", NOW);
 
-        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(projectService.getProjectForActor(projectId)).thenReturn(java.util.Optional.of(project));
         when(routeService.listRoutes(projectId)).thenReturn(List.of(routeA, routeB));
         when(nodeService.getNode(aId)).thenReturn(java.util.Optional.of(a));
         when(nodeService.getNode(bId)).thenReturn(java.util.Optional.of(b));
@@ -310,7 +310,7 @@ class GraphWorkspaceQueryServiceTest {
         Node archivedNode = node(archivedId, projectId, null, "Archived question");
         Node deletedNode = node(deletedId, projectId, null, "Deleted question");
 
-        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(projectService.getProjectForActor(projectId)).thenReturn(java.util.Optional.of(project));
         when(routeService.listRoutes(projectId)).thenReturn(
                 List.of(open, superseded, archived, deleted));
         when(nodeService.getNode(openId)).thenReturn(java.util.Optional.of(openNode));
@@ -344,7 +344,7 @@ class GraphWorkspaceQueryServiceTest {
         Project project = new Project(projectId, "p", routeId, null, NOW, NOW);
         Route empty = route(routeId, projectId, null, null, RouteLifecycleStatus.OPEN, null);
 
-        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(projectService.getProjectForActor(projectId)).thenReturn(java.util.Optional.of(project));
         when(routeService.listRoutes(projectId)).thenReturn(List.of(empty));
 
         GraphWorkspaceView view = service.getForProject(projectId);
@@ -380,7 +380,7 @@ class GraphWorkspaceQueryServiceTest {
         Route replacementRoute = route(replacementRouteId, projectId, rootId, replacementId,
                 RouteLifecycleStatus.OPEN, childId);
 
-        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(projectService.getProjectForActor(projectId)).thenReturn(java.util.Optional.of(project));
         when(routeService.listRoutes(projectId)).thenReturn(List.of(oldRoute, replacementRoute));
         when(nodeService.getNode(rootId)).thenReturn(java.util.Optional.of(root));
         when(nodeService.getNode(childId)).thenReturn(java.util.Optional.of(child));
@@ -413,7 +413,7 @@ class GraphWorkspaceQueryServiceTest {
     @Test
     void missingProjectFailsWithProjectNotFound() {
         UUID projectId = UUID.randomUUID();
-        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.empty());
+        when(projectService.getProjectForActor(projectId)).thenReturn(java.util.Optional.empty());
 
         assertThatThrownBy(() -> service.getForProject(projectId))
                 .isInstanceOfSatisfying(GraphWorkspaceQueryException.class, e ->
@@ -430,7 +430,7 @@ class GraphWorkspaceQueryServiceTest {
         Route route = route(routeId, projectId, missingId, missingId,
                 RouteLifecycleStatus.OPEN, null);
 
-        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(projectService.getProjectForActor(projectId)).thenReturn(java.util.Optional.of(project));
         when(routeService.listRoutes(projectId)).thenReturn(List.of(route));
         when(nodeService.getNode(missingId)).thenReturn(java.util.Optional.empty());
 
@@ -450,7 +450,7 @@ class GraphWorkspaceQueryServiceTest {
         Route route = route(routeId, projectId, nodeId, nodeId, RouteLifecycleStatus.OPEN, null);
         Node foreign = node(nodeId, otherProjectId, null, "FOREIGN_SENTINEL");
 
-        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(projectService.getProjectForActor(projectId)).thenReturn(java.util.Optional.of(project));
         when(routeService.listRoutes(projectId)).thenReturn(List.of(route));
         when(nodeService.getNode(nodeId)).thenReturn(java.util.Optional.of(foreign));
 
@@ -470,7 +470,7 @@ class GraphWorkspaceQueryServiceTest {
         Node self = new Node(selfId, projectId, selfId, null, null,
                 "Self question", null, List.of(), true, NOW);
 
-        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(projectService.getProjectForActor(projectId)).thenReturn(java.util.Optional.of(project));
         when(routeService.listRoutes(projectId)).thenReturn(List.of(route));
         when(nodeService.getNode(selfId)).thenReturn(java.util.Optional.of(self));
 
@@ -496,7 +496,7 @@ class GraphWorkspaceQueryServiceTest {
         Node rootB = node(rootBId, projectId, null, "Root B");
         Node childB = node(childBId, projectId, rootBId, "Child of B");
 
-        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(projectService.getProjectForActor(projectId)).thenReturn(java.util.Optional.of(project));
         when(routeService.listRoutes(projectId)).thenReturn(List.of(route));
         when(nodeService.getNode(childBId)).thenReturn(java.util.Optional.of(childB));
         when(nodeService.getNode(rootBId)).thenReturn(java.util.Optional.of(rootB));
@@ -515,7 +515,7 @@ class GraphWorkspaceQueryServiceTest {
         Project project = new Project(projectId, "p", routeId, null, NOW, NOW);
         Route route = route(routeId, projectId, rootId, null, RouteLifecycleStatus.OPEN, null);
 
-        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(projectService.getProjectForActor(projectId)).thenReturn(java.util.Optional.of(project));
         when(routeService.listRoutes(projectId)).thenReturn(List.of(route));
 
         assertThatThrownBy(() -> service.getForProject(projectId))

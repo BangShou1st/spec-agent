@@ -49,10 +49,96 @@ class ArchitectureTests {
         .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
         .importPackages("com.specagent");
 
+    /**
+     * 运行时内核：workspace 与 common，加上第二阶段的中性访问控制模块
+     * {@code com.specagent.access}（ActorContext / AccessDecision /
+     * AuthorizationGuard / 归属端口）。
+     *
+     * access 进入内核是刻意的：它因此同样受"不得依赖 model 与 agent"以及
+     * "不得包含业务域类"两条既有规则约束——这正是设计所要求的"公共 runtime
+     * 不依赖 workspace/assistant"的机器可判定形式。access 只定义端口，实现
+     * 落在各业务模块，因此依赖方向恒为 业务模块 -> access。
+     */
     private static final String[] RUNTIME_KERNEL = {
-        "com.specagent.workspace..", "com.specagent.common.."};
+        "com.specagent.workspace..", "com.specagent.common..", "com.specagent.access.."};
 
     // ---------------------------------------------------------------- 分层规则
+
+    @Test
+    void skillExecutionCannotCallTheManagementResourceReader() {
+        int calls=0;
+        for (JavaClass source:CLASSES) {
+            for (var call:source.getMethodCallsFromSelf()) {
+                if (call.getTargetOwner().getName().equals("com.specagent.skill.runtime.SkillResourceService")
+                        && call.getTarget().getName().equals("readResource")) {
+                    assertThat(source.getName()).as(call.getDescription()).isIn(
+                            "com.specagent.skill.SkillController","com.specagent.skill.runtime.SkillResourceService");
+                    calls++;
+                }
+            }
+        }
+        assertThat(calls).isPositive();
+        assertThat(com.specagent.capability.GuardedCapabilityAdapter.class.isAssignableFrom(
+                com.specagent.skill.runtime.SkillReadResourceHostTool.class)).isTrue();
+        assertThat(com.specagent.capability.GuardedCapabilityAdapter.class.isAssignableFrom(
+                com.specagent.skill.runtime.SkillActivateHostTool.class)).isTrue();
+    }
+
+    @Test
+    void unscopedMcpCredentialReaderIsRestrictedToStartupMigration() {
+        int calls = 0;
+        for (JavaClass source : CLASSES) {
+            var legacyReads = source.getMethodCallsFromSelf().stream()
+                    .filter(call -> call.getTargetOwner().getName().equals(
+                            "com.specagent.connection.credentials.ConnectionCredentialCrypto")
+                            && call.getTarget().getName().equals("decryptForMigration"))
+                    .toList();
+            for (var call : legacyReads) {
+                assertThat(source.getName()).as(call.getDescription()).isEqualTo(
+                        "com.specagent.connection.credentials.ConnectionCredentialEncryptionMigrator");
+                calls++;
+            }
+        }
+        assertThat(calls).as("the startup migrator must remain the only legacy reader").isPositive();
+    }
+
+    @Test
+    void approvalRunEffectsAreWrittenOnlyByTheGuardedAcceptanceService() {
+        int calls = 0;
+        for (JavaClass source : CLASSES) {
+            var writes = source.getMethodCallsFromSelf().stream()
+                    .filter(call -> call.getTargetOwner().getName().equals(
+                            "com.specagent.agent.runtime.AgentRunRepository")
+                            && call.getTarget().getName().equals("attachApprovalProducedNode"))
+                    .toList();
+            for (var call : writes) {
+                assertThat(source.getName()).as(call.getDescription()).isEqualTo(
+                        "com.specagent.agent.runtime.ProposalAcceptanceService");
+                calls++;
+            }
+        }
+        assertThat(calls).as("the guarded acceptance path must remain the only approval effect writer").isPositive();
+    }
+
+    @Test
+    void actorConstructionIsRestrictedToIdentityAdaptersAndPersistedDelegationReaders() {
+        Set<String> localIssuers = Set.of("com.specagent.access.identity.IdentityService",
+                "com.specagent.access.OwnershipAttribution", "com.specagent.runtime.execution.TaskActor");
+        Set<String> rawConstructors = Set.of("com.specagent.access.ActorContext",
+                "com.specagent.access.security.ActorContextFilter",
+                "com.specagent.assistant.conversation.GaRunActorRepository",
+                "com.specagent.agent.runtime.WorkspaceRunActorRepository",
+                "com.specagent.retrieval.protocol.RetrievalGrantAuthorization");
+        for (JavaClass source : CLASSES) {
+            source.getMethodCallsFromSelf().stream()
+                    .filter(call -> call.getTargetOwner().getName().equals("com.specagent.access.ActorContext")
+                            && call.getTarget().getName().equals("local"))
+                    .forEach(call -> assertThat(localIssuers).as(call.getDescription()).contains(source.getName()));
+            source.getConstructorCallsFromSelf().stream()
+                    .filter(call -> call.getTargetOwner().getName().equals("com.specagent.access.ActorContext"))
+                    .forEach(call -> assertThat(rawConstructors).as(call.getDescription()).contains(source.getName()));
+        }
+    }
 
     @Test
     void runtimePackagesShouldNotDependOnModelPackages() {
@@ -114,6 +200,55 @@ class ArchitectureTests {
             .because("The shared HTTP error-mapping edge (ApiExceptionHandler, "
                 + "GatewayErrorAdvice) sits above every business module; "
                 + "no module may reach into it");
+
+        rule.check(CLASSES);
+    }
+
+    // ------------------------------------------------- access 模块（第二阶段）
+
+    /**
+     * access 是中性访问控制模块：它只定义 ActorContext、AccessDecision、
+     * AuthorizationGuard 与归属端口，绝不认识任何业务模块。实现方向恒为
+     * 业务模块 -> access。
+     *
+     * 这条规则是"公共 runtime 不依赖 workspace/assistant"的机器可判定形式。
+     * 一旦 access 反向引用业务模块，端口就被实现细节污染，runtimetask、
+     * retrieval、tool 等调用方将被迫顺着实现走，权限判定也就无法复用到
+     * 后台任务与内部 RPC 上。
+     */
+    @Test
+    void accessModuleStaysNeutral() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.access..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.workspace..", "com.specagent.assistant..",
+                "com.specagent.agent..", "com.specagent.model..", "com.specagent.retrieval..",
+                "com.specagent.skill..", "com.specagent.connection..", "com.specagent.capability..",
+                "com.specagent.mcp..")
+            .because("the neutral access module defines ports only; business modules "
+                + "implement them, so the dependency direction is always "
+                + "business module -> access");
+
+        rule.check(CLASSES);
+    }
+
+    /**
+     * Spring Security 只允许出现在 {@code com.specagent.access.security}。
+     *
+     * 这是"避免只加几个 @PreAuthorize 就漏掉 Worker / RPC"的结构保障：
+     * 任何业务模块如果想自行写安全注解或安全上下文，都必须先越过这条规则。
+     * 业务模块一律通过 ActorContext / AuthorizationGuard 端口接入。
+     */
+    @Test
+    void springSecurityTypesStayInsideTheAccessSecurityAdapter() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent..")
+            .and().resideOutsideOfPackage("com.specagent.access.security..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("org.springframework.security..")
+            .because("Spring Security is an adapter detail: exactly one module "
+                + "(com.specagent.access.security) may speak it, so that "
+                + "authorization cannot be enforced only at the Controller layer");
 
         rule.check(CLASSES);
     }
@@ -757,7 +892,12 @@ class ArchitectureTests {
             "com.specagent.retrieval",
             "com.specagent.skill",
             "com.specagent.mcp",
-            "com.specagent.connection");
+            "com.specagent.connection",
+            // 第二阶段：access 有意分为 root（契约与判定）/ identity（身份与
+            // 组织事实）/ security（Security、OIDC 与共享会话适配）三个 slice。
+            // 把它登记进来意味着三者之间也必须无环，且 root slice 必须持有
+            // 真实类——防止契约被静默搬进子包后中立性检查失效。
+            "com.specagent.access");
 
     @Test
     void subModulePackagesAreFreeOfCycles() {

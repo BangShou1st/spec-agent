@@ -9,8 +9,7 @@ import org.springframework.stereotype.Component;
  * 用途:在 connection 包的 {@link SecretStore} 之上,对 MCP 侧的
  * {@link McpCredentialResolver} 做薄实现,在 MCP 会话建立时解析凭据明文。
  *
- * 完整保留 MCP 运行时的既有语义:空引用或凭据行已不存在时解析为
- * {@code null}(会话以未认证方式继续),而不是直接失败。明文 token 只交给
+ * 未配置引用表示显式匿名连接;配置的引用无法解析时失败关闭。明文 token 只交给
  * 协议 transport,绝不写入日志、trace、描述符、capability 结果、
  * 异常或 API 响应。
  */
@@ -28,9 +27,17 @@ public class McpCredentialResolverAdapter implements McpCredentialResolver {
         if (credentialRef == null || credentialRef.isBlank()) {
             return null;
         }
-        if (secretStore.maskedSuffix(credentialRef) == null) {
-            return null; // 凭据行已不存在——按未认证处理
+        try {
+            if (secretStore.maskedSuffix(credentialRef) == null) throw unavailable();
+            String token=secretStore.resolve(credentialRef);
+            if(token==null || token.isBlank()) throw unavailable();
+            return token;
+        } catch(RuntimeException refused) {
+            // Store/crypto/provider messages may contain secret material; never forward them.
+            throw unavailable();
         }
-        return secretStore.resolve(credentialRef);
+    }
+    private static com.specagent.mcp.transport.McpTransportException unavailable() {
+        return new com.specagent.mcp.transport.McpTransportException("MCP_CREDENTIAL_UNAVAILABLE");
     }
 }

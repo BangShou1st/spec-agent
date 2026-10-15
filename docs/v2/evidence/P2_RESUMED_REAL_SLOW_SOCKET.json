@@ -1,0 +1,21 @@
+{
+  "testClass": "com.specagent.assistant.GlobalAssistantSlowSocketIntegrationTest",
+  "result": {
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "durationSeconds": 3.705,
+  "transport": "embedded Tomcat + real TCP socket (receive buffer 1024, no reads after response headers) + healthy Java HTTP subscriber; real PostgreSQL",
+  "assertions": [
+    "Production delivery thread observed inside Tomcat NioSocketWrapper.doWrite while the slow socket was unread",
+    "120 x 16KiB progress events commit within bounded producer timeout",
+    "Healthy subscriber of the same Run receives sequences 1..122 including RUN_COMPLETED",
+    "No failure/cancellation of business Run caused by transport backpressure"
+  ],
+  "scope": "LOCAL embedded transport/PG acceptance; current OIDC dual-JVM stream and revocation evidence are separate",
+  "harnessCorrection": "test profile disables Spring scheduling; final test runs the real production catch-up poller at 1 second cadence. Earlier failed attempts omitted the cursor poller and are retained in build logs.",
+  "log": "backend/build/p2-acceptance/resume-real-slow-socket-poller.log",
+  "jarProductionSha256": "cbcc5f1ba1c9e7cbe0c1ca7983065215a2a168f2f482600088300fd6e9438846"
+}

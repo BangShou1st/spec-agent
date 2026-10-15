@@ -27,6 +27,9 @@ import org.springframework.stereotype.Repository;
 public class GlobalAssistantRunRepository {
     private final NamedParameterJdbcTemplate jdbc;
     private final RowMapper<GlobalAssistantRun> rowMapper;
+    private GaRunActorRepository actors;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setActors(GaRunActorRepository actors) { this.actors = actors; }
     public GlobalAssistantRunRepository(NamedParameterJdbcTemplate jdbc) {
         this.jdbc = jdbc;
         this.rowMapper = (rs, rowNum) -> new GlobalAssistantRun(
@@ -42,6 +45,7 @@ public class GlobalAssistantRunRepository {
                 rs.getString("tool_catalog_fingerprint"),
                 rs.getString("error_code"));
     }
+    @org.springframework.transaction.annotation.Transactional
     public GlobalAssistantRun create(UUID threadId, String promptVersion, String contextProjectionVersion, String toolCatalogFingerprint) {
         UUID id = Ids.random();
         try {
@@ -52,6 +56,8 @@ public class GlobalAssistantRunRepository {
         } catch (DataIntegrityViolationException ex) {
             throw new GlobalAssistantRunActiveException("Thread already hosts an active run", ex);
         }
+        if (actors == null) throw new IllegalStateException("GA delegation repository is required");
+        actors.capture(id, threadId);
         return findById(id).orElseThrow();
     }
     public Optional<GlobalAssistantRun> findById(UUID runId) {

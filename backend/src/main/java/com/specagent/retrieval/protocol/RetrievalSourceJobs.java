@@ -65,8 +65,10 @@ public class RetrievalSourceJobs implements com.specagent.retrieval.index.Resour
                 Map.of("limit",Math.min(32,Math.max(1,limit))),UUID.class);
     }
     @Transactional public Optional<SplitRequest> claim(UUID project,UUID generation) {
-        var generationRows=jdbc.queryForList("SELECT id FROM retrieval_index_generations WHERE id=:id AND corpus_id=:project AND profile_id=:profile AND state IN ('ACTIVE','PREPARING') FOR UPDATE",
-                Map.of("id",generation,"project",project,"profile",PROFILE));
+        store.authorizeIndexCorpus(project);
+        store.captureRebuild(project,generation);
+        var generationRows=jdbc.queryForList("SELECT id FROM retrieval_index_generations WHERE id=:id AND corpus_id=:project AND state IN ('ACTIVE','PREPARING') FOR UPDATE",
+                Map.of("id",generation,"project",project));
         if(generationRows.size()!=1) throw new IllegalStateException("INDEX_GENERATION_MISMATCH");
         jdbc.update("UPDATE retrieval_index_jobs SET state='STALE' WHERE corpus_id=:project AND state='CLAIMED' AND deadline<=clock_timestamp()",Map.of("project",project));
         var rows=jdbc.queryForList("""
@@ -81,11 +83,14 @@ public class RetrievalSourceJobs implements com.specagent.retrieval.index.Resour
                 "RESOURCE_CHUNK",row.get("raw_hash").toString(),row.get("raw_text").toString());
     }
     @Transactional public Optional<SplitRequest> createSplitJob(UUID corpus,UUID project,UUID generation,String ref,String version,String kind,String hash,String text) {
+        var service=store.authorizeIndexCorpus(corpus);
+        var parent=store.captureRebuild(corpus,generation);
+        if(CuratedHelpSources.CORPUS.equals(corpus)?project!=null:!corpus.equals(project))
+            throw new IllegalStateException("STALE_SCOPE_GRANT");
         var generations=jdbc.queryForList("SELECT profile_id FROM retrieval_index_generations WHERE id=:id AND corpus_id=:corpus AND state IN ('ACTIVE','PREPARING') FOR UPDATE",Map.of("id",generation,"corpus",corpus));
         if(generations.size()!=1)
             throw new IllegalStateException("INDEX_GENERATION_MISMATCH");
         String profile=generations.getFirst().get("profile_id").toString();
-        if(project!=null && !PROFILE.equals(profile)) throw new IllegalStateException("UNSUPPORTED_PROFILE");
         if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM retrieval_index_jobs WHERE corpus_id=:corpus AND state='CLAIMED' AND deadline>clock_timestamp() AND request->>'sourceRef'=:ref)",Map.of("corpus",corpus,"ref",ref),Boolean.class))) return Optional.empty();
         UUID job=UUID.randomUUID(),lease=UUID.randomUUID(),grant=UUID.randomUUID(),request=UUID.randomUUID();
         Instant deadline=Instant.now().truncatedTo(ChronoUnit.MICROS).plusSeconds(30);
@@ -93,10 +98,11 @@ public class RetrievalSourceJobs implements com.specagent.retrieval.index.Resour
                 deadline,job,lease,0,ref,version,kind,hash,text);
         var scope=new RetrievalStore.Scope(corpus,project,null,Set.of(project==null?"HELP":"RESOURCE"),Set.of(),Set.of(),Set.of(),"",48,12,12000);
         jdbc.update("""
-                INSERT INTO retrieval_scope_grants(id,request_id,corpus_id,project_id,workload_kind,workload_id,epoch,profile_id,index_generation,deadline,scope)
-                VALUES(:grant,:request,:corpus,:project,'INDEX_JOB',:job,1,:profile,:generation,:deadline,CAST(:scope AS jsonb))
+                INSERT INTO retrieval_scope_grants(id,request_id,corpus_id,project_id,workload_kind,workload_id,epoch,profile_id,index_generation,deadline,scope,service_kind,service_org_id,rebuild_id,rebuild_epoch,rebuild_lease_id)
+                VALUES(:grant,:request,:corpus,:project,'INDEX_JOB',:job,1,:profile,:generation,:deadline,CAST(:scope AS jsonb),:service,:org,:parent,:parentEpoch,:parentLease)
                 """,Maps.of("grant",grant,"request",request,"corpus",corpus,"project",project,"job",job,"profile",profile,"generation",generation,
-                "deadline",Timestamp.from(deadline),"scope",write(scope)));
+                "deadline",Timestamp.from(deadline),"scope",write(scope),"service",service.kind(),"org",service.org(),
+                "parent",parent==null?null:parent.id(),"parentEpoch",parent==null?null:parent.epoch(),"parentLease",parent==null?null:parent.lease()));
         jdbc.update("""
                 INSERT INTO retrieval_index_jobs(id,corpus_id,index_generation,profile_id,lease_id,state,deadline,request)
                 VALUES(:job,:corpus,:generation,:profile,:lease,'CLAIMED',:deadline,CAST(:request AS jsonb))
@@ -139,6 +145,10 @@ public class RetrievalSourceJobs implements com.specagent.retrieval.index.Resour
         if(offset!=request.text().length()) throw new IllegalArgumentException("RETRIEVAL_PROTOCOL_ERROR");
     }
     @Transactional public boolean commit(SplitResult result) {
+        var corpus=jdbc.queryForList("SELECT corpus_id FROM retrieval_index_jobs WHERE id=:id",Map.of("id",result.jobId()),UUID.class);
+        if(corpus.size()!=1) throw new IllegalStateException("STALE_WORKLOAD");
+        store.authorizeIndexCorpus(corpus.getFirst());
+        store.authorizeRebuildForJob(result.jobId());
         var jobs=jdbc.queryForList("SELECT * FROM retrieval_index_jobs WHERE id=:id FOR UPDATE",Map.of("id",result.jobId()));
         if(jobs.size()!=1) throw new IllegalStateException("STALE_WORKLOAD");
         var job=jobs.getFirst(); var request=read(job.get("request").toString(),SplitRequest.class);

@@ -1,6 +1,7 @@
 package com.specagent.agent.runtime;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -53,18 +54,80 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class ExecutionFence {
+    private org.springframework.transaction.support.TransactionTemplate probeTransactions;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setProbeTransactions(org.springframework.transaction.support.TransactionTemplate transactions) {
+        this.probeTransactions = transactions;
+    }
+    private WorkspaceExecutionAuthorization authorization;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setAuthorization(WorkspaceExecutionAuthorization authorization) {this.authorization=authorization;}
+
+    private void authorizeBoundRun() {
+        java.util.UUID run=WorkspaceExecutionContext.currentRun();
+        if(run!=null) {
+            if(authorization==null) throw new IllegalStateException("Workspace execution authorization is required");
+            authorization.authorize(run);
+        }
+    }
 
     private final ObjectProvider<ExecutorLease> lease;
     private final NamedParameterJdbcTemplate jdbc;
+    /**
+     * 任务级所有权护栏(多 Worker 模式)。单执行器模式下为 null,行为与
+     * 历史完全一致(全局代次比较)。
+     */
+    private final com.specagent.runtime.execution.TaskWriteGuard taskWriteGuard;
+    /** 任务级所有权模式开关;仅在 taskWriteGuard 已装配时生效。 */
+    private final boolean taskLevelOwnership;
 
+    /** 单执行器模式构造器(历史协议;测试与旧装配使用)。 */
     public ExecutionFence(ObjectProvider<ExecutorLease> lease,
                           NamedParameterJdbcTemplate jdbc) {
+        this(lease, jdbc, (com.specagent.runtime.execution.TaskWriteGuard) null, false);
+    }
+
+    /**
+     * Spring 装配入口。多 Worker 模式由 {@code spec.agent.execution.multi-worker-enabled}
+     * 选择:此时提交互斥由 {@link com.specagent.runtime.execution.TaskWriteGuard}
+     * 对 runtime_tasks 行取排他锁完成(接管锁同一行)。
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    public ExecutionFence(ObjectProvider<ExecutorLease> lease,
+                          NamedParameterJdbcTemplate jdbc,
+                          org.springframework.beans.factory.ObjectProvider<
+                                  com.specagent.runtime.execution.TaskWriteGuard> guard,
+                          @Value("${spec.agent.execution.multi-worker-enabled:false}")
+                          boolean multiWorkerEnabled) {
+        this(lease, jdbc, guard == null ? null : guard.getIfAvailable(), multiWorkerEnabled);
+    }
+
+    private ExecutionFence(ObjectProvider<ExecutorLease> lease,
+                           NamedParameterJdbcTemplate jdbc,
+                           com.specagent.runtime.execution.TaskWriteGuard taskWriteGuard,
+                           boolean taskLevelOwnership) {
         this.lease = lease;
         this.jdbc = jdbc;
+        this.taskWriteGuard = taskWriteGuard;
+        this.taskLevelOwnership = taskLevelOwnership && taskWriteGuard != null;
+    }
+
+    /** 本进程是否运行在多 Worker 任务级所有权模式。 */
+    public boolean multiWorker() {
+        return taskLevelOwnership;
     }
 
     /** 所有权敏感写入前调用;丢失即抛出,调用方事务据此回滚。 */
     public void assertOwnership() {
+        if (taskLevelOwnership) {
+            if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+                lockOwnershipForWrite();
+            } else {
+                // Pre-model probes need a real short transaction; never keep these locks around the model call.
+                probeTransactions.executeWithoutResult(tx -> lockOwnershipForWrite());
+            }
+            return;
+        }
         ExecutorLease executorLease = lease.getIfAvailable();
         if (executorLease != null) {
             executorLease.assertOwned();
@@ -82,6 +145,10 @@ public class ExecutionFence {
      * 层把它写进认领条件,并在一切 run 状态写入的同一条 UPDATE 里验证。
      */
     public long ownerEpoch() {
+        if (taskLevelOwnership) {
+            return com.specagent.runtime.execution.ExecutionTokenContext.current()
+                    .map(com.specagent.runtime.execution.ExecutionToken::epoch).orElse(0L);
+        }
         ExecutorLease executorLease = lease.getIfAvailable();
         if (executorLease == null) {
             return 0L;
@@ -94,7 +161,7 @@ public class ExecutionFence {
 
     /** 本进程是否持有执行器租约(无论是否已丢失)。 */
     public boolean hasLease() {
-        return lease.getIfAvailable() != null;
+        return taskLevelOwnership || lease.getIfAvailable() != null;
     }
 
     /** 租约是否存在且已被判定永久丢失(无租约进程返回 false)。 */
@@ -122,8 +189,21 @@ public class ExecutionFence {
      * @throws ExecutorLease.LeaseLostException 已知丢锁,或全局代次已易主
      */
     public long lockOwnershipForWrite() {
+        if (taskLevelOwnership) {
+            com.specagent.runtime.execution.ExecutionToken token =
+                    com.specagent.runtime.execution.ExecutionTokenContext.current()
+                            .orElseThrow(() ->
+                                    new com.specagent.runtime.execution.TaskOwnershipLostException(
+                                            "multi-worker execution requires an explicit execution "
+                                                    + "token; refusing a protected write that "
+                                                    + "carries no ownership"));
+            taskWriteGuard.lockOwnedTask(token);
+            authorizeBoundRun();
+            return token.epoch();
+        }
         ExecutorLease executorLease = lease.getIfAvailable();
         if (executorLease == null) {
+            authorizeBoundRun();
             return 0L;
         }
         if (executorLease.isLost()) {
@@ -144,6 +224,7 @@ public class ExecutionFence {
         if (executorLease.isLost()) {
             throw new ExecutorLease.LeaseLostException(executorLease.getLostReason());
         }
+        authorizeBoundRun();
         return expected;
     }
 }

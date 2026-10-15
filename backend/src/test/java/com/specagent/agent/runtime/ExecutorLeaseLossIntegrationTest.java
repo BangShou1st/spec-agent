@@ -63,9 +63,13 @@ class ExecutorLeaseLossIntegrationTest {
     }
 
     /** 把给定租约作为唯一 fence 源的 AgentRunService(模拟旧执行器进程)。 */
+    @Autowired WorkspaceExecutionAuthorization authorization;
+
     private AgentRunService fencedService(ExecutorLease lease) {
-        return new AgentRunService(agentRunRepository, new ExecutionFence(providerOf(lease), jdbc),
+        var service=new AgentRunService(agentRunRepository, new ExecutionFence(providerOf(lease), jdbc),
                 new org.springframework.transaction.support.TransactionTemplate(txManager));
+        service.setAuthorization(authorization);
+        return service;
     }
 
     private void terminateBackend(int pid) throws SQLException {
@@ -154,6 +158,7 @@ class ExecutorLeaseLossIntegrationTest {
             var newOwnerService = new AgentRunService(agentRunRepository,
                     new ExecutionFence(providerOf(second), jdbc),
                     new org.springframework.transaction.support.TransactionTemplate(txManager));
+            newOwnerService.setAuthorization(authorization);
             newOwnerService.fail(runId, "failed:new-owner-recovery");
             assertThat(agentRunServiceStatus(runId)).isEqualTo(AgentRunStatus.FAILED);
         } finally {

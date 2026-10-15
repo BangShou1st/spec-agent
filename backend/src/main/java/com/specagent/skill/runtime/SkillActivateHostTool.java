@@ -23,7 +23,7 @@ import java.util.Map;
  * 外部变更。激活的溯源信息由 {@link SkillActivationService} 持久化。
  */
 @Component
-public class SkillActivateHostTool implements InternalCapabilityAdapter {
+public class SkillActivateHostTool implements InternalCapabilityAdapter, com.specagent.capability.GuardedCapabilityAdapter {
 
     public static final String CAPABILITY_ID = "skill.activate";
 
@@ -49,6 +49,13 @@ public class SkillActivateHostTool implements InternalCapabilityAdapter {
                 SideEffectClass.NONE,
                 List.of(),
                 List.of());
+    }
+
+    @Override
+    public void requireAuthorizedInvocation(CapabilityInvocation invocation) {
+        Object value=invocation.arguments().get("skillId");
+        activationService.requireActivation(invocation.projectId(),invocation.runId(),
+                value instanceof String text ? text : null);
     }
 
     @Override

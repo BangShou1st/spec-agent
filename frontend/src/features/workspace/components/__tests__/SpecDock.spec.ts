@@ -7,7 +7,7 @@ import { makeSpecSnapshot } from '@/test/fixtures'
 
 function mountDock(overrides: Record<string, unknown> = {}) {
   return mount(SpecDock, {
-    props: {
+    props: { canWrite: true,
       readingRouteId: 'r1',
       readingRouteLabel: '主路线',
       activeRouteId: 'r1',
@@ -23,6 +23,17 @@ function mountDock(overrides: Record<string, unknown> = {}) {
 }
 
 describe('SpecDock collapsed state', () => {
+  it('allows reading and export while hiding generation for a viewer', async () => {
+    const wrapper = mountDock({ canWrite: false,
+      snapshots: [makeSpecSnapshot({ id: 'readable-spec', routeId: 'r1' })],
+      selectedSpecId: 'readable-spec' })
+    await wrapper.get('[data-test="spec-dock-summary"]').trigger('click')
+    expect(wrapper.find('[data-test="generate-spec"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="spec-snapshot-detail"]').exists()).toBe(true)
+    await wrapper.get('[data-test="export-delivery-md"]').trigger('click')
+    expect(wrapper.emitted('export-spec')?.[0]).toEqual(['readable-spec', 'delivery'])
+    expect(wrapper.emitted('generate-spec')).toBeUndefined()
+  })
   it('is collapsed by default with a compact summary', () => {
     const wrapper = mountDock({
       snapshots: [

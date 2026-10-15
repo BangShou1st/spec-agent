@@ -27,6 +27,8 @@ public final class RunFailureReasons {
 
     /** 执行器租约丢失(数据库重启/租约会话被终止),本进程停止一切写入。 */
     public static final String EXECUTOR_LEASE_LOST = "EXECUTOR_LEASE_LOST";
+    public static final String EXECUTION_SCOPE_UNAVAILABLE = "EXECUTION_SCOPE_UNAVAILABLE";
+    public static final String FROZEN_INPUT_SOURCE_NOT_AUTHORIZED = "FROZEN_INPUT_SOURCE_NOT_AUTHORIZED";
 
     private static final Map<String, String> USER_COPY = Map.of(
             BrainFailureCode.MODEL_CONTRACT_VIOLATION.reasonCode(),
@@ -44,7 +46,11 @@ public final class RunFailureReasons {
             INTERRUPTED_BY_RESTART,
             "服务重启导致本次任务中断，未产生结果，可重新发起该操作",
             EXECUTOR_LEASE_LOST,
-            "服务执行权已移交，本次结果未提交；重启服务后可重新发起该操作");
+            "服务执行权已移交，本次结果未提交；重启服务后可重新发起该操作",
+            EXECUTION_SCOPE_UNAVAILABLE,
+            "项目正在处理另一项操作，本次任务未产生结果，可稍后重试",
+            FROZEN_INPUT_SOURCE_NOT_AUTHORIZED,
+            "本次上下文的技能来源已不可使用，请重新发起任务");
 
     private RunFailureReasons() {
     }
@@ -55,11 +61,17 @@ public final class RunFailureReasons {
     }
 
     /** 失败 run 的稳定机器码;绝不为 null。 */
-    public static String reasonCode(RuntimeException failure) {        if (failure instanceof AgentBrainUnavailableException brain) {
+    public static String reasonCode(RuntimeException failure) {
+        if (failure instanceof com.specagent.agent.snapshot.FrozenSourceAuthorizationRefusedException)
+            return FROZEN_INPUT_SOURCE_NOT_AUTHORIZED;
+        if (failure instanceof AgentBrainUnavailableException brain) {
             return brain.failureCode().reasonCode();
         }
         if (failure instanceof ExecutorLease.LeaseLostException) {
             return EXECUTOR_LEASE_LOST;
+        }
+        if (failure instanceof com.specagent.runtime.execution.ExecutionScopeUnavailableException) {
+            return EXECUTION_SCOPE_UNAVAILABLE;
         }
         if (failure instanceof IncompleteAnswerCycleException) {
             return ANSWER_CYCLE_INCOMPLETE;

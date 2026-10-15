@@ -1,0 +1,15 @@
+{
+  "spec_agent_p2_hardening_test2": {
+    "version": 93,
+    "nullableOwnership": 0,
+    "legacyOrganizationDefaults": 0,
+    "validatedOwnerForeignKeys": 5
+  },
+  "spec_agent_p2_workers_20261015v92": {
+    "version": 93,
+    "nullableOwnership": 0,
+    "legacyOrganizationDefaults": 0,
+    "validatedOwnerForeignKeys": 5
+  },
+  "passed": true
+}

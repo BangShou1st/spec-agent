@@ -40,14 +40,38 @@ public class TurnHandoffService {
     private final GlobalAssistantRunRepository runs;
     private final GlobalAssistantConversationService conversations;
     private final Json json;
+    /**
+     * 任务级调度下的 GA 入队端口:继任 Run 必须与调度任务同事务创建,
+     * 否则它永远无人认领。单执行器模式下为 null,行为与历史一致。
+     */
+    private final GaTaskEnqueuer taskEnqueuer;
 
     public TurnHandoffService(NamedParameterJdbcTemplate jdbc, PendingTurnRepository pending,
             GlobalAssistantRunRepository runs, GlobalAssistantConversationService conversations, Json json) {
+        this(jdbc, pending, runs, conversations, json, (GaTaskEnqueuer) null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public TurnHandoffService(NamedParameterJdbcTemplate jdbc, PendingTurnRepository pending,
+            GlobalAssistantRunRepository runs, GlobalAssistantConversationService conversations, Json json,
+            org.springframework.beans.factory.ObjectProvider<GaTaskEnqueuer> taskEnqueuer) {
         this.jdbc = jdbc;
         this.pending = pending;
         this.runs = runs;
         this.conversations = conversations;
         this.json = json;
+        this.taskEnqueuer = taskEnqueuer == null ? null : taskEnqueuer.getIfAvailable();
+    }
+
+    private TurnHandoffService(NamedParameterJdbcTemplate jdbc, PendingTurnRepository pending,
+            GlobalAssistantRunRepository runs, GlobalAssistantConversationService conversations, Json json,
+            GaTaskEnqueuer taskEnqueuer) {
+        this.jdbc = jdbc;
+        this.pending = pending;
+        this.runs = runs;
+        this.conversations = conversations;
+        this.json = json;
+        this.taskEnqueuer = taskEnqueuer;
     }
 
     public record AcceptResult(PendingTurn pendingTurn, Optional<Successor> successor) {
@@ -155,10 +179,18 @@ public class TurnHandoffService {
         }
         GlobalAssistantRun successor;
         try {
-            successor = conversations.createRunWithUserMessage(threadId, pt.message(),
-                    GaHostContext.PROMPT_VERSION,
-                    GaHostContext.CONTEXT_PROJECTION_VERSION,
-                    GlobalAssistantToolCatalog.FINGERPRINT);
+            var uiRequest = parseUiRequest(pt.uiContextJson());
+            successor = taskEnqueuer == null
+                    ? conversations.createRunWithUserMessage(threadId, pt.message(),
+                            GaHostContext.PROMPT_VERSION,
+                            GaHostContext.CONTEXT_PROJECTION_VERSION,
+                            GlobalAssistantToolCatalog.FINGERPRINT)
+                    // 任务级调度:继任 Run + 用户消息 + 调度任务 + 持久化输入必须同一
+                    // 事务创建,否则继任 run 永远无人认领(design §6.1、§6.5)。
+                    : taskEnqueuer.createRunWithTask(threadId, pt.message(),
+                            GaHostContext.PROMPT_VERSION,
+                            GaHostContext.CONTEXT_PROJECTION_VERSION,
+                            GlobalAssistantToolCatalog.FINGERPRINT, uiRequest);
         } catch (com.specagent.assistant.conversation.GlobalAssistantRunActiveException ex) {
             return Optional.empty();
         }

@@ -29,15 +29,21 @@ public class WorkerPollingGate implements WorkerRuntimeStatus {
 
     private final boolean startupRecoveryEnabled;
     private final ExecutorLease lease;
+    private final com.specagent.runtime.execution.ExecutionModeAdmission admission;
+    private final com.specagent.runtime.execution.WorkerIdentity workerIdentity;
 
     private volatile boolean pollingOpen;
     private volatile String recoveryError;
 
     public WorkerPollingGate(
             @Value("${spec.agent.brain.worker.startup-recovery:true}") boolean startupRecoveryEnabled,
-            ExecutorLease lease) {
+            ExecutorLease lease,
+            com.specagent.runtime.execution.ExecutionModeAdmission admission,
+            com.specagent.runtime.execution.WorkerIdentity workerIdentity) {
         this.startupRecoveryEnabled = startupRecoveryEnabled;
         this.lease = lease;
+        this.admission = admission;
+        this.workerIdentity = workerIdentity;
     }
 
     /** 应用就绪且启动恢复关闭:立即开放轮询(不存在恢复阶段)。 */
@@ -51,16 +57,18 @@ public class WorkerPollingGate implements WorkerRuntimeStatus {
     /** 恢复入口在孤儿恢复收敛(或失败)后调用;错误信息仅记录,不阻塞队列。 */
     public void open(String trigger) {
         pollingOpen = true;
-        log.info("Worker polling opened: {}", trigger);
+        // design §9:把 runtime_tasks.worker_id 映射回具体实例。worker 身份是
+        // 每次启动新生成的随机 UUID,不是凭证,记录它是运维/验收的预期行为。
+        log.info("Worker polling opened: {} (worker {})", trigger, workerIdentity.id());
     }
 
     public void recordRecoveryError(String error) {
         this.recoveryError = error;
     }
 
-    /** 轮询是否已开放;同时要求执行器所有权仍然有效。 */
+    /** 轮询是否已开放;同时要求执行器所有权与调度模式准入仍然有效。 */
     public boolean isPollingAllowed() {
-        return pollingOpen && lease.owned();
+        return pollingOpen && lease.owned() && admission.owned();
     }
 
     public boolean isPollingOpen() {
@@ -91,5 +99,45 @@ public class WorkerPollingGate implements WorkerRuntimeStatus {
     /** 供恢复入口确认所有权后执行恢复。 */
     public ExecutorLease lease() {
         return lease;
+    }
+
+    /**
+     * 多 Worker 模式下"本进程是否被允许执行"(design §9)。
+     *
+     * <p>多 Worker 没有全库租约可丢,{@code isExecutorLeaseLost()} 恒为 false;
+     * 真正决定本进程能否推进任务的是"轮询是否开放"以及任务级 token 的校验。
+     * 因此健康检查在这里区分:轮询开放即本进程可用。
+     */
+    public boolean isMultiWorker() {
+        return lease.isMultiWorker();
+    }
+
+    /** 健康检查:本进程是否运行在多 Worker 任务级所有权模式。 */
+    @Override
+    public boolean isMultiWorkerTaskOwnership() {
+        return lease.isMultiWorker();
+    }
+
+    /** 健康检查:调度模式准入是否已永久丢失(design §11)。 */
+    @Override
+    public boolean isExecutionModeAdmissionLost() {
+        return admission.isLost();
+    }
+
+    /** 健康检查:模式准入丢失原因。 */
+    @Override
+    public String getExecutionModeAdmissionLostReason() {
+        return admission.getLostReason();
+    }
+
+    /** 本进程被准入的调度模式(诊断用;准入关闭时为 null)。 */
+    public String admittedExecutionMode() {
+        return admission.admittedMode();
+    }
+
+    /** 健康检查:本进程执行身份(design §9;多 Worker 下映射 runtime_tasks.worker_id)。 */
+    @Override
+    public String getWorkerId() {
+        return workerIdentity.id().toString();
     }
 }

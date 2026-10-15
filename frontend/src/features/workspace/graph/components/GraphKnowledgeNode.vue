@@ -34,6 +34,7 @@ import type { SkillSummary } from '@/features/skills/api/skillTypes'
  * 双击(或创建后紧随的待处理编辑请求)会打开编辑器。
  */
 const props = defineProps<{
+  canWrite?: boolean
   data: SpecAgentGraphNodeData
   selected?: boolean
 }>()
@@ -143,7 +144,7 @@ const railActions = computed(() =>
   actionsFor(props.data, {
     graphCommandPending: workspace.graphCommandPending,
     drafting: workspace.drafting,
-  }),
+  }).filter(action => props.canWrite || action.id === 'contextual-ai'),
 )
 
 /** "继续生成问题"：浮动 = 开新独立路线；已接入 = 开新分支（含自动起草）。 */
@@ -152,6 +153,7 @@ async function draftFromNode(): Promise<void> {
 }
 
 async function onAction(action: NodeAction): Promise<void> {
+  if (!props.canWrite && action.id !== 'contextual-ai') return
   switch (action.id) {
     case 'edit-draft':
       startEditing()
@@ -189,6 +191,7 @@ const knowledgeStatusLabel = computed(() =>
 
 // 草稿编辑状态:保存前只存在本地;取消则恢复服务端值。
 const editing = ref(false)
+watch(() => props.canWrite, allowed => { if (!allowed) editing.value = false })
 const editSubtype = ref(node.value.subtype)
 const editText = ref(contentText.value)
 // "/"选择器:记录所选技能用于持久化;可见的提及写在文本里,权威绑定
@@ -218,6 +221,7 @@ watch(
 )
 
 function startEditing(): void {
+  if (!props.canWrite) return
   editing.value = true
   editSubtype.value = node.value.subtype
   editText.value = contentText.value
@@ -251,6 +255,7 @@ function cancelEditing(): void {
 }
 
 async function saveDraft(): Promise<void> {
+  if (!props.canWrite) return
   const ok = await workspace.reviseDraft(node.value.id, editSubtype.value, editText.value, editSkillId.value)
   if (ok) {
     editing.value = false
@@ -331,6 +336,7 @@ function onMenuPress(): void {
 }
 
 async function continueFromHere(): Promise<void> {
+  if (!props.canWrite) return
   // 路线上下文必须显式;有歧义的共享节点会请用户先选查看路线
   // (绝不回退到 active/第一个/最新)。
   const routeId = props.data.readingRouteId
@@ -339,6 +345,7 @@ async function continueFromHere(): Promise<void> {
 }
 
 async function confirmContent(): Promise<void> {
+  if (!props.canWrite) return
   await workspace.confirmKnowledge(node.value.id)
 }
 </script>
@@ -384,6 +391,7 @@ async function confirmContent(): Promise<void> {
     <div class="graph-question-node__body nodrag" data-test="node-body">
       <!-- 任务级失败恢复栏:问 AI 失败 / 换题失败(知识节点)的常驻恢复入口。 -->
       <NodeRecoveryBar
+        :locate-only="!canWrite"
         v-if="recoveryItems.length > 0"
         :items="recoveryItems"
         :is-retrying="isFailureRetrying"
@@ -391,9 +399,7 @@ async function confirmContent(): Promise<void> {
         @go-settings="emit('go-settings')"
         @locate="(failure) => emit('locate-failure', failure)"
       />
-      /**
- * 文件资源卡：图标+文件名+上传时间，点击查看原件（弹窗）。
- */
+      
       <button
         v-if="isFileResource && !editing"
         type="button"
@@ -412,9 +418,7 @@ async function confirmContent(): Promise<void> {
         </span>
       </button>
 
-      /**
- * 可编辑草稿:直接在卡片上撰写内容。
- */
+      
       <template v-if="editing">
         <select v-model="editSubtype" class="graph-knowledge-node__subtype nodrag" data-test="draft-subtype" aria-label="类型">
           <option v-for="entry in SUBTYPES" :key="entry.value" :value="entry.value">{{ entry.label }}</option>
@@ -461,10 +465,7 @@ async function confirmContent(): Promise<void> {
       </template>
 
       <template v-else-if="!isFileResource">
-        /**
- * 与全局 AI 助手同一套富文本渲染：段落 / 列表 / 代码 / 引用都能正确
- * 换行与缩进，长笔记不再被压成一坨纯文本。
- */
+        
         <RichAssistantText
           v-if="contentText"
           class="graph-knowledge-node__text"
@@ -476,15 +477,12 @@ async function confirmContent(): Promise<void> {
         </p>
       </template>
 
-      <p v-if="isFloating" class="meta-text" data-test="floating-hint">
+      <p v-if="isFloating && canWrite" class="meta-text" data-test="floating-hint">
         还没接入任何路线：把卡片侧面的连线拖到路线末端即可接入（AI 只有接入后才读得到它）；也可以直接"继续生成问题"开一条新路线
       </p>
     </div>
 
-    /**
- * 操作轨道按钮：统一来自 nodeActions 配置表；轨道容器与显隐在
- * GraphNodeShell 中。编辑态使用卡片内的保存/取消表单按钮。
- */
+    
     <template #actions>
       <button
         v-for="action in railActions"
@@ -508,9 +506,7 @@ async function confirmContent(): Promise<void> {
       @close="previewOpen = false"
     />
 
-    /**
- * 浮层挂在 body 上（fixed 定位），脱离 vue-flow 节点的层叠与拖拽上下文
- */
+    
     <Teleport to="body">
       <SkillSlashMenu
         v-if="picker.open.value"

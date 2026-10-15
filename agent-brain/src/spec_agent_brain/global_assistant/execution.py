@@ -76,11 +76,20 @@ def execution_router(settings, authenticate):
         except httpx.HTTPError:
             raise HTTPException(502, "GA_EXECUTION_CLAIM_UNAVAILABLE") from None
         cancelled = Event()
-        identity = str(execution.run_id)
+        # 活动标识按 run + 执行代次 + 租约区分,而不是只按 run。
+        #
+        # 多 Worker 下同一 run 可能有多次 attempt(前一次租约过期后被接管),
+        # 只按 run 去重会让接管者被误判成"重复执行"而拒绝(409),或者更糟:
+        # 让旧 attempt 的清理动作误删新 attempt 的活动条目。Java 侧的持久化
+        # 认领才是权威仲裁者,这里只做协作取消与清理。
+        identity = (str(execution.run_id), int(execution.execution_epoch),
+                    str(execution.lease_id))
         with lock:
-            if identity in active:
+            conflicting = [key for key in active
+                           if key[0] == identity[0] and key[1] == identity[1]]
+            if conflicting:
                 raise HTTPException(409, "GA_EXECUTION_ALREADY_RUNNING")
-            active[identity] = (execution.execution_epoch, str(execution.lease_id), cancelled)
+            active[identity] = cancelled
 
         def events():
             sequence = 0
@@ -95,7 +104,7 @@ def execution_router(settings, authenticate):
                 if sequence >= 8191 and kind not in {"COMPLETED", "USER_INPUT_REQUIRED", "FAILED"}:
                     raise RuntimeError("GA_EXECUTION_EVENT_BUDGET")
                 sequence += 1
-                body = json.dumps({"protocolVersion": "ga-execution-event.v1", "runId": identity,
+                body = json.dumps({"protocolVersion": "ga-execution-event.v1", "runId": identity[0],
                     "executionEpoch": execution.execution_epoch, "eventId": str(uuid4()),
                     "sequence": sequence, "type": kind, "payload": payload},
                     ensure_ascii=False, allow_nan=False, separators=(",", ":"))
@@ -188,8 +197,11 @@ def execution_router(settings, authenticate):
         except ValueError:
             raise HTTPException(422, "GA_CANCEL_PROTOCOL_ERROR") from None
         with lock:
-            entry = active.get(run_id)
-            if entry and entry[:2] == (body.execution_epoch, str(body.lease_id)):
-                entry[2].set()
+            # 只取消与请求中 epoch + lease 完全匹配的那次 attempt:旧代次的取消
+            # 请求绝不能取消已经接管的新 attempt(design §8)。
+            key = (run_id, int(body.execution_epoch), str(body.lease_id))
+            entry = active.get(key)
+            if entry is not None:
+                entry.set()
         return {"status": "SIGNALLED"}
     return router

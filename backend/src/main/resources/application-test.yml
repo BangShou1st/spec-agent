@@ -11,6 +11,10 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
     validate-on-migrate: true
+  session:
+    jdbc:
+      initialize-schema: never
+    timeout: 30m
 
 server:
   port: 0
@@ -34,6 +38,12 @@ spec:
   embedding-settings:
     worker-enabled: false
   agent:
+    security:
+      # 测试档显式 LOCAL：既有测试不驱动登录流程。身份模式准入仍会校验
+      # 数据库登记行（V59 默认 LOCAL），因此"模式分歧拒绝启动"这条路径
+      # 在测试里也是真实生效的。
+      mode: LOCAL
+      mode-admission-enabled: true
     retrieval:
       embedding:
         provider: ${SPEC_AGENT_EMBEDDING_PROVIDER:noop}

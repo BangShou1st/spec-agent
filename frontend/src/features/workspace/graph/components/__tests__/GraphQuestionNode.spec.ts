@@ -30,7 +30,7 @@ function mountNode(data: SpecAgentGraphNodeData, extra: Record<string, unknown> 
   const pinia = createPinia()
   setActivePinia(pinia)
   return mount(GraphQuestionNode, {
-    props: { data, submitting: false, pending: false, ...extra },
+    props: { canWrite: true, data, submitting: false, pending: false, ...extra },
     global: { stubs: { Handle: HandleStub }, plugins: [pinia] },
   })
 }
@@ -154,6 +154,15 @@ function historicalData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAg
 }
 
 describe('graph question node', () => {
+  it('preserves a current question but removes answer inputs after write permission is lost', async () => {
+    const wrapper = mountNode(currentData({ qLabel: 'Q4' }))
+    expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(true)
+    await wrapper.setProps({ canWrite: false })
+    expect(wrapper.find('[data-test="free-text"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Q4')
+    expect(wrapper.emitted('submit-answer')).toBeUndefined()
+  })
   it('renders historical answered nodes as compact navigation cards', () => {
     const wrapper = mountNode(historicalData({
       isLatest: true,

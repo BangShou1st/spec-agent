@@ -42,6 +42,11 @@ import java.util.UUID;
 @Service
 @Transactional
 public class RunService {
+    private com.specagent.workspace.project.ProjectService projectAccess;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setProjectAccess(com.specagent.workspace.project.ProjectService projectAccess) {
+        this.projectAccess=projectAccess;
+    }
 
     private final AgentRunService agentRunService;
     private final AgentRunRepository agentRunRepository;
@@ -50,6 +55,7 @@ public class RunService {
     private final AgentRunEventService eventService;
     private final NodeRepository nodeRepository;
     private final ExecutionFence executionFence;
+    private final WorkspaceTaskEnqueuer taskEnqueuer;
 
     public RunService(AgentRunService agentRunService,
                       AgentRunRepository agentRunRepository,
@@ -58,6 +64,19 @@ public class RunService {
                       AgentRunEventService eventService,
                       NodeRepository nodeRepository,
                       ExecutionFence executionFence) {
+        this(agentRunService, agentRunRepository, projectRepository, routeRepository,
+                eventService, nodeRepository, executionFence, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public RunService(AgentRunService agentRunService,
+                      AgentRunRepository agentRunRepository,
+                      ProjectRepository projectRepository,
+                      RouteRepository routeRepository,
+                      AgentRunEventService eventService,
+                      NodeRepository nodeRepository,
+                      ExecutionFence executionFence,
+                      WorkspaceTaskEnqueuer taskEnqueuer) {
         this.agentRunService = agentRunService;
         this.agentRunRepository = agentRunRepository;
         this.projectRepository = projectRepository;
@@ -65,6 +84,7 @@ public class RunService {
         this.eventService = eventService;
         this.nodeRepository = nodeRepository;
         this.executionFence = executionFence;
+        this.taskEnqueuer = taskEnqueuer;
     }
 
     public AgentRun createQueuedDraftQuestion(UUID projectId) {
@@ -428,11 +448,33 @@ public class RunService {
         return run;
     }
 
+    /**
+     * 入队收尾(RUN_CREATED 事件 + 公共调度任务登记)。
+     *
+     * <p><b>调度任务与业务 Run 同一事务</b>(design §6.1):事务提交后立即崩溃
+     * 也不能丢任务。对幂等重放命中的既有 Run,任务登记是幂等的 no-op
+     * ({@code insertIfAbsent} 由唯一索引裁决),因此重放绝不会产生第二个任务。
+     */
     private void appendRunCreatedIfInserted(AgentRunService.CreateResult created,
                                             Map<String, Object> payload) {
+        AgentRun run = created.run();
         if (created.inserted()) {
-            eventService.append(created.run().id(), AgentRunPhase.CREATED,
-                    "RUN_CREATED", payload);
+            eventService.append(run.id(), AgentRunPhase.CREATED, "RUN_CREATED", payload);
+        }
+        // 调度任务登记(两种情形都执行:inserted 时是新建,重放时是幂等确认,
+        // 让迁移窗口中的既有 Run 也能在首次入队路径上补齐任务行)。
+        if (taskEnqueuer != null) {
+            taskEnqueuer.enqueue(run.id(), run.projectId(), run.triggerType().code());
+        }
+    }
+
+    /**
+     * 入队容量闸门(design §6.1、§9):在<b>创建 Run 之前</b>拒绝超限请求,并
+     * 用配额行的排他锁串行化并发入队。必须在项目行锁之后、创建 Run 之前调用。
+     */
+    private void assertQueueCapacity(UUID projectId) {
+        if (taskEnqueuer != null) {
+            taskEnqueuer.assertQueueCapacity(projectId);
         }
     }
 
@@ -555,7 +597,12 @@ public class RunService {
      * REQUIRES_NEW 验收事务再次入队)不需要互斥,写锁会造成自死锁。
      */
     private void lockProjectForEnqueue(UUID projectId) {
+        projectAccess.authorizeWrite(projectId);
         projectRepository.lockByIdForKeyShare(projectId);
+        // 入队容量闸门(design §6.1、§9):在<b>创建 Run 之前</b>、持有项目锁
+        // 之后立即检查,并用配额行排他锁串行化并发入队。超限时抛出可重试的
+        // 明确错误,队列保持 QUEUED 而不是无界增长。
+        assertQueueCapacity(projectId);
     }
 
     public UUID getActiveRouteId(UUID projectId) {

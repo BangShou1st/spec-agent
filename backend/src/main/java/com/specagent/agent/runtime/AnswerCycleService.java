@@ -91,6 +91,11 @@ public class AnswerCycleService {
     private final RunProgressRecorder progressRecorder;
     private final RouteHistoryResolver routeHistoryResolver;
     private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
+    /**
+     * 画布步骤账本(design §5.5)。仅公共调度层(任务级所有权)启用时存在;
+     * 单执行器模式下为 null,周期服务行为与历史完全一致。
+     */
+    private final com.specagent.runtime.execution.WorkspaceRunStepRepository runSteps;
 
     public AnswerCycleService(AgentRunService agentRunService,
                                 ExecutionFence executionFence,
@@ -113,6 +118,70 @@ public class AnswerCycleService {
                               RunProgressRecorder progressRecorder,
                               RouteHistoryResolver routeHistoryResolver,
                               org.springframework.transaction.support.TransactionTemplate transactionTemplate) {
+        this(agentRunService, executionFence, agentRunFailureService, contextBuilder,
+                snapshotBuilder, decisionEngine, answerService, answerPatchService,
+                patchReflectionGate, decisionExecution, eventService, nodeService,
+                routeRepository, projectRepository, contextSnapshotRepository,
+                projectionRepository, semanticTraceRecorder, actionEligibilityGate,
+                progressRecorder, routeHistoryResolver, transactionTemplate,
+                (com.specagent.runtime.execution.WorkspaceRunStepRepository) null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AnswerCycleService(AgentRunService agentRunService,
+                              ExecutionFence executionFence,
+                              AgentRunFailureService agentRunFailureService,
+                              ContextBuilder contextBuilder,
+                              AgentInputSnapshotBuilder snapshotBuilder,
+                              AgentDecisionEngine decisionEngine,
+                              AnswerService answerService,
+                              AnswerPatchService answerPatchService,
+                              PatchReflectionGate patchReflectionGate,
+                              DecisionExecutionService decisionExecution,
+                              AgentRunEventService eventService,
+                              NodeService nodeService,
+                              RouteRepository routeRepository,
+                              com.specagent.workspace.project.ProjectRepository projectRepository,
+                              ContextSnapshotRepository contextSnapshotRepository,
+                              com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository,
+                              AgentTracePort semanticTraceRecorder,
+                              ActionEligibilityGate actionEligibilityGate,
+                              RunProgressRecorder progressRecorder,
+                              RouteHistoryResolver routeHistoryResolver,
+                              org.springframework.transaction.support.TransactionTemplate transactionTemplate,
+                              org.springframework.beans.factory.ObjectProvider<
+                                      com.specagent.runtime.execution.WorkspaceRunStepRepository> runSteps) {
+        this(agentRunService, executionFence, agentRunFailureService, contextBuilder,
+                snapshotBuilder, decisionEngine, answerService, answerPatchService,
+                patchReflectionGate, decisionExecution, eventService, nodeService,
+                routeRepository, projectRepository, contextSnapshotRepository,
+                projectionRepository, semanticTraceRecorder, actionEligibilityGate,
+                progressRecorder, routeHistoryResolver, transactionTemplate,
+                runSteps == null ? null : runSteps.getIfAvailable());
+    }
+
+    private AnswerCycleService(AgentRunService agentRunService,
+                              ExecutionFence executionFence,
+                              AgentRunFailureService agentRunFailureService,
+                              ContextBuilder contextBuilder,
+                              AgentInputSnapshotBuilder snapshotBuilder,
+                              AgentDecisionEngine decisionEngine,
+                              AnswerService answerService,
+                              AnswerPatchService answerPatchService,
+                              PatchReflectionGate patchReflectionGate,
+                              DecisionExecutionService decisionExecution,
+                              AgentRunEventService eventService,
+                              NodeService nodeService,
+                              RouteRepository routeRepository,
+                              com.specagent.workspace.project.ProjectRepository projectRepository,
+                              ContextSnapshotRepository contextSnapshotRepository,
+                              com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository,
+                              AgentTracePort semanticTraceRecorder,
+                              ActionEligibilityGate actionEligibilityGate,
+                              RunProgressRecorder progressRecorder,
+                              RouteHistoryResolver routeHistoryResolver,
+                              org.springframework.transaction.support.TransactionTemplate transactionTemplate,
+                              com.specagent.runtime.execution.WorkspaceRunStepRepository runSteps) {
         this.agentRunService = agentRunService;
         this.executionFence = executionFence;
         this.agentRunFailureService = agentRunFailureService;
@@ -134,6 +203,7 @@ public class AnswerCycleService {
         this.progressRecorder = progressRecorder;
         this.routeHistoryResolver = routeHistoryResolver;
         this.transactionTemplate = transactionTemplate;
+        this.runSteps = runSteps;
     }
 
     /**
@@ -218,6 +288,23 @@ public class AnswerCycleService {
             // 所有权 fencing(原子协议):Answer 落库与带所有权条件的检查点
             // 写入(markPersistedAnswer)在同一事务——新执行器接管后,旧
             // 执行器的条件检查点落空(0 行),整个事务回滚,Answer 不落库。
+            //
+            // 接管复用(design §7"Answer 已提交 → 复用 Answer ID,不创建第二个"):
+            // 若上一次尝试已经落库了不可变 Answer,接管者必须复用它并从已核验的
+            // checkpoint 继续,绝不再次 finalize(那会被唯一约束拒绝,而且即使
+            // 不被拒绝也会产生第二个副作用)。
+            Answer existingAnswer = reusableAnswer(run, route, projectId);
+            if (existingAnswer != null) {
+                trace = appendTrace(trace, "reused_persisted_answer");
+                AgentEvent reuseEvent = new AgentEvent(
+                        "ANSWER_SUBMITTED", route.tipNodeId(),
+                        selectedOptionId, normalizedFreeText, persistenceIntent);
+                AgentRequestEnvelope reuseEnvelope = snapshotBuilder.buildEnvelope(
+                        run.id(), snapshot, reuseEvent, new DecisionBudget(2));
+                return completeCycle(run, projectId, route, snapshot, reuseEnvelope,
+                        existingAnswer, selectedOptionId, normalizedFreeText, trace);
+            }
+
             final String gateTrace = trace;
             Answer answer = transactionTemplate.execute(tx -> {
                 // 所有权协议(第四轮):事务第一条语句对所有权行取 FOR SHARE
@@ -228,6 +315,8 @@ public class AnswerCycleService {
                         projectId, route.id(), route.tipNodeId(),
                         selectedOptions, normalizedFreeText, "user");
                 agentRunService.markPersistedAnswer(run.id(), persisted.id(), gateTrace);
+                recordStepSucceeded(run.id(), WorkspaceRunSteps.ANSWER_PERSISTED,
+                        WorkspaceRunSteps.answerRef(persisted.id()));
                 return persisted;
             });
             trace = appendTrace(trace, "persisted_answer");
@@ -473,6 +562,11 @@ public class AnswerCycleService {
                 "STATE_UPDATE_STARTED", Map.of());
 
         semanticTraceRecorder.captureStateUpdateInput(envelope);
+        // 步骤账本:STATE_UPDATE 是外部模型调用(有计费副作用),先标 IN_FLIGHT。
+        // 若本次尝试在这里崩溃,恢复核验会看到 IN_FLIGHT 并停止接管,绝不重放
+        // 一个可能已经发生的外部调用(design §7)。
+        recordStepInFlight(run.id(), WorkspaceRunSteps.STATE_UPDATE_MODEL,
+                com.specagent.runtime.execution.WorkspaceRunStepRetryClass.UNSAFE);
         AgentResponseEnvelope stateUpdateResponse;
         try {
             stateUpdateResponse = decisionEngine.runStateUpdate(envelope);
@@ -520,6 +614,11 @@ public class AnswerCycleService {
                         groundedClaims, run.id());
                 validatePatchSources(persisted, route, answer);
                 agentRunService.markPersistedAnswerPatch(run.id(), persisted.id(), patchTrace);
+                // 步骤账本:补丁 checkpoint 与业务写入同事务提交——否则会出现
+                // "标记成功但补丁不存在"(恢复误判为完成)或"补丁存在但标记未完成"
+                // (恢复误判为不确定)两种错误。
+                recordStepSucceeded(run.id(), WorkspaceRunSteps.PATCH_PERSISTED,
+                        WorkspaceRunSteps.patchRef(persisted.id()));
                 return persisted;
             });
             return patch;
@@ -529,9 +628,72 @@ public class AnswerCycleService {
         }
     }
 
+    /**
+     * 接管复用判定(design §7"Answer 已提交 → 复用 Answer ID,校验内容/来源,
+     * 不创建第二个 Answer")。
+     *
+     * <p>只在<b>本次运行的节点上已经存在不可变 Answer</b> 时返回它。判定的三项
+     * 前提缺一不可:
+     * <ol>
+     *   <li>该 {@code (route, node)} 已有 Answer;</li>
+     *   <li>该 Answer 属于本项目与路线(跨项目/跨路线绝不复用);</li>
+     *   <li>Run 的产出引用指向它,或该节点就是本 Run 的输入节点——即它确实是
+     *       <b>本次尝试</b>写下的那条,而不是历史或其他 Run 的产物。</li>
+     * </ol>
+     *
+     * <p>不复用时返回 null,由调用方走正常的 finalize 路径。
+     */
+    private Answer reusableAnswer(AgentRun run, Route route, UUID projectId) {
+        if (route.tipNodeId() == null) {
+            return null;
+        }
+        Answer candidate = answerService.findAnswerForNode(route.id(), route.tipNodeId())
+                .orElse(null);
+        if (candidate == null) {
+            return null;
+        }
+        if (!candidate.projectId().equals(projectId) || !candidate.routeId().equals(route.id())) {
+            return null;
+        }
+        // 只复用"本 Run 写下的"Answer:产出引用匹配,或该节点正是本 Run 的输入
+        // 目标(接管时 produced_answer_id 可能尚未回填到 run 行)。
+        boolean producedByThisRun = candidate.id().equals(run.producedAnswerId());
+        boolean targetedByThisRun = run.inputNodeId() != null
+                && run.inputNodeId().equals(candidate.nodeId());
+        if (!producedByThisRun && !targetedByThisRun) {
+            return null;
+        }
+        LOG.info("Reusing persisted answer {} for run {} (takeover; no second answer is created)",
+                candidate.id(), run.id());
+        return candidate;
+    }
+
+    /** 记录一个步骤为 SUCCEEDED;公共调度层未启用时是 no-op。 */
+    private void recordStepSucceeded(UUID runId, String stepKey, String resultRef) {
+        if (runSteps == null) {
+            return;
+        }
+        long epoch = com.specagent.runtime.execution.ExecutionTokenContext.current()
+                .map(com.specagent.runtime.execution.ExecutionToken::epoch).orElse(0L);
+        runSteps.prepare(runId, stepKey, null, epoch,
+                com.specagent.runtime.execution.WorkspaceRunStepRetryClass.SAFE);
+        runSteps.markSucceeded(runId, stepKey, epoch, resultRef);
+    }
+
+    /** 标记一个步骤为 IN_FLIGHT(外部调用已发起,结果尚不可知)。 */
+    private void recordStepInFlight(UUID runId, String stepKey,
+                                    com.specagent.runtime.execution.WorkspaceRunStepRetryClass retryClass) {
+        if (runSteps == null) {
+            return;
+        }
+        long epoch = com.specagent.runtime.execution.ExecutionTokenContext.current()
+                .map(com.specagent.runtime.execution.ExecutionToken::epoch).orElse(0L);
+        runSteps.prepare(runId, stepKey, null, epoch, retryClass);
+        runSteps.markInFlight(runId, stepKey, epoch);
+    }
+
     private List<Claim> groundClaims(List<ProposedClaim> proposedClaims,
-                                     UUID sourceNodeId, UUID sourceAnswerId) {
-        List<Claim> grounded = new ArrayList<>();
+                                     UUID sourceNodeId, UUID sourceAnswerId) {        List<Claim> grounded = new ArrayList<>();
         for (ProposedClaim pc : proposedClaims) {
             ClaimKind kind = ClaimKind.fromCode(pc.kind());
             ClaimStatus status = ClaimStatus.fromCode(pc.status());

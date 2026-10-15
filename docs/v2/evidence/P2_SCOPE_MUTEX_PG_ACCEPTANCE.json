@@ -1,0 +1,102 @@
+{
+  "date": "2026-10-14",
+  "fullRegression": {
+    "tests": 1851,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 33,
+    "suites": 302
+  },
+  "database": "isolated spec_agent_test, V80-V84 success=true, security protocol7",
+  "dockerRecovery": {
+    "userAuthorized": true,
+    "normalRestartTimedOut": true,
+    "recoveredBy": "verified Docker Desktop process cleanup; terminate only docker-desktop WSL distribution; start main executable hidden",
+    "postgresReady": true,
+    "keycloakRealmDiscoveryReady": true,
+    "containersOrVolumesReset": false
+  },
+  "suites": {
+    "ConnectionOwnershipIntegrationTest": {
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "LocalAesSecretStoreTest": {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "RuntimeScopeMutexIntegrationTest": {
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "TaskWriteGuardTest": {
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "MultiWorkerSchedulingIntegrationTest": {
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "ProposalAcceptanceIntegrationTest": {
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "AgentProposalLifecycleConcurrencyIntegrationTest": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "actualPythonQualification": {
+    "testcase": "actualPythonProcessCompletesBoundedWorkerRebuildThroughParentBoundRpc()",
+    "executed": true,
+    "skipped": false,
+    "failed": false,
+    "providerTransport": "mocked",
+    "qualificationEnvironment": "SPEC_AGENT_REBUILD_PYTHON_ACCEPTANCE=true"
+  },
+  "initialRegressions": [
+    {
+      "scope": "194 tests focused PG/MCP/scope/gates",
+      "failures": 2,
+      "cause": "enable bumped configuration version and incorrectly discarded valid discovery catalog",
+      "fixedAndRetested": true
+    },
+    {
+      "scope": "1851 tests full regression",
+      "failures": 1,
+      "cause": "concurrent acceptance loser got immediate scope conflict instead of already-decided contract",
+      "fixedAndRetested": true
+    }
+  ],
+  "protocolRefusal": {
+    "jar": "runtime-scope-protocol6.jar",
+    "sha256": "C2E7096EA9EC7B3ECB21067BB64402BA36C8AB8FF0844E113AE172BD2FF04CBB",
+    "database": "isolated spec_agent_test, LOCAL, protocol 7",
+    "flywayEnabled": false,
+    "reason": "Security protocol version mismatch: database=7, this instance=6",
+    "exitCode": 1,
+    "alreadyRunningOldInstancesFenced": false,
+    "limitation": "The preserved v6 probe contains the mutex prototype; this proves protocol rejection, not an unsafe-v6 writer race."
+  },
+  "stageCompleted": false,
+  "limitations": [
+    "Full OIDC two Worker matrix pending",
+    "Canvas SSE and memory/service recovery remaining",
+    "Fleet rotation/rollback not performed",
+    "No production or development database deployment"
+  ]
+}

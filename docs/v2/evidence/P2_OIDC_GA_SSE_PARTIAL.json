@@ -1,0 +1,137 @@
+{
+  "date": "2026-10-14",
+  "database": "isolated spec_agent_p2_workers_20261014a",
+  "modelFixture": "inserted only absent organization settings, enc:v2 organization/table/row/purpose AAD, test-profile key, four-character suffix; not a provider configuration acceptance",
+  "realPythonExecution": {
+    "requests": 4,
+    "rows": [
+      {
+        "ga_run_id": "8125130d-82c2-4a0a-9a36-fbc085eff7f2",
+        "worker_id": "663243b3-58ff-4992-9e45-4313dccec23c",
+        "state": "SUCCEEDED",
+        "actor_source": "OIDC",
+        "actor_user_id": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+        "actor_org_id": "1c9daeb6-dd85-4944-9802-fe49e51d44f1",
+        "business_status": "FAILED",
+        "error_code": "GA_EXECUTION_FAILED"
+      },
+      {
+        "ga_run_id": "e14e6613-0574-4f47-ae41-bf43d2854cf4",
+        "worker_id": "a04419e3-cfae-4823-8d46-43c1e57338ee",
+        "state": "SUCCEEDED",
+        "actor_source": "OIDC",
+        "actor_user_id": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+        "actor_org_id": "1c9daeb6-dd85-4944-9802-fe49e51d44f1",
+        "business_status": "FAILED",
+        "error_code": "GA_EXECUTION_FAILED"
+      },
+      {
+        "ga_run_id": "c426e713-6c71-4d19-9db6-11a23094611c",
+        "worker_id": "663243b3-58ff-4992-9e45-4313dccec23c",
+        "state": "SUCCEEDED",
+        "actor_source": "OIDC",
+        "actor_user_id": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+        "actor_org_id": "1c9daeb6-dd85-4944-9802-fe49e51d44f1",
+        "business_status": "FAILED",
+        "error_code": "GA_EXECUTION_FAILED"
+      },
+      {
+        "ga_run_id": "631578dc-410c-4ec1-87c6-7b91542e6d5c",
+        "worker_id": "a04419e3-cfae-4823-8d46-43c1e57338ee",
+        "state": "SUCCEEDED",
+        "actor_source": "OIDC",
+        "actor_user_id": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+        "actor_org_id": "1c9daeb6-dd85-4944-9802-fe49e51d44f1",
+        "business_status": "FAILED",
+        "error_code": "GA_EXECUTION_FAILED"
+      }
+    ],
+    "modelCalls": [
+      {
+        "run_id": "8125130d-82c2-4a0a-9a36-fbc085eff7f2",
+        "kind": "MODEL",
+        "status": "UNKNOWN",
+        "call_sequence": 292
+      },
+      {
+        "run_id": "e14e6613-0574-4f47-ae41-bf43d2854cf4",
+        "kind": "MODEL",
+        "status": "UNKNOWN",
+        "call_sequence": 293
+      },
+      {
+        "run_id": "c426e713-6c71-4d19-9db6-11a23094611c",
+        "kind": "MODEL",
+        "status": "UNKNOWN",
+        "call_sequence": 294
+      },
+      {
+        "run_id": "631578dc-410c-4ec1-87c6-7b91542e6d5c",
+        "kind": "MODEL",
+        "status": "UNKNOWN",
+        "call_sequence": 295
+      }
+    ],
+    "businessCompleted": false,
+    "pythonFailure": "BrokerError: GA model stream failed"
+  },
+  "peerSse": {
+    "passed": true,
+    "proxy": "8286 -> JVM B 8384",
+    "browserSession": "oebj",
+    "sourceExecutionWorker": "663243b3-58ff-4992-9e45-4313dccec23c",
+    "sourceWorkerMapping": "A log coordination failure b70e5e30-cafd-4c48-8cc5-3571284f1ead maps runtime worker663243b3; WorkerIdentity stable per JVM",
+    "terminal": {
+      "errors": [],
+      "events": [
+        {
+          "sequence": 1,
+          "type": "RUN_STARTED"
+        },
+        {
+          "sequence": 2,
+          "type": "ASSISTANT_DELTA"
+        },
+        {
+          "sequence": 3,
+          "type": "ASSISTANT_COMPLETED"
+        },
+        {
+          "sequence": 4,
+          "type": "RUN_FAILED"
+        }
+      ],
+      "runId": "8125130d-82c2-4a0a-9a36-fbc085eff7f2",
+      "status": "FAILED",
+      "userId": "8c08a75d-dcf3-32e0-9172-8661d53e538f"
+    },
+    "fromSequence2": {
+      "errors": [],
+      "events": [
+        {
+          "sequence": 3,
+          "type": "ASSISTANT_COMPLETED"
+        },
+        {
+          "sequence": 4,
+          "type": "RUN_FAILED"
+        }
+      ]
+    },
+    "sameOidcSessionAcrossApis": true
+  },
+  "findings": [
+    "Generic FakeModelInferenceGateway is not used by GaNativeModelBroker; native flow uses OpenCodeZenTransport",
+    "Task adapter returns normally after honest business failure, therefore runtime SUCCEEDED does not prove GA COMPLETED",
+    "Four MODEL/UNKNOWN results retained; no replay or budget reset was attempted",
+    "First fixture insert failed on masked_suffix varchar4 and inserted no row; first unconfigured dispatch retained separately"
+  ],
+  "limitations": [
+    "No successful native GA inference or business completion",
+    "No live SSE poller, slow-client, revocation, cancellation, takeover or external provider qualification proof",
+    "Only failure-terminal persisted replay and cursor across two API JVMs is proven",
+    "Need explicit test-only native transport for deterministic offline acceptance; no silent production fallback",
+    "Full P2 incomplete"
+  ],
+  "stageCompleted": false
+}

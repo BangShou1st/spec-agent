@@ -53,4 +53,25 @@ class GaRetrievalReadinessTest {
         readiness.refresh(); assertTrue(readiness.ready()); assertEquals("READY",readiness.status());
         verify(host,times(2)).indexOneBatch(CuratedHelpSources.CORPUS,generation);
     }
+
+    @Test void concreteEmbeddingFaultsPassThroughWithNonSensitiveIdentity() {
+        health="{\"retrievalEngineVersion\":\"python-rag.v1\",\"storeReady\":true,\"ollamaReady\":false,\"embeddingStatus\":\"EMBEDDING_CREDENTIAL_UNAVAILABLE\","
+            +"\"profile\":{\"profileId\":\""+RetrievalWire.PROFILE+"\",\"provider\":\"OPENAI_COMPATIBLE\",\"modelTag\":\"text-embedding-v4\"}}";
+        readiness.refresh();
+        assertFalse(readiness.ready());
+        assertEquals("EMBEDDING_CREDENTIAL_UNAVAILABLE",readiness.status());
+        assertEquals("OPENAI_COMPATIBLE",readiness.provider());
+        assertEquals("text-embedding-v4",readiness.model());
+        verifyNoInteractions(host,jdbc);
+    }
+
+    @Test void configuredCloudEmbeddingReadsReadyOnceTheHelpIndexExists() {
+        health="{\"retrievalEngineVersion\":\"python-rag.v1\",\"storeReady\":true,\"ollamaReady\":true,\"embeddingStatus\":\"CONFIGURED\",\"ollamaVersion\":\"openai-compatible\","
+            +"\"profile\":{\"profileId\":\""+RetrievalWire.PROFILE+"\",\"provider\":\"OPENAI_COMPATIBLE\",\"modelTag\":\"text-embedding-v4\"}}";
+        doReturn(true).when(jdbc).queryForObject(anyString(),eq(Boolean.class),eq(CuratedHelpSources.CORPUS),eq(generation),eq(RetrievalWire.PROFILE));
+        readiness.refresh();
+        assertTrue(readiness.ready()); assertEquals("READY",readiness.status());
+        assertEquals("OPENAI_COMPATIBLE",readiness.provider());
+        assertEquals("text-embedding-v4",readiness.model());
+    }
 }

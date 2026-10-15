@@ -17,6 +17,10 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 public class JdbcCustomProviderSettingsRepository implements CustomProviderSettingsRepository {
+    private com.specagent.access.OrganizationConfigurationScope orgScope;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setOrgScope(com.specagent.access.OrganizationConfigurationScope orgScope) { this.orgScope=orgScope; }
+
 
     private final NamedParameterJdbcTemplate jdbc;
     private final ModelCredentialCrypto crypto;
@@ -29,7 +33,7 @@ public class JdbcCustomProviderSettingsRepository implements CustomProviderSetti
         this.rowMapper = (rs, rowNum) -> new CustomProviderSettings(
                 rs.getString("api_format"),
                 rs.getString("base_url"),
-                crypto.decrypt(rs.getString("api_key")),
+                crypto.decryptScoped(rs.getString("api_key"), rs.getObject("org_id", java.util.UUID.class), "custom_provider_settings", 1),
             rs.getString("masked_suffix"),
             rs.getString("selected_model"),
             readModelSource(rs),
@@ -57,19 +61,21 @@ public class JdbcCustomProviderSettingsRepository implements CustomProviderSetti
 
     @Override
     public Optional<CustomProviderSettings> find() {
-        return jdbc.query("SELECT * FROM custom_provider_settings WHERE singleton_id = 1", Maps.of(), rowMapper)
+        return jdbc.query("SELECT * FROM custom_provider_settings WHERE singleton_id = 1 AND org_id = :orgId", Maps.of("orgId",orgScope.readOrg()), rowMapper)
                 .stream().findFirst();
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void upsert(CustomProviderSettings settings) {
+        java.util.UUID org = orgScope.writeOrg();
         Instant now = settings.updatedAt() == null ? Instant.now() : settings.updatedAt();
         jdbc.update("""
-                INSERT INTO custom_provider_settings (singleton_id, api_format, base_url, api_key, masked_suffix,
+                INSERT INTO custom_provider_settings (org_id, singleton_id, api_format, base_url, api_key, masked_suffix,
                     selected_model, model_source, display_name, config_revision, validated_revision, created_at, updated_at, validated_at)
-                VALUES (1, :apiFormat, :baseUrl, :apiKey, :maskedSuffix, :selectedModel,
+                VALUES (:orgId, 1, :apiFormat, :baseUrl, :apiKey, :maskedSuffix, :selectedModel,
                     :modelSource, :displayName, :configRevision, :validatedRevision, :createdAt, :updatedAt, :validatedAt)
-                ON CONFLICT (singleton_id) DO UPDATE SET
+                ON CONFLICT (org_id, singleton_id) DO UPDATE SET
                     api_format = EXCLUDED.api_format,
                     base_url = EXCLUDED.base_url,
                     api_key = EXCLUDED.api_key,
@@ -84,7 +90,8 @@ public class JdbcCustomProviderSettingsRepository implements CustomProviderSetti
                 """, Maps.of(
                 "apiFormat", settings.apiFormat(),
                 "baseUrl", settings.baseUrl(),
-                "apiKey", crypto.encrypt(settings.apiKey()),
+                "orgId", org,
+                "apiKey", crypto.encryptScoped(settings.apiKey(), org, "custom_provider_settings", 1),
                 "maskedSuffix", settings.maskedSuffix(),
                 "selectedModel", settings.selectedModel(),
                 "modelSource", settings.modelSource() == null ? "DISCOVERED" : settings.modelSource(),
@@ -97,12 +104,13 @@ public class JdbcCustomProviderSettingsRepository implements CustomProviderSetti
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void markValidated(long configRevision) {
         Instant now = Instant.now();
         jdbc.update("""
                 UPDATE custom_provider_settings
                 SET validated_revision = :configRevision, validated_at = :validatedAt, updated_at = :validatedAt
-                WHERE singleton_id = 1 AND config_revision = :configRevision
-                """, Maps.of("configRevision", configRevision, "validatedAt", Timestamp.from(now)));
+                WHERE singleton_id = 1 AND org_id = :orgId AND config_revision = :configRevision
+                """, Maps.of("orgId",orgScope.writeOrg(),"configRevision", configRevision, "validatedAt", Timestamp.from(now)));
     }
 }

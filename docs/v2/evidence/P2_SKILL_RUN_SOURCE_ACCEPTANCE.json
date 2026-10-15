@@ -1,0 +1,83 @@
+{
+  "date": "2026-10-14",
+  "database": "isolated spec_agent_test on 127.0.0.1:5546",
+  "migration": "V88",
+  "securityProtocol": 10,
+  "migrationSuccess": true,
+  "focusedRegression": {
+    "command": "gradlew.bat testNonLive --tests com.specagent.skill.* --tests com.specagent.capability.* --tests com.specagent.agent.snapshot.* --tests com.specagent.architecture.* --tests com.specagent.access.SecurityProtocolAdmissionTest --tests com.specagent.agent.runtime.WorkspaceExecutionAuthorizationIntegrationTest",
+    "counts": {
+      "tests": 284,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "suites": 41
+    },
+    "newRunPostgresTests": 19,
+    "newGuardOrderUnitTests": 3,
+    "newReplayIdentityPostgresTests": 2,
+    "newSourcePolicyUnitTests": 6,
+    "newArchitectureTests": 1
+  },
+  "fullRegression": {
+    "status": "passed",
+    "command": "SPEC_AGENT_REBUILD_PYTHON_ACCEPTANCE=true gradlew.bat testNonLive",
+    "duration": "2m 49s",
+    "counts": {
+      "tests": 1916,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 33,
+      "suites": 309
+    },
+    "scope": "all non-live backend with actual Java/Python rebuild Worker acceptance enabled; provider transport mocked"
+  },
+  "scope": [
+    "verified per-Run activation and same-actor/project actual parent continuation inheritance",
+    "ownership/auth/Run guards before invocation claim and cached private replay",
+    "immutable frozen Skill input source check and unrelated turn isolation",
+    "identity collision rejection using SQL JSONB equality"
+  ],
+  "authenticationEvidence": "Explicit trusted OIDC actor bindings with actual PostgreSQL identity/member facts, not HTTP/IdP/browser authentication. Real continuation creator, child executing state set by fixture, not a real Model Worker continuation.",
+  "stageComplete": false,
+  "limitations": [
+    "Local identity membership resurrection fixed and verified separately in P2_LOCAL_IDENTITY_BOOTSTRAP_PG_ACCEPTANCE.json; full phase2 remains incomplete",
+    "Existing issued model RPC grants and non-Skill source dependencies still need audit",
+    "Private MCP observations, trace/model session namespaces, success audit and full OIDC dual Worker/browser matrix pending",
+    "No production/dev DB migrations or deployment; stop-all maintenance still required"
+  ],
+  "firstFullRegression": {
+    "status": "failed",
+    "counts": {
+      "tests": 1908,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 33,
+      "suites": 308
+    },
+    "failure": "GlobalAssistantSliceAIntegrationTest.applicationScopedIdempotencyReplaysWithoutSecondExecution used different random title arguments for the same key",
+    "fix": "Use one immutable argument map in positive replay case; add changed-arguments refusal/no-second-project case",
+    "duration": "12m 14s"
+  },
+  "oldBinaryStartupRefusal": {
+    "jar": "runtime-v87-accepted-protocol9.jar",
+    "jarSha256": "9A8606FBC153E8A5A19D115BA4F64347CA1263F5475528EAE7928B140001BA90",
+    "databaseProtocol": 11,
+    "instanceProtocol": 9,
+    "flywayEnabled": false,
+    "reason": "Security protocol version mismatch: database=11, this instance=9",
+    "exitCode": 1,
+    "log": "backend/build/p2-acceptance/v89-old-protocol9-startup.log",
+    "limitation": "native v9 only; v10 rejection is a unit test. Does not fence already-running binaries; stop-all maintenance required."
+  },
+  "currentSecurityProtocol": 11,
+  "latestAcceptanceArtifact": {
+    "path": "backend/build/p2-acceptance/runtime-v89-accepted-protocol11.jar",
+    "sha256": "DCDFCD7C916754070A369DB83D7D810367C1A58D19021F3083D884AD479D0C04",
+    "buildPassed": true,
+    "buildCommand": "gradlew.bat bootJar",
+    "sameSourcesAsFinalPassedFullRegression": true,
+    "deployed": false,
+    "oidcBrowserAcceptance": false
+  }
+}

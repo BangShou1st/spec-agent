@@ -1,3 +1,4 @@
+import { accessSession } from '@/features/access/accessSession'
 // 文件名:SkillDetailView.spec.ts
 // 用途:Skill 详情页组件测试:mock Skill API,验证详情/资源/版本渲染与详情页交互。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -36,6 +37,17 @@ function mountView() {
 }
 
 describe('SkillDetailView', () => {
+  it('allows a member to read resources while refusing delete and enable', async () => {
+    accessSession.identity!.orgCapabilities = []
+    api.readSkillResource.mockResolvedValue({ relativePath: 'SKILL.md', content: 'readable body', truncated: false, totalChars: 13, sha256: 's', versionId: 'v1' })
+    const w = mountView(); await flushPromises()
+    expect(w.get('[data-test="skill-detail-enable"]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-test="skill-detail-delete"]').exists()).toBe(false)
+    await w.get('[data-test="skill-resource-SKILL.md"]').trigger('click'); await flushPromises()
+    expect(api.readSkillResource).toHaveBeenCalledWith('s1', 'SKILL.md')
+    expect(api.enableSkill).not.toHaveBeenCalled()
+    expect(api.deleteSkill).not.toHaveBeenCalled()
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     api.getSkill.mockResolvedValue({ ...detail })
@@ -68,3 +80,5 @@ describe('SkillDetailView', () => {
     expect(api.deleteSkill).toHaveBeenCalledWith('s1')
   })
 })
+
+beforeEach(() => { accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'editor', orgId: 'org', displayName: 'Editor', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['ORG_MANAGE'], memberships: [] } })

@@ -132,33 +132,49 @@ class HostStore:
         return self._post("/index-grants", request, IndexBatchRequest)
 
 
+# Embedding availability codes the health probe can determine without any paid cloud probing.
+# Cloud providers are never verified here: "CONFIGURED" means an active profile exists and its
+# credential is present, not that the remote service is currently healthy — real health shows up
+# in actual retrieval calls (HYBRID degrades on transient faults; auth failures stay explicit).
+EMBEDDING_HEALTH_CODES = frozenset({
+    "EMBEDDING_CONNECTION_FAILED", "EMBEDDING_MODEL_NOT_FOUND", "EMBEDDING_TIMEOUT",
+})
+
 class SharedRetrieval:
     def __init__(self, store: Store, embedding: LocalEmbedding):
         self.store, self.embedding = store, embedding
 
     def health(self) -> RetrievalHealth:
         store_ready = self.store.health()
+        status, profile, version = "EMBEDDING_NOT_CONFIGURED", None, None
         try:
             active = self.store.active_embedding() if hasattr(self.store, "active_embedding") else {"legacy": True}
-            profile = fixed_profile()
             if not active.get("legacy", False):
                 from .configured_embedding import approval, verify_ollama
                 approved = approval({k: v for k, v in active.items() if k not in {"legacy", "available"}})
                 profile = {"profileId": approved["profileId"], **approved["semantic"]}
                 if approved["config"]["provider"] == "OLLAMA":
                     version = verify_ollama(approved["config"], approved["semantic"]["modelDigest"], 3.0)
+                    status = "READY"
                 elif active.get("available"):
                     version = "openai-compatible"
+                    status = "CONFIGURED"
                 else:
-                    raise EmbeddingUnavailable("Credential unavailable")
+                    status = "EMBEDDING_CREDENTIAL_UNAVAILABLE"
             else:
                 version = self.embedding.verify(3.0)
-            ollama_ready = True
-        except (EmbeddingUnavailable, RetrievalError):
-            version, ollama_ready = None, False
+                if hasattr(self.embedding, "profile"):
+                    profile = self.embedding.profile.model_dump(by_alias=True, mode="json")
+                status = "READY"
+        except EmbeddingUnavailable as exc:
+            # Deterministic codes pass through; free-text failures stay honestly generic.
+            status = str(exc) if str(exc) in EMBEDDING_HEALTH_CODES else "EMBEDDING_UNAVAILABLE"
+        except RetrievalError as exc:
+            status = exc.code if exc.code in EMBEDDING_HEALTH_CODES else "RETRIEVAL_UNAVAILABLE"
+        embedding_ready = status in {"READY", "CONFIGURED"}
         return RetrievalHealth.model_validate({"protocolVersion": "retrieval.v1", "retrievalEngineVersion": "python-rag.v1",
-            "ready": store_ready, "storeReady": store_ready, "ollamaReady": ollama_ready, "ollamaVersion": version,
-            "profile": profile if ollama_ready else None, "embeddingConcurrency": 1, "maxBatch": 16})
+            "ready": store_ready, "storeReady": store_ready, "ollamaReady": embedding_ready, "ollamaVersion": version,
+            "profile": profile, "embeddingConcurrency": 1, "maxBatch": 16, "embeddingStatus": status})
 
     def split(self, request: SplitRequest) -> SplitResponse:
         remaining(request)

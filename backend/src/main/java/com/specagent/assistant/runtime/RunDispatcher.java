@@ -21,6 +21,9 @@ public class RunDispatcher {
     private final GlobalAssistantRunLifecycleService lifecycle;
     private final com.specagent.assistant.conversation.GlobalAssistantRunRepository runs;
     private final GaExecutionCoordinator coordinator;
+    private com.specagent.assistant.conversation.GaRunActorRepository actors;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setActors(com.specagent.assistant.conversation.GaRunActorRepository actors) { this.actors=actors; }
     @org.springframework.beans.factory.annotation.Autowired
     void validateEngine(@org.springframework.beans.factory.annotation.Value("${spec.global-assistant.engine:langchain-ga.v1}") String engine) {
         if (!"langchain-ga.v1".equals(engine))
@@ -47,7 +50,7 @@ public class RunDispatcher {
     }
 
     private void executeSafely(UUID threadId, UUID runId, String message, GaHostContext.UiRequest uiRequest) {
-        try {
+        try (var actor = com.specagent.access.ActorContextHolder.bind(actors.require(runId))) {
             coordinator.executeRun(threadId, runId, message, uiRequest);
         } catch (Exception ex) {
             // 这里必须打完整堆栈:这个 catch 是终态化的最后一道网,

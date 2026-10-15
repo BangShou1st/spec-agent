@@ -26,6 +26,11 @@ import java.util.UUID;
  */
 @Service
 public class AgentProposalService {
+    private com.specagent.workspace.project.ProjectService projectAccess;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setProjectAccess(com.specagent.workspace.project.ProjectService projectAccess) {
+        this.projectAccess=projectAccess;
+    }
 
     private final AgentProposalRepository repository;
 
@@ -109,9 +114,11 @@ public class AgentProposalService {
      * 重新读取已提交的状态。
      */
     private void requirePending(UUID proposalId) {
+        AgentProposal metadata=getProposal(proposalId).orElseThrow(() ->
+                com.specagent.common.ApiException.notFound("PROPOSAL_NOT_FOUND", "Proposal not found"));
+        projectAccess.authorizeWrite(metadata.projectId());
         AgentProposal locked = repository.findByIdForUpdate(proposalId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Proposal not found: " + proposalId));
+                .orElseThrow(() -> com.specagent.common.ApiException.notFound("PROPOSAL_NOT_FOUND", "Proposal not found"));
         if (locked.status() != ProposalStatus.PROPOSED) {
             throw new ProposalAlreadyDecidedException(locked.status().code());
         }
@@ -137,7 +144,15 @@ public class AgentProposalService {
     }
 
     public Optional<AgentProposal> getProposal(UUID id) {
-        return repository.findById(id);
+        Optional<AgentProposal> proposal = repository.findById(id);
+        if (proposal.isEmpty()) return proposal;
+        try {
+            projectAccess.getProjectForActor(proposal.get().projectId());
+            return proposal;
+        } catch (com.specagent.common.ApiException ex) {
+            if ("PROJECT_NOT_FOUND".equals(ex.code())) return Optional.empty();
+            throw ex;
+        }
     }
 
     /**
@@ -150,10 +165,12 @@ public class AgentProposalService {
     }
 
     public List<AgentProposal> getPendingProposals(UUID projectId) {
+        projectAccess.getProjectForActor(projectId);
         return repository.findByProjectAndStatus(projectId, ProposalStatus.PROPOSED);
     }
 
     public List<AgentProposal> getByStatus(UUID projectId, ProposalStatus status) {
+        projectAccess.getProjectForActor(projectId);
         return repository.findByProjectAndStatus(projectId, status);
     }
 }

@@ -48,15 +48,17 @@ public class McpDiscoveryService {
     /** 实时发现(测试/刷新路径)。绝不产生远程写入。 */
     public McpDiscovery discoverLive(McpConnectionTarget connection) {
         McpDiscovery discovery = connectionRuntime.testAndDiscover(connection);
-        persist(connection.rowId(), discovery);
+        persist(connection, discovery);
         return discovery;
     }
 
     /** 有缓存就用缓存,否则实时发现(发现后写入缓存)。 */
     public McpDiscovery discover(McpConnectionTarget connection) {
+        connectionRuntime.requireCurrent(connection);
         Optional<McpDiscoveryCacheRepository.CacheRow> cached =
-                cacheRepository.findByConnection(connection.rowId());
+                cacheRepository.findByConnection(connection.rowId(), connection.configurationVersion());
         if (cached.isPresent()) {
+            connectionRuntime.requireCurrent(connection);
             return fromCache(cached.get());
         }
         return discoverLive(connection);
@@ -64,17 +66,32 @@ public class McpDiscoveryService {
 
     /** 仅供管理界面使用的纯缓存读取:绝不触发实时网络发现。 */
     public Optional<McpDiscovery> findCached(UUID connectionRowId) {
-        return cacheRepository.findByConnection(connectionRowId).map(this::fromCache);
+        McpConnectionTarget target = connectionRuntime.requireVisibleTarget(connectionRowId);
+        Optional<McpDiscovery> cached = cacheRepository.findByConnection(connectionRowId,
+                target.configurationVersion()).map(this::fromCache);
+        connectionRuntime.requireCurrent(target);
+        return cached;
     }
 
-    public void persist(UUID connectionId, McpDiscovery discovery) {
-        cacheRepository.upsert(connectionId,
+    public void persist(McpConnectionTarget connection, McpDiscovery discovery) {
+        connectionRuntime.requireCurrent(connection);
+        if (!cacheRepository.upsert(connection.rowId(), connection.configurationVersion(),
                 discovery.tools(), discovery.resources(), discovery.prompts(),
-                fingerprint(discovery));
+                fingerprint(discovery))) {
+            throw new com.specagent.mcp.transport.McpTransportException("MCP_CONNECTION_CHANGED_OR_INACCESSIBLE");
+        }
+        connectionRuntime.requireCurrent(connection);
     }
 
     public void invalidate(UUID connectionId) {
         cacheRepository.delete(connectionId);
+    }
+
+    /** Enabling/disabling invalidates sessions, while the unchanged catalog remains valid. */
+    public void advanceVisibilityVersion(UUID connectionId, long previousVersion) {
+        McpConnectionTarget target = connectionRuntime.requireVisibleTarget(connectionId);
+        cacheRepository.advanceVisibilityVersion(connectionId, previousVersion);
+        connectionRuntime.requireCurrent(target);
     }
 
     private String fingerprint(McpDiscovery discovery) {

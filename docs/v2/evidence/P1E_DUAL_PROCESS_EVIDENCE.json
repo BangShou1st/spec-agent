@@ -1,0 +1,64 @@
+{
+  "recordedAt": "2026-10-11T21:16:25",
+  "scope": "two independent Java processes + dedicated PostgreSQL container + real Python brain (fake model gateway); P1-E acceptance per design §12",
+  "elapsedSeconds": 124,
+  "results": [
+    {
+      "step": "S1a 任务级实例在 SINGLE_EXECUTOR 数据库上被准入协议拒绝启动",
+      "passed": true,
+      "detail": "exited=True"
+    },
+    {
+      "step": "S1c 双 Worker 实例在 PER_TASK 准入下启动,workerId 互异",
+      "passed": true,
+      "detail": "{\"A\": \"dc47ae0c-636a-4054-b27e-fe6b26670b9e\", \"B\": \"510863f7-2a28-4bd8-ac4a-8243a58b49b0\", \"admission\": \"PER_TASK\"}"
+    },
+    {
+      "step": "S1d 旧模式实例被 advisory lock 边界拒绝(禁止混跑,旧协议方向)",
+      "passed": true,
+      "detail": "exited=True"
+    },
+    {
+      "step": "S2 四个 GA 会话并发:两 Worker 的 attempt 区间重叠 + GLOBAL 槽并发占用 + 全部任务收敛",
+      "passed": true,
+      "detail": "overlapPairs=2 workers=2 maxGlobalUsed=2 terminal=4/4 (模型缺位:run 失败于模型步,非调度失败)"
+    },
+    {
+      "step": "S3 杀死持有在途租约的进程 → 接管核验 → 无适配器诚实失败(epoch 递增,业务 Run 收敛 + RUN_FAILED 事件),排队任务由幸存者收敛",
+      "passed": true,
+      "detail": "victim=A taskState=FAILED epoch=2 errorCode=EXECUTION_OUTCOME_UNKNOWN runStatus=FAILED runFailedEvents=1 othersTerminal=2/2"
+    },
+    {
+      "step": "S5a GA 跨实例:SSE 在非执行实例上收到终态事件(数据库游标补发,序号连续)",
+      "passed": true,
+      "detail": "owner=B nonOwner=A terminal=True events=3 sequencesOk=True modelCalls=1 callbackCrossInstanceObserved=True (模型缺位:正文增量不存在)"
+    },
+    {
+      "step": "S5b GA steer 跨实例接受:旧 run CANCELLED、继任 run 完成",
+      "passed": true,
+      "detail": "old=CANCELLED successor=FAILED steerVia=A"
+    },
+    {
+      "step": "S6 数据库中断:恢复后租约被接管核验(epoch 递增)、诚实收敛、健康恢复",
+      "passed": true,
+      "detail": "taskState=FAILED epoch 1->2"
+    },
+    {
+      "step": "S7 容量边界:GLOBAL 槽占用峰值 ≤ 4 且曾达 2 以上,8 个任务全部收敛",
+      "passed": true,
+      "detail": "maxUsed=2 allTerminal=True"
+    },
+    {
+      "step": "S8 回退演练:切回 SINGLE_EXECUTOR 后新实例可启动并处理入队,新表历史保留",
+      "passed": true,
+      "detail": "ownership=SINGLE_EXECUTOR_LEASE status=completed tasksPreserved=True"
+    }
+  ],
+  "automatedTestEvidenceOnly": {
+    "S4-late-write-refusal": "TaskWriteGuardTest(8) + AgentRunEventConcurrentAppendTest(2) + AnswerChainTakeoverEndToEndTest: token 三项校验 / task 行锁串行化 / 接管窗口并发事件追加序号连续;Windows 无法对真实进程做暂停后恢复,不冒充进程级证据",
+    "GA-lease-expiry-honest-failure": "GaMultiWorkerSchedulingIntegrationTest(3) + GaTakeoverEndToEndTest(3):GA fake 执行过快,进程级 kill 窗口不可靠;ga-recovery-enabled 保持关闭"
+  },
+  "limitations": [
+    "优雅退出(design §11 的 drain)在 Windows 上无 SIGTERM,进程级 drain 未演练;杀进程接管(S3)与硬停回退(S8)已覆盖"
+  ]
+}

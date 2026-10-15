@@ -69,7 +69,7 @@ public class AgentProposalController {
 
         // 整个页面只做一次项目级 run 读取,而不是每个提案两次 getRun()
         // 往返(之前的 N+1 问题)。
-        Map<UUID, AgentRun> runsById = agentRunService.listByProject(projectId).stream()
+        Map<UUID, AgentRun> runsById = agentRunService.listByProjectForActor(projectId).stream()
                 .collect(Collectors.toMap(AgentRun::id, run -> run, (first, second) -> first));
 
         List<Map<String, Object>> summaries = new ArrayList<>();

@@ -45,9 +45,7 @@ public class SpecController {
 
     @GetMapping("/api/v1/specs/{snapshotId}")
     public SpecSnapshotResponse getSnapshot(@PathVariable UUID snapshotId) {
-        return specSnapshotService.getSnapshot(snapshotId)
-                .map(SpecSnapshotResponse::from)
-                .orElseThrow(() -> ApiException.notFound("SPEC_NOT_FOUND", "Spec snapshot not found"));
+        return SpecSnapshotResponse.from(requireVisibleSnapshot(snapshotId));
     }
 
     /**
@@ -67,9 +65,9 @@ public class SpecController {
                     "SPEC_EXPORT_VARIANT_INVALID",
                     "variant must be one of: snapshot, delivery");
         }
-        SpecSnapshot snapshot = specSnapshotService.getSnapshot(snapshotId)
-                .orElseThrow(() -> ApiException.notFound("SPEC_NOT_FOUND", "Spec snapshot not found"));
-        String projectTitle = projectService.getProject(snapshot.projectId())
+        // 导出与读取走<b>同一条</b>授权路径:导出是纯视图,不是绕过授权的理由。
+        SpecSnapshot snapshot = requireVisibleSnapshot(snapshotId);
+        String projectTitle = projectService.getProjectForActor(snapshot.projectId())
                 .map(project -> project.title())
                 .orElse("未命名项目");
         String markdown = specMarkdownExporter.export(snapshot, projectTitle, parsed);
@@ -82,10 +80,29 @@ public class SpecController {
                 .body(markdown);
     }
 
+    /**
+     * 规格快照的归属经 {@code snapshot -> project} 推导,并校验主体对项目的
+     * 可见性。
+     *
+     * 快照是一个不带 projectId 的扁平资源,因此这条父链是<b>唯一</b>能判断
+     * 归属的地方;缺了它就只剩"知道 snapshotId 就能读正文并导出"
+     * (P2-A 清单 G3 —— 同一文件内的 {@link #listRouteSpecs} 早已做过等价的
+     * 嵌套一致性检查,读取与导出却漏了)。
+     *
+     * 不可见一律按 {@code SPEC_NOT_FOUND} 失败:与"不存在"不可区分。
+     */
+    private SpecSnapshot requireVisibleSnapshot(UUID snapshotId) {
+        SpecSnapshot snapshot = specSnapshotService.getSnapshot(snapshotId)
+                .orElseThrow(() -> ApiException.notFound("SPEC_NOT_FOUND", "Spec snapshot not found"));
+        projectService.getProjectForActor(snapshot.projectId())
+                .orElseThrow(() -> ApiException.notFound("SPEC_NOT_FOUND", "Spec snapshot not found"));
+        return snapshot;
+    }
+
     @GetMapping("/api/v1/projects/{projectId}/routes/{routeId}/specs")
     public List<SpecSnapshotResponse> listRouteSpecs(@PathVariable UUID projectId,
                                                      @PathVariable UUID routeId) {
-        projectService.getProject(projectId)
+        projectService.getProjectForActor(projectId)
                 .orElseThrow(() -> ApiException.notFound("PROJECT_NOT_FOUND", "Project not found"));
         Route route = routeService.getRoute(routeId)
                 .orElseThrow(() -> ApiException.notFound("ROUTE_NOT_FOUND", "Route not found"));

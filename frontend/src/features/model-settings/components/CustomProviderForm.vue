@@ -6,6 +6,7 @@
        不会因为外层壳的包裹把同一组字段拆成两块视觉区域。
 -->
 <script setup lang="ts">
+import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
 import { computed, onMounted, ref, watch } from 'vue'
 import { productErrorMessage } from '@/shared/http/errorCopy'
 import { sameOrigin } from '@/shared/net/origin'
@@ -35,10 +36,12 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ (e: 'saved', ok: boolean): void }>()
 
 const store = useCustomProviderStore()
+const canManage = useOrganizationCapability('CREDENTIAL_MANAGE')
 const providers = useProviderSettingsStore()
 
 const name = ref('')
 const apiKey = ref('')
+watch(canManage, allowed => { if (!allowed) apiKey.value = '' }, { flush: 'sync' })
 const keyTouched = ref(false)
 
 const isEdit = computed(() => props.mode === 'edit')
@@ -64,13 +67,13 @@ const credentialDecisionRequired = computed(() => {
 
 const canDiscover = computed(() => store.baseUrl.trim().length > 0 && !store.discovering && !store.saving
   && !credentialDecisionRequired.value)
-const canSaveTest = computed(() => name.value.trim().length > 0
+const canSaveTest = computed(() => canManage.value && name.value.trim().length > 0
   && store.baseUrl.trim().length > 0
   && store.selectedModel.trim().length > 0
   && !isUnavailableSelected.value
   && !store.saving && !store.validating
   && !credentialDecisionRequired.value)
-const canActivate = computed(() => store.configured && store.validated
+const canActivate = computed(() => canManage.value && store.configured && store.validated
   && !isActive.value && !providers.activating)
 
 /**
@@ -110,12 +113,14 @@ function onFormatChange(event: Event): void {
 }
 
 async function discover(): Promise<void> {
+  if (!canManage.value) return
   // 只有用户真实输入过的密钥才参与探测;否则复用已存密钥。
   const draft = keyTouched.value ? apiKey.value : null
   await store.discover(draft)
 }
 
 async function saveAndTest(): Promise<void> {
+  if (!canManage.value) return
   // undefined 保留已存密钥,空串清除,非空替换。
   const payload = !keyTouched.value ? undefined : (apiKey.value === '' ? '' : apiKey.value.trim())
   const ok = await store.save(payload as string | null | undefined, name.value.trim())
@@ -128,6 +133,7 @@ async function saveAndTest(): Promise<void> {
 }
 
 async function activate(): Promise<void> {
+  if (!canManage.value) return
   await providers.activate('CUSTOM')
 }
 
@@ -154,7 +160,7 @@ onMounted(() => {
     @retry="() => store.clearError()"
   />
 
-  <div class="settings-form">
+  <div v-if="canManage" class="settings-form">
     <label class="settings-field" :for="`${idPrefix}-display-name`">
       <span class="settings-field__label">显示名称</span>
       <span class="settings-field__hint">显示在模型页与「当前使用」胶囊上，例如「本地 Ollama」</span>
@@ -275,11 +281,11 @@ onMounted(() => {
     </label>
   </div>
 
-  <footer class="settings-dialog__footer">
+  <footer v-if="canManage" class="settings-dialog__footer">
     <button
       class="btn btn-primary settings-action"
       type="button"
-      data-test="custom-save-test"
+      v-if="canManage" data-test="custom-save-test"
       :disabled="!canSaveTest"
       @click="saveAndTest"
     >
@@ -288,16 +294,16 @@ onMounted(() => {
     <button
       class="btn settings-action"
       type="button"
-      data-test="custom-validate"
+      v-if="canManage" data-test="custom-validate"
       :disabled="!store.configured || store.validating"
-      @click="() => store.validate()"
+      @click="() => canManage && store.validate()"
     >
       {{ store.validating ? '测试中…' : '重新测试' }}
     </button>
     <button
       class="btn settings-action"
       type="button"
-      data-test="custom-activate"
+      v-if="canManage" data-test="custom-activate"
       :disabled="!canActivate"
       :title="isActive ? '已是当前 Provider' : '需先通过兼容性测试才能激活（保存后即可）'"
       @click="activate"

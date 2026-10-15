@@ -49,6 +49,9 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/internal/v1/model-inference")
 public class InternalModelInferenceController {
+    private WorkspaceRpcGrants grants;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setGrants(WorkspaceRpcGrants grants) {this.grants=grants;}
 
     private static final Logger LOG = LoggerFactory.getLogger(InternalModelInferenceController.class);
 
@@ -76,6 +79,7 @@ public class InternalModelInferenceController {
     public ResponseEntity<ModelInferenceHttpResponse> complete(
             @RequestHeader(value = AgentProtocol.INTERNAL_TOKEN_HEADER, required = false)
             String internalToken,
+            @RequestHeader(value = WorkspaceRpcGrants.HEADER, required = false) String executionGrant,
             @RequestBody String body) {
         if (!tokenMatches(internalToken)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -90,6 +94,29 @@ public class InternalModelInferenceController {
             return ResponseEntity.badRequest().build();
         }
 
+        WorkspaceRpcGrants.Invocation invocation;
+        try {invocation=grants.admit(executionGrant,request.runId(),request.callType(),sha256(AgentContracts.write(request)));}
+        catch(com.specagent.access.AccessDeniedException denied) {return refused(HttpStatus.FORBIDDEN);}
+        catch(RuntimeException unavailable) {return refused(HttpStatus.SERVICE_UNAVAILABLE);}
+        try(var actor=com.specagent.access.ActorContextHolder.bind(invocation.actor())) {
+            return completeAuthorized(request,invocation);
+        } catch(com.specagent.access.AccessDeniedException denied) {
+            invocation.unknown();return refused(HttpStatus.FORBIDDEN);
+        } catch(RuntimeException failure) {
+            invocation.unknown();return refused(HttpStatus.SERVICE_UNAVAILABLE);
+        }
+    }
+
+    /** Direct-call adapter; absence of an execution grant is refused by the same production port. */
+    public ResponseEntity<ModelInferenceHttpResponse> complete(String internalToken,String body) {
+        return complete(internalToken,null,body);
+    }
+    private ResponseEntity<ModelInferenceHttpResponse> refused(HttpStatus status) {
+        return ResponseEntity.status(status).body(new ModelInferenceHttpResponse(
+                AgentProtocol.INFERENCE_PROTOCOL_VERSION,"","error",null));
+    }
+    private ResponseEntity<ModelInferenceHttpResponse> completeAuthorized(ModelInferenceHttpRequest request,
+            WorkspaceRpcGrants.Invocation invocation) {
         long startedAt = System.nanoTime();
         ModelInferenceResponse response;
         try {
@@ -106,7 +133,7 @@ public class InternalModelInferenceController {
                     ModelOutputContract.jsonObject(), // brain 严格按 JSON 解析;强制结构化输出
                     conversationId));
         } catch (ModelGatewayException ex) {
-            recordFailure(request, ex);
+            invocation.finish(false,()->recordFailure(request, ex));
             // 只返回 provider 中立的错误类别;provider 载荷绝不离开此处。
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(new ModelInferenceHttpResponse(
                     AgentProtocol.INFERENCE_PROTOCOL_VERSION, "", "error", null));
@@ -120,8 +147,8 @@ public class InternalModelInferenceController {
         payload.put("messageCount", request.messages().size());
         payload.put("finishReason", response.finishReason());
         payload.put("elapsedMillis", elapsedMillis);
-        eventService.append(request.runId(), phaseFor(request.callType()),
-                "MODEL_INFERENCE", payload);
+        invocation.finish(true,()->eventService.append(request.runId(), phaseFor(request.callType()),
+                "MODEL_INFERENCE", payload));
 
         return ResponseEntity.ok(new ModelInferenceHttpResponse(
                 AgentProtocol.INFERENCE_PROTOCOL_VERSION,
@@ -172,9 +199,6 @@ public class InternalModelInferenceController {
         }
         if (request.runId() == null) {
             throw new AgentContractException("runId is required");
-        }
-        if (!runExistenceCheck.exists(request.runId())) {
-            throw new AgentContractException("runId does not correspond to a persisted run");
         }
         if (!AgentProtocol.CALL_TYPES.contains(request.callType())) {
             throw new AgentContractException("Unknown call type: " + request.callType());

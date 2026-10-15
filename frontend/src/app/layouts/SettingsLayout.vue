@@ -5,6 +5,33 @@
 -->
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
+import { onMounted, onBeforeUnmount } from 'vue'
+import { accessSession } from '@/features/access/accessSession'
+import { renewSession } from '@/features/access/accessSession'
+
+let active = true
+let pending = false
+let timer: ReturnType<typeof setTimeout> | undefined
+async function renew() {
+  if (!active || pending) return
+  clearTimeout(timer)
+  pending = true
+  try { await renewSession() }
+  finally {
+    pending = false
+    if (active) timer = setTimeout(() => { void renew() }, 5_000)
+  }
+}
+const focused = () => { void renew() }
+onMounted(() => {
+  timer = setTimeout(() => { void renew() }, 5_000)
+  window.addEventListener('focus', focused)
+})
+onBeforeUnmount(() => {
+  active = false
+  clearTimeout(timer)
+  window.removeEventListener('focus', focused)
+})
 </script>
 
 <template>
@@ -14,6 +41,7 @@ import { RouterLink, RouterView } from 'vue-router'
       <p class="page-desc">管理模型、搜索、检索、Skills 和连接，配置 Spec Agent 的工作方式</p>
     </header>
     <nav class="settings-shell__nav" aria-label="Settings sections" data-test="settings-nav">
+      <RouterLink v-if="accessSession.identity?.orgCapabilities.includes('ORG_MANAGE')" to="/settings/members">组织成员</RouterLink>
       <RouterLink to="/settings/models" data-test="settings-nav-models">模型</RouterLink>
       <RouterLink to="/settings/search" data-test="settings-nav-search">联网搜索</RouterLink>
       <RouterLink to="/settings/retrieval" data-test="settings-nav-retrieval">知识检索</RouterLink>

@@ -1,0 +1,89 @@
+{
+  "database": "spec_agent_p2_workers_20261015a",
+  "jarSha256": "cbcc5f1ba1c9e7cbe0c1ca7983065215a2a168f2f482600088300fd6e9438846",
+  "fixture": {
+    "orgId": "4466ef97-14f5-4379-8110-a7af1d9ca14b",
+    "runId": "fa8820b6-a080-4ed1-9143-c6e8c06bee3f",
+    "threadId": "05b9bcd4-540b-4fb1-b41e-200a5bede261",
+    "userId": "8c08a75d-dcf3-32e0-9172-8661d53e538f"
+  },
+  "beforeKill": {
+    "runStatus": "RUNNING",
+    "errorCode": null,
+    "taskState": "LEASED",
+    "taskError": null,
+    "epoch": 1,
+    "workerId": "b57e49ed-e774-46d5-a5ab-183bfeee3f46",
+    "actorSource": "OIDC",
+    "actorUserId": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+    "actorOrgId": "4466ef97-14f5-4379-8110-a7af1d9ca14b",
+    "modelCalls": 1,
+    "calls": [
+      {
+        "kind": "MODEL",
+        "status": "RESERVED"
+      }
+    ],
+    "events": [
+      "RUN_STARTED"
+    ],
+    "assistantMessages": 0,
+    "capacity": 2
+  },
+  "victim": {
+    "name": "A",
+    "port": 8383,
+    "pid": 41952
+  },
+  "afterConvergence": {
+    "runStatus": "FAILED",
+    "errorCode": "RUN_INTERRUPTED",
+    "taskState": "FAILED",
+    "taskError": "EXECUTION_OUTCOME_UNKNOWN",
+    "epoch": 2,
+    "workerId": null,
+    "actorSource": "OIDC",
+    "actorUserId": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+    "actorOrgId": "4466ef97-14f5-4379-8110-a7af1d9ca14b",
+    "modelCalls": 1,
+    "calls": [
+      {
+        "kind": "MODEL",
+        "status": "RESERVED"
+      }
+    ],
+    "events": [
+      "RUN_STARTED",
+      "RUN_FAILED"
+    ],
+    "assistantMessages": 0,
+    "capacity": 0
+  },
+  "scenario": "GA crash during unresolved model call; honest failure without replay",
+  "afterLateReturn": {
+    "runStatus": "FAILED",
+    "errorCode": "RUN_INTERRUPTED",
+    "taskState": "FAILED",
+    "taskError": "EXECUTION_OUTCOME_UNKNOWN",
+    "epoch": 2,
+    "workerId": null,
+    "actorSource": "OIDC",
+    "actorUserId": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+    "actorOrgId": "4466ef97-14f5-4379-8110-a7af1d9ca14b",
+    "modelCalls": 1,
+    "calls": [
+      {
+        "kind": "MODEL",
+        "status": "RESERVED"
+      }
+    ],
+    "events": [
+      "RUN_STARTED",
+      "RUN_FAILED"
+    ],
+    "assistantMessages": 0,
+    "capacity": 0
+  },
+  "passed": true,
+  "restartedPid": 44512
+}

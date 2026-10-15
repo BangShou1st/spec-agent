@@ -1,0 +1,55 @@
+{
+  "actorUserId": "f2fabe0b-2e96-3144-bcfc-1e580f5de236",
+  "connections": 2,
+  "frames": [
+    {
+      "sequence": 1,
+      "type": "RUN_STARTED"
+    },
+    {
+      "sequence": 2,
+      "type": "ANSWER_STREAM_STARTED"
+    },
+    {
+      "sequence": 3,
+      "type": "ANSWER_DELTA"
+    },
+    {
+      "sequence": 4,
+      "type": "ANSWER_DELTA"
+    },
+    {
+      "sequence": 5,
+      "type": "ANSWER_DELTA"
+    },
+    {
+      "sequence": 6,
+      "type": "ASSISTANT_COMPLETED"
+    },
+    {
+      "sequence": 7,
+      "type": "RUN_COMPLETED"
+    }
+  ],
+  "orgId": "4466ef97-14f5-4379-8110-a7af1d9ca14b",
+  "runId": "52430045-a4d1-49a9-a958-a5d812a61cb0",
+  "threadId": "ad609db4-b114-45e1-8fbe-e49aaf90dcc5",
+  "transportErrors": [
+    "stream closed"
+  ],
+  "durableResult": {
+    "runStatus": "COMPLETED",
+    "taskState": "SUCCEEDED",
+    "modelCalls": 1,
+    "actorSource": "OIDC",
+    "actorUserId": "f2fabe0b-2e96-3144-bcfc-1e580f5de236",
+    "actorOrgId": "4466ef97-14f5-4379-8110-a7af1d9ca14b",
+    "capacity": 0
+  },
+  "database": "spec_agent_p2_workers_20261015v92",
+  "schemaVersion": 93,
+  "jarSha256": "90a8b3991be2d9ddc86932d91eadbd5bf526e9073037646280c861e362f8b9a8",
+  "nativeFixtureFragmentDelayMs": 10000,
+  "boundary": "Real OIDC Bob + two JVMs + real Python broker; explicit test-only native model fixture. Existing production stream client reconnects from cursor after finite SSE transport lifetime.",
+  "passed": true
+}

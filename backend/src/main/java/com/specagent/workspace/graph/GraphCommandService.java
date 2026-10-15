@@ -48,6 +48,7 @@ public class GraphCommandService {
     private final GraphInvariantValidator invariantValidator;
     private final ProjectRepository projectRepository;
     private final RouteMembershipProjectionPort routeMembershipProjection;
+    private final com.specagent.workspace.project.ProjectService projectAccess;
 
     public GraphCommandService(NodeService nodeService,
                                NodeRepository nodeRepository,
@@ -58,7 +59,8 @@ public class GraphCommandService {
                                GraphOperationRepository operationRepository,
                                GraphInvariantValidator invariantValidator,
                                ProjectRepository projectRepository,
-                               RouteMembershipProjectionPort routeMembershipProjection) {
+                               RouteMembershipProjectionPort routeMembershipProjection,
+                               com.specagent.workspace.project.ProjectService projectAccess) {
         this.nodeService = nodeService;
         this.nodeRepository = nodeRepository;
         this.routeService = routeService;
@@ -69,6 +71,7 @@ public class GraphCommandService {
         this.invariantValidator = invariantValidator;
         this.projectRepository = projectRepository;
         this.routeMembershipProjection = routeMembershipProjection;
+        this.projectAccess=projectAccess;
     }
 
     /**
@@ -83,6 +86,7 @@ public class GraphCommandService {
         // 让项目内所有图变更写入方都在同一把 project 行锁下串行
         // (顺序:project → node/route → 变更 → 操作日志),保证并发
         // undo/redo 或语义关系创建不会交错出半应用的图或操作栈。
+        projectAccess.authorizeWrite(projectId);
         projectRepository.lockById(projectId);
         Route route = requireOpenRouteInProject(projectId, routeId);
         if (route.tipNodeId() != null) {
@@ -128,6 +132,7 @@ public class GraphCommandService {
                                         NodeKind kind,
                                         String subtype,
                                         Map<String, Object> content) {
+        projectAccess.authorizeWrite(projectId);
         projectRepository.lockById(projectId);
         if (routeId != null) {
             requireOpenRouteInProject(projectId, routeId);
@@ -168,6 +173,7 @@ public class GraphCommandService {
                                            UUID routeId,
                                            UUID nodeId,
                                            UUID parentNodeId) {
+        projectAccess.authorizeWrite(projectId);
         projectRepository.lockById(projectId);
         Route route = requireOpenRouteInProject(projectId, routeId);
         nodeRepository.lockById(nodeId);
@@ -232,6 +238,7 @@ public class GraphCommandService {
      */
     @Transactional
     public Node detachNodeFromRoute(UUID projectId, UUID routeId, UUID nodeId) {
+        projectAccess.authorizeWrite(projectId);
         projectRepository.lockById(projectId);
         Route route = requireOpenRouteInProject(projectId, routeId);
         nodeRepository.lockById(nodeId);
@@ -303,6 +310,7 @@ public class GraphCommandService {
                                                  UUID sourceNodeId,
                                                  String subtype,
                                                  Map<String, Object> content) {
+        projectAccess.authorizeWrite(projectId);
         projectRepository.lockById(projectId);
         Route route = requireOpenRouteInProject(projectId, routeId);
         Node sourceNode = requireNodeInProject(projectId, sourceNodeId);
@@ -364,6 +372,7 @@ public class GraphCommandService {
                                UUID parentNodeId,
                                String subtype,
                                Map<String, Object> content) {
+        projectAccess.authorizeWrite(projectId);
         projectRepository.lockById(projectId);
         Route route = requireOpenRouteInProject(projectId, routeId);
         if (parentNodeId == null) {
@@ -399,6 +408,7 @@ public class GraphCommandService {
     /** 原地编辑一个仍可编辑的用户草稿,并把先前的状态记入日志。 */
     @Transactional
     public Node reviseDraftNode(UUID projectId, UUID nodeId, String subtype, Map<String, Object> content) {
+        projectAccess.authorizeWrite(projectId);
         projectRepository.lockById(projectId);
         Node before = requireNodeInProject(projectId, nodeId);
         if (!before.isUserEditableDraft()) {
@@ -433,6 +443,7 @@ public class GraphCommandService {
         // 两个并发事务不能都基于同一份旧图做判断(例如 A DEPENDS_ON B 与
         // B DEPENDS_ON A 竞态)。只锁 project 行,互不相关的项目仍然
         // 彼此独立。
+        projectAccess.authorizeWrite(projectId);
         projectRepository.lockById(projectId);
         invariantValidator.validateRelationCreation(projectId, sourceNodeId, targetNodeId, type);
         GraphInvariantValidator.CanonicalEndpoints endpoints =
@@ -454,6 +465,7 @@ public class GraphCommandService {
     /** 应用一次显式的知识状态流转(如 PROPOSED -> CONFIRMED)。 */
     @Transactional
     public Node setKnowledgeStatus(UUID projectId, UUID nodeId, KnowledgeStatus status) {
+        projectAccess.authorizeWrite(projectId);
         projectRepository.lockById(projectId);
         Node before = requireNodeInProject(projectId, nodeId);
         Node after = nodeService.setKnowledgeStatus(projectId, nodeId, status);
@@ -466,11 +478,13 @@ public class GraphCommandService {
 
     /** 列出类型化操作日志(供 UI 的撤销/重做入口与审计使用)。 */
     public List<GraphOperation> listOperations(UUID projectId) {
+        projectAccess.getProjectForActor(projectId);
         return operationRepository.findByProject(projectId);
     }
 
     /** 列出项目的全部激活语义关系。 */
     public List<NodeRelation> listRelations(UUID projectId) {
+        projectAccess.getProjectForActor(projectId);
         return relationRepository.findActiveByProject(projectId);
     }
 

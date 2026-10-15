@@ -27,6 +27,16 @@ interface Mounted {
   workspace: ReturnType<typeof useWorkspaceStore>
 }
 
+it('does not expose edit controls or start editing after permission is revoked', async () => {
+  const { wrapper } = mountWithRoutes([])
+  await wrapper.setProps({ canWrite: false })
+  await wrapper.get('[data-test="graph-knowledge-node"]').trigger('dblclick')
+  expect(wrapper.find('[data-test="save-draft"]').exists()).toBe(false)
+  expect(wrapper.find('[data-test="edit-draft"]').exists()).toBe(false)
+  expect(wrapper.find('[data-test="floating-hint"]').exists()).toBe(false)
+  expect(wrapper.text()).not.toContain('/**')
+})
+
 function mountWithRoutes(
   routes: GraphWorkspaceRouteView[],
   dataOverrides: Partial<SpecAgentGraphNodeData> = {},
@@ -36,7 +46,7 @@ function mountWithRoutes(
   const workspace = useWorkspaceStore()
   workspace.graphView = makeGraphWorkspaceView({ routes })
   const wrapper = mount(GraphKnowledgeNode, {
-    props: { data: nodeData(dataOverrides) },
+    props: { canWrite: true, data: nodeData(dataOverrides) },
     global: { stubs: { Handle: HandleStub }, plugins: [pinia] },
   })
   return { wrapper, workspace }

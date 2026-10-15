@@ -6,8 +6,21 @@ import { createPinia } from 'pinia'
 import GraphToolbar from '@/features/workspace/graph/components/GraphToolbar.vue'
 
 describe('GraphToolbar', () => {
+  it('keeps reading controls and removes writes when permission is revoked', async () => {
+    const wrapper = mount(GraphToolbar, { global: { plugins: [createPinia()] } })
+    expect(wrapper.find('[data-test="add-idea"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="undo"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="add-resource"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="zoom-in"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="fit-view"]').exists()).toBe(true)
+    await wrapper.setProps({ canWrite: true })
+    expect(wrapper.find('[data-test="add-idea"]').exists()).toBe(true)
+    await wrapper.setProps({ canWrite: false })
+    expect(wrapper.find('[data-test="add-idea"]').exists()).toBe(false)
+  })
   it('keeps frequent controls visible and low-frequency controls in overflow', () => {
     const wrapper = mount(GraphToolbar, {
+      props: { canWrite: true },
       global: { plugins: [createPinia()] },
     })
 

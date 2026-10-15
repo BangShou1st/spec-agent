@@ -47,7 +47,9 @@ public class RouteLineageQueryService {
     }
 
     public RouteLineageView getForRoute(UUID projectId, UUID routeId) {
-        Project project = projectService.getProject(projectId)
+        // 可见性先于任何读取:lineage 泄露节点正文。不可见与不存在的项目统一
+        // 表现为 404 PROJECT_NOT_FOUND(与既有契约一致);授权在服务层。
+        Project project = projectService.getProjectForActor(projectId)
                 .orElseThrow(() -> RouteLineageQueryException.of(
                         RouteLineageQueryException.Reason.PROJECT_NOT_FOUND, "Project not found"));
         Route route = routeService.getRoute(routeId)

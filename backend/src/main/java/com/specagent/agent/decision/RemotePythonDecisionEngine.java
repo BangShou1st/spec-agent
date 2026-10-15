@@ -48,8 +48,13 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
             "ConflictSurfacing");
 
     private final RestClient restClient;
+    private com.specagent.agent.broker.WorkspaceRpcGrants grants;
+    private final int readTimeout;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setGrants(com.specagent.agent.broker.WorkspaceRpcGrants grants) {this.grants=grants;}
 
     public RemotePythonDecisionEngine(AgentBrainProperties properties) {
+        this.readTimeout=properties.getReadTimeoutSeconds();
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(properties.getConnectTimeoutMs());
         factory.setReadTimeout(properties.getReadTimeoutSeconds() * 1000);
@@ -73,9 +78,11 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
     @Override
     public AgentArtifactResponse runArtifactGeneration(AgentRequestEnvelope request) {
         String responseJson;
+        var ticket=issue(request,"ARTIFACT_GENERATION",1);
         try {
             responseJson = restClient.post()
                     .uri("/v1/artifacts")
+                    .header(com.specagent.agent.broker.WorkspaceRpcGrants.HEADER,ticket.value())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(AgentContracts.write(request))
                     .retrieve()
@@ -84,6 +91,8 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
             throw brainFailure("/v1/artifacts", ex);
         } catch (RestClientException ex) {
             throw brainFailure("/v1/artifacts", ex);
+        } finally {
+            grants.revoke(ticket);
         }
         if (responseJson == null || responseJson.isBlank()) {
             throw new AgentBrainUnavailableException(
@@ -175,9 +184,12 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
                                          String path,
                                          boolean stateUpdate) {
         String responseJson;
+        var ticket=issue(request,stateUpdate?"STATE_UPDATE":"DECISION",stateUpdate?1:
+                request.decisionBudget()==null?1:Math.min(2,request.decisionBudget().maxModelCalls()));
         try {
             responseJson = restClient.post()
                     .uri(path)
+                    .header(com.specagent.agent.broker.WorkspaceRpcGrants.HEADER,ticket.value())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(AgentContracts.write(request))
                     .retrieve()
@@ -192,6 +204,8 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
             throw brainFailure(path, ex);
         } catch (RestClientException ex) {
             throw brainFailure(path, ex);
+        } finally {
+            grants.revoke(ticket);
         }
         if (responseJson == null || responseJson.isBlank()) {
             throw new AgentBrainUnavailableException(
@@ -205,5 +219,9 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
             AgentBrainResponseValidator.validateDecision(request, response);
         }
         return response;
+    }
+    private com.specagent.agent.broker.WorkspaceRpcGrants.Ticket issue(AgentRequestEnvelope request,String type,int maximum) {
+        if(grants==null) throw new IllegalStateException("Workspace RPC grant issuer is required");
+        return grants.issue(request.runId(),type,maximum,java.time.Duration.ofSeconds(Math.min(180,Math.max(1,readTimeout+5))),request.snapshot());
     }
 }

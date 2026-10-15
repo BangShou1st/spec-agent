@@ -55,14 +55,22 @@ class InternalModelInferenceContractTest {
     void setUp() {
         when(properties.getInternalSecret()).thenReturn("dev-internal-secret");
         when(properties.getBroker()).thenReturn(new AgentBrainProperties.Broker());
-        when(runExistenceCheck.exists(any())).thenReturn(true);
         when(gateway.complete(any(ModelInferenceRequest.class)))
                 .thenReturn(new ModelInferenceResponse("{}", "stop", 0, 0));
     }
 
     private InternalModelInferenceController controller() {
-        return new InternalModelInferenceController(gateway, eventService, properties,
+        var controller=new InternalModelInferenceController(gateway, eventService, properties,
                 runExistenceCheck, runProjectLookup);
+        var grants=org.mockito.Mockito.mock(WorkspaceRpcGrants.class);
+        var invocation=org.mockito.Mockito.mock(WorkspaceRpcGrants.Invocation.class);
+        when(invocation.actor()).thenReturn(com.specagent.access.ActorContext.local(
+                com.specagent.access.LocalPrincipalIds.USER_ID,com.specagent.access.LocalPrincipalIds.ORG_ID));
+        when(grants.admit(org.mockito.ArgumentMatchers.nullable(String.class),any(),any(),any())).thenReturn(invocation);
+        org.mockito.Mockito.doAnswer(call->{((Runnable)call.getArgument(1)).run();return null;})
+                .when(invocation).finish(org.mockito.ArgumentMatchers.anyBoolean(),any());
+        controller.setGrants(grants);
+        return controller;
     }
 
     private String bodyFor(String callType) {

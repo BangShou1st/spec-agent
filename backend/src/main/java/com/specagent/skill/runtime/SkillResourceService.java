@@ -6,6 +6,8 @@ import com.specagent.skill.domain.SkillPackageFile;
 import com.specagent.skill.importing.SkillImportException;
 import com.specagent.skill.registry.SkillQueryService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import com.specagent.skill.persistence.SkillRepository;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
@@ -23,14 +25,28 @@ public class SkillResourceService {
 
     private final SkillQueryService queryService;
     private final SkillProperties properties;
+    private final SkillRepository repository;
 
-    public SkillResourceService(SkillQueryService queryService, SkillProperties properties) {
+    public SkillResourceService(SkillQueryService queryService, SkillProperties properties, SkillRepository repository) {
         this.queryService = queryService;
         this.properties = properties;
+        this.repository = repository;
+    }
+
+    public void requireActivatedVersion(UUID projectId, UUID runId, UUID versionId) {
+        if (projectId==null || runId==null || versionId==null
+                || !repository.hasVerifiedActivation(projectId,runId,versionId))
+            throw new SkillResourceRejectedException("Skill version is not activated for the current Run");
+    }
+
+    @Transactional
+    public ResourceRead readActivatedResource(UUID projectId, UUID runId, UUID versionId, String relativePath) {
+        requireActivatedVersion(projectId,runId,versionId);
+        return readResource(versionId,relativePath);
     }
 
     /**
-     * 读取一个已激活 Skill 版本内的指定资源。
+     * 管理/API 视图读取组织可见版本。执行工具必须使用 readActivatedResource。
      *
      * @param versionId    不可变的已激活版本 id
      * @param relativePath 已归一化、包含性校验的资源路径;包含 SKILL.md,因为

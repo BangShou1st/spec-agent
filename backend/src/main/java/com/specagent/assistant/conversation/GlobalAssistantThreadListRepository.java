@@ -1,5 +1,8 @@
 package com.specagent.assistant.conversation;
 
+import com.specagent.access.ActorContext;
+import com.specagent.access.IdentityModeProperties;
+import com.specagent.access.OwnershipAttribution;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
@@ -16,17 +19,32 @@ import org.springframework.stereotype.Repository;
  * 角色:conversation 包的列表查询层。只列出至少含一条 USER 消息的
  * 线程;排序按最新规范消息 created_at 倒序,并以线程 id 倒序打破平局,
  * 保证结果确定。标题/预览的截断交给 {@link GlobalAssistantConversationLibrary}。
+ *
+ * <b>第二阶段(身份/权限)</b>:列表必须按<b>组织 + 属主</b>过滤。
+ * 原实现没有任何 owner/org 谓词,返回全库最近会话的标题与预览
+ * (预览取自最后一条消息正文),经 {@code GET /api/v1/global-assistant/threads}
+ * 直接暴露(P2-A 清单 G2)。它也是设计 §9"缓存的助手记忆不能继续泄露
+ * 项目内容"最直接的入口:会话列表本身就是一条派生记忆。
+ *
+ * 过滤放在 SQL 内而不是取回后在内存里筛:数量与排序本身就是信息——
+ * 先取全库再过滤,仍会通过分页与排序泄露"存在大量他人会话"这一事实。
+ * 归属取自创建时写入的 {@code org_id}/{@code owner_user_id};归属为 NULL
+ * 的行不会被任何主体匹配到(失败关闭)。
  */
 @Repository
 public class GlobalAssistantThreadListRepository {
     private final NamedParameterJdbcTemplate jdbc;
+    private final IdentityModeProperties properties;
 
-    public GlobalAssistantThreadListRepository(NamedParameterJdbcTemplate jdbc) {
+    public GlobalAssistantThreadListRepository(NamedParameterJdbcTemplate jdbc,
+                                               IdentityModeProperties properties) {
         this.jdbc = jdbc;
+        this.properties = properties;
     }
 
     public List<GlobalAssistantThreadListItem> listRecent(int limit) {
         int bounded = Math.max(1, Math.min(limit, GlobalAssistantConversationLibrary.LIST_LIMIT));
+        ActorContext owner = OwnershipAttribution.currentOrDefault(properties.accessMode());
         String sql = """
                 SELECT t.id AS thread_id, t.created_at AS thread_created,
                        first_msg.content AS title_src,
@@ -50,6 +68,7 @@ public class GlobalAssistantThreadListRepository {
                         FROM global_assistant_messages
                     ) ranked WHERE rn = 1
                 ) last_msg ON last_msg.thread_id = t.id
+                WHERE t.org_id = ? AND t.owner_user_id = ?
                 ORDER BY last_msg.created_at DESC, t.id DESC
                 LIMIT %d
                 """.formatted(bounded);
@@ -66,6 +85,6 @@ public class GlobalAssistantThreadListRepository {
                     GlobalAssistantConversationLibrary.toPreview(previewSrc),
                     updatedAt,
                     threadCreated);
-        });
+        }, owner.orgId(), owner.userId());
     }
 }

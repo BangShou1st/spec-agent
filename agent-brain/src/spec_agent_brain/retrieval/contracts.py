@@ -316,6 +316,9 @@ class RetrievalHealth(WireModel):
     profile: EmbeddingProfile | dict | None
     embedding_concurrency: Literal[1] = Field(alias="embeddingConcurrency")
     max_batch: Literal[16] = Field(alias="maxBatch")
+    # Additive availability semantics for the currently ACTIVE embedding (never the candidate).
+    # Producers predating this field omit it; consumers must treat None as "unknown reason".
+    embedding_status: str | None = Field(default=None, alias="embeddingStatus", max_length=64)
 
     @model_validator(mode="after")
     def readiness(self) -> Self:

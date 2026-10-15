@@ -24,4 +24,14 @@ public final class GlobalAssistantErrorCode {
     public static final String STEER_PENDING = "GLOBAL_ASSISTANT_STEER_PENDING";
     public static final String THREAD_ACTIVE = "GLOBAL_ASSISTANT_THREAD_ACTIVE";
     public static final String RUN_STALE = "GLOBAL_ASSISTANT_RUN_STALE";
+    /** 执行失败(框架或宿主侧)。既有 GaExecutionCompletion 已在线级使用该字面量。 */
+    public static final String GA_EXECUTION_FAILED = "GA_EXECUTION_FAILED";
+    /** Python 执行服务不可达;面向用户可区分的可操作类别。 */
+    public static final String GA_PYTHON_UNAVAILABLE = "GA_PYTHON_UNAVAILABLE";
+    /**
+     * GA 执行协议版本不兼容(design §8"显式版本化,不默认允许旧请求"):
+     * Java 所需的执行信封/事件版本不在 Python /health 公告的支持列表内。
+     * 这是部署错误(两端版本不同步),如实暴露,绝不默认放行。
+     */
+    public static final String GA_PROTOCOL_MISMATCH = "GA_PROTOCOL_MISMATCH";
 }

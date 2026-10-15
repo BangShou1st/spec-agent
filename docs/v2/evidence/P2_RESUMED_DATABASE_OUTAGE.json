@@ -1,0 +1,124 @@
+{
+  "database": "spec_agent_p2_workers_20261015a",
+  "jarSha256": "cbcc5f1ba1c9e7cbe0c1ca7983065215a2a168f2f482600088300fd6e9438846",
+  "scenario": "real isolated PostgreSQL crash during MODEL RESERVED, fail closed, restart admission, fresh work completes",
+  "fixture": {
+    "orgId": "4466ef97-14f5-4379-8110-a7af1d9ca14b",
+    "runId": "a52e68e5-9432-4ae1-9c6d-99aea895e800",
+    "threadId": "aacd77f3-98ab-40fa-9b39-9b0361db6a8b",
+    "userId": "8c08a75d-dcf3-32e0-9172-8661d53e538f"
+  },
+  "beforeOutage": {
+    "runStatus": "RUNNING",
+    "errorCode": null,
+    "taskState": "LEASED",
+    "taskError": null,
+    "epoch": 1,
+    "modelCalls": 1,
+    "calls": [
+      {
+        "kind": "MODEL",
+        "status": "RESERVED"
+      }
+    ],
+    "events": [
+      "RUN_STARTED"
+    ],
+    "assistantMessages": 0,
+    "capacity": 2
+  },
+  "healthDuringOutage": {
+    "8383": 503,
+    "8384": 503
+  },
+  "healthBeforeWorkerRestart": {
+    "8383": 503,
+    "8384": 503
+  },
+  "afterRecovery": {
+    "runStatus": "FAILED",
+    "errorCode": "GA_EXECUTION_FAILED",
+    "taskState": "FAILED",
+    "taskError": "GA_EXECUTION_FAILED",
+    "epoch": 1,
+    "modelCalls": 1,
+    "calls": [
+      {
+        "kind": "MODEL",
+        "status": "RESERVED"
+      }
+    ],
+    "events": [
+      "RUN_STARTED",
+      "RUN_FAILED"
+    ],
+    "assistantMessages": 0,
+    "capacity": 0
+  },
+  "afterLateReturn": {
+    "runStatus": "FAILED",
+    "errorCode": "GA_EXECUTION_FAILED",
+    "taskState": "FAILED",
+    "taskError": "GA_EXECUTION_FAILED",
+    "epoch": 1,
+    "modelCalls": 1,
+    "calls": [
+      {
+        "kind": "MODEL",
+        "status": "RESERVED"
+      }
+    ],
+    "events": [
+      "RUN_STARTED",
+      "RUN_FAILED"
+    ],
+    "assistantMessages": 0,
+    "capacity": 0
+  },
+  "freshFixture": {
+    "orgId": "4466ef97-14f5-4379-8110-a7af1d9ca14b",
+    "runId": "871e03ec-6251-4900-888d-7055040d5cef",
+    "threadId": "26dd653b-2bb4-498b-814c-2c2a2abdd3b9",
+    "userId": "8c08a75d-dcf3-32e0-9172-8661d53e538f"
+  },
+  "freshRun": {
+    "runStatus": "COMPLETED",
+    "errorCode": null,
+    "taskState": "SUCCEEDED",
+    "taskError": null,
+    "epoch": 1,
+    "modelCalls": 1,
+    "calls": [
+      {
+        "kind": "MODEL",
+        "status": "SUCCEEDED"
+      }
+    ],
+    "events": [
+      "RUN_STARTED",
+      "ANSWER_STREAM_STARTED",
+      "ANSWER_DELTA",
+      "ANSWER_DELTA",
+      "ANSWER_DELTA",
+      "ASSISTANT_COMPLETED",
+      "RUN_COMPLETED"
+    ],
+    "assistantMessages": 1,
+    "capacity": 0
+  },
+  "passed": true,
+  "workers": [
+    {
+      "name": "A",
+      "port": 8383,
+      "pid": 44512,
+      "restartedPid": 46076
+    },
+    {
+      "name": "B",
+      "port": 8384,
+      "pid": 28132,
+      "restartedPid": 52908
+    }
+  ]
+}

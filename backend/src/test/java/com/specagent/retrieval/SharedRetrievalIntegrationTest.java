@@ -38,6 +38,7 @@ class SharedRetrievalIntegrationTest {
     @Autowired com.specagent.agent.snapshot.AgentInputSnapshotBuilder snapshots;
     @Autowired com.specagent.retrieval.persistence.RetrievalEntryRepository entries;
     @Autowired RetrievalStore store;
+    @Autowired RetrievalGrantAuthorization retrievalAuthorization;
     @Autowired RetrievalIndexJobs jobs;
     @Autowired RetrievalSourceJobs sourceJobs;
     @Autowired SharedRetrievalHost shared;
@@ -341,7 +342,7 @@ class SharedRetrievalIntegrationTest {
         // Intentionally leave the derived projection untouched: final canonical checks must still reject it.
         for(UUID item:stale) jdbc.update("UPDATE nodes SET retracted_at=now() WHERE id=?",item);
         var baseline=new com.specagent.retrieval.search.HybridRetriever(entries,
-            new com.specagent.retrieval.search.VectorCandidateRetriever(new com.specagent.retrieval.embedding.NoopEmbeddingGateway(),entries));
+            new com.specagent.retrieval.search.VectorCandidateRetriever(new com.specagent.retrieval.embedding.NoopEmbeddingGateway(),entries),retrievalAuthorization);
         List<Map<String,Object>> observations=new ArrayList<>(); List<Long> timings=new ArrayList<>();
         double recall=0,mrr=0,baseRecall=0; int labelled=0,empty=0,correctEmpty=0,invalidSources=0,leaks=0; long heapPeak=0;
         Set<String> excluded=Set.of("node:"+node);
@@ -466,7 +467,7 @@ class SharedRetrievalIntegrationTest {
         assertEquals(10,catalog.tools().size());
         assertTrue(catalog.descriptors().stream().filter(d->Set.of("help.search","project.content.discover").contains(d.capabilityId())).allMatch(d->d.readOnly() && d.sideEffectClass().equals("NONE")));
         UUID thread=UUID.randomUUID(),run=UUID.randomUUID(),lease=UUID.randomUUID();
-        jdbc.update("INSERT INTO global_assistant_threads(id) VALUES(?)",thread);
+        jdbc.update("INSERT INTO global_assistant_threads(id,org_id,owner_user_id) VALUES(?,'00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002')",thread);
         jdbc.update("INSERT INTO global_assistant_runs(id,thread_id,status) VALUES(?,?,'CREATED')",run,thread);
         var executionScope=new com.specagent.assistant.runtime.GaExecutionStore.Scope(run,1,lease);
         executions.initialize(executionScope,new com.specagent.assistant.runtime.GaExecutionStore.Binding(thread,UUID.randomUUID(),"OPENCODE_ZEN","test-model","test",Instant.now().plusSeconds(180),catalog.tools()),catalog.descriptors());

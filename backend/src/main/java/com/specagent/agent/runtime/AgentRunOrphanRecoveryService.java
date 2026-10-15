@@ -6,6 +6,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * 文件名:AgentRunOrphanRecoveryService.java
@@ -40,13 +42,38 @@ public class AgentRunOrphanRecoveryService {
     private final AgentRunRepository agentRunRepository;
     private final AgentRunFailureService failureService;
     private final TransactionTemplate txTemplate;
+    /**
+     * 任务级所有权模式(多 Worker)下用于识别"属于其他存活 Worker 的活跃 Run"。
+     * 单执行器模式下为 null,行为与历史完全一致。
+     */
+    private final com.specagent.runtime.execution.RuntimeTaskRepository runtimeTasks;
 
     public AgentRunOrphanRecoveryService(AgentRunRepository agentRunRepository,
                                          AgentRunFailureService failureService,
                                          TransactionTemplate txTemplate) {
+        this(agentRunRepository, failureService, txTemplate,
+                (com.specagent.runtime.execution.RuntimeTaskRepository) null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AgentRunOrphanRecoveryService(AgentRunRepository agentRunRepository,
+                                         AgentRunFailureService failureService,
+                                         TransactionTemplate txTemplate,
+                                         org.springframework.beans.factory.ObjectProvider<
+                                                 com.specagent.runtime.execution.RuntimeTaskRepository>
+                                                 runtimeTasks) {
+        this(agentRunRepository, failureService, txTemplate,
+                runtimeTasks == null ? null : runtimeTasks.getIfAvailable());
+    }
+
+    private AgentRunOrphanRecoveryService(AgentRunRepository agentRunRepository,
+                                          AgentRunFailureService failureService,
+                                          TransactionTemplate txTemplate,
+                                          com.specagent.runtime.execution.RuntimeTaskRepository runtimeTasks) {
         this.agentRunRepository = agentRunRepository;
         this.failureService = failureService;
         this.txTemplate = txTemplate;
+        this.runtimeTasks = runtimeTasks;
     }
 
     /**
@@ -60,10 +87,30 @@ public class AgentRunOrphanRecoveryService {
      * @return 恢复结果(成功与失败计数)
      */
     public OrphanRecoveryResult recoverOrphans() {
-        List<AgentRun> orphans = agentRunRepository.findNonTerminal().stream()
+        List<AgentRun> nonTerminal = agentRunRepository.findNonTerminal().stream()
                 // created 行不是孤儿:它只是排队,本进程的 worker 会正常认领。
                 .filter(run -> run.status() != AgentRunStatus.CREATED)
                 .toList();
+
+        // 多 Worker(任务级所有权)下的关键区分(design §11、§12):启动恢复
+        // 绝不终止<b>其他存活实例</b>正在执行的 Run。只有"没有存活 owner"的
+        // 非终态 Run 才是真正的孤儿;属于存活租约的 Run 由租约/过期扫描收敛,
+        // 不在启动路径上被碰。
+        List<AgentRun> orphans = nonTerminal;
+        int skippedForLiveOwners = 0;
+        if (runtimeTasks != null) {
+            Set<UUID> liveOwned = runtimeTasks.workspaceRunsWithLiveOwner();
+            orphans = nonTerminal.stream()
+                    .filter(run -> !liveOwned.contains(run.id()))
+                    .toList();
+            skippedForLiveOwners = nonTerminal.size() - orphans.size();
+            if (skippedForLiveOwners > 0) {
+                LOG.info("Startup orphan recovery skipped {} non-terminal runs that are "
+                        + "actively leased by other workers; their leases own the outcome",
+                        skippedForLiveOwners);
+            }
+        }
+
         int recovered = 0;
         int failed = 0;
         for (AgentRun orphan : orphans) {
@@ -94,7 +141,6 @@ public class AgentRunOrphanRecoveryService {
             return failed > 0;
         }
     }
-
     /**
      * 诚实终态化单个孤儿。状态转换与 RUN_FAILED 事件由失败服务在同一个
      * REQUIRES_NEW 事务内原子提交——状态未生效时不会追加"本次失败已

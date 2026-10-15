@@ -54,6 +54,13 @@ public class ApiExceptionHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingEndpoint(
+            org.springframework.web.servlet.resource.NoResourceFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiErrorResponse.of("RESOURCE_NOT_FOUND", "Resource not found"));
+    }
+
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ApiErrorResponse> handleApiException(ApiException ex) {
         return ResponseEntity.status(ex.status())
@@ -156,6 +163,13 @@ public class ApiExceptionHandler {
                         "Proposal has already been decided"));
     }
 
+    @ExceptionHandler(com.specagent.agent.runtime.ProposalExecutionConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleProposalExecutionConflict(
+            com.specagent.agent.runtime.ProposalExecutionConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of("PROPOSAL_EXECUTION_CONFLICT", ex.getMessage()));
+    }
+
     @ExceptionHandler(IdempotencyKeyReusedException.class)
     public ResponseEntity<ApiErrorResponse> handleIdempotencyKeyReused(
             IdempotencyKeyReusedException ex) {
@@ -232,6 +246,37 @@ public class ApiExceptionHandler {
             ConnectionNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ApiErrorResponse.of("CONNECTION_NOT_FOUND", ex.getMessage()));
+    }
+
+    /**
+     * 访问控制拒绝(第二阶段 §6)。
+     *
+     * 语义必须分得清,否则验收无法区分三种失败:
+     * <ul>
+     *   <li>{@code concealed=true} → <b>404</b>:资源对该主体不可见,
+     *       绝不通过状态码泄露"存在但无权"。</li>
+     *   <li>未认证/用户禁用 → <b>401</b>:前端据此要求重新登录。</li>
+     *   <li>其余(能力不足、未选组织、成员被停用)→ <b>403</b>。</li>
+     * </ul>
+     * 响应体仍是统一的 {@link ApiErrorResponse} 契约,并携带稳定原因码,
+     * 便于前端与验收矩阵按原因码分支。
+     */
+    @ExceptionHandler(com.specagent.access.AccessDeniedException.class)
+    public ResponseEntity<ApiErrorResponse> handleAccessDenied(
+            com.specagent.access.AccessDeniedException ex) {
+        if (ex.concealed()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiErrorResponse.of("RESOURCE_NOT_FOUND", "Resource not found"));
+        }
+        String reason = ex.reasonCode();
+        boolean unauthenticated = com.specagent.access.AccessReason.UNAUTHENTICATED.equals(reason)
+                || com.specagent.access.AccessReason.USER_DISABLED.equals(reason);
+        if (unauthenticated) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiErrorResponse.of(reason, ex.getMessage()));
+        }
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiErrorResponse.of(reason, ex.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

@@ -49,6 +49,7 @@ class LegacyReplayIntegrationTest {
     @Autowired private RunService runService;
     @Autowired private RunWorker worker;
     @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private WorkspaceRunActorRepository actors;
     @Autowired private com.specagent.agent.snapshot.AgentInputSnapshotBuilder snapshotBuilder;
 
     private Project project;
@@ -76,6 +77,8 @@ class LegacyReplayIntegrationTest {
         jdbcTemplate.update(
                 "UPDATE agent_runs SET produced_answer_id = ?, produced_patch_id = ? WHERE id = ?",
                 answer.id(), patch.id(), legacyRunId);
+        actors.capture(legacyRunId, com.specagent.access.ActorContext.local(
+                com.specagent.access.LocalPrincipalIds.USER_ID,com.specagent.access.LocalPrincipalIds.ORG_ID));
         jdbcTemplate.update(
                 "INSERT INTO agent_run_events (id, run_id, sequence, phase, event_type, payload, created_at) VALUES (?, ?, 1, ?, ?, CAST(? AS jsonb), ?)",
                 UUID.randomUUID(), legacyRunId, "DECIDING", "DECISION_STARTED", "{}", Timestamp.from(Instant.now()));
@@ -106,6 +109,8 @@ class LegacyReplayIntegrationTest {
                 "INSERT INTO agent_runs (id, project_id, route_id, trigger_type, input_node_id, status, trace, created_at) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?)",
                 legacyRunId, project.id(), route.id(), "answer_cycle", question.id(), "persisted", "\"created\"", Timestamp.from(Instant.now()));
         jdbcTemplate.update("UPDATE agent_runs SET produced_answer_id = ?, produced_patch_id = ? WHERE id = ?", answer.id(), patch.id(), legacyRunId);
+        actors.capture(legacyRunId, com.specagent.access.ActorContext.local(
+                com.specagent.access.LocalPrincipalIds.USER_ID,com.specagent.access.LocalPrincipalIds.ORG_ID));
         jdbcTemplate.update(
                 "INSERT INTO agent_run_events (id, run_id, sequence, phase, event_type, payload, created_at) VALUES (?, ?, 1, ?, ?, CAST(? AS jsonb), ?)",
                 UUID.randomUUID(), legacyRunId, "DECIDING", "DECISION_STARTED", "{\"snapshotId\":\"" + fakeSnapshotId + "\"}", Timestamp.from(Instant.now()));

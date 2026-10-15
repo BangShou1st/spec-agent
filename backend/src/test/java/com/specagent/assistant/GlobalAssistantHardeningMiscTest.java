@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -83,6 +84,7 @@ class GlobalAssistantHardeningMiscTest {
         }
     }
     @Autowired GlobalAssistantCatalogService catalog;
+    @SpyBean com.specagent.assistant.tool.TavilyWebService web;
     @Autowired GlobalAssistantConversationService conversations;
     @Autowired ProjectService projects;
     @Autowired Executor gaExecutor;
@@ -112,6 +114,10 @@ class GlobalAssistantHardeningMiscTest {
         assertThat(registry.descriptorsFor(com.specagent.capability.CapabilityQueryContext.empty()).size())
                 .as("flood must exceed the old global truncation window")
                 .isGreaterThan(32);
+        // 对运行环境封闭:用户机器可能配置了 Tavily key(环境变量或设置库),
+        // 目录会按设计把 web 工具纳入模型可见列表;本断言只关心 V1 核心目录
+        // 在能力洪泛下的稳定性,显式桩掉 web 配置。
+        Mockito.doReturn(false).when(web).configured();
         var ids = catalog.modelCatalog().stream().map(CapabilityDescriptor::capabilityId).toList();
         assertThat(ids).containsExactlyInAnyOrder(
                 "project.create", "project.search", "project.list_recent", "project.get_summary",

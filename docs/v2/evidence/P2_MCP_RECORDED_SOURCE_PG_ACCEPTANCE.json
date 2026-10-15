@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-14",
+  "database": "isolated spec_agent_test 127.0.0.1:5546",
+  "migration": 91,
+  "protocol": 13,
+  "focused": {
+    "pgTests": 13,
+    "boundaryTests": 6,
+    "failures": 0,
+    "errors": 0
+  },
+  "full": {
+    "tests": 1938,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 33,
+    "suites": 311,
+    "command": "SPEC_AGENT_REBUILD_PYTHON_ACCEPTANCE=true gradlew.bat testNonLive"
+  },
+  "oldBinaryStartup": {
+    "protocol": 12,
+    "databaseProtocol": 13,
+    "exitCode": 1,
+    "log": "backend/build/p2-acceptance/v91-old-protocol12-startup.log"
+  },
+  "candidate": {
+    "path": "backend/build/p2-acceptance/runtime-v91-accepted-protocol13.jar",
+    "sha256": "D813BC4A91C3877438583AE2BDB82032C6E932CB58D9733DED76012B5BC94BFB",
+    "deployed": false
+  },
+  "limitations": [
+    "Real OIDC two API/two Worker browser matrix pending",
+    "No external MCP server or paid model called in these source-binding tests",
+    "Late response rejection does not undo external side effects",
+    "Full P2 remains incomplete"
+  ]
+}

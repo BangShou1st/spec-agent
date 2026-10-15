@@ -5,6 +5,7 @@
        同时管理自定义 Provider 的创建/编辑弹窗。
 -->
 <script setup lang="ts">
+import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
 import { computed, onMounted, ref } from 'vue'
 import { useProviderSettingsStore } from '@/features/model-settings/state/providerSettingsStore'
 import { useCustomProviderStore } from '@/features/model-settings/state/customProviderStore'
@@ -21,6 +22,7 @@ import CustomProviderDialog from './CustomProviderDialog.vue'
  * 显式的「设为当前 Provider」操作。
  */
 const providers = useProviderSettingsStore()
+const canManage = useOrganizationCapability('CREDENTIAL_MANAGE')
 const custom = useCustomProviderStore()
 
 // 预设 Provider 是常驻 Tab；Custom 是用户自建项：未配置时通过末尾 “+” 创建，
@@ -51,6 +53,7 @@ function selectTab(value: ModelProvider): void {
  * 视图的切换推迟到创建成功、胶囊真正出现之后。
  */
 function openCreate(): void {
+  if (!canManage.value) return
   custom.clearError()
   dialogMode.value = 'create'
   dialogOpen.value = true
@@ -58,6 +61,7 @@ function openCreate(): void {
 
 /** 编辑复用创建弹窗,因此显示名称在创建后仍可编辑。 */
 function openEdit(): void {
+  if (!canManage.value) return
   custom.clearError()
   dialogMode.value = 'edit'
   dialogOpen.value = true
@@ -125,7 +129,7 @@ onMounted(() => {
         >当前</span>
       </button>
       <button
-        v-if="!customConfigured"
+        v-if="canManage && !customConfigured"
         type="button"
         class="provider-tab provider-tab--add"
         aria-label="添加自定义 Provider"

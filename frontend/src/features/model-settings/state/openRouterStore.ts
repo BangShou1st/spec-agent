@@ -3,6 +3,7 @@
 //       保存/校验,以及"可用列表 vs 展示列表"与已存选中项的可见性规则。
 
 import { defineStore } from 'pinia'
+import { identityScopedStore, privateIdentityWork, PrivateIdentityExpiredError } from '@/shared/state/privateIdentity'
 import { toDisplayError } from '@/shared/http/displayError'
 import {
   getOpenRouterStatus,
@@ -26,6 +27,8 @@ const displayError: (err: unknown) => ProviderError = toDisplayError
 
 export const useOpenRouterStore = defineStore('openRouter', {
   state: () => ({
+    identityEpoch: 0,
+    privateIdentity: null as string | null,
     configured: false,
     maskedKey: null as string | null,
     selectedModel: null as string | null,
@@ -59,6 +62,13 @@ export const useOpenRouterStore = defineStore('openRouter', {
     },
   },
   actions: {
+    bindIdentity(identity: string | null): void {
+      if (identity === this.privateIdentity && identity !== null) return
+      const epoch = this.identityEpoch + 1
+      this.$reset()
+      this.identityEpoch = epoch
+      this.privateIdentity = identity
+    },
     ensurePersistedVisible(): void {
       // 已持久化的选中项即使在模型(重新)拉取之前也必须保持可见。
       // 它以"已保存的值"身份被前置插入,绝不是悄悄换选了另一个模型。
@@ -74,124 +84,189 @@ export const useOpenRouterStore = defineStore('openRouter', {
       this.freeOnly = value
     },
     async loadStatus(): Promise<void> {
-      this.loading = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        const s = await getOpenRouterStatus()
-        this.configured = s.configured
-        this.maskedKey = s.maskedKey
-        this.selectedModel = s.selectedModel
-        this.configRevision = s.configRevision
-        this.validated = s.validated
-        this.ensurePersistedVisible()
-        this.failed = false
+      identityStore.loading = true
+      identityStore.error = null
+      try {
+        const s = await privateIdentityWork(identityStore, identityEpoch, () => (getOpenRouterStatus()))
+        identityStore.configured = s.configured
+        identityStore.maskedKey = s.maskedKey
+        identityStore.selectedModel = s.selectedModel
+        identityStore.configRevision = s.configRevision
+        identityStore.validated = s.validated
+        identityStore.ensurePersistedVisible()
+        identityStore.failed = false
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
       } finally {
-        this.loading = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.loading = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return }
+        throw identityError
       }
     },
     async probe(apiKey: string): Promise<string[]> {
-      if (this.probing || !apiKey.trim()) {
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (identityStore.probing || !apiKey.trim()) {
         return []
       }
-      this.probing = true
-      this.error = null
+      identityStore.probing = true
+      identityStore.error = null
       try {
-        const res = await probeOpenRouter(apiKey.trim())
+        const res = await privateIdentityWork(identityStore, identityEpoch, () => (probeOpenRouter(apiKey.trim())))
         // 兼容旧后端：没有 allModels 时回退到 freeModels（只展示免费列表）。
         const all = Array.isArray(res.allModels) ? res.allModels : res.freeModels
-        this.availableModels = [...all]
-        this.allModels = [...all]
-        this.freeModels = [...(res.freeModels ?? [])]
-        this.selectedModel = null
-        this.modelUnavailable = false
-        this.failed = false
-        return this.allModels
+        identityStore.availableModels = [...all]
+        identityStore.allModels = [...all]
+        identityStore.freeModels = [...(res.freeModels ?? [])]
+        identityStore.selectedModel = null
+        identityStore.modelUnavailable = false
+        identityStore.failed = false
+        return identityStore.allModels
       } catch (err) {
-        this.error = displayError(err)
-        this.failed = true
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
+        identityStore.failed = true
         return []
       } finally {
-        this.probing = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.probing = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return [] }
+        throw identityError
       }
     },
     async refreshModels(): Promise<void> {
-      if (this.loadingModels) {
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (identityStore.loadingModels) {
         return
       }
-      this.loadingModels = true
-      this.error = null
+      identityStore.loadingModels = true
+      identityStore.error = null
       try {
-        const res = await listOpenRouterModels()
+        const res = await privateIdentityWork(identityStore, identityEpoch, () => (listOpenRouterModels()))
         // 兼容旧后端：没有 allModels 时回退到 freeModels（只展示免费列表）。
         const all = Array.isArray(res.allModels) ? res.allModels : res.freeModels
-        this.availableModels = [...all]
-        this.allModels = [...all]
-        this.freeModels = [...(res.freeModels ?? [])]
+        identityStore.availableModels = [...all]
+        identityStore.allModels = [...all]
+        identityStore.freeModels = [...(res.freeModels ?? [])]
         // 不可用判定发生在"为可见性前置插入持久化值"之前、对照真实在线列表,
         // 因此注入的过期选中项仍会被如实判定为不可用。
-        const visible = this.freeOnly && this.freeModels.length > 0 ? this.freeModels : this.allModels
-        this.modelUnavailable = Boolean(
-          this.configured && this.selectedModel && !visible.includes(this.selectedModel),
+        const visible = identityStore.freeOnly && identityStore.freeModels.length > 0 ? identityStore.freeModels : identityStore.allModels
+        identityStore.modelUnavailable = Boolean(
+          identityStore.configured && identityStore.selectedModel && !visible.includes(identityStore.selectedModel),
         )
-        this.ensurePersistedVisible()
-        this.failed = false
+        identityStore.ensurePersistedVisible()
+        identityStore.failed = false
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
         // 401/403/429/5xx 保持为硬错误,绝不降级为手动模式。
-        this.failed = true
+        identityStore.failed = true
       } finally {
-        this.loadingModels = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.loadingModels = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return }
+        throw identityError
       }
     },
     async save(apiKey: string | null, selectedModel: string): Promise<boolean> {
-      if (this.saving) {
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (identityStore.saving) {
         return false
       }
-      this.saving = true
-      this.error = null
+      identityStore.saving = true
+      identityStore.error = null
       try {
-        const s = await saveOpenRouter(apiKey, selectedModel)
-        this.configured = s.configured
-        this.maskedKey = s.maskedKey
-        this.selectedModel = s.selectedModel
-        this.configRevision = s.configRevision
-        this.validated = s.validated
-        this.ensurePersistedVisible()
-        this.failed = false
+        const s = await privateIdentityWork(identityStore, identityEpoch, () => (saveOpenRouter(apiKey, selectedModel)))
+        identityStore.configured = s.configured
+        identityStore.maskedKey = s.maskedKey
+        identityStore.selectedModel = s.selectedModel
+        identityStore.configRevision = s.configRevision
+        identityStore.validated = s.validated
+        identityStore.ensurePersistedVisible()
+        identityStore.failed = false
         return true
       } catch (err) {
-        this.error = displayError(err)
-        this.failed = true
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
+        identityStore.failed = true
         return false
       } finally {
-        this.saving = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.saving = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
     async validate(): Promise<boolean> {
-      if (this.validating) {
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (identityStore.validating) {
         return false
       }
-      this.validating = true
-      this.error = null
+      identityStore.validating = true
+      identityStore.error = null
       try {
-        const s = await validateOpenRouter()
-        this.configured = s.configured
-        this.maskedKey = s.maskedKey
-        this.selectedModel = s.selectedModel
-        this.configRevision = s.configRevision
-        this.validated = s.validated
-        this.ensurePersistedVisible()
-        this.failed = false
+        const s = await privateIdentityWork(identityStore, identityEpoch, () => (validateOpenRouter()))
+        identityStore.configured = s.configured
+        identityStore.maskedKey = s.maskedKey
+        identityStore.selectedModel = s.selectedModel
+        identityStore.configRevision = s.configRevision
+        identityStore.validated = s.validated
+        identityStore.ensurePersistedVisible()
+        identityStore.failed = false
         return s.validated
       } catch (err) {
-        this.error = displayError(err)
-        this.failed = true
-        this.validated = false
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
+        identityStore.failed = true
+        identityStore.validated = false
         return false
       } finally {
-        this.validating = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.validating = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
     clearError(): void {

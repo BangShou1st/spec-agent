@@ -5,6 +5,7 @@
        弹窗刻意不内嵌 Provider 卡片,以免卡片头与状态胶囊把字段序列拦腰截断。
 -->
 <script setup lang="ts">
+import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
 import { computed } from 'vue'
 import UiDialogShell from '@/shared/ui/UiDialogShell.vue'
 import CustomProviderForm from './CustomProviderForm.vue'
@@ -20,6 +21,7 @@ const props = defineProps<{ open: boolean; mode: 'create' | 'edit' }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const store = useCustomProviderStore()
+const canManage = useOrganizationCapability('CREDENTIAL_MANAGE')
 
 const title = computed(() => (props.mode === 'edit'
   ? `编辑「${store.displayName?.trim() || 'Custom'}」`
@@ -43,7 +45,7 @@ function close(): void {
 
 <template>
   <UiDialogShell
-    :open="open"
+    :open="open && canManage"
     :title="title"
     :description="description"
     :test-id="testId"

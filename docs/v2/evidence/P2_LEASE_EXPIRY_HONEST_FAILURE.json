@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-14",
+  "scenario": "In-flight GA execution outlives the runtime-task lease (honest failure + lease expiry)",
+  "environment": {
+    "database": "isolated spec_agent_p2_workers_20261014a",
+    "securityMode": "OIDC",
+    "securityProtocol": 13,
+    "jar": "backend/build/p2-acceptance/runtime-nativefake-protocol13.jar",
+    "jarSha256": "3C75B697B58CFFCC791116D070464F197D208F8AD0A2861B4F13928EED23A37B",
+    "nativeFixture": "ga-native-transport=fake, ga-native-fragment-delay-ms=6000",
+    "workerLeaseSeconds": 15,
+    "configuredHeartbeatSeconds": 3
+  },
+  "run": {
+    "runId": "1e53f260-3ecd-428a-b744-2ba8ea2e4c80",
+    "threadId": "087c3cc4-cadd-4bae-adfc-2849d14eafd1",
+    "businessStatus": "FAILED",
+    "businessErrorCode": "RUN_INTERRUPTED",
+    "startedAt": "2026-10-14 23:02:54.502+08",
+    "completedAt": "2026-10-14 23:03:09.597+08",
+    "elapsedSeconds": 15.1,
+    "ledger": {"MODEL": {"status": "UNKNOWN", "callSequence": 300},
+      "note": "the interrupted model call is retained as UNKNOWN; it was NOT replayed and the budget was NOT reset"},
+    "runtimeTask": {"state": "FAILED", "attemptCount": 1, "workerId": null,
+      "lastErrorCode": "EXECUTION_OUTCOME_UNKNOWN"},
+    "attempt": {"outcome": "LEASE_EXPIRED", "failureReason": "lease expired before completion",
+      "startedAt": "2026-10-14T15:02:54.552Z", "endedAt": "2026-10-14T15:03:09.568Z"}
+  },
+  "rootCause": {
+    "finding": "RuntimeTaskScheduler.heartbeat() has no caller anywhere in production code; no scheduled lease-renewal task exists; spec.agent.execution.heartbeat-seconds is only read/written, never consumed.",
+    "designReference": "PHASE1_MULTI_WORKER_EXECUTION_DESIGN.md §6.4 requires an independent bounded heartbeat executor that must not use the model-call thread pool.",
+    "consequence": "Any execution whose wall-clock duration exceeds lease-seconds is recovered as LEASE_EXPIRED and terminalized with EXECUTION_OUTCOME_UNKNOWN, even while the worker process is healthy and actively streaming. Defaults (lease 60s) still fail for real inference exceeding 60s; the documented 180s GA execution fence cannot be honoured with real providers.",
+    "secondaryFinding": "All @Scheduled tasks share Spring Boot's default single-thread scheduler, so a blocking execution also starves the cross-instance SSE catch-up poller on the executing instance."
+  },
+  "stillValidEvidence": [
+    "Live in-flight SSE delivery from the peer API: the B-subscription received sequence 4 and 5 after reconnect/catch-up while the run was still executing (see cross-instance scenario output)"
+  ],
+  "limitations": [
+    "The executing Worker identity vs the SSE-serving JVM identity was not yet confirmed for this run; the peer subscription is not yet recorded as cross-instance catch-up evidence",
+    "This is a reproduced defect, not an accepted behaviour; a fix and a regression test are required"
+  ],
+  "stageCompleted": false
+}

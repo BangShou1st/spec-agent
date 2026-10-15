@@ -29,6 +29,7 @@ const props = defineProps<{
   activeRouteId: string | null
   commandPending: boolean
   pendingRouteCommand: string | null
+  canWrite?: boolean
   /** tip 为"未回答问题"的路线：起草下一个问题注定被不变式拒绝，入口置灰。 */
   draftBlockedRouteIds?: string[]
 }>()
@@ -172,7 +173,7 @@ function openRoute(route: GraphWorkspaceRouteView): void {
               <button class="route-card__menu-item" data-test="isolate-route" @click="isolateRoute(route)">{{ isIsolated(route.id) ? '退出只看' : '只看这条路线' }}</button>
             </div>
 
-            <div class="route-card__group" data-test="runtime-actions-group">
+            <div v-if="canWrite" class="route-card__group" data-test="runtime-actions-group">
               <button v-if="route.lifecycleStatus === 'open'" class="route-card__menu-item" data-test="draft-next-route" :disabled="commandPending || (props.draftBlockedRouteIds ?? []).includes(route.id)" :title="(props.draftBlockedRouteIds ?? []).includes(route.id) ? '当前问题还没有回答，请先回答后再起草下一个问题' : '让 AI 在这条路线起草下一个问题'" @click="emit('draft-next', route.id)">起草下一个问题</button>
               <button v-if="route.lifecycleStatus === 'open' && !route.isActive" class="route-card__menu-item" data-test="activate-route" :disabled="commandPending" @click="emit('activate', route.id)">设为运行路线</button>
               <button v-if="route.lifecycleStatus !== 'open'" class="route-card__menu-item" data-test="restore-route" :disabled="commandPending" @click="emit('restore', route.id)">恢复路线</button>

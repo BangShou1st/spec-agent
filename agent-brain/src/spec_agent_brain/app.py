@@ -38,6 +38,14 @@ from .state_update import handle_state_update
 
 logger = logging.getLogger("spec_agent_brain")
 
+# GA 执行协议版本公告(design §8):本构建接受的执行信封与执行事件版本。
+# 唯一事实来源是 global_assistant.contracts 的 Literal 字面量;这里显式列出,
+# 使 /health 成为 Java 发起执行前的协商端点——本构建不认识的版本绝不会被发送。
+GA_EXECUTION_PROTOCOL_VERSIONS = [
+    "ga-execution.v1",
+    "ga-execution-event.v1",
+]
+
 
 def _fail(reason: Exception, run_id: Any, operation: str) -> HTTPException:
     """把真实失败原因写进服务日志,再折叠成统一的 502 状态码。
@@ -73,7 +81,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             invocation_counts[call_type] += 1
             last_run_ids[call_type] = run_id
 
-    def model_client() -> ModelClient:
+    def model_client(execution_grant: str | None = None) -> ModelClient:
         # 配置校验在 load_settings 已保证只有 fake/broker 能到达这里;
         # 手工构造的非法 Settings 仍在此显式失败,绝不静默回落 fake。
         if resolved.model_mode == "broker":
@@ -81,10 +89,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 resolved.broker_url,
                 resolved.internal_secret,
                 resolved.broker_timeout_seconds,
+                execution_grant=execution_grant,
             )
         if resolved.model_mode == "fake":
             return FakeModelClient()
         raise ConfigurationError(f"Unknown model mode: {resolved.model_mode!r}")
+
+    from contextlib import contextmanager
+
+    @contextmanager
+    def request_model_client(execution_grant: str | None):
+        client = model_client(execution_grant)
+        try:
+            yield client
+        finally:
+            if resolved.model_mode == "broker":
+                client.close()
 
     def config_error() -> str | None:
         try:
@@ -123,6 +143,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "ready": error is None,
             "configError": error,
             "protocolVersion": INPUT_PROTOCOL_VERSION,
+            # GA 执行协议的能力公告(design §8"显式版本化,不默认允许旧请求"):
+            # Java 在发起执行前核对本列表,本构建不认识的版本绝不发送。
+            # contracts.py 的 Literal 字面量是唯一事实来源;两者必须同步演进。
+            "gaExecutionProtocolVersions": GA_EXECUTION_PROTOCOL_VERSIONS,
+            "workspaceRpcGrantVersions": ["workspace-rpc-grant.v1"],
             "modelMode": resolved.model_mode,
             "authEnabled": resolved.auth_enabled,
             "invocations": {
@@ -139,21 +164,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(retrieval_router(resolved, [Depends(require_internal_token)]))
 
     @app.post("/v1/state-updates", dependencies=[Depends(require_internal_token)])
-    def state_updates(request: Dict[str, Any]) -> Dict[str, Any]:
+    def state_updates(request: Dict[str, Any], execution_grant: Annotated[str | None, Header(alias="X-Spec-Agent-Execution-Grant")] = None) -> Dict[str, Any]:
         envelope = _parse(request)
         record_invocation("STATE_UPDATE", str(envelope.run_id))
         try:
-            response = handle_state_update(envelope, model_client())
+            with request_model_client(execution_grant) as client:
+                response = handle_state_update(envelope, client)
         except (StateUpdateBrainContractError, ModelClientError) as exc:
             raise _fail(exc, envelope.run_id, "STATE_UPDATE") from exc
         return _dump(response)
 
     @app.post("/v1/decisions", dependencies=[Depends(require_internal_token)])
-    def decisions(request: Dict[str, Any]) -> Dict[str, Any]:
+    def decisions(request: Dict[str, Any], execution_grant: Annotated[str | None, Header(alias="X-Spec-Agent-Execution-Grant")] = None) -> Dict[str, Any]:
         envelope = _parse(request)
         record_invocation("DECISION", str(envelope.run_id))
         try:
-            response = handle_decision(envelope, model_client())
+            with request_model_client(execution_grant) as client:
+                response = handle_decision(envelope, client)
         except ActionIneligibleBrainError as exc:
             logger.info("DECISION ineligible run=%s: %s", envelope.run_id, exc)
             raise HTTPException(status_code=409, detail="ACTION_INELIGIBLE") from exc
@@ -162,10 +189,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return _dump(response)
 
     @app.post("/v1/artifacts", dependencies=[Depends(require_internal_token)])
-    def artifacts(request: Dict[str, Any]) -> Dict[str, Any]:
+    def artifacts(request: Dict[str, Any], execution_grant: Annotated[str | None, Header(alias="X-Spec-Agent-Execution-Grant")] = None) -> Dict[str, Any]:
         envelope = _parse(request)
         try:
-            response = handle_artifact(envelope, model_client())
+            with request_model_client(execution_grant) as client:
+                response = handle_artifact(envelope, client)
         except (ArtifactBrainContractError, ModelClientError) as exc:
             raise _fail(exc, envelope.run_id, "ARTIFACT") from exc
         data = response.model_dump(mode="json", by_alias=True)

@@ -17,14 +17,39 @@ import org.springframework.transaction.annotation.Transactional;
 public class RetrievalStore {
     private final NamedParameterJdbcTemplate jdbc;
     private final RetrievalSourceVerifier verifier;
+    private final RetrievalGrantAuthorization authorization;
+    private final com.specagent.retrieval.workload.RebuildLeaseCoordinator rebuilds;
     private final RetrievalSourcePolicy sourcePolicy=new RetrievalSourcePolicy();
-    public RetrievalStore(NamedParameterJdbcTemplate jdbc,RetrievalSourceVerifier verifier) { this.jdbc=jdbc; this.verifier=verifier; }
+    public RetrievalStore(NamedParameterJdbcTemplate jdbc,RetrievalSourceVerifier verifier,RetrievalGrantAuthorization authorization,com.specagent.retrieval.workload.RebuildLeaseCoordinator rebuilds) {
+        this.jdbc=jdbc; this.verifier=verifier; this.authorization=authorization;
+        this.rebuilds=rebuilds;
+    }
     public record Scope(UUID corpusId,UUID projectId,UUID routeId,Set<String> scopes,Set<String> routeRefs,
                         Set<String> graphRefs,Set<String> excludedRefs,String query,int laneLimit,int maxItems,int maxChars) {}
+    public RetrievalGrantAuthorization.IndexService authorizeIndexCorpus(UUID corpus) {
+        return authorization.indexService(corpus);
+    }
+    public com.specagent.retrieval.workload.RebuildLeaseCoordinator.Token captureRebuild(UUID corpus,UUID generation) {
+        return rebuilds.capture(corpus,generation);
+    }
+    public void authorizeRebuildForJob(UUID job) {rebuilds.validateForJob(job);}
+    public UUID embeddingOrganization(Envelope request) {
+        Scope scope=guard(request);
+        var rows=jdbc.queryForList("SELECT actor_org_id,service_org_id,service_kind FROM retrieval_scope_grants WHERE id=:id",Map.of("id",request.scopeGrant().grantId()));
+        if(rows.size()!=1) throw new IllegalStateException("STALE_SCOPE_GRANT");
+        var row=rows.getFirst();
+        UUID org=(UUID)("INDEX_JOB".equals(request.workload().kind())?row.get("service_org_id"):row.get("actor_org_id"));
+        if(org==null && "SYSTEM_HELP_INDEXING".equals(row.get("service_kind")) && CuratedHelpSources.CORPUS.equals(scope.corpusId()))
+            return com.specagent.access.LocalPrincipalIds.ORG_ID;
+        if(org==null) throw new IllegalStateException("STALE_SCOPE_GRANT");
+        return org;
+    }
 
     /** Initial empty generation is valid: lexical retrieval need not wait for vector backfill. */
     @Transactional
     public UUID ensureProjectGeneration(UUID project) {
+        authorizeIndexCorpus(project);
+        captureRebuild(project,null);
         if(jdbc.queryForList("SELECT id FROM projects WHERE id=:id FOR UPDATE",Map.of("id",project)).isEmpty())
             throw new IllegalStateException("STALE_SCOPE_GRANT");
         var existing=jdbc.queryForList("SELECT active_generation FROM retrieval_index_heads WHERE corpus_id=:id",Map.of("id",project));
@@ -39,16 +64,18 @@ public class RetrievalStore {
 
     @Transactional
     public Search issueProject(RetrievalQuery query,UUID workloadId,String workloadKind,Set<String> excludedRefs) {
+        var delegation=authorization.issue(query.projectId());
         UUID generation=ensureProjectGeneration(query.projectId());
         Scope scope=new Scope(query.projectId(),query.projectId(),query.routeId(),
                 query.scopes().stream().map(Enum::name).collect(java.util.stream.Collectors.toSet()),query.routeSourceRefs(),
                 query.graphNodeIds().stream().map(id->"node:"+id).collect(java.util.stream.Collectors.toSet()),Set.copyOf(excludedRefs),
                 query.queryText(),48,Math.max(1,Math.min(12,query.maxItems())),Math.max(1,Math.min(12000,query.maxChars())));
         validateScope(scope);
-        return issue(scope,generation,workloadId,workloadKind);
+        return issue(scope,generation,workloadId,workloadKind,delegation);
     }
     @Transactional public UUID ensureHelpGeneration() {
         UUID corpus=CuratedHelpSources.CORPUS;
+        captureRebuild(corpus,null);
         jdbc.queryForList("SELECT pg_advisory_xact_lock(hashtext(:key))",Map.of("key",corpus.toString()));
         var existing=jdbc.queryForList("SELECT active_generation FROM retrieval_index_heads WHERE corpus_id=:corpus",Map.of("corpus",corpus));
         if(!existing.isEmpty()) return (UUID)existing.getFirst().get("active_generation");
@@ -60,26 +87,34 @@ public class RetrievalStore {
     @Transactional public Search issueHelp(String query,int limit,UUID workload) {
         if(query==null || query.isBlank() || query.length()>2000) throw new IllegalArgumentException("RETRIEVAL_PROTOCOL_ERROR");
         var scope=new Scope(CuratedHelpSources.CORPUS,null,null,Set.of("HELP"),Set.of(),Set.of(),Set.of(),query,48,Math.max(1,Math.min(8,limit)),8000);
-        return issue(scope,ensureHelpGeneration(),workload,"GA_RUN");
+        var delegation=authorization.issue(null);
+        return issue(scope,ensureHelpGeneration(),workload,"GA_RUN",delegation);
     }
-    private Search issue(Scope scope,UUID generation,UUID workloadId,String workloadKind) {
+    private Search issue(Scope scope,UUID generation,UUID workloadId,String workloadKind,RetrievalGrantAuthorization.Delegation delegation) {
         UUID request=UUID.randomUUID(),grant=UUID.randomUUID(); Instant deadline=Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS).plusSeconds(30);
-        Workload workload=new Workload(workloadKind,workloadId,1);
+        long epoch=workloadEpoch(scope,workloadId,workloadKind,delegation.actor());
+        Workload workload=new Workload(workloadKind,workloadId,epoch);
         String profile=(String)jdbc.queryForList("SELECT profile_id FROM retrieval_index_generations WHERE id=:id",Map.of("id",generation)).getFirst().get("profile_id");
         jdbc.update("""
                 INSERT INTO retrieval_scope_grants(id,request_id,corpus_id,project_id,route_id,workload_kind,workload_id,epoch,
-                    profile_id,index_generation,deadline,scope)
-                VALUES(:id,:request,:corpus,:project,:route,:kind,:workload,1,:profile,:generation,:deadline,CAST(:scope AS jsonb))
+                    profile_id,index_generation,deadline,scope,actor_user_id,actor_org_id,actor_source,execution_token)
+                VALUES(:id,:request,:corpus,:project,:route,:kind,:workload,:epoch,:profile,:generation,:deadline,CAST(:scope AS jsonb),
+                    :actorUser,:actorOrg,:actorSource,CAST(:executionToken AS jsonb))
                 """,Maps.of("id",grant,"request",request,"corpus",scope.corpusId(),"project",scope.projectId(),"route",scope.routeId(),
-                "kind",workloadKind,"workload",workloadId,"profile",profile,"generation",generation,
-                "deadline",Timestamp.from(deadline),"scope",write(scope)));
+                "kind",workloadKind,"workload",workloadId,"epoch",epoch,"profile",profile,"generation",generation,
+                "deadline",Timestamp.from(deadline),"scope",write(scope),"actorUser",delegation.actor().userId(),
+                "actorOrg",delegation.actor().orgId(),"actorSource",delegation.actor().source().name(),
+                "executionToken",delegation.token()==null?null:write(delegation.token())));
         return new Search(protocol(profile),request,workload,new Grant(grant,1,deadline),profile,generation,deadline,
                 "python-rag.v1",scope.query(),"HYBRID",new Limits(scope.maxItems(),scope.maxChars(),scope.laneLimit()));
     }
 
     public Scope guard(Envelope request) {
         validate(request);
-        dimensions(request.profileId());
+        // A bounded indexing grant must not become a search/corpus enumeration grant.
+        if("INDEX_JOB".equals(request.workload().kind())
+                && !(request instanceof IndexBatch) && !(request instanceof SplitRequest))
+            throw new IllegalStateException("STALE_SCOPE_GRANT");
         if(!request.deadline().isAfter(Instant.now())) throw new IllegalStateException("DEADLINE_EXCEEDED");
         var rows=jdbc.queryForList("SELECT * FROM retrieval_scope_grants WHERE id=:id AND deadline>clock_timestamp() AND revoked=FALSE",
                 Map.of("id",request.scopeGrant().grantId()));
@@ -91,7 +126,12 @@ public class RetrievalStore {
                 || ((Number)row.get("version")).longValue()!=request.scopeGrant().version()
                 || !deadline.equals(request.deadline()) || !deadline.equals(request.scopeGrant().expiresAt()))
             throw new IllegalStateException("STALE_SCOPE_GRANT");
-        Scope scope=read(row.get("scope").toString(),Scope.class); validateScope(scope);
+        Scope scope=read(row.get("scope").toString(),Scope.class);
+        if(!"INDEX_JOB".equals(request.workload().kind())) authorization.validate(scope.projectId(),row);
+        else authorization.validateIndexService(scope.corpusId(),scope.projectId(),row);
+        rebuilds.validateGrant(row);
+        dimensions(request.profileId());
+        validateScope(scope);
         boolean indexJob="INDEX_JOB".equals(request.workload().kind());
         if(indexJob) {
             if(!Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM retrieval_index_jobs WHERE id=:id AND epoch=:epoch AND state='CLAIMED' AND deadline>clock_timestamp())",
@@ -101,17 +141,35 @@ public class RetrievalStore {
             if(!Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM retrieval_index_heads WHERE corpus_id=:corpus AND active_generation=:generation AND profile_id=:profile)",
                     Map.of("corpus",scope.corpusId(),"generation",request.indexGeneration(),"profile",request.profileId()),Boolean.class)))
                 throw new IllegalStateException("INDEX_GENERATION_MISMATCH");
-            if("GA_RUN".equals(request.workload().kind()) && !Boolean.TRUE.equals(jdbc.queryForObject("""
-                    SELECT EXISTS(SELECT 1 FROM global_assistant_runs r JOIN ga_executions e ON e.run_id=r.id
-                    WHERE r.id=:id AND r.status='RUNNING' AND r.cancel_requested_at IS NULL
-                      AND e.execution_epoch=:epoch AND e.deadline>clock_timestamp())
-                    """,Map.of("id",request.workload().id(),"epoch",request.workload().executionEpoch()),Boolean.class)))
-                throw new IllegalStateException("STALE_WORKLOAD");
-            if("PROJECT_RUN".equals(request.workload().kind()) && !Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM agent_runs WHERE id=:id AND project_id=:project AND status IN ('CREATED','RUNNING'))",
-                    Map.of("id",request.workload().id(),"project",scope.projectId()),Boolean.class)))
+            if(!"CONTEXT_PROJECTION".equals(request.workload().kind())
+                    && workloadEpoch(scope,request.workload().id(),request.workload().kind(),
+                    authorization.actorFromGrant(row))!=request.workload().executionEpoch())
                 throw new IllegalStateException("STALE_WORKLOAD");
         }
         return scope;
+    }
+
+    private long workloadEpoch(Scope scope,UUID id,String kind,com.specagent.access.ActorContext actor) {
+        if("CONTEXT_PROJECTION".equals(kind)) return 1;
+        String sql;
+        if("GA_RUN".equals(kind)) sql="""
+            SELECT e.execution_epoch FROM global_assistant_runs r JOIN ga_executions e ON e.run_id=r.id
+            JOIN ga_run_authorizations a ON a.run_id=r.id
+            JOIN global_assistant_threads t ON t.id=r.thread_id
+            WHERE r.id=:id AND r.status='RUNNING' AND r.cancel_requested_at IS NULL AND e.deadline>clock_timestamp()
+                AND a.actor_user_id=:user AND a.actor_org_id=:org AND a.actor_source=:source
+                AND t.owner_user_id=:user AND t.org_id=:org
+            """;
+        else if("PROJECT_RUN".equals(kind)) sql="""
+            SELECT GREATEST(r.owner_epoch,1) FROM agent_runs r JOIN workspace_run_authorizations a ON a.run_id=r.id
+            WHERE r.id=:id AND r.project_id=:project AND lower(r.status) IN ('created','running')
+                AND a.actor_user_id=:user AND a.actor_org_id=:org AND a.actor_source=:source
+            """;
+        else throw new IllegalStateException("STALE_WORKLOAD");
+        var epochs=jdbc.queryForList(sql,Maps.of("id",id,"project",scope.projectId(),"user",actor.userId(),
+                "org",actor.orgId(),"source",actor.source().name()),Long.class);
+        if(epochs.size()!=1) throw new IllegalStateException("STALE_WORKLOAD");
+        return epochs.getFirst();
     }
 
     private void validateScope(Scope scope) {

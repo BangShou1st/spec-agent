@@ -39,6 +39,11 @@ public class ConnectionMcpConnectionLookup implements McpConnectionLookupPort {
     }
 
     @Override
+    public Optional<McpConnectionTarget> lockVisibleResultSource(UUID rowId) {
+        return repository.lockVisibleResultSource(rowId).map(ConnectionMcpConnectionLookup::toTarget);
+    }
+
+    @Override
     public Optional<McpConnectionTarget> findByConnectionId(String connectionId) {
         return repository.findById(connectionId).map(ConnectionMcpConnectionLookup::toTarget);
     }
@@ -51,6 +56,6 @@ public class ConnectionMcpConnectionLookup implements McpConnectionLookupPort {
                 connection.connectionId(),
                 connection.agentVisible(),
                 url instanceof String s ? s : "",
-                connection.credentialRef());
+                connection.credentialRef(),connection.authKind(),connection.configurationVersion());
     }
 }

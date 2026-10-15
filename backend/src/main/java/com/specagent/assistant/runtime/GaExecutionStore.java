@@ -24,7 +24,22 @@ public class GaExecutionStore {
     public record Reservation(boolean fresh, String status, String result) {}
     private final NamedParameterJdbcTemplate jdbc;
     private final GaCatalogProjection catalogs;
+    private GaExecutionAuthorization authorization;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setAuthorization(GaExecutionAuthorization authorization) { this.authorization=authorization; }
+    @Transactional
+    public com.specagent.access.ActorContext requireActor(Scope scope) {
+        if (authorization==null) throw new IllegalStateException("GA execution authorization is required");
+        return authorization.lockAndAuthorize(scope.runId(),scope.epoch());
+    }
     public GaExecutionStore(NamedParameterJdbcTemplate jdbc, GaCatalogProjection catalogs) { this.jdbc = jdbc; this.catalogs=catalogs; }
+
+    /** Internal best-effort cancellation lookup; a stale attempt must never select its successor. */
+    public java.util.Optional<Scope> cancellationScope(UUID runId, long epoch) {
+        return jdbc.query("SELECT lease_id FROM ga_executions WHERE run_id=:run AND execution_epoch=:epoch",
+                Map.of("run", runId, "epoch", epoch),
+                (rs, index) -> new Scope(runId, epoch, rs.getObject("lease_id", UUID.class))).stream().findFirst();
+    }
 
     /** Called only by the explicit coordinator, before lifecycle claim. Never rebinds an existing run. */
     @Transactional
@@ -32,12 +47,28 @@ public class GaExecutionStore {
         initialize(scope,binding,java.util.List.of());
     }
 
+    /**
+     * 初始化(或按新代次接管)一个 GA 执行绑定。
+     *
+     * <p><b>代次不再硬编码为 1(design §7)。</b>首次认领时 {@code scope.epoch()}
+     * 为 1;任务被接管后,调度层在 {@code runtime_tasks} 内单调递增代次,新执行器
+     * 带着更大的代次回到这里。因此:
+     * <ul>
+     *   <li>同一 run 的既有绑定行按新代次、新租约、新 deadline <b>更新</b>
+     *       (run_id 是主键,只能是一行);</li>
+     *   <li>{@code executor_claimed} 一并重置为 FALSE,让新 attempt 能重新做
+     *       "恰好一次"的认领 CAS——旧 attempt 的 claimed 状态不能挡住新代次;</li>
+     *   <li>调用账本({@code ga_execution_calls})与预算计数<b>原样保留</b>:
+     *       接管沿用原模型/能力快照和剩余预算,绝不重置已消耗的调用
+     *       (design §7"不得把旧 RESERVED 自动删除或重置调用预算")。</li>
+     * </ul>
+     */
     @Transactional
     public void initialize(Scope scope, Binding binding, java.util.List<GaCatalogProjection.Descriptor> descriptors) {
         var catalog=catalogs.snapshot(descriptors);
         if (!descriptors.isEmpty() && !catalog.tools().equals(binding.allowedTools()))
             throw new IllegalArgumentException("GA model and capability projections differ");
-        if (scope.runId() == null || scope.epoch() != 1 || scope.leaseId() == null
+        if (scope.runId() == null || scope.epoch() < 1 || scope.leaseId() == null
                 || binding.threadId() == null || binding.modelBindingId() == null
                 || !"OPENCODE_ZEN".equals(binding.provider()) || binding.model() == null || binding.model().isBlank()
                 || binding.settingsRevision() == null || binding.settingsRevision().isBlank()
@@ -45,6 +76,7 @@ public class GaExecutionStore {
                 || binding.deadline() == null || !binding.deadline().isAfter(Instant.now())
                 || binding.deadline().isAfter(Instant.now().plusSeconds(180)))
             throw new IllegalArgumentException("Invalid GA execution binding");
+        requireActor(scope);
         Map<String, Object> run = lockRun(scope.runId());
         if (!"CREATED".equals(run.get("status")) || run.get("cancel_requested_at") != null
                 || !binding.threadId().equals(run.get("thread_id")) || !"langchain-ga.v1".equals(run.get("engine_version")))
@@ -54,10 +86,21 @@ public class GaExecutionStore {
                 "epoch", scope.epoch(), "lease", scope.leaseId(), "deadline", Timestamp.from(binding.deadline()),
                 "tools", toolsJson(binding.allowedTools()));
         params.putAll(Maps.of("catalog",catalogs.canonical(descriptors),"catalogHash",catalog.hash()));
+        // 首次执行插入;接管执行更新既有绑定行(代次、租约、deadline 与冻结快照)。
+        // 调用账本与预算计数不在 SET 列表中,因此接管绝不重置已消耗的预算。
         jdbc.update("""
                 INSERT INTO ga_executions (run_id,thread_id,model_binding_id,provider,model,settings_revision,
                   execution_epoch,lease_id,deadline,allowed_tools,capability_catalog,catalog_hash)
                 VALUES (:run,:thread,:binding,:provider,:model,:revision,:epoch,:lease,:deadline,:tools,:catalog,:catalogHash)
+                ON CONFLICT (run_id) DO UPDATE SET
+                  execution_epoch = EXCLUDED.execution_epoch,
+                  lease_id = EXCLUDED.lease_id,
+                  deadline = EXCLUDED.deadline,
+                  settings_revision = EXCLUDED.settings_revision,
+                  allowed_tools = EXCLUDED.allowed_tools,
+                  capability_catalog = EXCLUDED.capability_catalog,
+                  catalog_hash = EXCLUDED.catalog_hash,
+                  executor_claimed = FALSE
                 """, params);
         jdbc.update("INSERT INTO ga_checkpoint_heads(thread_id) VALUES (:thread) ON CONFLICT DO NOTHING", params);
     }
@@ -146,7 +189,10 @@ public class GaExecutionStore {
             if ("SUCCEEDED".equals(reservation.status())) return reservation.result();
             throw new IllegalStateException("GA_CALL_IN_PROGRESS_OR_UNKNOWN");
         }
-        String result = action.get();
+        String result;
+        try (var actor = com.specagent.access.ActorContextHolder.bind(requireActor(scope))) {
+            result = action.get();
+        }
         complete(scope, call, result);
         return result;
     }
@@ -168,7 +214,11 @@ public class GaExecutionStore {
         var rows=jdbc.queryForList("SELECT status FROM ga_execution_calls WHERE run_id=:run AND call_id=:call AND kind='TOOL'",params);
         if (rows.size()!=1 || !"RESERVED".equals(rows.getFirst().get("status")))
             throw new IllegalStateException("GA_CALL_NOT_RESERVED");
-        String result=action.get(); complete(scope,call,result); return result;
+        String result;
+        try (var actor=com.specagent.access.ActorContextHolder.bind(requireActor(scope))) {
+            result=action.get();
+        }
+        complete(scope,call,result); return result;
     }
 
     @Transactional
@@ -220,6 +270,7 @@ public class GaExecutionStore {
     }
 
     private Binding lockedBinding(Scope scope) {
+        requireActor(scope);
         Map<String, Object> run = lockRun(scope.runId());
         if (!"RUNNING".equals(run.get("status")) || run.get("cancel_requested_at") != null
                 || !"langchain-ga.v1".equals(run.get("engine_version"))) throw new IllegalStateException("GA_EXECUTION_FENCE");

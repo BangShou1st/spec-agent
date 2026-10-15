@@ -43,6 +43,10 @@ public class GaHostRpcController {
     public ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> modelStream(
             @RequestHeader(value="X-Spec-Agent-Internal-Token", required=false) String token, @RequestBody String body) {
         if (!authorized(token)) return ResponseEntity.status(401).build();
+        // 失权预检在响应头提交之前完成:已失权的执行绝不能通过 200 的
+        // NDJSON 通道建立连接(响应头提交后只能以 FAILED 事件尽力中止)。
+        int admission = models.precheckStream(body);
+        if (admission != 200) return ResponseEntity.status(admission).build();
         return ResponseEntity.ok().contentType(org.springframework.http.MediaType.parseMediaType("application/x-ndjson"))
                 .body(output -> models.stream(body,output));
     }

@@ -1,12 +1,13 @@
+import { accessSession } from '@/features/access/accessSession'
 // 文件名:ConnectionLifecycleAction.spec.ts
 // 用途:连接生命周期操作区组件测试:针对各阶段(created/tested/connected/enabled/failed)
 //       验证展示的下一步动作按钮与失败时的错误提示。
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ConnectionLifecycleAction from '@/features/connections/components/ConnectionLifecycleAction.vue'
 
 function detail(over: Record<string, unknown> = {}) {
-  return { connectionId: 'c1', name: 'n', kind: 'CUSTOM_MCP', status: 'CREATED', enabled: false, config: {}, hasCredential: false, maskedSuffix: null, lastError: null, createdAt: 'x', updatedAt: 'x', ...over }
+  return { ownerKind: 'ORG' as const, connectionId: 'c1', name: 'n', kind: 'CUSTOM_MCP', status: 'CREATED', enabled: false, config: {}, hasCredential: false, maskedSuffix: null, lastError: null, createdAt: 'x', updatedAt: 'x', ...over }
 }
 
 describe('ConnectionLifecycleAction', () => {
@@ -33,3 +34,5 @@ describe('ConnectionLifecycleAction', () => {
     expect(w.get('[data-test="lifecycle-error"]').text()).toContain('handshake failed')
   })
 })
+
+beforeEach(() => { accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'editor', orgId: 'org', displayName: 'Editor', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['CREDENTIAL_MANAGE'], memberships: [] } })

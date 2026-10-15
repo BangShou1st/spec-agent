@@ -4,7 +4,8 @@
        只读探测)、待导入评审入口,以及启用/禁用/删除等操作;数据由 skillsStore 提供。
 -->
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
+import { onMounted, ref, watch } from 'vue'
 import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'
 import { useRouter } from 'vue-router'
 import { managementErrorMessage } from '@/shared/http/errorCopy'
@@ -15,11 +16,14 @@ import { formatBytes, skillSourceLabel } from '@/shared/lib/managementCopy'
 import { useSkillsStore } from '@/features/skills/state/skillsStore'
 
 const store = useSkillsStore()
+const canManage = useOrganizationCapability('ORG_MANAGE')
+
 const router = useRouter()
 
 const importOpen = ref(false)
 const reviewId = ref<string | null>(null)
 const busyId = ref<string | null>(null)
+watch(canManage, allowed => { if (!allowed) importOpen.value = false }, { flush: 'sync' })
 
 function shortIdentity(v: string): string {
   return v.length > 48 ? v.slice(0, 48) : v
@@ -31,12 +35,14 @@ onMounted(() => {
 })
 
 function openImport(): void {
+  if (!canManage.value) return;
   store.clearError()
   store.resetGitDiscovery()
   importOpen.value = true
 }
 
 async function submitZip(file: File): Promise<void> {
+  if (!canManage.value) return;
   const ok = await store.stageZip(file)
   if (ok && store.lastStaged) {
     importOpen.value = false
@@ -46,6 +52,7 @@ async function submitZip(file: File): Promise<void> {
 }
 
 async function submitGit(url: string, ref?: string, subPath?: string): Promise<void> {
+  if (!canManage.value) return;
   const ok = await store.stageGit(url, ref, subPath)
   if (ok && store.lastStaged) {
     importOpen.value = false
@@ -56,6 +63,7 @@ async function submitGit(url: string, ref?: string, subPath?: string): Promise<v
 
 /** 只读的仓库探测:只填充候选列表,不做任何暂存。 */
 async function discoverGit(url: string, ref?: string): Promise<void> {
+  if (!canManage.value) return;
   await store.discoverGit(url, ref)
 }
 
@@ -65,30 +73,35 @@ function openReview(id: string): void {
 }
 
 async function install(): Promise<void> {
+  if (!canManage.value) return;
   if (!reviewId.value) return
   const ok = await store.installStaged(reviewId.value)
   if (ok) reviewId.value = null
 }
 
 async function reject(): Promise<void> {
+  if (!canManage.value) return;
   if (!reviewId.value) return
   const ok = await store.rejectStaged(reviewId.value)
   if (ok) reviewId.value = null
 }
 
 async function enable(id: string): Promise<void> {
+  if (!canManage.value) return;
   busyId.value = id
   await store.enable(id)
   busyId.value = null
 }
 
 async function disable(id: string): Promise<void> {
+  if (!canManage.value) return;
   busyId.value = id
   await store.disable(id)
   busyId.value = null
 }
 
 async function remove(id: string): Promise<void> {
+  if (!canManage.value) return;
   busyId.value = id
   await store.remove(id)
   busyId.value = null
@@ -110,7 +123,7 @@ function retry(): void {
         <h2>Skills</h2>
         <p class="muted">安装与管理可用的 Skill，扩展代理的能力边界</p>
       </div>
-      <button type="button" class="btn btn-primary" data-test="add-skill" @click="openImport">+ 添加 Skill</button>
+      <button v-if="canManage" type="button" class="btn btn-primary" data-test="add-skill" @click="openImport">+ 添加 Skill</button>
     </header>
 
     <ApiErrorBanner
@@ -143,13 +156,13 @@ function retry(): void {
             <span class="staged-id">{{ shortIdentity(s.sourceIdentity) }}</span>
             <span class="muted">{{ skillSourceLabel(s.sourceKind) }} · {{ s.fileCount }} 个文件 · {{ formatBytes(s.totalBytes) }}</span>
           </div>
-          <button type="button" class="btn" :data-test="`review-staged-${s.stagedImportId}`" @click="openReview(s.stagedImportId)">查看并安装</button>
+          <button type="button" class="btn" :data-test="`review-staged-${s.stagedImportId}`" @click="openReview(s.stagedImportId)">{{ canManage ? '查看并安装' : '查看' }}</button>
         </li>
       </ul>
     </section>
 
     <SkillImportDialog
-      :open="importOpen"
+      :open="canManage && importOpen"
       :staging="store.actionLoading"
       :error="store.error"
       :discovering="store.gitDiscovering"

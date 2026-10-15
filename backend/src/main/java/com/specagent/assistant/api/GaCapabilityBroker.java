@@ -44,6 +44,12 @@ public class GaCapabilityBroker {
     }
     private String complete(Request request) {
         var scope=new GaExecutionStore.Scope(request.runId(),request.executionEpoch(),request.leaseId());
+        var actor=executions.requireActor(scope);
+        try(var context=com.specagent.access.ActorContextHolder.bind(actor)) {
+            return completeForActor(request,scope);
+        }
+    }
+    private String completeForActor(Request request,GaExecutionStore.Scope scope) {
         var frozen=executions.catalog(scope);
         if (!frozen.hash().equals(request.catalogHash())) throw new IllegalStateException("GA_MODEL_CATALOG_MISMATCH");
         var descriptor=frozen.descriptors().stream().filter(d -> d.capabilityId().equals(request.capabilityId())

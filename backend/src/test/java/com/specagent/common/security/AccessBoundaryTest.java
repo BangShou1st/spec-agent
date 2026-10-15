@@ -23,8 +23,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 文件名:AccessBoundaryTest.java
  *
- * 测试目标:单用户交付的访问边界(R5)。
- * - 回环绑定判定:回环地址放行、非回环默认拒绝启动、显式知情后放行;
+ * 测试目标:交付形态的访问边界。
+ * - 回环绑定判定:回环地址放行、非回环默认拒绝启动;
+ * - <b>非回环绑定要求实例自带认证层(第二阶段)</b>:OIDC 模式 + 显式知情
+ *   开关才放行,LOCAL 模式即使显式知情也拒绝——LOCAL 按设计仅限回环;
  * - 内部密钥:未配置时生成安装实例独有的随机密钥并持久化到文件,
  *   重启(重新初始化)后仍读取同一值;显式配置时原样使用;
  * - 内部推理 broker 对缺失/错误 token 一律 401(带正确 token 才可达)。
@@ -50,41 +52,73 @@ class AccessBoundaryTest {
      */
     @Test
     void nonLoopbackBindingIsRejectedByDefault() {
-        assertThatThrownBy(() -> new LoopbackBindingGuard("0.0.0.0", false))
+        assertThatThrownBy(() -> new LoopbackBindingGuard("0.0.0.0", false, "OIDC"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("non-loopback");
-        assertThatThrownBy(() -> new LoopbackBindingGuard("192.168.1.10", false))
+        assertThatThrownBy(() -> new LoopbackBindingGuard("192.168.1.10", false, "OIDC"))
                 .isInstanceOf(IllegalStateException.class);
         // 通配 IPv6 与解析失败的主机同样按非回环拒绝
-        assertThatThrownBy(() -> new LoopbackBindingGuard("::", false))
+        assertThatThrownBy(() -> new LoopbackBindingGuard("::", false, "OIDC"))
                 .isInstanceOf(IllegalStateException.class);
     }
 
     /** 空监听地址 = 通配监听,绝不是显式回环:必须拒绝启动,不能静默暴露 API。 */
     @Test
     void emptyBindAddressIsRejected() {
-        assertThatThrownBy(() -> new LoopbackBindingGuard(null, false))
+        assertThatThrownBy(() -> new LoopbackBindingGuard(null, false, "OIDC"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("server.address is empty");
-        assertThatThrownBy(() -> new LoopbackBindingGuard("", false))
+        assertThatThrownBy(() -> new LoopbackBindingGuard("", false, "OIDC"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("server.address is empty");
-        assertThatThrownBy(() -> new LoopbackBindingGuard("   ", false))
+        assertThatThrownBy(() -> new LoopbackBindingGuard("   ", false, "OIDC"))
                 .isInstanceOf(IllegalStateException.class);
         // 显式风险开关也不豁免空地址:它只豁免"知情的非回环部署"。
-        assertThatThrownBy(() -> new LoopbackBindingGuard("", true))
+        assertThatThrownBy(() -> new LoopbackBindingGuard("", true, "OIDC"))
                 .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     void loopbackBindingPassesAndExplicitOverrideIsHonored() {
-        assertThatCode(() -> new LoopbackBindingGuard("127.0.0.1", false))
+        assertThatCode(() -> new LoopbackBindingGuard("127.0.0.1", false, "OIDC"))
                 .doesNotThrowAnyException();
-        assertThatCode(() -> new LoopbackBindingGuard("0.0.0.0", true))
+        assertThatCode(() -> new LoopbackBindingGuard("0.0.0.0", true, "OIDC"))
                 .doesNotThrowAnyException();
-        assertThatCode(() -> new LoopbackBindingGuard("::1", false))
+        assertThatCode(() -> new LoopbackBindingGuard("::1", false, "OIDC"))
                 .doesNotThrowAnyException();
-        assertThatCode(() -> new LoopbackBindingGuard("localhost", false))
+        assertThatCode(() -> new LoopbackBindingGuard("localhost", false, "OIDC"))
+                .doesNotThrowAnyException();
+    }
+
+    /** LOCAL 模式仅限回环:回环地址照常放行,与模式无关。 */
+    @Test
+    void localModeStillBindsLoopback() {
+        assertThatCode(() -> new LoopbackBindingGuard("127.0.0.1", false, "LOCAL"))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> new LoopbackBindingGuard("::1", false, "LOCAL"))
+                .doesNotThrowAnyException();
+    }
+
+    /**
+     * 第二阶段的核心收紧:非回环绑定必须自带认证层。
+     *
+     * 回环绑定原本同时承担"网络隔离"与"事实上的访问控制";改绑网络地址会
+     * 让后者消失,而一个布尔知情开关不能替代登录。因此 LOCAL 模式无论是否
+     * 声明知情都必须拒绝,只有 OIDC 模式才允许对外提供服务。
+     */
+    @Test
+    void nonLoopbackRequiresAnAuthenticatingMode() {
+        assertThatThrownBy(() -> new LoopbackBindingGuard("0.0.0.0", true, "LOCAL"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("loopback-only")
+                .hasMessageContaining("OIDC");
+        assertThatThrownBy(() -> new LoopbackBindingGuard("0.0.0.0", true, "local"))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new LoopbackBindingGuard("0.0.0.0", true, null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("non-loopback");
+        // 模式大小写不敏感:OIDC 的任意书写都算自带认证层
+        assertThatCode(() -> new LoopbackBindingGuard("0.0.0.0", true, "oidc"))
                 .doesNotThrowAnyException();
     }
 

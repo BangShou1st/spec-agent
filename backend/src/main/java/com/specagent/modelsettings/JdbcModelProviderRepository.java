@@ -22,9 +22,13 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 public class JdbcModelProviderRepository implements ModelProviderRepository {
+    private com.specagent.access.OrganizationConfigurationScope orgScope;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setOrgScope(com.specagent.access.OrganizationConfigurationScope orgScope) { this.orgScope=orgScope; }
+
 
     private static final String COLUMNS = """
-            id, preset, display_name, api_format, base_url, api_key, masked_suffix,
+            org_id, id, preset, display_name, api_format, base_url, api_key, masked_suffix,
             selected_model, model_source, config_revision, validated_revision, position,
             created_at, updated_at, validated_at
             """;
@@ -53,7 +57,7 @@ public class JdbcModelProviderRepository implements ModelProviderRepository {
                 rs.getString("display_name"),
                 rs.getString("api_format"),
                 rs.getString("base_url"),
-                crypto.decrypt(rs.getString("api_key")),
+                crypto.decryptScoped(rs.getString("api_key"), rs.getObject("org_id", UUID.class), "model_providers", rs.getObject("id", UUID.class)),
                 rs.getString("masked_suffix"),
                 rs.getString("selected_model"),
                 readModelSource(rs),
@@ -76,39 +80,42 @@ public class JdbcModelProviderRepository implements ModelProviderRepository {
 
     @Override
     public List<ModelProviderRecord> findAll() {
-        return jdbc.query("SELECT " + COLUMNS + " FROM model_providers " + ORDER, Maps.of(), rowMapper);
+        return jdbc.query("SELECT " + COLUMNS + " FROM model_providers WHERE org_id=:orgId " + ORDER, Maps.of("orgId",orgScope.readOrg()), rowMapper);
     }
 
     @Override
     public Optional<ModelProviderRecord> findById(UUID id) {
-        return jdbc.query("SELECT " + COLUMNS + " FROM model_providers WHERE id = :id",
-                Maps.of("id", id), rowMapper).stream().findFirst();
+        return jdbc.query("SELECT " + COLUMNS + " FROM model_providers WHERE id = :id AND org_id=:orgId",
+                Maps.of("id", id,"orgId",orgScope.readOrg()), rowMapper).stream().findFirst();
     }
 
     @Override
     public Optional<ModelProviderRecord> findFirstByPreset(String preset) {
-        return jdbc.query("SELECT " + COLUMNS + " FROM model_providers WHERE preset = :preset "
+        return jdbc.query("SELECT " + COLUMNS + " FROM model_providers WHERE org_id=:orgId AND preset = :preset "
                         + ORDER + " LIMIT 1",
-                Maps.of("preset", preset), rowMapper).stream().findFirst();
+                Maps.of("preset", preset,"orgId",orgScope.readOrg()), rowMapper).stream().findFirst();
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void insert(ModelProviderRecord record) {
+        UUID org = orgScope.writeOrg();
         Instant now = Instant.now();
         jdbc.update("""
-                INSERT INTO model_providers (id, preset, display_name, api_format, base_url, api_key,
+                INSERT INTO model_providers (org_id,id, preset, display_name, api_format, base_url, api_key,
                     masked_suffix, selected_model, model_source, config_revision, validated_revision,
                     position, created_at, updated_at, validated_at)
-                VALUES (:id, :preset, :displayName, :apiFormat, :baseUrl, :apiKey,
+                VALUES (:orgId,:id, :preset, :displayName, :apiFormat, :baseUrl, :apiKey,
                     :maskedSuffix, :selectedModel, :modelSource, :configRevision, :validatedRevision,
                     :position, :createdAt, :updatedAt, :validatedAt)
                 """, Maps.of(
+                "orgId", org,
                 "id", record.id(),
                 "preset", record.preset().name(),
                 "displayName", record.effectiveDisplayName(),
                 "apiFormat", record.apiFormat(),
                 "baseUrl", record.baseUrl(),
-                "apiKey", crypto.encrypt(record.apiKey()),
+                "apiKey", crypto.encryptScoped(record.apiKey(), org, "model_providers", record.id()),
                 "maskedSuffix", record.maskedSuffix(),
                 "selectedModel", record.selectedModel(),
                 "modelSource", record.modelSource() == null ? "DISCOVERED" : record.modelSource(),
@@ -121,7 +128,9 @@ public class JdbcModelProviderRepository implements ModelProviderRepository {
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void update(ModelProviderRecord record) {
+        UUID org = orgScope.writeOrg();
         jdbc.update("""
                 UPDATE model_providers SET
                     display_name = :displayName,
@@ -136,13 +145,14 @@ public class JdbcModelProviderRepository implements ModelProviderRepository {
                     position = :position,
                     updated_at = :updatedAt,
                     validated_at = :validatedAt
-                WHERE id = :id
+                WHERE id = :id AND org_id=:orgId
                 """, Maps.of(
+                "orgId", org,
                 "id", record.id(),
                 "displayName", record.effectiveDisplayName(),
                 "apiFormat", record.apiFormat(),
                 "baseUrl", record.baseUrl(),
-                "apiKey", crypto.encrypt(record.apiKey()),
+                "apiKey", crypto.encryptScoped(record.apiKey(), org, "model_providers", record.id()),
                 "maskedSuffix", record.maskedSuffix(),
                 "selectedModel", record.selectedModel(),
                 "modelSource", record.modelSource() == null ? "DISCOVERED" : record.modelSource(),
@@ -154,11 +164,13 @@ public class JdbcModelProviderRepository implements ModelProviderRepository {
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void delete(UUID id) {
-        jdbc.update("DELETE FROM model_providers WHERE id = :id", Maps.of("id", id));
+        jdbc.update("DELETE FROM model_providers WHERE id = :id AND org_id=:orgId", Maps.of("id", id,"orgId",orgScope.writeOrg()));
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void markValidated(UUID id, long configRevision) {
         Instant now = Instant.now();
         // 修订号守卫:配置在探测期间又被改过时,这条 UPDATE 不生效,
@@ -166,7 +178,7 @@ public class JdbcModelProviderRepository implements ModelProviderRepository {
         jdbc.update("""
                 UPDATE model_providers
                 SET validated_revision = :configRevision, validated_at = :validatedAt, updated_at = :validatedAt
-                WHERE id = :id AND config_revision = :configRevision
-                """, Maps.of("id", id, "configRevision", configRevision, "validatedAt", Timestamp.from(now)));
+                WHERE id = :id AND org_id=:orgId AND config_revision = :configRevision
+                """, Maps.of("orgId",orgScope.writeOrg(),"id", id, "configRevision", configRevision, "validatedAt", Timestamp.from(now)));
     }
 }

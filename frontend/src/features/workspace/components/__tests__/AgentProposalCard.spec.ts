@@ -5,9 +5,16 @@ import { mount } from '@vue/test-utils'
 import AgentProposalCard from '@/features/workspace/components/AgentProposalCard.vue'
 
 describe('AgentProposalCard', () => {
+  it('preserves proposal content without approval controls for a viewer', () => {
+    const wrapper = mount(AgentProposalCard, { props: { actionFamily: 'CONNECT_NODE',
+      message: '建议连接', nodeContext: '问题', accepting: false, rejecting: false } })
+    expect(wrapper.text()).toContain('建议连接')
+    expect(wrapper.find('[data-test="proposal-accept"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="proposal-reject"]').exists()).toBe(false)
+  })
   it('renders a human-readable action label, never the raw family', () => {
     const wrapper = mount(AgentProposalCard, {
-      props: {
+      props: { canWrite: true,
         actionFamily: 'CREATE_NODE',
         message: '建议创建节点',
         nodeContext: 'Q3 · 数据与安全',
@@ -24,7 +31,7 @@ describe('AgentProposalCard', () => {
 
   it('renders no fabricated impact text', () => {
     const wrapper = mount(AgentProposalCard, {
-      props: {
+      props: { canWrite: true,
         actionFamily: 'CREATE_NODE',
         message: null,
         nodeContext: 'Q3',
@@ -37,7 +44,7 @@ describe('AgentProposalCard', () => {
 
   it('exposes confirm/reject actions and emits intents', async () => {
     const wrapper = mount(AgentProposalCard, {
-      props: {
+      props: { canWrite: true,
         actionFamily: 'CONNECT_NODE',
         message: null,
         nodeContext: 'Q3',
@@ -55,7 +62,7 @@ describe('AgentProposalCard', () => {
 
   it('exposes exactly one accept/reject control pair', () => {
     const wrapper = mount(AgentProposalCard, {
-      props: {
+      props: { canWrite: true,
         actionFamily: 'CREATE_NODE',
         message: '建议创建节点',
         nodeContext: 'Q3',
@@ -70,7 +77,7 @@ describe('AgentProposalCard', () => {
 
   it('respects pending flags with disabled state', () => {
     const wrapper = mount(AgentProposalCard, {
-      props: {
+      props: { canWrite: true,
         actionFamily: 'CREATE_NODE',
         message: null,
         nodeContext: 'Q3',

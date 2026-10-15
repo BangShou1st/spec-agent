@@ -3,6 +3,7 @@
 //       modelSource)、兼容性校验;维护"可用列表 vs 展示列表"与已存选中项的可见性规则。
 
 import { defineStore } from 'pinia'
+import { identityScopedStore, privateIdentityWork, PrivateIdentityExpiredError } from '@/shared/state/privateIdentity'
 import { toDisplayError } from '@/shared/http/displayError'
 import {
   discoverCustom,
@@ -21,6 +22,8 @@ const displayError: (err: unknown) => ProviderError = toDisplayError
 
 export const useCustomProviderStore = defineStore('customProvider', {
   state: () => ({
+    identityEpoch: 0,
+    privateIdentity: null as string | null,
     configured: false,
     apiFormat: 'CHAT_COMPLETIONS' as CustomApiFormat,
     baseUrl: '',
@@ -48,6 +51,13 @@ export const useCustomProviderStore = defineStore('customProvider', {
     error: null as ProviderError | null,
   }),
   actions: {
+    bindIdentity(identity: string | null): void {
+      if (identity === this.privateIdentity && identity !== null) return
+      const epoch = this.identityEpoch + 1
+      this.$reset()
+      this.identityEpoch = epoch
+      this.privateIdentity = identity
+    },
     ensurePersistedVisible(): void {
       // 与 OpenRouter 相同的规则:(重新)拉取之前已持久化的选中项保持可见;
       // 手动模式由持久化的 modelSource 驱动。
@@ -57,25 +67,35 @@ export const useCustomProviderStore = defineStore('customProvider', {
       }
     },
     async loadStatus(): Promise<void> {
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        const s = await getCustomStatus()
-        this.configured = s.configured
-        this.apiFormat = s.apiFormat
-        this.baseUrl = s.baseUrl ?? ''
-        this.savedBaseUrl = s.baseUrl ?? null
-        this.endpointPreview = s.endpointPreview
-        this.hasKey = s.hasKey
-        this.maskedKey = s.maskedKey
-        this.selectedModel = s.selectedModel ?? ''
-        this.manualModel = s.manualModel
-        this.displayName = s.displayName
-        this.configRevision = s.configRevision
-        this.validated = s.validated
-        this.ensurePersistedVisible()
-        this.failed = false
+      identityStore.error = null
+      try {
+        const s = await privateIdentityWork(identityStore, identityEpoch, () => (getCustomStatus()))
+        identityStore.configured = s.configured
+        identityStore.apiFormat = s.apiFormat
+        identityStore.baseUrl = s.baseUrl ?? ''
+        identityStore.savedBaseUrl = s.baseUrl ?? null
+        identityStore.endpointPreview = s.endpointPreview
+        identityStore.hasKey = s.hasKey
+        identityStore.maskedKey = s.maskedKey
+        identityStore.selectedModel = s.selectedModel ?? ''
+        identityStore.manualModel = s.manualModel
+        identityStore.displayName = s.displayName
+        identityStore.configRevision = s.configRevision
+        identityStore.validated = s.validated
+        identityStore.ensurePersistedVisible()
+        identityStore.failed = false
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return }
+        throw identityError
       }
     },
     setFormat(format: CustomApiFormat): void {
@@ -90,91 +110,130 @@ export const useCustomProviderStore = defineStore('customProvider', {
       }
     },
     async discover(apiKey?: string | null): Promise<void> {
-      if (this.discovering || !this.baseUrl.trim()) {
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (identityStore.discovering || !identityStore.baseUrl.trim()) {
         return
       }
-      this.discovering = true
-      this.error = null
+      identityStore.discovering = true
+      identityStore.error = null
       try {
-        const res = await discoverCustom(this.apiFormat, this.baseUrl.trim(), apiKey ?? null)
-        this.availableModels = [...res.models]
-        this.discoveredModels = [...res.models]
-        this.manualModel = res.manualModel
-        this.endpointPreview = res.endpointPreview
-        this.ensurePersistedVisible()
-        this.modelUnavailable = Boolean(
-          !res.manualModel && this.selectedModel && !res.models.includes(this.selectedModel),
+        const res = await privateIdentityWork(identityStore, identityEpoch, () => (discoverCustom(identityStore.apiFormat, identityStore.baseUrl.trim(), apiKey ?? null)))
+        identityStore.availableModels = [...res.models]
+        identityStore.discoveredModels = [...res.models]
+        identityStore.manualModel = res.manualModel
+        identityStore.endpointPreview = res.endpointPreview
+        identityStore.ensurePersistedVisible()
+        identityStore.modelUnavailable = Boolean(
+          !res.manualModel && identityStore.selectedModel && !res.models.includes(identityStore.selectedModel),
         )
-        this.failed = false
+        identityStore.failed = false
       } catch (err) {
-        this.error = displayError(err)
-        this.failed = true
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
+        identityStore.failed = true
         // 认证/网络失败绝不降级为手动回退。
-        this.manualModel = false
+        identityStore.manualModel = false
       } finally {
-        this.discovering = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.discovering = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return }
+        throw identityError
       }
     },
     async save(apiKey: string | null | undefined, displayName?: string | null): Promise<boolean> {
-      if (this.saving) {
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (identityStore.saving) {
         return false
       }
-      this.saving = true
-      this.error = null
+      identityStore.saving = true
+      identityStore.error = null
       try {
-        const s = await saveCustomWithSource(this.apiFormat, this.baseUrl.trim(), apiKey,
-          this.selectedModel.trim(), this.manualModel ? 'MANUAL' : 'DISCOVERED', displayName)
-        this.configured = s.configured
-        this.apiFormat = s.apiFormat
-        this.baseUrl = s.baseUrl
-        this.savedBaseUrl = s.baseUrl
-        this.endpointPreview = s.endpointPreview
-        this.hasKey = s.hasKey
-        this.maskedKey = s.maskedKey
-        this.selectedModel = s.selectedModel
-        this.manualModel = s.manualModel
-        this.displayName = s.displayName
-        this.configRevision = s.configRevision
-        this.validated = s.validated
-        this.ensurePersistedVisible()
-        this.failed = false
+        const s = await privateIdentityWork(identityStore, identityEpoch, () => (saveCustomWithSource(identityStore.apiFormat, identityStore.baseUrl.trim(), apiKey,
+          identityStore.selectedModel.trim(), identityStore.manualModel ? 'MANUAL' : 'DISCOVERED', displayName)))
+        identityStore.configured = s.configured
+        identityStore.apiFormat = s.apiFormat
+        identityStore.baseUrl = s.baseUrl
+        identityStore.savedBaseUrl = s.baseUrl
+        identityStore.endpointPreview = s.endpointPreview
+        identityStore.hasKey = s.hasKey
+        identityStore.maskedKey = s.maskedKey
+        identityStore.selectedModel = s.selectedModel
+        identityStore.manualModel = s.manualModel
+        identityStore.displayName = s.displayName
+        identityStore.configRevision = s.configRevision
+        identityStore.validated = s.validated
+        identityStore.ensurePersistedVisible()
+        identityStore.failed = false
         return true
       } catch (err) {
-        this.error = displayError(err)
-        this.failed = true
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
+        identityStore.failed = true
         return false
       } finally {
-        this.saving = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.saving = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
     async validate(): Promise<boolean> {
-      if (this.validating) {
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      if (identityStore.validating) {
         return false
       }
-      this.validating = true
-      this.error = null
+      identityStore.validating = true
+      identityStore.error = null
       try {
-        const s = await validateCustom()
-        this.configured = s.configured
-        this.apiFormat = s.apiFormat
-        this.baseUrl = s.baseUrl
-        this.endpointPreview = s.endpointPreview
-        this.hasKey = s.hasKey
-        this.maskedKey = s.maskedKey
-        this.selectedModel = s.selectedModel
-        this.manualModel = s.manualModel
-        this.configRevision = s.configRevision
-        this.validated = s.validated
-        this.ensurePersistedVisible()
-        this.failed = false
+        const s = await privateIdentityWork(identityStore, identityEpoch, () => (validateCustom()))
+        identityStore.configured = s.configured
+        identityStore.apiFormat = s.apiFormat
+        identityStore.baseUrl = s.baseUrl
+        identityStore.endpointPreview = s.endpointPreview
+        identityStore.hasKey = s.hasKey
+        identityStore.maskedKey = s.maskedKey
+        identityStore.selectedModel = s.selectedModel
+        identityStore.manualModel = s.manualModel
+        identityStore.configRevision = s.configRevision
+        identityStore.validated = s.validated
+        identityStore.ensurePersistedVisible()
+        identityStore.failed = false
         return s.validated
       } catch (err) {
-        this.error = displayError(err)
-        this.failed = true
-        this.validated = false
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
+        identityStore.failed = true
+        identityStore.validated = false
         return false
       } finally {
-        this.validating = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.validating = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
     clearError(): void {

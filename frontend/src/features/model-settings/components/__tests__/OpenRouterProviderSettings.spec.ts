@@ -1,3 +1,4 @@
+import { accessSession } from '@/features/access/accessSession'
 // 文件名:OpenRouterProviderSettings.spec.ts
 // 用途:OpenRouter 卡片组件测试:已配置时自动拉取模型、更换密钥必须输入新 Key、
 //       取消后回退已存密钥、探测后清空旧选择需重新挑选模型。
@@ -36,7 +37,33 @@ async function mountCard(): Promise<ReturnType<typeof mount>> {
 }
 
 describe('OpenRouterProviderSettings credential visibility', () => {
+  it('keeps readable status and model refresh but hides management controls for a member', async () => {
+    accessSession.identity!.orgCapabilities = []
+    mockedGet.mockResolvedValue({ configured: true, maskedKey: '••••5678', selectedModel: 'alpha:free', configRevision: 2, validated: true, active: false })
+    const wrapper = await mountCard()
+    expect(wrapper.get('[data-test="openrouter-masked"]').text()).toContain('••••5678')
+    expect(wrapper.find('[data-test="openrouter-refresh"]').exists()).toBe(true)
+    for (const control of ['change-key', 'save-test', 'validate', 'activate', 'api-key'])
+      expect(wrapper.find(`[data-test="openrouter-${control}"]`).exists()).toBe(false)
+    expect(mockedSave).not.toHaveBeenCalled()
+  })
+  it('removes an open credential editor after credential management is revoked', async () => {
+    mockedGet.mockResolvedValue({ configured: true, maskedKey: '••••5678', selectedModel: 'alpha:free', configRevision: 2, validated: true, active: false })
+    const wrapper = await mountCard()
+    await wrapper.get('[data-test="openrouter-change-key"]').trigger('click')
+    await wrapper.get('[data-test="openrouter-api-key"]').setValue('draft-secret')
+    accessSession.identity = { ...accessSession.identity!, orgCapabilities: ['CREDENTIAL_MANAGE'] }
+    await flushPromises()
+    expect((wrapper.get('[data-test="openrouter-api-key"]').element as HTMLInputElement).value).toBe('draft-secret')
+    accessSession.identity!.orgCapabilities = []; await flushPromises()
+    expect(wrapper.find('[data-test="openrouter-api-key"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="openrouter-save-test"]').exists()).toBe(false)
+    expect(mockedSave).not.toHaveBeenCalled()
+    accessSession.identity!.orgCapabilities = ['CREDENTIAL_MANAGE']; await flushPromises()
+    expect((wrapper.get('[data-test="openrouter-api-key"]').element as HTMLInputElement).value).toBe('')
+  })
   beforeEach(() => {
+    accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'editor', orgId: 'org', displayName: 'Editor', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['CREDENTIAL_MANAGE'], memberships: [] }
     setActivePinia(createPinia())
     vi.clearAllMocks()
     mockedList.mockResolvedValue({ allModels: ['alpha:free'], freeModels: ['alpha:free'] })

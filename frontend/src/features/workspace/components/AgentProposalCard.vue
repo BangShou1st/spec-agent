@@ -13,6 +13,7 @@ import { agentActionLabel } from '@/features/workspace/presentation/agentPresent
  * 不展示 proposalId / runId / raw actionFamily / 内部状态，不编造 impact。
  */
 const props = defineProps<{
+  canWrite?: boolean
   actionFamily: string | null
   message: string | null
   nodeContext: string | null
@@ -33,17 +34,17 @@ const pending = computed(() => props.accepting || props.rejecting)
   <div class="proposal-card" data-test="proposal-card">
     <p class="proposal-card__action">
       <strong data-test="proposal-action">{{ actionLabel }}</strong>
-      <span class="proposal-card__pending">等待你的确认</span>
+      <span class="proposal-card__pending">{{ canWrite ? '等待你的确认' : '等待确认' }}</span>
     </p>
     <p v-if="message" class="proposal-card__message" data-test="proposal-message">{{ message }}</p>
     <p v-if="nodeContext" class="meta-text" data-test="proposal-context">{{ nodeContext }}</p>
-    <div class="proposal-card__actions">
+    <div v-if="canWrite" class="proposal-card__actions">
       <button
         class="btn btn-small"
         type="button"
         data-test="proposal-reject"
         :disabled="pending"
-        @click="emit('reject')"
+        @click="canWrite && emit('reject')"
       >
         {{ rejecting ? '正在拒绝…' : '拒绝' }}
       </button>
@@ -52,7 +53,7 @@ const pending = computed(() => props.accepting || props.rejecting)
         type="button"
         data-test="proposal-accept"
         :disabled="pending"
-        @click="emit('accept')"
+        @click="canWrite && emit('accept')"
       >
         {{ accepting ? '正在确认…' : '确认执行' }}
       </button>

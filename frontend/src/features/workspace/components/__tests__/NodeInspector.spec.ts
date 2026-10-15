@@ -64,7 +64,7 @@ describe('node inspector information hierarchy', () => {
 
   it('prioritizes content, answer, and agent action before secondary metadata', () => {
     const wrapper = mount(NodeInspector, {
-      props: {
+      props: { canWrite: true,
         data: nodeData({
           qLabel: 'Q3',
           isLatest: true,
@@ -108,7 +108,7 @@ describe('node inspector ask AI proposal', () => {
       status: 'AWAITING_APPROVAL', message: '建议创建节点', proposalId: 'prop-1',
       proposalStatus: null, actionFamily: 'CREATE_NODE',
     }
-    const wrapper = mount(NodeInspector, { props: { data: nodeData() } })
+    const wrapper = mount(NodeInspector, { props: { canWrite: true, data: nodeData() } })
     expect(wrapper.find('[data-test="ask-result"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="agent-proposal"]').exists()).toBe(true)
     // 提案可见，且有明确的接受/拒绝入口（不允许只有一句"可查看待确认提案"）。
@@ -141,7 +141,7 @@ describe('node inspector ask AI proposal', () => {
     mockedGetProjectGraph.mockResolvedValue({
       projectId: 'p1', activeRouteId: 'rA', routes: [], nodes: [], answers: [], relations: [],
     })
-    const wrapper = mount(NodeInspector, { props: { data: nodeData() } })
+    const wrapper = mount(NodeInspector, { props: { canWrite: true, data: nodeData() } })
     await wrapper.find('[data-test="proposal-accept"]').trigger('click')
     await flushPromises()
     expect(mockedAcceptProposal).toHaveBeenCalledWith('prop-1')
@@ -160,7 +160,7 @@ describe('node inspector ask AI proposal', () => {
       proposalStatus: null, actionFamily: 'CREATE_NODE',
     }
     mockedRejectProposal.mockResolvedValue({ proposalId: 'prop-1', status: 'REJECTED' })
-    const wrapper = mount(NodeInspector, { props: { data: nodeData() } })
+    const wrapper = mount(NodeInspector, { props: { canWrite: true, data: nodeData() } })
     await wrapper.find('[data-test="proposal-reject"]').trigger('click')
     await flushPromises()
     expect(mockedRejectProposal).toHaveBeenCalledWith('prop-1')

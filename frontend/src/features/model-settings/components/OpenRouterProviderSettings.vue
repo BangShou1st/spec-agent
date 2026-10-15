@@ -5,7 +5,8 @@
        以及 保存并测试/重新测试/设为当前 Provider 操作行。
 -->
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
+import { computed, onMounted, ref, watch } from 'vue'
 import ProviderCard from './ProviderCard.vue'
 import ProviderModelField from './ProviderModelField.vue'
 import ProviderSummaryItem from './ProviderSummaryItem.vue'
@@ -19,8 +20,10 @@ import { providerCardState } from '@/features/model-settings/presentation/provid
  * 一个常驻可见的模型字段,以及 保存并测试 / 重新测试 / 设为当前 Provider 操作行。
  */
 const store = useOpenRouterStore()
+const canManage = useOrganizationCapability('CREDENTIAL_MANAGE')
 const providers = useProviderSettingsStore()
 const apiKey = ref('')
+watch(canManage, allowed => { if (!allowed) apiKey.value = '' }, { flush: 'sync' })
 // 与 OpenCode 卡一致：密钥输入仅在未配置或主动更换时出现，已配置时只展示掩码。
 const changingCredential = ref(false)
 
@@ -32,7 +35,7 @@ const state = computed(() => providerCardState(
   store.failed,
   store.validating || store.probing,
 ))
-const canProbe = computed(() => apiKey.value.trim().length > 0 && !store.probing && !store.saving)
+const canProbe = computed(() => canManage.value && apiKey.value.trim().length > 0 && !store.probing && !store.saving)
 const showCredentialForm = computed(() => !store.configured || changingCredential.value)
 
 /**
@@ -54,20 +57,22 @@ const showUnavailable = computed(() => {
   }
   return isUnavailableSelected.value
 })
-const canSave = computed(() => store.selectedModel !== null
+const canSave = computed(() => canManage.value && store.selectedModel !== null
   && store.displayModels.includes(store.selectedModel)
   && !isUnavailableSelected.value
   && !store.saving && !store.probing
   // 更换密钥或首次配置必须输入新 Key；已配置且未更换时可仅改模型（发送 null 复用已存密钥）。
   && (changingCredential.value || !store.configured ? apiKey.value.trim().length > 0 : true))
-const canValidate = computed(() => store.configured && !store.validating && !store.saving)
-const canActivate = computed(() => store.configured && store.validated && !isActive.value && !providers.activating)
+const canValidate = computed(() => canManage.value && store.configured && !store.validating && !store.saving)
+const canActivate = computed(() => canManage.value && store.configured && store.validated && !isActive.value && !providers.activating)
 
 async function probe(): Promise<void> {
+  if (!canManage.value) return
   await store.probe(apiKey.value)
 }
 
 async function saveAndTest(): Promise<void> {
+  if (!canManage.value) return
   if (!store.selectedModel) {
     return
   }
@@ -81,6 +86,7 @@ async function saveAndTest(): Promise<void> {
 }
 
 function beginCredentialChange(): void {
+  if (!canManage.value) return
   changingCredential.value = true
 }
 
@@ -93,6 +99,7 @@ async function cancelCredentialChange(): Promise<void> {
 }
 
 async function activate(): Promise<void> {
+  if (!canManage.value) return
   await providers.activate('OPENROUTER')
 }
 
@@ -124,7 +131,7 @@ onMounted(async () => {
       <button
         class="btn settings-action"
         type="button"
-        data-test="openrouter-change-key"
+        v-if="canManage" data-test="openrouter-change-key"
         :disabled="store.probing || store.saving"
         @click="beginCredentialChange"
       >
@@ -132,7 +139,7 @@ onMounted(async () => {
       </button>
     </template>
 
-    <div v-if="showCredentialForm" class="settings-form settings-form--credential">
+    <div v-if="canManage && showCredentialForm" class="settings-form settings-form--credential">
       <label class="settings-field" for="openrouter-api-key">
         <span class="settings-field__label">{{ store.configured ? '新 API Key' : 'API Key' }}</span>
         <span class="settings-field__hint">仅用于验证与保存，不会明文返回</span>
@@ -164,14 +171,14 @@ onMounted(async () => {
         test-id="openrouter-model"
         :model-value="store.selectedModel"
         :models="store.displayModels"
-        :disabled="store.displayModels.length === 0 || store.saving"
+        :disabled="!canManage || store.displayModels.length === 0 || store.saving"
         :loading="store.loadingModels || store.loading"
         :free-only="store.freeOnly"
         free-toggle-id="openrouter-free-only"
         :hint="store.configured ? '使用当前已保存的 API Key 获取，不需要重新输入密钥' : '展示当前可用模型；付费模型保存前会做兼容性测试'"
         :empty-text="store.configured ? '暂无可用模型，请点击“刷新模型”' : '暂无可用模型，请先验证 Key'"
         :warning-text="showUnavailable ? '已保存的模型当前不可用，请重新验证后选择' : null"
-        @update:model-value="store.selectedModel = $event"
+        @update:model-value="canManage && (store.selectedModel = $event)"
         @update:free-only="store.setFreeOnly"
       />
       <div v-if="store.configured" class="settings-form__action-row">
@@ -201,7 +208,7 @@ onMounted(async () => {
       <button
         class="btn btn-primary settings-action"
         type="button"
-        data-test="openrouter-save-test"
+        v-if="canManage" data-test="openrouter-save-test"
         :disabled="!canSave"
         @click="saveAndTest"
       >
@@ -210,16 +217,16 @@ onMounted(async () => {
       <button
         class="btn settings-action"
         type="button"
-        data-test="openrouter-validate"
+        v-if="canManage" data-test="openrouter-validate"
         :disabled="!canValidate"
-        @click="() => store.validate()"
+        @click="() => canManage && store.validate()"
       >
         {{ store.validating ? '测试中…' : '重新测试' }}
       </button>
       <button
         class="btn settings-action"
         type="button"
-        data-test="openrouter-activate"
+        v-if="canManage" data-test="openrouter-activate"
         :disabled="!canActivate"
         :title="isActive ? '已是当前 Provider' : '需先通过兼容性测试才能激活'"
         @click="activate"

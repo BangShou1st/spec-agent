@@ -35,6 +35,7 @@ class GaHostRpcIntegrationTest {
     @Autowired GaExecutionStore executions;
     @Autowired ConversationDeleteService deletion;
     @Autowired JdbcTemplate jdbc;
+    @Autowired com.specagent.assistant.conversation.GlobalAssistantConversationService conversations;
     @Autowired TestRestTemplate http;
     @Autowired AgentBrainProperties properties;
     @org.springframework.boot.test.mock.mockito.SpyBean com.specagent.assistant.tool.GaCatalogProjection catalogs;
@@ -52,9 +53,8 @@ class GaHostRpcIntegrationTest {
     com.specagent.assistant.tool.GaCatalogProjection.Snapshot businessCatalog;
 
     @BeforeEach void fixture(TestInfo info) throws Exception {
-        thread=UUID.randomUUID(); run=UUID.randomUUID(); lease=UUID.randomUUID(); binding=UUID.randomUUID();
-        jdbc.update("INSERT INTO global_assistant_threads(id) VALUES(?)", thread);
-        jdbc.update("INSERT INTO global_assistant_runs(id,thread_id,status) VALUES(?,?,'CREATED')", run, thread);
+        thread=conversations.createThread().id(); lease=UUID.randomUUID(); binding=UUID.randomUUID();
+        run=conversations.createRun(thread,"ga.v1","ga.v1","v1").id();
         var template = GaModelContract.readRequest(Files.readString(Path.of("../contracts/global-assistant/fixtures/ga-model-request-valid.json")));
         businessCatalog=info.getTestMethod().orElseThrow().getName().startsWith("capability") ? catalogs.current() : null;
         if (info.getTestMethod().orElseThrow().getName().equals("capabilityLiveFrameworkBusinessRpcAgainstConfiguredModel")) {

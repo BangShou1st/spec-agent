@@ -12,6 +12,8 @@ import SkillsListView from '@/features/skills/SkillsListView.vue'
 import SkillDetailView from '@/features/skills/SkillDetailView.vue'
 import ConnectionsListView from '@/features/connections/ConnectionsListView.vue'
 import ConnectionDetailView from '@/features/connections/ConnectionDetailView.vue'
+import OrganizationMembersView from '@/features/access/OrganizationMembersView.vue'
+import ProjectMembersView from '@/features/access/ProjectMembersView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -28,12 +30,14 @@ const router = createRouter({
     { path: '/', redirect: '/projects' },
     { path: '/projects', name: 'projects', component: ProjectsView },
     { path: '/projects/:projectId', name: 'workspace', component: WorkspaceView, props: true },
+    { path: '/projects/:projectId/members', name: 'project-members', component: ProjectMembersView, props: true },
     {
       path: '/settings',
       component: SettingsLayout,
       children: [
         { path: '', redirect: '/settings/models' },
         { path: 'models', name: 'settings-models', component: ModelSettingsView },
+        { path: 'members', name: 'settings-members', component: OrganizationMembersView },
         { path: 'search', name: 'settings-search', component: SearchSettingsView },
         { path: 'retrieval', name: 'settings-retrieval', component: RetrievalSettingsView },
         { path: 'skills', name: 'settings-skills', component: SkillsListView },

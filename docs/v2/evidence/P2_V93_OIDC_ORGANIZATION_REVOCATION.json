@@ -1,0 +1,109 @@
+{
+  "database": "spec_agent_p2_workers_20261015v92",
+  "orgId": "4466ef97-14f5-4379-8110-a7af1d9ca14b",
+  "projectId": "a303d9e8-09fb-47af-989b-3cdfe72ebad5",
+  "privateThreadId": "b662dcf3-9558-4098-8382-f6de2e9d4e84",
+  "scope": "real OIDC browser login; membership and private-resource checks use app HTTP client; not a complete five-user UI matrix",
+  "bob": {
+    "authenticated": true,
+    "displayName": "bob Acceptance",
+    "orgId": null,
+    "userId": "f2fabe0b-2e96-3144-bcfc-1e580f5de236"
+  },
+  "bobOtherOrganization": "d7d081a4-fb80-4c25-8e47-2139e0b240e2",
+  "alice": {
+    "authenticated": true,
+    "displayName": "alice Acceptance",
+    "orgId": "4466ef97-14f5-4379-8110-a7af1d9ca14b",
+    "userId": "8c08a75d-dcf3-32e0-9172-8661d53e538f"
+  },
+  "ownerPositiveControls": {
+    "ownThreadReadable": true,
+    "projectReadable": true
+  },
+  "ownerWithoutProjectRole": {
+    "privateThread": {
+      "code": "RESOURCE_NOT_FOUND",
+      "status": 404
+    },
+    "project": {
+      "code": "PROJECT_NOT_FOUND",
+      "status": 404
+    },
+    "projectListed": false,
+    "selfGrant": {
+      "status": 200
+    }
+  },
+  "afterExplicitSelfGrant": {
+    "privateThreadStatus": 404,
+    "projectReadable": true
+  },
+  "selfGrantAuditCount": 2,
+  "fixture": {
+    "runId": "70dd24fb-6e4c-4b9b-ab82-b16709a2a3bd",
+    "threadId": "289c7612-04df-4287-b986-b408a00907c2"
+  },
+  "beforeRevocation": {
+    "runStatus": "RUNNING",
+    "taskState": "LEASED",
+    "modelCalls": 1,
+    "calls": [
+      {
+        "kind": "MODEL",
+        "status": "RESERVED"
+      }
+    ],
+    "events": [
+      "RUN_STARTED"
+    ],
+    "assistantMessages": 0,
+    "capacity": 2,
+    "pendingOutbox": 0
+  },
+  "afterRevocation": {
+    "runStatus": "CANCELLED",
+    "taskState": "CANCELLED",
+    "modelCalls": 1,
+    "calls": [
+      {
+        "kind": "MODEL",
+        "status": "UNKNOWN"
+      }
+    ],
+    "events": [
+      "RUN_STARTED",
+      "RUN_CANCELLED"
+    ],
+    "assistantMessages": 0,
+    "capacity": 0,
+    "pendingOutbox": 0
+  },
+  "afterOriginalModelReturn": {
+    "runStatus": "CANCELLED",
+    "taskState": "CANCELLED",
+    "modelCalls": 1,
+    "calls": [
+      {
+        "kind": "MODEL",
+        "status": "UNKNOWN"
+      }
+    ],
+    "events": [
+      "RUN_STARTED",
+      "RUN_CANCELLED"
+    ],
+    "assistantMessages": 0,
+    "capacity": 0,
+    "pendingOutbox": 0
+  },
+  "passed": true,
+  "aliceMembershipRestoredThroughProductApi": true,
+  "jarSha256": "90a8b3991be2d9ddc86932d91eadbd5bf526e9073037646280c861e362f8b9a8",
+  "schemaVersion": 93,
+  "restorationVerified": {
+    "aliceStatus": "ACTIVE",
+    "pendingOutbox": 0
+  },
+  "frozenGovernanceRule": "Design section 5 permits explicit audited self-grant by organization administrators; it grants no implicit project-body or private-conversation access."
+}

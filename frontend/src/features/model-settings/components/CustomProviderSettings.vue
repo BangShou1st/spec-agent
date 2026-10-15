@@ -5,6 +5,7 @@
        (此前表单挂在卡片上,卡片根本不展示名称)。
 -->
 <script setup lang="ts">
+import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
 import { computed, onMounted, ref } from 'vue'
 import ProviderCard from './ProviderCard.vue'
 import ProviderSummaryItem from './ProviderSummaryItem.vue'
@@ -21,6 +22,7 @@ import { providerCardState } from '@/features/model-settings/presentation/provid
 const emit = defineEmits<{ (e: 'edit'): void }>()
 
 const store = useCustomProviderStore()
+const canManage = useOrganizationCapability('CREDENTIAL_MANAGE')
 const providers = useProviderSettingsStore()
 // 凭证输入只存在于弹窗中;卡片绝不持有密钥。
 const refreshing = ref(false)
@@ -35,10 +37,11 @@ const state = computed(() => providerCardState(
   store.validating || refreshing.value,
 ))
 
-const canActivate = computed(() => store.configured && store.validated
+const canActivate = computed(() => canManage.value && store.configured && store.validated
   && !isActive.value && !providers.activating)
 
 async function refresh(): Promise<void> {
+  if (!canManage.value) return
   refreshing.value = true
   try {
     await store.validate()
@@ -48,6 +51,7 @@ async function refresh(): Promise<void> {
 }
 
 async function activate(): Promise<void> {
+  if (!canManage.value) return
   await providers.activate('CUSTOM')
 }
 
@@ -85,15 +89,15 @@ onMounted(() => {
       <button
         class="btn settings-action"
         type="button"
-        data-test="custom-settings"
-        @click="emit('edit')"
+        v-if="canManage" data-test="custom-settings"
+        @click="canManage && emit('edit')"
       >
         {{ store.configured ? '设置' : '配置' }}
       </button>
       <button
         class="btn settings-action"
         type="button"
-        data-test="custom-validate"
+        v-if="canManage" data-test="custom-validate"
         :disabled="!store.configured || store.validating"
         @click="refresh"
       >
@@ -102,7 +106,7 @@ onMounted(() => {
       <button
         class="btn btn-primary settings-action"
         type="button"
-        data-test="custom-activate"
+        v-if="canManage" data-test="custom-activate"
         :disabled="!canActivate"
         :title="isActive ? '已是当前 Provider' : '需先通过兼容性测试才能激活'"
         @click="activate"

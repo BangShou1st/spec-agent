@@ -44,9 +44,7 @@ public class RequirementStateQueryService {
      * 构建或落库 {@code ContextSnapshot}。
      */
     public RequirementStateView getForRoute(UUID projectId, UUID routeId) {
-        Project project = projectService.getProject(projectId)
-                .orElseThrow(() -> RequirementStateQueryException.of(
-                        RequirementStateQueryException.Reason.PROJECT_NOT_FOUND, "Project not found"));
+        Project project = requireVisibleProject(projectId);
 
         Route route = routeService.getRoute(routeId)
                 .orElseThrow(() -> RequirementStateQueryException.of(
@@ -62,9 +60,7 @@ public class RequirementStateQueryService {
     }
 
     public RequirementStateView getForProject(UUID projectId) {
-        Project project = projectService.getProject(projectId)
-                .orElseThrow(() -> RequirementStateQueryException.of(
-                        RequirementStateQueryException.Reason.PROJECT_NOT_FOUND, "Project not found"));
+        Project project = requireVisibleProject(projectId);
 
         if (project.activeRouteId() == null) {
             return RequirementStateView.empty(project.id());
@@ -85,5 +81,16 @@ public class RequirementStateQueryService {
 
         RequirementState state = requirementStateBuilder.buildForRoute(project.id(), activeRoute.id());
         return RequirementStateView.from(project.id(), activeRoute.id(), state);
+    }
+
+    /**
+     * 可见性先于任何读取:需求状态由项目正文派生。不可见与不存在的项目统一
+     * 表现为 404 {@code PROJECT_NOT_FOUND}(与既有契约一致);授权落在服务层,
+     * 因此后台调用同样受校验。
+     */
+    private Project requireVisibleProject(UUID projectId) {
+        return projectService.getProjectForActor(projectId)
+                .orElseThrow(() -> RequirementStateQueryException.of(
+                        RequirementStateQueryException.Reason.PROJECT_NOT_FOUND, "Project not found"));
     }
 }

@@ -54,6 +54,9 @@ public class ProjectDeletionService {
 
     private final NamedParameterJdbcTemplate jdbc;
     private final ProjectRepository projects;
+    private ProjectService authorization;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setAuthorization(ProjectService authorization) {this.authorization=authorization;}
 
     public ProjectDeletionService(NamedParameterJdbcTemplate jdbc, ProjectRepository projects) {
         this.jdbc = jdbc;
@@ -62,6 +65,7 @@ public class ProjectDeletionService {
 
     @Transactional
     public void deleteProject(UUID projectId) {
+        authorization.authorizeDeletionWrite(projectId);
         projects.lockById(projectId);
         Map<String, Object> guardParams = new HashMap<>();
         guardParams.put("projectId", projectId);
@@ -98,6 +102,7 @@ public class ProjectDeletionService {
         jdbc.update("DELETE FROM retrieval_scope_grants WHERE corpus_id = :projectId", p);
         jdbc.update("DELETE FROM retrieval_index_jobs WHERE corpus_id = :projectId", p);
         jdbc.update("DELETE FROM retrieval_index_heads WHERE corpus_id = :projectId", p);
+        jdbc.update("DELETE FROM embedding_rebuilds WHERE project_id = :projectId",p);
         jdbc.update("DELETE FROM retrieval_index_generations WHERE corpus_id = :projectId", p);
         int deleted = jdbc.update("DELETE FROM projects WHERE id = :projectId", Maps.of("projectId", projectId));
         if (deleted != 1) {

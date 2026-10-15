@@ -41,16 +41,16 @@ public class AgentRunController {
 
     @GetMapping
     public List<AgentRunResponse> listRuns(@PathVariable UUID projectId) {
-        projectService.getProject(projectId)
+        projectService.getProjectForActor(projectId)
                 .orElseThrow(() -> ApiException.notFound("PROJECT_NOT_FOUND", "Project not found"));
-        return agentRunService.listByProject(projectId).stream()
+        return agentRunService.listByProjectForActor(projectId).stream()
                 .map(agentRunDtoMapper::from)
                 .toList();
     }
 
     @GetMapping("/{runId}")
     public AgentRunResponse getRun(@PathVariable UUID projectId, @PathVariable UUID runId) {
-        AgentRun run = agentRunService.getRun(runId)
+        AgentRun run = agentRunService.getRunForActor(runId)
                 .orElseThrow(() -> ApiException.notFound("RUN_NOT_FOUND", "Agent run not found"));
         if (!run.projectId().equals(projectId)) {
             throw ApiException.notFound("RUN_NOT_FOUND", "Agent run not found");

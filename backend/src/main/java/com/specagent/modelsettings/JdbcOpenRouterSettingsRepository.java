@@ -17,6 +17,10 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 public class JdbcOpenRouterSettingsRepository implements OpenRouterSettingsRepository {
+    private com.specagent.access.OrganizationConfigurationScope orgScope;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setOrgScope(com.specagent.access.OrganizationConfigurationScope orgScope) { this.orgScope=orgScope; }
+
 
     private final NamedParameterJdbcTemplate jdbc;
     private final ModelCredentialCrypto crypto;
@@ -27,7 +31,7 @@ public class JdbcOpenRouterSettingsRepository implements OpenRouterSettingsRepos
         this.jdbc = jdbc;
         this.crypto = crypto;
         this.rowMapper = (rs, rowNum) -> new OpenRouterSettings(
-                crypto.decrypt(rs.getString("api_key")),
+                crypto.decryptScoped(rs.getString("api_key"), rs.getObject("org_id", java.util.UUID.class), "openrouter_settings", 1),
                 rs.getString("masked_suffix"),
                 rs.getString("selected_model"),
                 rs.getLong("config_revision"),
@@ -39,19 +43,21 @@ public class JdbcOpenRouterSettingsRepository implements OpenRouterSettingsRepos
 
     @Override
     public Optional<OpenRouterSettings> find() {
-        return jdbc.query("SELECT * FROM openrouter_settings WHERE singleton_id = 1", Maps.of(), rowMapper)
+        return jdbc.query("SELECT * FROM openrouter_settings WHERE singleton_id = 1 AND org_id = :orgId", Maps.of("orgId",orgScope.readOrg()), rowMapper)
                 .stream().findFirst();
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void upsert(OpenRouterSettings settings) {
+        java.util.UUID org = orgScope.writeOrg();
         Instant now = settings.updatedAt() == null ? Instant.now() : settings.updatedAt();
         jdbc.update("""
-                INSERT INTO openrouter_settings (singleton_id, api_key, masked_suffix, selected_model,
+                INSERT INTO openrouter_settings (org_id, singleton_id, api_key, masked_suffix, selected_model,
                     config_revision, validated_revision, created_at, updated_at, validated_at)
-                VALUES (1, :apiKey, :maskedSuffix, :selectedModel, :configRevision, :validatedRevision,
+                VALUES (:orgId, 1, :apiKey, :maskedSuffix, :selectedModel, :configRevision, :validatedRevision,
                     :createdAt, :updatedAt, :validatedAt)
-                ON CONFLICT (singleton_id) DO UPDATE SET
+                ON CONFLICT (org_id, singleton_id) DO UPDATE SET
                     api_key = EXCLUDED.api_key,
                     masked_suffix = EXCLUDED.masked_suffix,
                     selected_model = EXCLUDED.selected_model,
@@ -60,7 +66,8 @@ public class JdbcOpenRouterSettingsRepository implements OpenRouterSettingsRepos
                     updated_at = EXCLUDED.updated_at,
                     validated_at = EXCLUDED.validated_at
                 """, Maps.of(
-                "apiKey", crypto.encrypt(settings.apiKey()),
+                "orgId", org,
+                "apiKey", crypto.encryptScoped(settings.apiKey(), org, "openrouter_settings", 1),
                 "maskedSuffix", settings.maskedSuffix(),
                 "selectedModel", settings.selectedModel(),
                 "configRevision", settings.configRevision(),
@@ -71,12 +78,13 @@ public class JdbcOpenRouterSettingsRepository implements OpenRouterSettingsRepos
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void markValidated(long configRevision) {
         Instant now = Instant.now();
         jdbc.update("""
                 UPDATE openrouter_settings
                 SET validated_revision = :configRevision, validated_at = :validatedAt, updated_at = :validatedAt
-                WHERE singleton_id = 1 AND config_revision = :configRevision
-                """, Maps.of("configRevision", configRevision, "validatedAt", Timestamp.from(now)));
+                WHERE singleton_id = 1 AND org_id = :orgId AND config_revision = :configRevision
+                """, Maps.of("orgId",orgScope.writeOrg(),"configRevision", configRevision, "validatedAt", Timestamp.from(now)));
     }
 }

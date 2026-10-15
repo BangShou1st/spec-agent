@@ -4,6 +4,7 @@
 //       列表加载使用 loadToken 竞态守护。
 
 import { defineStore } from 'pinia'
+import { identityScopedStore, privateIdentityWork, PrivateIdentityExpiredError } from '@/shared/state/privateIdentity'
 import { toDisplayError } from '@/shared/http/displayError'
 import { createLoadToken } from './raceGuard'
 import { deleteSkill, deleteStagedImport, disableSkill, discoverSkillGit, enableSkill, getSkill, getStagedImport, installStagedImport, listSkillResources, listSkills, listSkillVersions, listStagedImports, readSkillResource, rejectStagedImport, stageSkillGit, stageSkillZip } from '@/features/skills/api/skills'
@@ -24,6 +25,8 @@ const listLoadToken = createLoadToken()
 
 export const useSkillsStore = defineStore('skills', {
   state: () => ({
+    identityEpoch: 0,
+    privateIdentity: null as string | null,
     list: [] as SkillSummary[],
     detail: null as SkillDetail | null,
     versions: [] as SkillVersionView[],
@@ -41,180 +44,361 @@ export const useSkillsStore = defineStore('skills', {
     error: null as SkillsStoreError | null,
   }),
   actions: {
+    bindIdentity(identity: string | null): void {
+      if (identity === this.privateIdentity && identity !== null) return
+      const epoch = this.identityEpoch + 1
+      this.$reset()
+      this.identityEpoch = epoch
+      this.privateIdentity = identity
+    },
     async loadList(): Promise<void> {
-      const token = listLoadToken.next()
-      this.listLoading = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        const list = await listSkills()
+      const token = listLoadToken.next()
+      identityStore.listLoading = true
+      identityStore.error = null
+      try {
+        const list = await privateIdentityWork(identityStore, identityEpoch, () => (listSkills()))
         if (listLoadToken.isCurrent(token)) {
-          this.list = list
+          identityStore.list = list
         }
       } catch (err) {
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
         if (listLoadToken.isCurrent(token)) {
-          this.error = displayError(err)
+          identityStore.error = displayError(err)
         }
       } finally {
+        if (this.identityEpoch === identityEpoch) {
         if (listLoadToken.isCurrent(token)) {
-          this.listLoading = false
+          identityStore.listLoading = false
         }
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return }
+        throw identityError
       }
     },
     async loadDetail(skillId: string): Promise<void> {
-      this.detailLoading = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        this.detail = await getSkill(skillId)
-        this.versions = await listSkillVersions(skillId)
-        this.resources = await listSkillResources(skillId)
+      identityStore.detailLoading = true
+      identityStore.error = null
+      try {
+        identityStore.detail = await privateIdentityWork(identityStore, identityEpoch, () => (getSkill(skillId)))
+        identityStore.versions = await privateIdentityWork(identityStore, identityEpoch, () => (listSkillVersions(skillId)))
+        identityStore.resources = await privateIdentityWork(identityStore, identityEpoch, () => (listSkillResources(skillId)))
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
       } finally {
-        this.detailLoading = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.detailLoading = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return }
+        throw identityError
       }
     },
     async readResource(skillId: string, path: string): Promise<void> {
-      this.actionLoading = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        this.resourceRead = await readSkillResource(skillId, path)
+      identityStore.actionLoading = true
+      identityStore.error = null
+      try {
+        identityStore.resourceRead = await privateIdentityWork(identityStore, identityEpoch, () => (readSkillResource(skillId, path)))
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
       } finally {
-        this.actionLoading = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.actionLoading = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return }
+        throw identityError
       }
     },
     async stageZip(file: File): Promise<boolean> {
-      this.actionLoading = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        this.lastStaged = await stageSkillZip(file)
-        await this.loadStaged()
+      identityStore.actionLoading = true
+      identityStore.error = null
+      try {
+        identityStore.lastStaged = await privateIdentityWork(identityStore, identityEpoch, () => (stageSkillZip(file)))
+        await privateIdentityWork(identityStore, identityEpoch, () => (identityStore.loadStaged()))
         return true
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
         return false
       } finally {
-        this.actionLoading = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.actionLoading = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
     async stageGit(url: string, ref?: string, subPath?: string): Promise<boolean> {
-      this.actionLoading = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        this.lastStaged = await stageSkillGit(url, ref, subPath)
-        await this.loadStaged()
+      identityStore.actionLoading = true
+      identityStore.error = null
+      try {
+        identityStore.lastStaged = await privateIdentityWork(identityStore, identityEpoch, () => (stageSkillGit(url, ref, subPath)))
+        await privateIdentityWork(identityStore, identityEpoch, () => (identityStore.loadStaged()))
         return true
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
         return false
       } finally {
-        this.actionLoading = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.actionLoading = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
     /**
      * 列出仓库提供的 Skill 包,供浏览库/市场后选择。只读:探测不做任何暂存。
      */
     async discoverGit(url: string, ref?: string): Promise<boolean> {
-      this.gitDiscovering = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        const discovery = await discoverSkillGit(url, ref)
-        this.gitCandidates = discovery.candidates
-        this.gitSuggestedPath = discovery.suggestedPath
+      identityStore.gitDiscovering = true
+      identityStore.error = null
+      try {
+        const discovery = await privateIdentityWork(identityStore, identityEpoch, () => (discoverSkillGit(url, ref)))
+        identityStore.gitCandidates = discovery.candidates
+        identityStore.gitSuggestedPath = discovery.suggestedPath
         return true
       } catch (err) {
-        this.error = displayError(err)
-        this.gitCandidates = null
-        this.gitSuggestedPath = null
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
+        identityStore.gitCandidates = null
+        identityStore.gitSuggestedPath = null
         return false
       } finally {
-        this.gitDiscovering = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.gitDiscovering = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
     async loadStaged(): Promise<void> {
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        this.staged = await listStagedImports()
+      identityStore.error = null
+      try {
+        identityStore.staged = await privateIdentityWork(identityStore, identityEpoch, () => (listStagedImports()))
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return }
+        throw identityError
       }
     },
     async loadStagedDetail(stagedImportId: string): Promise<void> {
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        this.stagedDetail = await getStagedImport(stagedImportId)
+      identityStore.error = null
+      try {
+        identityStore.stagedDetail = await privateIdentityWork(identityStore, identityEpoch, () => (getStagedImport(stagedImportId)))
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return }
+        throw identityError
       }
     },
     async installStaged(stagedImportId: string): Promise<boolean> {
-      this.actionLoading = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        await installStagedImport(stagedImportId)
-        await this.loadList()
-        await this.loadStaged()
+      identityStore.actionLoading = true
+      identityStore.error = null
+      try {
+        await privateIdentityWork(identityStore, identityEpoch, () => (installStagedImport(stagedImportId)))
+        await privateIdentityWork(identityStore, identityEpoch, () => (identityStore.loadList()))
+        await privateIdentityWork(identityStore, identityEpoch, () => (identityStore.loadStaged()))
         return true
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
         return false
       } finally {
-        this.actionLoading = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.actionLoading = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
     async rejectStaged(stagedImportId: string, reason?: string): Promise<boolean> {
-      this.actionLoading = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        await rejectStagedImport(stagedImportId, reason)
-        await this.loadStaged()
+      identityStore.actionLoading = true
+      identityStore.error = null
+      try {
+        await privateIdentityWork(identityStore, identityEpoch, () => (rejectStagedImport(stagedImportId, reason)))
+        await privateIdentityWork(identityStore, identityEpoch, () => (identityStore.loadStaged()))
         return true
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
         return false
       } finally {
-        this.actionLoading = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.actionLoading = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
     async discardStaged(stagedImportId: string): Promise<boolean> {
-      this.actionLoading = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        await deleteStagedImport(stagedImportId)
-        await this.loadStaged()
+      identityStore.actionLoading = true
+      identityStore.error = null
+      try {
+        await privateIdentityWork(identityStore, identityEpoch, () => (deleteStagedImport(stagedImportId)))
+        await privateIdentityWork(identityStore, identityEpoch, () => (identityStore.loadStaged()))
         return true
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
         return false
       } finally {
-        this.actionLoading = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.actionLoading = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
     async enable(skillId: string): Promise<boolean> {
-      return this.lifecycle(skillId, enableSkill)
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      return identityStore.lifecycle(skillId, enableSkill)
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
+      }
     },
     async disable(skillId: string): Promise<boolean> {
-      return this.lifecycle(skillId, disableSkill)
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      return identityStore.lifecycle(skillId, disableSkill)
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
+      }
     },
     async remove(skillId: string): Promise<boolean> {
-      return this.lifecycle(skillId, deleteSkill)
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+      return identityStore.lifecycle(skillId, deleteSkill)
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
+      }
     },
     async lifecycle(skillId: string, op: (id: string) => Promise<unknown>): Promise<boolean> {
-      this.actionLoading = true
-      this.error = null
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
       try {
-        await op(skillId)
-        await this.loadList()
-        if (this.detail?.skillId === skillId) {
-          await this.loadDetail(skillId).catch(() => undefined)
+      identityStore.actionLoading = true
+      identityStore.error = null
+      try {
+        await privateIdentityWork(identityStore, identityEpoch, () => (op(skillId)))
+        await privateIdentityWork(identityStore, identityEpoch, () => (identityStore.loadList()))
+        if (identityStore.detail?.skillId === skillId) {
+          await privateIdentityWork(identityStore, identityEpoch, () => (identityStore.loadDetail(skillId).catch(() => undefined)))
         }
         return true
       } catch (err) {
-        this.error = displayError(err)
+        if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+        identityStore.error = displayError(err)
         return false
       } finally {
-        this.actionLoading = false
+        if (this.identityEpoch === identityEpoch) {
+        identityStore.actionLoading = false
+      
+        }
+      }
+    
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return false }
+        throw identityError
       }
     },
     clearError(): void {

@@ -110,8 +110,29 @@ public class CapabilityRuntime {
             Map<String,Object> arguments, PreparedApplicationCall prepared) {
         CapabilityInvocation invocation = new CapabilityInvocation(
                 Ids.random(), invocationKey, capabilityId, projectId, runId, arguments);
+        CapabilityAdapter adapter = registry.findAdapter(capabilityId).orElse(null);
+        if (adapter instanceof GuardedCapabilityAdapter guarded) {
+            // Task/scope/auth/Run locks precede the invocation row, also on a replay.
+            guarded.requireAuthorizedInvocation(invocation);
+        }
+        if(registry.hasRecordedResultAuthorization(capabilityId)) {
+            // Common replay path: source ownership/connection locks precede the
+            // invocation row. A first call has no result and holds no source lock
+            // across an external request; its provider verifies the live session.
+            var recorded=invocationRepository.findByInvocationKey(invocationKey);
+            if(recorded.isPresent()) {
+                if(!invocationRepository.matchesIdentity(invocation))
+                    return CapabilityResult.failed(invocation.invocationId(),invocationKey,capabilityId,
+                            "CAPABILITY_INVOCATION_IDENTITY_MISMATCH");
+                registry.requireAuthorizedRecordedResult(recorded.get());
+            }
+        }
 
         if (!invocationRepository.claim(invocation)) {
+            if (!invocationRepository.matchesIdentity(invocation)) {
+                return CapabilityResult.failed(invocation.invocationId(),invocationKey,capabilityId,
+                        "CAPABILITY_INVOCATION_IDENTITY_MISMATCH");
+            }
             // 认领竞态落败,或重试了一个已知的 key:已记录的行——而不是再执行一次
             // 适配器——才是唯一事实来源。
             CapabilityInvocationRecord existing = invocationRepository
@@ -119,10 +140,10 @@ public class CapabilityRuntime {
                     .orElseThrow(() -> new IllegalStateException(
                             "Invocation record vanished after losing its claim race: "
                                     + invocationKey));
+            registry.requireAuthorizedRecordedResult(existing);
             return replayResult(existing);
         }
 
-        CapabilityAdapter adapter = registry.findAdapter(capabilityId).orElse(null);
         if (adapter == null) {
             CapabilityResult failed = CapabilityResult.failed(
                     invocation.invocationId(), invocationKey, capabilityId,

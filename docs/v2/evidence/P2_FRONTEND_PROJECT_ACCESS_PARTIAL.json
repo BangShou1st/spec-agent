@@ -1,0 +1,339 @@
+{
+  "date": "2026-10-14",
+  "implemented": [
+    "Project/actor/org/revision-scoped permission refresh; reset immediately and ignore stale response",
+    "Default-denied and invalid response fail closed",
+    "Route write commands hidden; reading navigation remains available",
+    "Workspace Ctrl+Z/Ctrl+Y do not dispatch without PROJECT_WRITE",
+    "Membership button uses project management capability"
+  ],
+  "validation": {
+    "typecheck": "passed",
+    "focusedTests": 42,
+    "fullFrontend": {
+      "passed": 941,
+      "skipped": 1,
+      "filesPassed": 116,
+      "filesSkipped": 1
+    },
+    "browser": "bsk hasg OIDC Alice temporarily changed MANAGER to VIEWER in isolated clone; viewer notice visible and route runtime/member controls hidden; exact role restored"
+  },
+  "limitations": [
+    "All other caches/pages and logout/identity isolation pending full review",
+    "Full entry matrix and actual Worker/SSE convergence pending",
+    "Frontend presentation does not replace backend authorization"
+  ],
+  "stageCompleted": false,
+  "canvasIncrement": {
+    "implemented": [
+      "Graph toolbar default-denied write actions; reading controls retained",
+      "GraphCanvas passes permission to toolbar, knowledge cards and empty placeholder",
+      "VueFlow connectable false and onConnect guard; toolbar emits guarded",
+      "Knowledge edit/save/confirm/continue guards and write action filtering; permission loss closes editor",
+      "Knowledge recovery locate-only and irrelevant writing hint hidden",
+      "Removed literal block comments in knowledge template"
+    ],
+    "browserVerified": [
+      "OIDC VIEWER toolbar has zoom/fit but no add-idea/undo/redo",
+      "Node still readable and raw source comments absent",
+      "Fixture project role restored"
+    ],
+    "pending": [
+      "Question answer/recovery/actions UI",
+      "Inspector/proposal acceptance UI",
+      "Spec generation/retry UI",
+      "Remote revocation refresh strategy"
+    ]
+  },
+  "questionSpecIncrement": {
+    "implemented": [
+      "Question answer inputs and write actions require explicit PROJECT_WRITE",
+      "Question retries/route wake controls default denied",
+      "Inspector write actions and proposal approval require permission; query AI remains readable",
+      "Spec generation and retries require write; snapshot navigation and export retained",
+      "Workspace write handlers check permission even for an already-open dialog",
+      "Read-only global recovery action refreshes canonical state instead of writing"
+    ],
+    "newTests": [
+      "Current question becomes read-only after permission loss",
+      "Viewer proposal retains content without approval controls",
+      "Viewer spec retains content and emits export but no generation"
+    ],
+    "browser": "OIDC VIEWER expanded real SpecDock; generation control absent; role restored",
+    "limits": [
+      "Browser fixture has no answered question/proposal/spec snapshot; those cases covered by component tests, not claimed end-to-end",
+      "Remote permission refresh and all entry review still pending"
+    ]
+  },
+  "livePageRenewal": {
+    "pollMs": 5000,
+    "timeoutMs": 5000,
+    "measurementsAreSla": false,
+    "tests": [
+      "Remote role change without remount",
+      "Timed out renewal aborts and ignores late write privileges",
+      "Focus events coalesced",
+      "Dispose stops timers/listeners"
+    ],
+    "actualBrowser": {
+      "session": "hasg",
+      "run": "d5cf3ee427289",
+      "capture": "backend/build/p2-acceptance/frontend-live-role-refresh-capture.json",
+      "operations": 0,
+      "requests": 8,
+      "errors": 0,
+      "verified": [
+        "MANAGER to VIEWER without navigation or login closes write UI",
+        "VIEWER to MANAGER restores write UI on the same page",
+        "Exact test role restored"
+      ]
+    },
+    "limits": [
+      "Direct DB role mutation is an isolation fixture, not proof of management outbox or Worker cancellation",
+      "Full read revocation needs clearing already-loaded private data",
+      "Browser timer scheduling is not an authorization deadline"
+    ]
+  },
+  "readRevocation": {
+    "implemented": [
+      "PROJECT_READ presentation check removes private workspace and unmounts dialogs",
+      "Revocation advances project epoch and clears canonical graph/project/spec/proposal/query/run state",
+      "Revoked project drafts removed from memory and sessionStorage; other project drafts retained",
+      "Late old graph refresh rejected; permission restoration starts fresh server load"
+    ],
+    "tests": [
+      "Project-scoped draft purge respects full project key boundary",
+      "Lost read access clears state; late graph response cannot repopulate it"
+    ],
+    "browser": {
+      "session": "hasg",
+      "run": "dc8394b85dfcd",
+      "capture": "backend/build/p2-acceptance/frontend-read-revocation-capture.json",
+      "operations": 0,
+      "requests": 23,
+      "errors": 4,
+      "notes": "Expected denied requests during revocation; not claimed error-free",
+      "verified": [
+        "No navigate/login: project role removal hides title/graph/spec/inspector",
+        "Restoring exact member row reloads canonical workspace",
+        "Fixture restored and verified"
+      ]
+    },
+    "limits": [
+      "Workspace only: all other caches/pages and identity change/logout isolation still need matrix review",
+      "Direct database fixture does not exercise management outbox/Worker cancellation",
+      "Browser cannot revoke files already downloaded or information previously seen"
+    ]
+  },
+  "draftIdentity": {
+    "ownerKey": "spec-agent:input-drafts:owner:v1",
+    "ownerShape": "JSON [userId,orgId]",
+    "verified": [
+      "Same verified identity can restore drafts across reload",
+      "Different user in same organization gets no previous draft",
+      "Unattributed legacy drafts not adopted",
+      "Logout identity invalidated before navigation",
+      "Root authenticated route keyed by user and organization; component remount verified"
+    ],
+    "evidence": "Pinia ownership tests and app/privateIdentity.spec.ts; not a two-user real browser acceptance claim",
+    "pending": [
+      "Global assistant singleton/message/initialized/in-flight state invalidation",
+      "Other singletons and persisted caches",
+      "Real two-user logout/login browser matrix"
+    ]
+  },
+  "assistantIdentity": {
+    "implemented": [
+      "Root binds assistant to exact user/org identity",
+      "Identity change closes stream, cancels reconnect waits and successor timers, resets all singleton state including initialized",
+      "Remembered thread/run keys verified by persisted identity; unattributed legacy pointers cleared",
+      "21 async actions guard await results, store continuation accesses, catch/finally and late writes",
+      "Old SSE callbacks rejected by captured identity epoch even when run ID reused"
+    ],
+    "newTests": 5,
+    "focusedRaceAndHandoffTests": 15,
+    "browserAcceptance": "Not rerun for this increment; latest bsk session list empty, former hasg no longer live",
+    "limits": [
+      "Other stores and private caches still require isolation review",
+      "Actual two-user browser/real Worker/SSE matrix incomplete",
+      "Does not cancel or undo a provider request already sent"
+    ]
+  },
+  "sessionRefreshRace": {
+    "implemented": [
+      "Every fetch and body decode generation checked; newer refresh aborts and invalidates prior request",
+      "Actor, request organization and CSRF published together only after full bootstrap",
+      "Organization change invalidates old refresh and private identity before navigation",
+      "Logout invalidates refresh, clears client identity/headers, submits previously prepared headers, and blocks new refresh while pending",
+      "Failed logout remains visibly failed without restoring old private identity",
+      "Storage failure does not corrupt live request scope"
+    ],
+    "tests": 8,
+    "coverage": [
+      "CSRF bootstrap atomic publication",
+      "Late old actor cannot overwrite new user",
+      "Late CSRF cannot undo logout",
+      "Old organization cannot overwrite selection",
+      "Logout/refresh race and failed-logout fail-closed",
+      "Failed refresh clears CSRF",
+      "Old finalizer cannot clear current loading",
+      "Browser storage unavailable"
+    ],
+    "limitations": [
+      "Test evidence, not fresh two-user OIDC browser acceptance",
+      "Client-side logout cleanup is not proof of server logout success",
+      "Other singleton caches and actual Worker/SSE convergence remain pending"
+    ]
+  },
+  "settingsIdentity": {
+    "implemented": [
+      "Project list/create/rename/delete bind identity epoch and reject stale results/errors/finalizers",
+      "Root app binds six independent settings stores to exact user/org identity",
+      "46 asynchronous connection/Skill/model/provider/OpenRouter/custom actions guard work factories, awaits, continuation state access and catch/finally",
+      "Reset preserves monotonic identity epoch; old work cannot start another call or clear current busy flags"
+    ],
+    "focusedTests": 30,
+    "newTests": 5,
+    "limitations": [
+      "Unit/component test evidence; not actual two-user browser acceptance",
+      "Same-user same-org permission downgrade remains separate review",
+      "Requests already dispatched to a provider cannot be undone by frontend cache reset",
+      "All persistent browser caches need final inventory"
+    ]
+  },
+  "organizationRoleCache": {
+    "implemented": [
+      "Settings identity includes exact user/org, org role and sorted capability set",
+      "Capability changes reset all six settings stores and remount settings-local forms",
+      "Equivalent capability ordering does not reset data",
+      "Settings shell renews identity in background and on focus; pending focus coalesced; unmount stops timers",
+      "Session renewal timeout invalidates generation, clears private identity and rejects late response"
+    ],
+    "newTests": 5,
+    "validation": "Real App/Router/Pinia composition and session/layout lifecycle unit tests",
+    "limits": [
+      "Actual browser organization downgrade acceptance pending Docker recovery",
+      "Complete write-control capability wiring still pending",
+      "Organization members can read configuration status per backend matrix; not blanket-hidden",
+      "5 second poll/deadline experimental, not SLA"
+    ]
+  },
+  "modelManagementProjection": {
+    "implemented": [
+      "Explicit CREDENTIAL_MANAGE capability hook requires authenticated selected org and defaults denied",
+      "OpenCode/OpenRouter/custom provider management actions and custom add/edit require capability in UI and handlers",
+      "Read status and model catalog refresh preserved; member cannot change selected configuration",
+      "Credential drafts cleared on capability loss; restoration does not revive them",
+      "Equivalent authenticated capability refresh preserves editing draft"
+    ],
+    "newTests": 4,
+    "finalFocusedTests": 9,
+    "coverage": [
+      "Member sees masked status/read refresh and no management controls",
+      "Open credential editor disappears on revocation, draft clears, restoration stays empty",
+      "Unauthenticated/unselected org denies management",
+      "Capabilities used directly rather than inferring rights from role label"
+    ],
+    "limitations": [
+      "Unit/component evidence; real browser matrix not rerun",
+      "Search/retrieval/Skill/connection management controls remain pending",
+      "Frontend controls do not replace live backend authorization"
+    ]
+  },
+  "serviceSettingsManagement": {
+    "implemented": [
+      "Search and retrieval management forms/footer require CREDENTIAL_MANAGE; action entry checks live capability",
+      "Read search status and retrieval index refresh retained",
+      "Index rebuild/retry/activate/discard controls require management",
+      "Credential drafts and confirmations cleared on capability loss",
+      "All service calls fenced to captured authenticated user/org/role/capability scope and component lifetime"
+    ],
+    "newTests": 4,
+    "focusedFinalTests": 8,
+    "testAddedAfterFull": {
+      "case": "Unmounted search probe cannot make a follow-up status read",
+      "focusedVerified": true,
+      "fullRerun": false
+    },
+    "limitations": [
+      "Full 919 report predates the final added test; unchanged production code covered by full and focused suite covers the new test",
+      "Actual browser management matrix still pending",
+      "Skill and Connection management projections pending",
+      "Provider request already sent cannot be undone"
+    ]
+  },
+  "skillManagementProjection": {
+    "implemented": [
+      "ORG_MANAGE gates import/discovery/stage/install/reject/lifecycle/delete actions and visible management entries",
+      "Members retain installed list/detail/resource and staged manifest reading",
+      "Read-only lifecycle switches disabled; import and delete confirmation hidden",
+      "Role loss closes import/delete confirmations and clears selected file/Git draft",
+      "Existing editing/navigation fixtures declare authenticated organization-management capability"
+    ],
+    "newTests": 3,
+    "coverage": [
+      "Member can select Skill and see lifecycle status but cannot change or delete",
+      "Member can read staged manifest without approval controls",
+      "Member detail can read resource but no delete/enable call"
+    ],
+    "limitations": [
+      "Component test evidence, not live browser role matrix",
+      "Connection management still pending",
+      "Server dynamic authorization remains authoritative",
+      "Docker engine pipe still unavailable at final check"
+    ]
+  },
+  "connectionManagementProjection": {
+    "implemented": [
+      "API list/detail responses expose ownerKind without owner user/org UUID or credential reference",
+      "Authenticated selected-organization members create and manage personal USER connections",
+      "ORG shared management requires CREDENTIAL_MANAGE",
+      "Creation defaults to explicit USER and offers ORG only with sharing capability",
+      "Unknown or missing response ownership denies management",
+      "Capability loss closes shared edit/delete and clears unsaved credentials; list confirmation reset on loss",
+      "Capability directory fetch waits for enabled TESTED/CONNECTED; inactive detail clears catalog instead of triggering agent-visible rejection"
+    ],
+    "newFrontendTests": 9,
+    "focusedFrontendTests": 29,
+    "focusedBackend": {
+      "tests": 76,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 10
+    },
+    "newBackendTests": 1,
+    "typecheck": "passed",
+    "mechanicalUiDetector": [],
+    "limitations": [
+      "Server live authorization remains authoritative",
+      "Full member/revocation browser and two-Worker matrix pending"
+    ],
+    "focusedWithSettingsIdentityTests": 32,
+    "browser": {
+      "session": "xhze",
+      "tool": "browser-skill bsk",
+      "mode": "OIDC",
+      "user": "isolated Alice OWNER",
+      "runtimeSha256": "7CD0DB50CD012F56E097ED1CC9BC517813623C07DDBE333EC7D10C395043BDA2",
+      "verified": [
+        "OIDC login against local Keycloak",
+        "Creation defaults to personal USER",
+        "Create/detail retains edit and lifecycle management controls",
+        "Disabled CREATED detail has no internal agent-visible rejection after repair",
+        "Delete confirmation and completion; created test rows remaining=0"
+      ],
+      "limitations": [
+        "Does not prove member sharing restrictions or live revocation browser matrix",
+        "Does not prove external MCP server connection success"
+      ],
+      "sessionPreserved": true
+    }
+  },
+  "memberManagementProjection": {
+    "evidence": "P2_MEMBER_FRONTEND_ISOLATION_PARTIAL.json",
+    "newTests": 9,
+    "frontendFullPassed": 941,
+    "stageCompleted": false
+  }
+}

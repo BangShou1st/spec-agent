@@ -1,0 +1,190 @@
+{
+  "date": "2026-10-14",
+  "manifest": {
+    "database": "spec_agent_p2_workers_20261014a",
+    "sourceDatabase": "spec_agent_p2_oidc_v91",
+    "securityMode": "OIDC",
+    "securityProtocol": 13,
+    "jar": "E:\\project\\spec-agent\\backend\\build\\p2-acceptance\\runtime-current-connection.jar",
+    "jarSha256": "7cd0db50cd012f56e097ed1cc9bc517813623c07ddbe333ec7d10c395043bda2",
+    "ports": {
+      "A": 8383,
+      "B": 8384,
+      "brain": 8103
+    },
+    "workerEnabled": true,
+    "modelInference": "fake",
+    "workspaceDecisionEngine": "fake",
+    "pythonMode": "broker",
+    "sessionDataCopied": false,
+    "stageCompleted": false,
+    "scenarioResults": [],
+    "state": "READY",
+    "processes": {
+      "A": {
+        "pid": 52852,
+        "port": 8383
+      },
+      "B": {
+        "pid": 26616,
+        "port": 8384
+      },
+      "brain": {
+        "pid": 51980,
+        "port": 8103
+      }
+    },
+    "pythonExecutionProtocols": [
+      "ga-execution.v1",
+      "ga-execution-event.v1"
+    ]
+  },
+  "workspaceScenario": {
+    "scenario": "OIDC workspace actor reconstruction and two-worker parallel execution",
+    "passed": true,
+    "submitted": 8,
+    "rows": [
+      {
+        "run_id": "812f8ce0-17d0-42fc-b1a9-cb9106c91e81",
+        "state": "SUCCEEDED",
+        "actor_source": "OIDC",
+        "actor_user_id": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+        "actor_org_id": "1c9daeb6-dd85-4944-9802-fe49e51d44f1",
+        "worker_id": "a04419e3-cfae-4823-8d46-43c1e57338ee",
+        "attempt_count": 1,
+        "last_error_code": null,
+        "business_status": "completed"
+      },
+      {
+        "run_id": "fcabdb7f-2c3f-4966-b813-41d6c4b22559",
+        "state": "SUCCEEDED",
+        "actor_source": "OIDC",
+        "actor_user_id": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+        "actor_org_id": "1c9daeb6-dd85-4944-9802-fe49e51d44f1",
+        "worker_id": "663243b3-58ff-4992-9e45-4313dccec23c",
+        "attempt_count": 1,
+        "last_error_code": null,
+        "business_status": "completed"
+      },
+      {
+        "run_id": "a9e10b87-fe81-459c-8380-58b16923a2f8",
+        "state": "SUCCEEDED",
+        "actor_source": "OIDC",
+        "actor_user_id": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+        "actor_org_id": "1c9daeb6-dd85-4944-9802-fe49e51d44f1",
+        "worker_id": "663243b3-58ff-4992-9e45-4313dccec23c",
+        "attempt_count": 1,
+        "last_error_code": null,
+        "business_status": "completed"
+      },
+      {
+        "run_id": "49898cf2-fbb5-44eb-b523-f078fbdc0bc2",
+        "state": "SUCCEEDED",
+        "actor_source": "OIDC",
+        "actor_user_id": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+        "actor_org_id": "1c9daeb6-dd85-4944-9802-fe49e51d44f1",
+        "worker_id": "a04419e3-cfae-4823-8d46-43c1e57338ee",
+        "attempt_count": 1,
+        "last_error_code": null,
+        "business_status": "completed"
+      },
+      {
+        "run_id": "8d27659c-b499-4e36-b7f2-211132ae0fc3",
+        "state": "SUCCEEDED",
+        "actor_source": "OIDC",
+        "actor_user_id": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+        "actor_org_id": "1c9daeb6-dd85-4944-9802-fe49e51d44f1",
+        "worker_id": "663243b3-58ff-4992-9e45-4313dccec23c",
+        "attempt_count": 1,
+        "last_error_code": null,
+        "business_status": "completed"
+      },
+      {
+        "run_id": "e570ca33-944b-45c7-92a1-ba218134de9d",
+        "state": "SUCCEEDED",
+        "actor_source": "OIDC",
+        "actor_user_id": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+        "actor_org_id": "1c9daeb6-dd85-4944-9802-fe49e51d44f1",
+        "worker_id": "a04419e3-cfae-4823-8d46-43c1e57338ee",
+        "attempt_count": 1,
+        "last_error_code": null,
+        "business_status": "completed"
+      },
+      {
+        "run_id": "2adcdff7-ddb7-4863-ab18-619da955363c",
+        "state": "SUCCEEDED",
+        "actor_source": "OIDC",
+        "actor_user_id": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+        "actor_org_id": "1c9daeb6-dd85-4944-9802-fe49e51d44f1",
+        "worker_id": "663243b3-58ff-4992-9e45-4313dccec23c",
+        "attempt_count": 1,
+        "last_error_code": null,
+        "business_status": "completed"
+      },
+      {
+        "run_id": "0e11320e-baf5-4f35-a34c-544566bbf652",
+        "state": "SUCCEEDED",
+        "actor_source": "OIDC",
+        "actor_user_id": "8c08a75d-dcf3-32e0-9172-8661d53e538f",
+        "actor_org_id": "1c9daeb6-dd85-4944-9802-fe49e51d44f1",
+        "worker_id": "a04419e3-cfae-4823-8d46-43c1e57338ee",
+        "attempt_count": 1,
+        "last_error_code": null,
+        "business_status": "completed"
+      }
+    ],
+    "distinctWorkers": 2,
+    "overlapPairs": 4,
+    "liveHealth": {
+      "A": true,
+      "B": true,
+      "brain": true
+    },
+    "database": "spec_agent_p2_workers_20261014a",
+    "jarSha256": "7cd0db50cd012f56e097ed1cc9bc517813623c07ddbe333ec7d10c395043bda2",
+    "submission": "browser-skill evaluate calling the application API client after real OIDC login",
+    "limitations": [
+      "Workspace deterministic fake engine; does not exercise Python model calls",
+      "No observed peak-capacity claim",
+      "No revocation/late-output/SSE proof in this scenario",
+      "Not a full UI flow or full P2 completion"
+    ]
+  },
+  "processReadinessVerified": {
+    "A": {
+      "pid": 52852,
+      "port": 8383,
+      "workerPollingOpened": true
+    },
+    "B": {
+      "pid": 26616,
+      "port": 8384,
+      "workerPollingOpened": true
+    },
+    "brain": {
+      "pid": 51980,
+      "port": 8103,
+      "realPython": true
+    }
+  },
+  "browser": {
+    "session": "oebj",
+    "frontEnd": "http://127.0.0.1:8282",
+    "authentication": "real local Keycloak OIDC code flow; no Spring Session rows copied",
+    "submission": "browser-skill evaluate of app API client for concurrent requests; no exported cookies or CSRF values",
+    "preserved": true
+  },
+  "commands": {
+    "start": "agent-brain/.venv/Scripts/python.exe tools/p2_oidc_dual_worker_acceptance.py --database spec_agent_p2_workers_20261014a",
+    "observe": "agent-brain/.venv/Scripts/python.exe tools/p2_oidc_dual_worker_acceptance.py --observe backend/build/p2-acceptance/spec_agent_p2_workers_20261014a"
+  },
+  "limitations": [
+    "No real provider inference; Java workspace deterministic fake engine",
+    "Python process ready but workspace case does not exercise Python model protocol",
+    "No peak capacity, revocation, late output, GA/SSE, kill/takeover, DB outage or fleet rollback acceptance in this case",
+    "Independent test database retained with test artifacts; original OIDC/source/dev databases unchanged",
+    "Lease15s and 200ms polling are experimental acceptance settings, not production guarantees",
+    "Full P2 remains incomplete"
+  ],
+  "stageCompleted": false
+}

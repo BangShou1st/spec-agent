@@ -13,7 +13,7 @@ public class EmbeddingSettingsController {
     public EmbeddingSettingsController(EmbeddingSettings settings,EmbeddingTransport transport,EmbeddingRebuilds rebuilds) {
         this.settings=settings; this.transport=transport; this.rebuilds=rebuilds;
     }
-    @GetMapping public Map<String,Object> get() { return Map.of("service",settings.view(),"index",rebuilds.view()); }
+    @GetMapping public Map<String,Object> get() { settings.requireManagement();return Map.of("service",settings.view(),"index",rebuilds.view()); }
     @PutMapping public Map<String,Object> save(@RequestBody EmbeddingSettings.Draft draft) { settings.save(draft); return get(); }
     @DeleteMapping("/credential") public Map<String,Object> clear(@RequestParam long revision) { settings.clearCredential(revision); return get(); }
     @PostMapping("/test") public Map<String,Object> test(@RequestBody EmbeddingSettings.Draft draft) {
@@ -25,6 +25,7 @@ public class EmbeddingSettingsController {
             if(saved) settings.register(config,result.dimensions(),result.digest(),revision);
             return Map.of("success",true,"code","OK","dimensions",result.dimensions(),"testId",testId,"target",saved?"SAVED":"DRAFT");
         } catch(RuntimeException ex) {
+            if(ex instanceof com.specagent.access.AccessDeniedException) throw ex;
             String code=ServiceSettingsErrors.safeCode(ex); if(saved) settings.testFailure(revision,code);
             return Map.of("success",false,"code",code,"target",saved?"SAVED":"DRAFT");
         }

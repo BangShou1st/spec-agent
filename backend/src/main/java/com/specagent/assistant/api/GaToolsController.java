@@ -15,7 +15,14 @@ public class GaToolsController {
     }
     @GetMapping("/tools")
     public Map<String,Object> tools() {
-        return Map.of("engineVersion","langchain-ga.v1","webConfigured",web.configured(),"retrievalReady",retrieval.ready(),"retrievalStatus",retrieval.status(),
-                "capabilities",catalog.current().descriptors().stream().map(GaCatalogProjection.Descriptor::capabilityId).toList());
+        Map<String,Object> result=new LinkedHashMap<>();
+        result.put("engineVersion","langchain-ga.v1");
+        result.put("webConfigured",web.configured());
+        result.put("retrievalReady",retrieval.ready());
+        result.put("retrievalStatus",retrieval.status());
+        result.put("retrievalProvider",retrieval.provider());
+        result.put("retrievalModel",retrieval.model());
+        result.put("capabilities",catalog.current().descriptors().stream().map(GaCatalogProjection.Descriptor::capabilityId).toList());
+        return result;
     }
 }
