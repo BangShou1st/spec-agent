@@ -25,4 +25,21 @@ publishing {
             from(components["java"])
         }
     }
+    repositories {
+        // Lightweight local consumption: `.\gradlew.bat publishToMavenLocal`.
+        mavenLocal()
+        // Optional private ecosystem repository (GitHub Packages / Nexus / Artifactory).
+        val ecosystemUrl = System.getenv("ZEN_MAVEN_REPO_URL").orEmpty().trim()
+        if (ecosystemUrl.isNotEmpty()) {
+            maven {
+                name = "zenEcosystem"
+                url = uri(ecosystemUrl)
+                isAllowInsecureProtocol = ecosystemUrl.startsWith("http://")
+                credentials {
+                    username = System.getenv("ZEN_MAVEN_USER").orEmpty()
+                    password = System.getenv("ZEN_MAVEN_TOKEN").orEmpty()
+                }
+            }
+        }
+    }
 }
