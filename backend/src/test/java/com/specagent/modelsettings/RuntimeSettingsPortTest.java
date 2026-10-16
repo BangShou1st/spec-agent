@@ -137,17 +137,23 @@ class RuntimeSettingsPortTest {
 
     @Test
     void openCodeServiceServesRuntimeSettingsThroughTheModelOwnedPort() {
+        // 运行时凭据现在按模型解析(free -> public 凭据;paid -> 已存 Key),由模型目录
+        // 权威决定,因此这里显式桩定目录解析结果,并验证服务确实走了这条委派。
+        OpenCodeModelCatalog catalog = Mockito.mock(OpenCodeModelCatalog.class);
+        Mockito.when(catalog.credentialForModel("gpt-5.6-terra", "oc-secret-key"))
+                .thenReturn("oc-secret-key");
         OpenCodeSettingsService svc = new OpenCodeSettingsService(
                 new MemOpenCodeRepo(new OpenCodeSettings(
                         "oc-secret-key", "e-key", "gpt-5.6-terra",
                         Instant.now(), Instant.now())),
-                Mockito.mock(OpenCodeModelCatalog.class),
+                catalog,
                 Mockito.mock(OpenCodeZenTransport.class));
         assertThat(svc).isInstanceOf(OpenCodeRuntimeSettingsPort.class);
         OpenCodeRuntimeSettingsPort port = svc;
 
         RuntimeOpenCodeSettings settings = port.requireRuntimeSettings();
 
+        Mockito.verify(catalog).credentialForModel("gpt-5.6-terra", "oc-secret-key");
         assertThat(settings.apiKey()).isEqualTo("oc-secret-key");
         assertThat(settings.selectedModel()).isEqualTo("gpt-5.6-terra");
         assertThat(settings.credentialSource()).isEqualTo("database:opencode_settings");
