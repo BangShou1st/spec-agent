@@ -16,6 +16,7 @@ import java.util.Map;
  */
 public sealed interface GraphStep
         permits GraphStep.CreateRootQuestion,
+                GraphStep.CreateRootQuestionText,
                 GraphStep.CreateChildQuestion,
                 GraphStep.AttachResource,
                 GraphStep.ForkFromNode,
@@ -24,6 +25,17 @@ public sealed interface GraphStep
 
     /** 在活动路由上创建根 INTERACTION/QUESTION。 */
     record CreateRootQuestion(String questionSeed, boolean allowFreeAnswer) implements GraphStep {
+    }
+
+    /**
+     * 在活动路由上创建根 INTERACTION/QUESTION,**直接给出字面问题文本**。
+     *
+     * 种子渲染(见 {@link #renderText})刻意产出占位串,适合确定性 B-fast;
+     * 但真实模型评测需要模型看到真实自然语言,否则测到的是占位符而不是理解
+     * 能力。这条变体只服务于 live 评测,语义与 {@link CreateRootQuestion} 相同。
+     */
+    record CreateRootQuestionText(String questionText, boolean allowFreeAnswer)
+            implements GraphStep {
     }
 
     /** 在前序步骤构建的节点下创建子 INTERACTION/QUESTION。 */
@@ -54,6 +66,10 @@ public sealed interface GraphStep
             if (step instanceof CreateRootQuestion root) {
                 rendered.append("root(").append(root.questionSeed())
                         .append(",").append(root.allowFreeAnswer()).append(");");
+            } else if (step instanceof CreateRootQuestionText rootText) {
+                // 字面文本直接进入哈希:live 评测的语义就是这段真实问题。
+                rendered.append("rootText(").append(rootText.questionText())
+                        .append(",").append(rootText.allowFreeAnswer()).append(");");
             } else if (step instanceof CreateChildQuestion child) {
                 rendered.append("child(").append(child.parentStepRef())
                         .append(",").append(child.questionSeed())

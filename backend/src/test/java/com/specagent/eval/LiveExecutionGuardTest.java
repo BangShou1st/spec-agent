@@ -73,6 +73,49 @@ class LiveExecutionGuardTest {
                 .isEqualTo(OpenCodeModelInferenceGateway.class.getName());
     }
 
+    /**
+     * 回归:生产装配把 RoutingModelInferenceGateway 作为 @Primary 的权威入口
+     * (按激活提供商委派)。守卫必须接受它,否则真实 live 链路会被误判为 fake,
+     * 让 P3-A 的真实模型评测无法进行。
+     */
+    @Test
+    void productionRoutingGatewayIsAcceptedAsLive() {
+        ModelInferenceGateway routing = new com.specagent.model.provider
+                .RoutingModelInferenceGateway(
+                () -> com.specagent.model.contract.ModelProvider.OPENCODE_ZEN,
+                new OpenCodeModelInferenceGateway(null, null), null, null);
+
+        LiveExecutionGuard.Evidence evidence = LiveExecutionGuard.requireRemoteProvider(
+                remoteBrain, routing, null);
+
+        assertThat(evidence.inferenceGateway())
+                .isEqualTo(com.specagent.model.provider.RoutingModelInferenceGateway.class.getName());
+    }
+
+    /** 未知网关仍必须被拒绝:绝不放宽成"不是 fake 就算 live"。 */
+    @Test
+    void unknownGatewayIsStillRejectedAsLive() {
+        ModelInferenceGateway unknown = new ModelInferenceGateway() {
+            @Override
+            public com.specagent.model.contract.ModelInferenceResponse complete(
+                    ModelInferenceRequest request) {
+                return null;
+            }
+
+            @Override
+            public com.specagent.model.contract.ModelInferenceResponse completeStreaming(
+                    ModelInferenceRequest request,
+                    com.specagent.model.contract.FragmentListener listener) {
+                return null;
+            }
+        };
+
+        assertThatThrownBy(() -> LiveExecutionGuard.requireRemoteProvider(
+                remoteBrain, unknown, null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("real provider gateway");
+    }
+
     @Test
     void missingBeansAreRejectedRatherThanTreatedAsFallback() {
         assertThatThrownBy(() -> LiveExecutionGuard.requireRemoteProvider(null, null, null))

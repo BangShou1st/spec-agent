@@ -283,6 +283,40 @@ tasks.register<Test>("evalScenario") {
     }
 }
 
+// P3-A: real-model evaluation of the PROJECT Agent's understanding (B) and
+// next-action decision (C) quality. Explicitly opt-in and non-blocking: it
+// requires a broker-mode agent-brain plus the project's configured model, so it
+// can never run in PR CI. Records build/eval-p3a/layer-bc-live.json.
+tasks.register<Test>("evalP3ALiveProjectAgent") {
+    group = "verification"
+    description = "Records the P3-A project-Agent B/C live baseline (requires live brain + provider)."
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching("com.specagent.eval.EvalLiveP3AProjectAgentSuiteTest")
+    }
+    testLogging {
+        events("passed", "failed", "skipped")
+        showStandardStreams = true
+    }
+}
+
+// P3-A: deterministic A-layer retrieval evaluation over the frozen Chinese
+// calibration set, including a same-harness before/after comparison for the
+// CJK lexical fix. Reuses production retrieval; no live provider needed.
+tasks.register<Test>("evalP3ARetrieval") {
+    group = "verification"
+    description = "Runs the P3-A deterministic retrieval (layer A) evaluation."
+    useJUnitPlatform()
+    systemProperty("spec.agent.retrieval.embedding.provider", "fake")
+    filter {
+        includeTestsMatching("com.specagent.retrieval.eval.P3A*")
+    }
+    testLogging {
+        events("passed", "failed", "skipped")
+        showStandardStreams = true
+    }
+}
+
 tasks.withType<JavaCompile> {
     options.compilerArgs.add("-parameters")
 }

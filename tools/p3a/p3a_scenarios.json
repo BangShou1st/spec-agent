@@ -1,0 +1,276 @@
+{
+  "version": "p3a-scenarios.v2",
+  "authorship": "AI-authored candidate scenarios and candidate labels; domain-general, spanning business process, service design and operational rules as well as software.",
+  "humanReviewStatus": "PENDING",
+  "labelPolicy": "Every scenario label is a CANDIDATE label awaiting human review. acceptableActions are deliberate acceptable FAMILIES, not single answers. Labels were authored WITHOUT running the agent first. Oracle matching is deliberately concept-based (semantic conditions), never string equality.",
+  "oracleNotes": [
+    "requiredConcepts: each OR-group in anyOf must be satisfied by at least one claim (paraphrase-tolerant).",
+    "forbiddenOvergeneralizations: flagged only when the claim does NOT contain an explicit negation from unlessNegated. Revoking a superseded option is correct behavior, not an over-generalization.",
+    "mustNotSettle: precise 'settling' patterns for content the user explicitly left undecided. Stating the CONFIRMED part of a sentence while leaving the undecided part UNRESOLVED must NOT count as settling."
+  ],
+  "developmentUse": "DEVELOPMENT_CALIBRATION",
+  "scenarios": [
+    {
+      "id": "P3A-B01",
+      "family": "EXPLICIT_REQUIREMENT",
+      "question": "这个计划最重要的目标是什么？",
+      "answer": "我们要把售后维修的响应时间从两天缩短到四小时以内。",
+      "requiredConcepts": [
+        {"id": "response-time", "anyOf": [["响应时间"]]},
+        {"id": "four-hours", "anyOf": [["四小时", "4小时"]]},
+        {"id": "after-sales-repair", "anyOf": [["售后"], ["维修"]]}
+      ],
+      "forbiddenOvergeneralizations": [
+        {"id": "cost-goal", "allOf": ["降低成本"], "note": "cost was never mentioned"}
+      ],
+      "mustNotSettle": [],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"]
+    },
+    {
+      "id": "P3A-B02",
+      "family": "CONDITIONAL_REQUIREMENT",
+      "question": "预约流程有什么规则？",
+      "answer": "普通员工都可以预约会议室，但是大型会议室需要管理员审批，暂时还没决定大型会议室按多少人计算。",
+      "requiredConcepts": [
+        {"id": "employee-can-book", "anyOf": [["普通员工"], ["员工"]]},
+        {"id": "large-needs-approval", "anyOf": [["大型会议室"], ["审批"]]}
+      ],
+      "forbiddenOvergeneralizations": [
+        {"id": "all-need-approval", "allOf": ["所有", "审批"],
+         "note": "the brief's explicit trap: must not become 'all bookings need approval'"}
+      ],
+      "mustNotSettle": [
+        {"id": "large-room-threshold",
+         "patterns": ["按人数计算", "人数阈值", "按人计算", "超过20人", "超过15人", "超过10人", "20人以上", "15人以上", "10人以上"],
+         "note": "the brief's explicit trap: the headcount definition must stay undecided"}
+      ],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"]
+    },
+    {
+      "id": "P3A-B03",
+      "family": "NEGATION",
+      "question": "会员积分怎么用？",
+      "answer": "积分不能直接抵扣现金，也不能转赠给别人。",
+      "requiredConcepts": [
+        {"id": "no-cash-offset", "anyOf": [["积分"], ["抵扣"]]},
+        {"id": "no-transfer", "anyOf": [["转赠", "转让"]]}
+      ],
+      "forbiddenOvergeneralizations": [
+        {"id": "points-usable-cash", "allOf": ["积分", "可以抵扣现金"],
+         "unlessNegated": ["不能", "不可", "不得"], "note": "negation must not be dropped"},
+        {"id": "transferable", "allOf": ["积分", "可以转赠"],
+         "unlessNegated": ["不能", "不可", "不得"]}
+      ],
+      "mustNotSettle": [],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"]
+    },
+    {
+      "id": "P3A-B04",
+      "family": "MULTI_CONSTRAINT",
+      "question": "配送规则有哪些约束？",
+      "answer": "生鲜必须冷链配送，单笔满99元免运费，偏远地区最晚三天送达。",
+      "requiredConcepts": [
+        {"id": "cold-chain", "anyOf": [["生鲜"], ["冷链"]]},
+        {"id": "free-shipping", "anyOf": [["99"]]},
+        {"id": "remote-three-days", "anyOf": [["偏远"], ["三天", "3天"]]}
+      ],
+      "forbiddenOvergeneralizations": [
+        {"id": "all-free", "allOf": ["所有", "免运费"],
+         "unlessNegated": ["不", "仅", "只有"]}
+      ],
+      "mustNotSettle": [],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"]
+    },
+    {
+      "id": "P3A-B05",
+      "family": "REQUIREMENT_CHANGE",
+      "question": "目标客户是谁？",
+      "answer": "之前说面向中小企业，现在改成只做连锁餐饮品牌。",
+      "requiredConcepts": [
+        {"id": "chain-restaurant", "anyOf": [["连锁"], ["餐饮"]]}
+      ],
+      "forbiddenOvergeneralizations": [
+        {"id": "still-sme", "allOf": ["中小企业", "目标"],
+         "unlessNegated": ["不再", "已撤销", "改成", "改为", "替换"],
+         "note": "the superseded choice must not REMAIN an active goal; explicitly revoking it is correct"}
+      ],
+      "mustNotSettle": [],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"]
+    },
+    {
+      "id": "P3A-B06",
+      "family": "UNRESOLVED_DEFINITION",
+      "question": "活跃用户怎么定义？",
+      "answer": "我们想按活跃用户数收费，但活跃的定义还没定，可能按登录算也可能按下单算。",
+      "requiredConcepts": [
+        {"id": "charge-by-active", "anyOf": [["活跃用户"], ["收费", "计费"]]}
+      ],
+      "forbiddenOvergeneralizations": [],
+      "mustNotSettle": [
+        {"id": "active-definition",
+         "patterns": ["活跃用户定义为", "定义确定为", "按登录计算", "按下单计算", "活跃的定义为"],
+         "note": "an explicitly undecided definition must not be settled"}
+      ],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"]
+    },
+    {
+      "id": "P3A-B07",
+      "family": "CONFLICT",
+      "question": "系统的部署要求是什么？",
+      "answer": "必须完全离线运行，同时所有门店的数据要实时同步到总部。",
+      "requiredConcepts": [
+        {"id": "offline", "anyOf": [["离线"]]},
+        {"id": "realtime-sync", "anyOf": [["实时"], ["同步"]]}
+      ],
+      "forbiddenOvergeneralizations": [
+        {"id": "compatible", "allOf": ["完全离线", "实时同步", "没有问题"]}
+      ],
+      "mustNotSettle": [],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"]
+    },
+    {
+      "id": "P3A-B08",
+      "family": "ASSUMPTION_AND_UNKNOWN",
+      "question": "上线时间怎么安排？",
+      "answer": "希望第三季度上线，但预算还没批，具体日期也没定。",
+      "requiredConcepts": [
+        {"id": "q3", "anyOf": [["第三季度", "三季度"]]}
+      ],
+      "forbiddenOvergeneralizations": [],
+      "mustNotSettle": [
+        {"id": "budget-approved",
+         "patterns": ["预算已批", "预算已批准", "预算已经批准"],
+         "note": "the budget is explicitly unapproved, so asserting approval is wrong"},
+        {"id": "date-fixed",
+         "patterns": ["上线日期已确定", "日期已确定", "上线日期为"],
+         "note": "the date is explicitly undecided"}
+      ],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"]
+    },
+    {
+      "id": "P3A-B09",
+      "family": "FREE_TEXT_ANSWER",
+      "question": "还有什么需要补充的吗？",
+      "answer": "暂时没有别的了，目前信息应该够开始下一步了。",
+      "requiredConcepts": [],
+      "forbiddenOvergeneralizations": [
+        {"id": "invented-goal", "allOf": ["目标是"], "unlessNegated": ["没有", "未", "不"]},
+        {"id": "invented-budget", "allOf": ["预算"], "unlessNegated": ["没有", "未", "不", "还没"]}
+      ],
+      "mustNotSettle": [],
+      "acceptableActions": ["RESPOND_TO_USER", "REQUEST_USER_INPUT", "CREATE_NODE"]
+    },
+    {
+      "id": "P3A-B10",
+      "family": "PARTIAL_ANSWER",
+      "question": "退款规则是什么？",
+      "answer": "七天无理由退货。",
+      "requiredConcepts": [
+        {"id": "seven-days", "anyOf": [["七天", "7天"]]}
+      ],
+      "forbiddenOvergeneralizations": [
+        {"id": "refund-amount", "allOf": ["全额", "退款"],
+         "unlessNegated": ["未", "不", "没有"]}
+      ],
+      "mustNotSettle": [],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"]
+    },
+    {
+      "id": "P3A-B11",
+      "family": "EXPLICIT_REQUIREMENT",
+      "question": "培训计划的目标是什么？",
+      "answer": "让新入职客服在一周内独立处理工单。",
+      "requiredConcepts": [
+        {"id": "new-agent", "anyOf": [["新入职", "新员工", "客服"]]},
+        {"id": "one-week", "anyOf": [["一周", "1周", "7天"]]},
+        {"id": "independent", "anyOf": [["独立"]]}
+      ],
+      "forbiddenOvergeneralizations": [
+        {"id": "all-staff", "allOf": ["所有员工", "培训"],
+         "unlessNegated": ["不", "仅", "只有", "限定"]}
+      ],
+      "mustNotSettle": [],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"]
+    },
+    {
+      "id": "P3A-B12",
+      "family": "NEGATION_AND_EXCEPTION",
+      "question": "哪些客户不能参与这个活动？",
+      "answer": "除了已经欠费的客户，其他人都可以参加，但企业账户不允许叠加优惠。",
+      "requiredConcepts": [
+        {"id": "arrears-excluded", "anyOf": [["欠费"]]},
+        {"id": "enterprise-no-stack", "anyOf": [["企业"], ["叠加"]]}
+      ],
+      "forbiddenOvergeneralizations": [
+        {"id": "enterprise-can-stack", "allOf": ["企业账户", "可以叠加"],
+         "unlessNegated": ["不允许", "不能", "不可"]}
+      ],
+      "mustNotSettle": [],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"]
+    },
+    {
+      "id": "P3A-B13",
+      "family": "MULTI_CONSTRAINT",
+      "question": "生产质检的标准是什么？",
+      "answer": "抽检比例不低于5%，不合格率超过1%就要整批复检，复检必须在24小时内完成。",
+      "requiredConcepts": [
+        {"id": "sampling-5", "anyOf": [["5%", "百分之五"]]},
+        {"id": "recheck-1", "anyOf": [["1%"]]},
+        {"id": "within-24h", "anyOf": [["24小时"]]}
+      ],
+      "forbiddenOvergeneralizations": [
+        {"id": "full-inspection", "allOf": ["全检"],
+         "unlessNegated": ["不", "无需", "不需要"]}
+      ],
+      "mustNotSettle": [],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"]
+    },
+    {
+      "id": "P3A-B14",
+      "family": "UNRESOLVED_DEFINITION",
+      "question": "这个套餐的定价怎么算？",
+      "answer": "按坐席收费，具体每个坐席多少钱还没定，需要财务再确认。",
+      "requiredConcepts": [
+        {"id": "per-seat", "anyOf": [["坐席", "席位"]]}
+      ],
+      "forbiddenOvergeneralizations": [
+        {"id": "price-fixed", "allOf": ["每个坐席", "元"],
+         "unlessNegated": ["未", "还没", "没定", "待"]}
+      ],
+      "mustNotSettle": [
+        {"id": "seat-price",
+         "patterns": ["每个坐席定价", "坐席价格为", "单价为"],
+         "note": "the per-seat price is explicitly undecided"}
+      ],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"]
+    },
+    {
+      "id": "P3A-B15",
+      "family": "FREE_TEXT_ANSWER",
+      "question": "还有遗漏吗？",
+      "answer": "嗯，大概就是这些。",
+      "requiredConcepts": [],
+      "forbiddenOvergeneralizations": [
+        {"id": "invented-goal", "allOf": ["目标是"], "unlessNegated": ["没有", "未", "不"]}
+      ],
+      "mustNotSettle": [],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER", "CREATE_NODE"]
+    },
+    {
+      "id": "P3A-B16",
+      "family": "CONDITIONAL_REQUIREMENT",
+      "question": "客户升级支持等级的条件是什么？",
+      "answer": "只有年费超过十万的客户才能升级到专属支持，而且需要销售总监签字确认。",
+      "requiredConcepts": [
+        {"id": "threshold-100k", "anyOf": [["十万", "10万"]]},
+        {"id": "director-signoff", "anyOf": [["总监"], ["签字", "确认"]]}
+      ],
+      "forbiddenOvergeneralizations": [
+        {"id": "all-customers", "allOf": ["所有客户", "专属支持"],
+         "unlessNegated": ["不", "仅", "只有"]}
+      ],
+      "mustNotSettle": [],
+      "acceptableActions": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"]
+    }
+  ]
+}

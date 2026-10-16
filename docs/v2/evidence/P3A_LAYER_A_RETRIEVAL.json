@@ -1,0 +1,405 @@
+{
+  "layer" : "A",
+  "suite" : "p3a-retrieval-default-install",
+  "engine" : "java-hybrid.v1",
+  "embeddingProvider" : "fake",
+  "vectorLaneNote" : "production default is provider=noop, so the vector lane is empty",
+  "datasetFile" : "contracts/retrieval/evaluation/chinese-queries.v1.json",
+  "datasetRole" : "DEVELOPMENT_CALIBRATION",
+  "authorship" : "AI-authored reviewable fixtures; not human-labelled",
+  "humanReviewStatus" : "PENDING",
+  "labelCaveat" : "AI-authored, human review PENDING; not independent human-labelled acceptance",
+  "unit" : "source (deduplicated by sourceRef)",
+  "queryCount" : 52,
+  "labelledQueries" : 40,
+  "noAnswerQueries" : 12,
+  "after" : {
+    "recallAt5" : 0.9,
+    "recallAt8" : 0.9,
+    "hitAt5" : 0.9,
+    "mrrAt5" : 0.7979,
+    "allRequiredAt5" : 0.9,
+    "zeroHitCorrect" : 10,
+    "noAnswerQueries" : 12,
+    "zeroHitCorrectness" : 0.8333,
+    "permissionLeaks" : 0,
+    "staleLeaks" : 0
+  },
+  "before" : {
+    "recallAt5" : 0.5,
+    "recallAt8" : 0.5,
+    "hitAt5" : 0.5,
+    "mrrAt5" : 0.475,
+    "allRequiredAt5" : 0.5,
+    "zeroHitCorrect" : 10,
+    "noAnswerQueries" : 12,
+    "zeroHitCorrectness" : 0.8333,
+    "permissionLeaks" : 0,
+    "staleLeaks" : 0
+  },
+  "observations" : [ {
+    "id" : "Q001",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "把订单下载成表格该选哪种文件格式？",
+    "expectedAliases" : [ "F00" ],
+    "retrievedAliasesAfter" : [ "F00", "F01", "R00" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q002",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "导出来的订单文件是什么编码？",
+    "expectedAliases" : [ "F00" ],
+    "retrievedAliasesAfter" : [ "F00", "F01", "R00" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q003",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-100",
+    "expectedAliases" : [ "F00" ],
+    "retrievedAliasesAfter" : [ "F00", "F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F09", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F00", "F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F09", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ]
+  }, {
+    "id" : "Q004",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "最多可以传多大的文件？",
+    "expectedAliases" : [ "F01" ],
+    "retrievedAliasesAfter" : [ "F01", "F02", "R00", "R02" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q005",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "附件太大时系统怎样反馈？",
+    "expectedAliases" : [ "F01" ],
+    "retrievedAliasesAfter" : [ ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q006",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-101",
+    "expectedAliases" : [ "F01" ],
+    "retrievedAliasesAfter" : [ "F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ]
+  }, {
+    "id" : "Q007",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "消息发不出去会再试几回？",
+    "expectedAliases" : [ "F02" ],
+    "retrievedAliasesAfter" : [ ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q008",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "通知两次重发之间等多久？",
+    "expectedAliases" : [ "F02" ],
+    "retrievedAliasesAfter" : [ "F02" ],
+    "retrievedAliasesBefore" : [ "F02" ]
+  }, {
+    "id" : "Q009",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-102",
+    "expectedAliases" : [ "F02" ],
+    "retrievedAliasesAfter" : [ "F02", "F01", "F03", "F04", "F05", "F06", "F07", "F08", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F02", "F01", "F03", "F04", "F05", "F06", "F07", "F08", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ]
+  }, {
+    "id" : "Q010",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "用户操作的记录存多久？",
+    "expectedAliases" : [ "F03" ],
+    "retrievedAliasesAfter" : [ "F07", "F03", "F06" ],
+    "retrievedAliasesBefore" : [ "F07" ]
+  }, {
+    "id" : "Q011",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "审计资料过期怎么处理？",
+    "expectedAliases" : [ "F03" ],
+    "retrievedAliasesAfter" : [ "F03", "R03" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q012",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-103",
+    "expectedAliases" : [ "F03" ],
+    "retrievedAliasesAfter" : [ "F03", "F01", "F02", "F04", "F05", "F06", "F07", "F08", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F03", "F01", "F02", "F04", "F05", "F06", "F07", "F08", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ]
+  }, {
+    "id" : "Q013",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "多久不操作会被退出登录？",
+    "expectedAliases" : [ "F04" ],
+    "retrievedAliasesAfter" : [ "F03", "F04", "F06" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q014",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "空闲会话的有效期是多少？",
+    "expectedAliases" : [ "F04" ],
+    "retrievedAliasesAfter" : [ "F04" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q015",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-104",
+    "expectedAliases" : [ "F04" ],
+    "retrievedAliasesAfter" : [ "F04", "F01", "F02", "F03", "F05", "F06", "F07", "F08", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F04", "F01", "F02", "F03", "F05", "F06", "F07", "F08", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ]
+  }, {
+    "id" : "Q016",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "钱数要精确到第几位小数？",
+    "expectedAliases" : [ "F05" ],
+    "retrievedAliasesAfter" : [ "F05", "F13" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q017",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "财务计算允许用浮点表示吗？",
+    "expectedAliases" : [ "F05" ],
+    "retrievedAliasesAfter" : [ "F05" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q018",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-105",
+    "expectedAliases" : [ "F05" ],
+    "retrievedAliasesAfter" : [ "F05", "F01", "F02", "F03", "F04", "F06", "F07", "F08", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F05", "F01", "F02", "F03", "F04", "F06", "F07", "F08", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ]
+  }, {
+    "id" : "Q019",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "网络重试会再次写入数据吗？",
+    "expectedAliases" : [ "F06" ],
+    "retrievedAliasesAfter" : [ "F02" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q020",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "避免重复提交用什么请求头？",
+    "expectedAliases" : [ "F06" ],
+    "retrievedAliasesAfter" : [ "F06" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q021",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-106",
+    "expectedAliases" : [ "F06" ],
+    "retrievedAliasesAfter" : [ "F06", "F01", "F02", "F03", "F04", "F05", "F07", "F08", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F06", "F01", "F02", "F03", "F04", "F05", "F07", "F08", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ]
+  }, {
+    "id" : "Q022",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "按了停止还会继续显示答案吗？",
+    "expectedAliases" : [ "F07" ],
+    "retrievedAliasesAfter" : [ "F07" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q023",
+    "category" : "CHINESE_PARAPHRASE",
+    "query" : "终止对话后的正文有什么约束？",
+    "expectedAliases" : [ "F07" ],
+    "retrievedAliasesAfter" : [ "F07" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q024",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-107",
+    "expectedAliases" : [ "F07" ],
+    "retrievedAliasesAfter" : [ "F07", "F01", "F02", "F03", "F04", "F05", "F06", "F08", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F07", "F01", "F02", "F03", "F04", "F05", "F06", "F08", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ]
+  }, {
+    "id" : "Q025",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-108",
+    "expectedAliases" : [ "F08" ],
+    "retrievedAliasesAfter" : [ "F08", "F01", "F02", "F03", "F04", "F05", "F06", "F07", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F08", "F01", "F02", "F03", "F04", "F05", "F06", "F07", "F09", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ]
+  }, {
+    "id" : "Q026",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-109",
+    "expectedAliases" : [ "F09" ],
+    "retrievedAliasesAfter" : [ "F09", "F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F09", "F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "R00", "R01" ]
+  }, {
+    "id" : "Q027",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-110",
+    "expectedAliases" : [ "F10" ],
+    "retrievedAliasesAfter" : [ "F10", "F11", "F12", "F13", "F14", "F15", "F06", "F07", "F08", "F09", "F00", "F01", "F02", "F03", "F04", "F05", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F10", "F11", "F12", "F13", "F14", "F15", "F06", "F07", "F08", "F09", "F00", "F01", "F02", "F03", "F04", "F05", "R00", "R01" ]
+  }, {
+    "id" : "Q028",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-111",
+    "expectedAliases" : [ "F11" ],
+    "retrievedAliasesAfter" : [ "F11", "F10", "F12", "F13", "F14", "F15", "F06", "F07", "F08", "F09", "F00", "F01", "F02", "F03", "F04", "F05", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F11", "F10", "F12", "F13", "F14", "F15", "F06", "F07", "F08", "F09", "F00", "F01", "F02", "F03", "F04", "F05", "R00", "R01" ]
+  }, {
+    "id" : "Q029",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-112",
+    "expectedAliases" : [ "F12" ],
+    "retrievedAliasesAfter" : [ "F12", "F10", "F11", "F13", "F14", "F15", "F06", "F07", "F08", "F09", "F00", "F01", "F02", "F03", "F04", "F05", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F12", "F10", "F11", "F13", "F14", "F15", "F06", "F07", "F08", "F09", "F00", "F01", "F02", "F03", "F04", "F05", "R00", "R01" ]
+  }, {
+    "id" : "Q030",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-113",
+    "expectedAliases" : [ "F13" ],
+    "retrievedAliasesAfter" : [ "F13", "F10", "F11", "F12", "F14", "F15", "F06", "F07", "F08", "F09", "F00", "F01", "F02", "F03", "F04", "F05", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F13", "F10", "F11", "F12", "F14", "F15", "F06", "F07", "F08", "F09", "F00", "F01", "F02", "F03", "F04", "F05", "R00", "R01" ]
+  }, {
+    "id" : "Q031",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-114",
+    "expectedAliases" : [ "F14" ],
+    "retrievedAliasesAfter" : [ "F14", "F10", "F11", "F12", "F13", "F15", "F06", "F07", "F08", "F09", "F00", "F01", "F02", "F03", "F04", "F05", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F14", "F10", "F11", "F12", "F13", "F15", "F06", "F07", "F08", "F09", "F00", "F01", "F02", "F03", "F04", "F05", "R00", "R01" ]
+  }, {
+    "id" : "Q032",
+    "category" : "EXACT_IDENTIFIER",
+    "query" : "REQ-115",
+    "expectedAliases" : [ "F15" ],
+    "retrievedAliasesAfter" : [ "F15", "F10", "F11", "F12", "F13", "F14", "F06", "F07", "F08", "F09", "F00", "F01", "F02", "F03", "F04", "F05", "R00", "R01" ],
+    "retrievedAliasesBefore" : [ "F15", "F10", "F11", "F12", "F13", "F14", "F06", "F07", "F08", "F09", "F00", "F01", "F02", "F03", "F04", "F05", "R00", "R01" ]
+  }, {
+    "id" : "Q033",
+    "category" : "RESOURCE_CONTENT",
+    "query" : "/resources/export-A",
+    "expectedAliases" : [ "R00" ],
+    "retrievedAliasesAfter" : [ "F13", "R00", "R01", "R03" ],
+    "retrievedAliasesBefore" : [ "F13", "R00", "R01", "R03" ]
+  }, {
+    "id" : "Q034",
+    "category" : "RESOURCE_CONTENT",
+    "query" : "资源资料下载的文件是什么格式？",
+    "expectedAliases" : [ "R00" ],
+    "retrievedAliasesAfter" : [ "F00", "F01", "F10", "R00", "R03", "R02" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q035",
+    "category" : "RESOURCE_CONTENT",
+    "query" : "RESTORE-B2",
+    "expectedAliases" : [ "R01" ],
+    "retrievedAliasesAfter" : [ "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "F09", "F01", "R01", "R00" ],
+    "retrievedAliasesBefore" : [ "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F00", "F10", "F11", "F12", "F13", "F14", "F15", "F09", "F01", "R01", "R00" ]
+  }, {
+    "id" : "Q036",
+    "category" : "RESOURCE_CONTENT",
+    "query" : "哪一天几点进行备份？",
+    "expectedAliases" : [ "R01" ],
+    "retrievedAliasesAfter" : [ "R01" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q037",
+    "category" : "RESOURCE_CONTENT",
+    "query" : "ARCHIVE-C3",
+    "expectedAliases" : [ "R02" ],
+    "retrievedAliasesAfter" : [ "R02" ],
+    "retrievedAliasesBefore" : [ "R02" ]
+  }, {
+    "id" : "Q038",
+    "category" : "RESOURCE_CONTENT",
+    "query" : "归档的外部资料保留多长时间？",
+    "expectedAliases" : [ "R02" ],
+    "retrievedAliasesAfter" : [ "F03", "F10", "R02", "R03" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q039",
+    "category" : "RESOURCE_CONTENT",
+    "query" : "IMPORT-D4",
+    "expectedAliases" : [ "R03" ],
+    "retrievedAliasesAfter" : [ "F13", "R03", "R00" ],
+    "retrievedAliasesBefore" : [ "F13", "R03", "R00" ]
+  }, {
+    "id" : "Q040",
+    "category" : "RESOURCE_CONTENT",
+    "query" : "输入资料接受哪些文档格式？",
+    "expectedAliases" : [ "R03" ],
+    "retrievedAliasesAfter" : [ "F00", "F15", "R03", "R01", "R02" ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q041",
+    "category" : "STALE_VERSION",
+    "query" : "OLD-S00",
+    "expectedAliases" : [ ],
+    "retrievedAliasesAfter" : [ ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q042",
+    "category" : "STALE_VERSION",
+    "query" : "OLD-S01",
+    "expectedAliases" : [ ],
+    "retrievedAliasesAfter" : [ ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q043",
+    "category" : "STALE_VERSION",
+    "query" : "OLD-S02",
+    "expectedAliases" : [ ],
+    "retrievedAliasesAfter" : [ ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q044",
+    "category" : "STALE_VERSION",
+    "query" : "OLD-S03",
+    "expectedAliases" : [ ],
+    "retrievedAliasesAfter" : [ ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q045",
+    "category" : "NO_ANSWER",
+    "query" : "火星轨道 MARS-Z999 的速度是多少？",
+    "expectedAliases" : [ ],
+    "retrievedAliasesAfter" : [ ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q046",
+    "category" : "NO_ANSWER",
+    "query" : "量子纠缠实验 QBIT-X88 的样本数是多少？",
+    "expectedAliases" : [ ],
+    "retrievedAliasesAfter" : [ ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q047",
+    "category" : "NO_ANSWER",
+    "query" : "古代陶器 ANCIENT-T77 的出土坐标是什么？",
+    "expectedAliases" : [ ],
+    "retrievedAliasesAfter" : [ ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q048",
+    "category" : "NO_ANSWER",
+    "query" : "太阳能发电 SOLAR-Y66 的效率是多少？",
+    "expectedAliases" : [ ],
+    "retrievedAliasesAfter" : [ ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q049",
+    "category" : "PERMISSION_ISOLATION",
+    "query" : "ISOLATED-00",
+    "expectedAliases" : [ ],
+    "retrievedAliasesAfter" : [ "R01" ],
+    "retrievedAliasesBefore" : [ "R01" ]
+  }, {
+    "id" : "Q050",
+    "category" : "PERMISSION_ISOLATION",
+    "query" : "ISOLATED-01",
+    "expectedAliases" : [ ],
+    "retrievedAliasesAfter" : [ ],
+    "retrievedAliasesBefore" : [ ]
+  }, {
+    "id" : "Q051",
+    "category" : "PERMISSION_ISOLATION",
+    "query" : "ISOLATED-02",
+    "expectedAliases" : [ ],
+    "retrievedAliasesAfter" : [ "R01" ],
+    "retrievedAliasesBefore" : [ "R01" ]
+  }, {
+    "id" : "Q052",
+    "category" : "PERMISSION_ISOLATION",
+    "query" : "ISOLATED-03",
+    "expectedAliases" : [ ],
+    "retrievedAliasesAfter" : [ ],
+    "retrievedAliasesBefore" : [ ]
+  } ]
+}

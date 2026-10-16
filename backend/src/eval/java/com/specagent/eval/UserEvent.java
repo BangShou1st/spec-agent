@@ -11,13 +11,27 @@ import com.specagent.agent.protocol.AgentEvent;
  * 协作:由 {@link GivenSpec} 持有,由 {@link ScenarioRunner} 驱动执行。
  */
 public sealed interface UserEvent
-        permits UserEvent.AnswerTip, UserEvent.DivergentAnswer {
+        permits UserEvent.AnswerTip, UserEvent.AnswerTipText, UserEvent.DivergentAnswer {
 
     /** 用种子推导的自由文本回答活动路由末端。 */
     record AnswerTip(String freeTextSeed,
                      AgentEvent.PersistenceIntent persistenceIntent) implements UserEvent {
         public AnswerTip(String freeTextSeed) {
             this(freeTextSeed, null);
+        }
+    }
+
+    /**
+     * 用**字面自然语言**回答活动路由末端(live 评测专用)。
+     *
+     * 与 {@link AnswerTip} 的唯一差别是文本来源:种子渲染产出占位串,而真实
+     * 模型评测必须让 STATE_UPDATE 看到用户实际会写的中文回答,否则"理解得
+     * 对不对"就无从谈起。
+     */
+    record AnswerTipText(String freeText,
+                         AgentEvent.PersistenceIntent persistenceIntent) implements UserEvent {
+        public AnswerTipText(String freeText) {
+            this(freeText, null);
         }
     }
 
@@ -33,6 +47,10 @@ public sealed interface UserEvent
         if (event instanceof AnswerTip answer) {
             return "answer-tip(" + answer.freeTextSeed() + ";intent="
                     + answer.persistenceIntent() + ")";
+        }
+        if (event instanceof AnswerTipText answerText) {
+            return "answer-tip-text(" + answerText.freeText() + ";intent="
+                    + answerText.persistenceIntent() + ")";
         }
         if (event instanceof DivergentAnswer divergent) {
             return "divergent(" + divergent.targetStepRef() + "," + divergent.freeTextSeed() + ")";

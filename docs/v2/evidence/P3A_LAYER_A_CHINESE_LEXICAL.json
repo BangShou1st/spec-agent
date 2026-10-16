@@ -1,0 +1,11 @@
+{
+  "layer": "A",
+  "suite": "p3a-chinese-lexical-lane",
+  "unit": "source (deduplicated by sourceRef)",
+  "caseCount": 6,
+  "recalled": 6,
+  "hitRateAt8": 1.0000,
+  "unrelatedNoiseHits": 1,
+  "p50Ms": 0,
+  "p95Ms": 1
+}

@@ -4,6 +4,7 @@ import com.specagent.agent.decision.AgentDecisionEngine;
 import com.specagent.agent.decision.RemotePythonDecisionEngine;
 import com.specagent.model.contract.ModelInferenceGateway;
 import com.specagent.model.provider.OpenCodeModelInferenceGateway;
+import com.specagent.model.provider.RoutingModelInferenceGateway;
 
 /**
  * 文件名:LiveExecutionGuard.java
@@ -34,16 +35,30 @@ public final class LiveExecutionGuard {
                             + typeName(decisionEngine)
                             + "; expected RemotePythonDecisionEngine");
         }
-        if (!(inferenceGateway instanceof OpenCodeModelInferenceGateway)) {
+        if (!isRealProviderGateway(inferenceGateway)) {
             throw new IllegalStateException(
                     "B-live rejected: ModelInferenceGateway is "
                             + typeName(inferenceGateway)
-                            + "; expected OpenCodeModelInferenceGateway"
+                            + "; expected a real provider gateway"
                             + " (fake providers are not live)");
         }
         return new Evidence(
                 decisionEngine.getClass().getName(),
                 inferenceGateway.getClass().getName());
+    }
+
+    /**
+     * 真实 provider 网关的**封闭集合**。
+     *
+     * 生产装配把 {@link RoutingModelInferenceGateway} 作为 {@code @Primary}
+     * 的权威入口(它按当前激活提供商委派给具体网关),因此只认
+     * {@link OpenCodeModelInferenceGateway} 会把真实 live 链路误判为 fake。
+     * 这里显式列出被接受的真实网关:增加新提供商时必须同步扩列,绝不放宽成
+     * "只要不是 fake 就算 live"——那会让任何未知网关悄悄冒充 live 证据。
+     */
+    private static boolean isRealProviderGateway(ModelInferenceGateway gateway) {
+        return gateway instanceof RoutingModelInferenceGateway
+                || gateway instanceof OpenCodeModelInferenceGateway;
     }
 
     private static String typeName(Object value) {

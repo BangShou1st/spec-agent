@@ -267,6 +267,13 @@ public class ScenarioRunner {
                         "eval purpose", List.of(), root.allowFreeAnswer());
                 setup.stepNodes.put(ref, node.id());
                 setup.activeRoute = routeRepository.findById(setup.activeRoute.id()).orElseThrow();
+            } else if (step instanceof GraphStep.CreateRootQuestionText rootText) {
+                // Live 评测:真实自然语言问题,而不是种子占位串。
+                Node node = nodeService.createRootNode(project.id(), setup.activeRoute.id(),
+                        rootText.questionText(),
+                        "eval purpose", List.of(), rootText.allowFreeAnswer());
+                setup.stepNodes.put(ref, node.id());
+                setup.activeRoute = routeRepository.findById(setup.activeRoute.id()).orElseThrow();
             } else if (step instanceof GraphStep.CreateChildQuestion child) {
                 UUID parentId = requireStepNode(setup, child.parentStepRef());
                 Node node = nodeService.createChildNode(project.id(), setup.activeRoute.id(),
@@ -435,6 +442,23 @@ public class ScenarioRunner {
             UUID queued = runService.createQueuedRunWithInput(
                     project.id(), "ANSWER_TIP", route.tipNodeId(), null, freeText, null,
                     answer.persistenceIntent());
+            try {
+                AgentRun claimed = runService.claimAnswerCycleRun(queued)
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Enqueued answer-cycle run is not claimable: " + queued
+                                        + " (" + describeRun(queued) + ")"));
+                runWorker.executeRun(claimed);
+            } catch (RuntimeException ex) {
+                throw new DriveFailure(queued, ex);
+            }
+            return new DriveResult(queued);
+        }
+        if (event instanceof UserEvent.AnswerTipText answerText) {
+            // Live 评测:真实自然语言回答,不做种子渲染。
+            Route route = routeRepository.findById(setup.activeRoute.id()).orElseThrow();
+            UUID queued = runService.createQueuedRunWithInput(
+                    project.id(), "ANSWER_TIP", route.tipNodeId(), null,
+                    answerText.freeText(), null, answerText.persistenceIntent());
             try {
                 AgentRun claimed = runService.claimAnswerCycleRun(queued)
                         .orElseThrow(() -> new IllegalStateException(
