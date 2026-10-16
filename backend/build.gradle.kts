@@ -11,8 +11,6 @@ java.targetCompatibility = JavaVersion.VERSION_21
 
 repositories {
     mavenCentral()
-    // 本机开发：在库仓库执行 `.\gradlew.bat publishToMavenLocal` 后即可解析。
-    mavenLocal()
     // 私有生态仓库（GitHub Packages / Nexus）。地址与凭据来自环境或
     // ~/.gradle/gradle.properties（zenRepoUrl / zenRepoUser / zenRepoToken），绝不写进仓库。
     val zenRepoUrl = providers.gradleProperty("zenRepoUrl").orNull

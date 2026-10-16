@@ -14,8 +14,8 @@ The OpenCode Zen library has the conventional two-module Spring Boot layout unde
 
 The library lives in its own repository at `E:\project\shared-libs\opencode-zen`; Spec Agent does
 **not** keep a copy of the sources and there is no sync step. The backend declares a normal
-dependency on `com.sharedlibs:opencode-zen-spring-boot-starter` and resolves it from `mavenLocal` on
-a workstation or from the private GitHub Packages repository everywhere else.
+dependency on `com.sharedlibs:opencode-zen-spring-boot-starter` and resolves it from the private
+GitHub Packages repository (credentials live in `~/.gradle/gradle.properties`).
 
 For co-development, point `OPENCODE_ZEN_LOCAL` at a local library checkout: Gradle then substitutes
 those coordinates with the local source build, so a library change takes effect immediately without
