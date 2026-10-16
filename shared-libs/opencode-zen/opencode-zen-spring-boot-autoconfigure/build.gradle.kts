@@ -16,6 +16,7 @@ repositories {
 dependencies {
     api("com.fasterxml.jackson.core:jackson-databind:2.17.2")
     api("org.springframework.boot:spring-boot-autoconfigure:3.3.2")
+    testImplementation("org.springframework.boot:spring-boot-test:3.3.2")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.3")
     testImplementation("org.assertj:assertj-core:3.26.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
