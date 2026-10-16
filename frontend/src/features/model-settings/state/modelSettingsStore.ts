@@ -52,8 +52,7 @@ export const useModelSettingsStore = defineStore('modelSettings', {
   getters: {
     /** 展示列表:默认完整目录,开启"仅免费"后为免费子集。 */
     displayModels(state): string[] {
-      return state.freeOnly
-      && state.freeModels.length > 0 ? state.freeModels : state.allModels
+      return state.freeOnly ? state.freeModels : state.allModels
     },
   },
   actions: {
@@ -77,11 +76,6 @@ export const useModelSettingsStore = defineStore('modelSettings', {
       if (!this.allModels.includes(persisted)) {
         this.allModels = [persisted, ...this.allModels]
       }
-      // 后端 isFreeModel 的规则就是 -free 后缀，前端按同一规则镜像，
-      // 否则打开「仅免费」时会把这个模型从可见列表里漏掉。
-      if (persisted.endsWith('-free') && !this.freeModels.includes(persisted)) {
-        this.freeModels = [persisted, ...this.freeModels]
-      }
     },
     async loadStatus(): Promise<void> {
       const identityEpoch = this.identityEpoch
@@ -101,7 +95,7 @@ export const useModelSettingsStore = defineStore('modelSettings', {
         // 拉取之前先把已保存的模型放回可见列表，避免刷新期间闪空态。
         identityStore.ensurePersistedVisible()
         // 该守护保持旧的隔离测试替身兼容;生产模块始终暴露已存密钥端点。
-        if (identityStore.status.configured && typeof listOpenCodeModels === 'function') {
+        if (typeof listOpenCodeModels === 'function') {
           await privateIdentityWork(identityStore, identityEpoch, () => (identityStore.refreshModels()))
         }
       } catch (err) {
@@ -162,11 +156,11 @@ export const useModelSettingsStore = defineStore('modelSettings', {
       const identityEpoch = this.identityEpoch
       const identityStore = identityScopedStore(this, identityEpoch)
       try {
-      if (identityStore.saving || !apiKey.trim() || !selectedModel) return false
+      if (identityStore.saving || !selectedModel) return false
       identityStore.saving = true
       identityStore.error = null
       try {
-        identityStore.status = await privateIdentityWork(identityStore, identityEpoch, () => (saveOpenCode(apiKey.trim(), selectedModel)))
+        identityStore.status = await privateIdentityWork(identityStore, identityEpoch, () => (saveOpenCode(apiKey.trim() || null, selectedModel)))
         identityStore.allModels = []
         identityStore.freeModels = []
         identityStore.selectedModel = identityStore.status.selectedModel
@@ -207,9 +201,8 @@ export const useModelSettingsStore = defineStore('modelSettings', {
         const all = Array.isArray(result.allModels) ? result.allModels : result.freeModels
         identityStore.allModels = [...all]
         identityStore.freeModels = [...(result.freeModels ?? [])]
-        const visible = identityStore.freeOnly && identityStore.freeModels.length > 0 ? identityStore.freeModels : identityStore.allModels
         identityStore.modelUnavailable = Boolean(
-          identityStore.status?.selectedModel && !visible.includes(identityStore.status.selectedModel),
+          identityStore.status?.selectedModel && !identityStore.allModels.includes(identityStore.status.selectedModel),
         )
         identityStore.selectedModel = identityStore.status?.selectedModel ?? null
         // 与新列表合并后再放回已保存项：不可用判定用的是「真实列表」（上一行），

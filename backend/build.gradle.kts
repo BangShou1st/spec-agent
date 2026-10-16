@@ -28,6 +28,7 @@ dependencies {
 }
 
 dependencies {
+    implementation("com.sharedlibs:opencode-zen-spring-boot-starter:1.1.1")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-data-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-validation")

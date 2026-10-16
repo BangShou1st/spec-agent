@@ -1,5 +1,6 @@
 package com.specagent.model.provider;
 
+import com.sharedlibs.opencodezen.OpenCodeZenProtocolPolicy;
 import com.specagent.model.contract.FragmentListener;
 import com.specagent.model.contract.StreamCancelledException;
 
@@ -22,7 +23,7 @@ public interface OpenCodeZenTransport {
     /**
      * OpenCode Zen API 的 base URL,例如 {@code https://opencode.ai/zen/v1}。
      */
-    String BASE_URL = "https://opencode.ai/zen/v1";
+    String BASE_URL = OpenCodeZenProtocolPolicy.DEFAULT_BASE_URL;
 
     /**
      * 每个 HTTP 请求使用的 OpenCode 兼容客户端身份。这是该头的唯一定义;传输层
@@ -33,26 +34,26 @@ public interface OpenCodeZenTransport {
      * >= 1.18.0(1.17 会得到 426)。与已验证可用的本地 V2 客户端保持同版本
      * (1.19.0),让请求与真实 CLI 调用无法区分。
      */
-    String USER_AGENT = "opencode/1.19.0 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14";
+    String USER_AGENT = OpenCodeZenProtocolPolicy.USER_AGENT;
 
     /**
      * 提供商会话关联头,随每个 Zen HTTP 请求由下方传输层独有的线上策略统一发送。
      */
-    String SESSION_HEADER = "x-opencode-session";
+    String SESSION_HEADER = OpenCodeZenProtocolPolicy.SESSION_HEADER;
 
     /**
      * 第二会话关联头:已验证的客户端对补全请求同时携带
      * {@code x-opencode-session} 与本头(同值)。缺省它是与成功客户端的报文差异,
      * 统一补齐。
      */
-    String SESSION_ID_HEADER = "x-opencode-session-id";
+    String SESSION_ID_HEADER = OpenCodeZenProtocolPolicy.SESSION_ID_HEADER;
 
     /**
      * 免费档的公开凭据。已验证的免费客户端以 {@code Bearer public} 调用
      * 免费模型(2026-10-16 线上验证:存储的真实密钥对免费档返回 401,
      * {@code public} 返回 200);产品密钥仅在付费模型路径上发送。
      */
-    String FREE_TIER_CREDENTIAL = "public";
+    String FREE_TIER_CREDENTIAL = OpenCodeZenProtocolPolicy.FREE_TIER_CREDENTIAL;
 
     /**
      * 应用到每个 Zen HTTP 请求的桌面客户端身份头,让 OpenCode 把请求识别为来自
@@ -65,11 +66,11 @@ public interface OpenCodeZenTransport {
      * 配置下的 CLI 上报的项目 id 就是 {@code global},线上 A/B 已确认该值可被
      * 接受;而 {@code prj_} 形态的随机 id 未经过门禁验证。
      */
-    String CLIENT_HEADER = "x-opencode-client";
-    String REQUEST_HEADER = "x-opencode-request";
-    String PROJECT_HEADER = "x-opencode-project";
-    String CLIENT_ID = "cli";
-    String GLOBAL_PROJECT = "global";
+    String CLIENT_HEADER = OpenCodeZenProtocolPolicy.CLIENT_HEADER;
+    String REQUEST_HEADER = OpenCodeZenProtocolPolicy.REQUEST_HEADER;
+    String PROJECT_HEADER = OpenCodeZenProtocolPolicy.PROJECT_HEADER;
+    String CLIENT_ID = OpenCodeZenProtocolPolicy.CLIENT_ID;
+    String GLOBAL_PROJECT = OpenCodeZenProtocolPolicy.GLOBAL_PROJECT;
 
     /** 安全的端点来源信息;绝不包含授权值。 */
     default String endpoint() {
@@ -79,7 +80,7 @@ public interface OpenCodeZenTransport {
     /**
      * 向 {@code POST /chat/completions} 发起一次 chat completion。
      *
-     * @param apiKey    OpenCode bearer 凭据;不能为空白
+     * @param apiKey    已按模型解析的 bearer 凭据:免费模型为 {@code public},付费模型为用户 Key
      * @param sessionId 提供商会话,例如网关映射出的稳定 run 会话;必须非空白且为单行
      * @param request   最小化的 chat completion 载荷
      * @return 解析后的补全内容,以及可选的用量字段
@@ -130,7 +131,7 @@ public interface OpenCodeZenTransport {
      * 发起有界的凭据探测(一次最小化补全),使存储的密钥可以在持久化之前先得到
      * 验证。与真实补全请求共用完全相同的传输层策略。
      *
-     * @param apiKey 待验证的 OpenCode bearer 凭据;不能为空白
+     * @param apiKey 已按模型解析的 bearer 凭据:免费模型为 {@code public},付费模型为用户 Key
      * @param model  探测补全使用的模型;由调用方从当前模型列表中选择,绝不在此硬编码
      */
     void validateCredential(String apiKey, String model);

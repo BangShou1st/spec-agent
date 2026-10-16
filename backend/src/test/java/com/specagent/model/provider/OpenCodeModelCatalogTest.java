@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 文件名:OpenCodeModelCatalogTest.java
@@ -125,6 +126,33 @@ class OpenCodeModelCatalogTest {
                 sourceOf(true, meta("really-paid-free", false, false, OpenCodeModelProtocol.CHAT)));
 
         assertThat(catalog.listFreeModels(null)).isEmpty();
+    }
+
+    @Test
+    void modelCredentialUsesPublicForPricedFreeAndKeyForPaid() {
+        OpenCodeModelCatalog catalog = new OpenCodeModelCatalog(
+                transportWith(new OpenCodeModel("big-pickle", "opencode"),
+                        new OpenCodeModel("deepseek-v4-pro", "opencode")),
+                sourceOf(true,
+                        meta("big-pickle", true, false, OpenCodeModelProtocol.CHAT),
+                        meta("deepseek-v4-pro", false, false, OpenCodeModelProtocol.CHAT)));
+
+        assertThat(catalog.credentialForModel("big-pickle", "stored-paid-key")).isEqualTo("public");
+        assertThat(catalog.credentialForModel("deepseek-v4-pro", "paid-key")).isEqualTo("paid-key");
+        assertThatThrownBy(() -> catalog.credentialForModel("deepseek-v4-pro", null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("required for paid");
+    }
+
+    @Test
+    void modelMissingFromAvailableCatalogIsNotGivenPublicCredential() {
+        OpenCodeModelCatalog catalog = new OpenCodeModelCatalog(
+                transportWith(new OpenCodeModel("unregistered", "opencode")),
+                sourceOf(true));
+
+        assertThatThrownBy(() -> catalog.credentialForModel("unregistered", null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("required for paid");
     }
 
     @Test

@@ -177,6 +177,7 @@ Runtime owns history.
 ```text
 spec-agent/
 ├── backend/          # Java 21 + Spring Boot，Runtime、Graph、API、模型 Broker、MCP
+├── shared-libs/      # OpenCode Zen 源码快照（自动配置模块 + Starter）
 ├── agent-brain/      # Python Agent Brain，只做推理与结构化决策
 ├── frontend/         # Vue 3 + TypeScript + Vue Flow 图式工作台
 ├── contracts/        # Java / Python 共享契约与结构化数据定义
@@ -375,6 +376,13 @@ API 响应与日志保持脱敏（只输出掩码后缀）。
 ```bash
 cd backend
 ./gradlew testNonLive
+```
+
+OpenCode Zen 共享组件单独构建：
+
+```powershell
+cd shared-libs/opencode-zen
+.\gradlew.bat test
 ```
 
 或者：

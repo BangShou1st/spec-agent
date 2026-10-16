@@ -17,7 +17,7 @@ export function listOpenCodeModels(): Promise<OpenCodeProbeResponse> {
   return apiClient.get<OpenCodeProbeResponse>('/settings/opencode/models')
 }
 
-export function saveOpenCode(apiKey: string, selectedModel: string): Promise<OpenCodeSettingsStatus> {
+export function saveOpenCode(apiKey: string | null, selectedModel: string): Promise<OpenCodeSettingsStatus> {
   return apiClient.put<OpenCodeSettingsStatus>('/settings/opencode', { apiKey, selectedModel })
 }
 

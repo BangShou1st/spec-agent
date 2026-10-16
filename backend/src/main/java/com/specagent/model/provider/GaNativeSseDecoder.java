@@ -100,8 +100,13 @@ public final class GaNativeSseDecoder {
             JsonNode nextUsage = root.get("usage");
             stage = "USAGE";
             if (nextUsage != null && !nextUsage.isNull()) {
-                require(usage == null && nextUsage.isObject());
-                usage = nextUsage;
+                require(nextUsage.isObject());
+                // Zen 各模型的上报形态不同:deepseek 系列先在带 finish_reason 的帧上报一次
+                // usage,随后再以 choices:[] 尾帧重复一次,两帧逐字段完全相同(线上 5/5 实测)。
+                // 重复上报按等价接受,但只限完全相等——任何被改写的 usage 仍是协议违规,
+                // 因此这里放宽的是"次数",不是"内容"。
+                if (usage == null) usage = nextUsage;
+                else require(usage.equals(nextUsage));
             }
             if (choices.isEmpty()) { require(nextUsage != null && !nextUsage.isNull()); return; }
             JsonNode choice = choices.get(0);
@@ -121,7 +126,10 @@ public final class GaNativeSseDecoder {
             stage = "DELTA";
             JsonNode delta = choice.get("delta");
             require(delta != null && delta.isObject());
-            if (delta.has("role")) require("assistant".equals(delta.path("role").asText()));
+            // Zen 各模型在后续分片里会显式回填 role:null(而非省略该字段):big-pickle、
+            // ll-alpha-free 等按 OpenAI 规范把"本帧不携带 role"表达为 null。null 与缺失
+            // 同义,都表示"沿用已确立的 assistant 角色";只有非 null 且非 assistant 才是违规。
+            if (delta.hasNonNull("role")) require("assistant".equals(delta.path("role").asText()));
             stage = "CONTENT";
             append(content, delta.get("content"));
             JsonNode calls = delta.get("tool_calls");

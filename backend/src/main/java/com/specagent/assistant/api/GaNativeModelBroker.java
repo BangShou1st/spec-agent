@@ -9,6 +9,7 @@ import com.specagent.model.contract.ModelProvider;
 import com.specagent.model.provider.OpenCodeZenSessionIds;
 import com.specagent.model.provider.OpenCodeZenTransport;
 import com.specagent.modelsettings.OpenCodeSettingsRepository;
+import com.specagent.modelsettings.OpenCodeSettingsService;
 import java.time.Duration;
 import java.time.Instant;
 import org.springframework.stereotype.Service;
@@ -20,12 +21,15 @@ public class GaNativeModelBroker {
     private final GaExecutionStore executions;
     private final ActiveProviderPort providers;
     private final OpenCodeSettingsRepository settings;
+    private final OpenCodeSettingsService openCodeSettings;
     private final OpenCodeZenTransport transport;
     private final ObjectMapper mapper = new ObjectMapper()
             .enable(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
     public GaNativeModelBroker(GaExecutionStore executions, ActiveProviderPort providers,
-            OpenCodeSettingsRepository settings, OpenCodeZenTransport transport) {
-        this.executions = executions; this.providers = providers; this.settings = settings; this.transport = transport;
+            OpenCodeSettingsRepository settings, OpenCodeSettingsService openCodeSettings,
+            OpenCodeZenTransport transport) {
+        this.executions = executions; this.providers = providers; this.settings = settings;
+        this.openCodeSettings = openCodeSettings; this.transport = transport;
     }
 
     private com.specagent.runtime.execution.ExecutionHeartbeatRegistry heartbeatRegistry;
@@ -175,10 +179,11 @@ public class GaNativeModelBroker {
             // "本实例心跳已判失权"两类即时信号。
             java.util.function.BooleanSupplier active =
                     () -> executions.active(scope) && !ownershipLost(scope);
+            String credential = openCodeSettings.credentialForModelCached(binding.model(), target.apiKey());
             var response = listener == null
-                    ? transport.completeNativeGa(target.apiKey(), OpenCodeZenSessionIds.forConversation(binding.threadId()),
+                    ? transport.completeNativeGa(credential, OpenCodeZenSessionIds.forConversation(binding.threadId()),
                         request, binding.model(), remaining, active)
-                    : transport.streamNativeGa(target.apiKey(), OpenCodeZenSessionIds.forConversation(binding.threadId()),
+                    : transport.streamNativeGa(credential, OpenCodeZenSessionIds.forConversation(binding.threadId()),
                         request, binding.model(), remaining, active,
                         text -> active.getAsBoolean() && listener.onFragment(text));
             new com.specagent.model.provider.GaChatCompletionsAdapter().validateResponse(request,response);

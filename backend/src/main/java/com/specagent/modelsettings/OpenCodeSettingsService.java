@@ -6,6 +6,7 @@ import com.specagent.model.provider.OpenCodeModelCatalog;
 import com.specagent.model.provider.OpenCodeModelErrorCategory;
 import com.specagent.model.provider.OpenCodeModelException;
 import com.specagent.model.provider.OpenCodeZenTransport;
+import com.sharedlibs.opencodezen.OpenCodeZenCredentialPolicy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -63,7 +64,9 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
     public OpenCodeSettingsStatus status() {
         return repository.find()
                 .map(settings -> new OpenCodeSettingsStatus(
-                        true, OpenCodeSettingsStatusMask.mask(settings.maskedSuffix()), settings.selectedModel()))
+                        true, hasKey(settings.apiKey())
+                                ? OpenCodeSettingsStatusMask.mask(settings.maskedSuffix()) : null,
+                        settings.selectedModel()))
                 .orElseGet(OpenCodeSettingsStatus::unconfigured);
     }
 
@@ -71,33 +74,35 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
     public OpenCodeCandidateModels probe(String apiKey) {
         String candidate = requireKey(apiKey);
         OpenCodeCandidateModels models = currentCandidateModels(candidate);
-        // 探测只用一个当前可用的模型来验证密钥可达性,不会挑选或持久化工作模型
-        transport.validateCredential(candidate, models.recommendedProbeModel());
+        // 优先用付费模型验证候选 Key。目录只有免费模型时仍可成功获取模型，
+        // 但实际请求按免费模型规则使用 public，因此不会把用户 Key 发给免费档。
+        String model = models.recommendedProbeModel();
+        String credential = credentialFor(model, candidate, models.freeModels());
+        transport.validateCredential(credential, model);
         return models;
     }
 
     /**
-     * 用已持久化的密钥列出当前模型。密钥从存储中显式解析;
-     * 请求里传空密钥绝不会被视为"沿用旧密钥"。
+     * 列出当前模型。已配置时沿用已存 Key；首次配置时通过公开模型目录发现，
+     * 因而用户可以先选免费模型而不必准备 Key。
      */
-    public OpenCodeCandidateModels listSavedKeyModels() {
-        OpenCodeSettings settings = requireStoredSettings();
-        return currentCandidateModels(settings.apiKey());
+    public OpenCodeCandidateModels listModels() {
+        return currentCandidateModels(repository.find().map(OpenCodeSettings::apiKey).orElse(null));
     }
 
     /** 保存前对完整候选配置做全部校验,通过后才落一次 upsert。 */
     public OpenCodeSettingsStatus save(String apiKey, String selectedModel) {
-        String candidate = requireKey(apiKey);
         if (selectedModel == null || selectedModel.isBlank()) {
             throw new IllegalArgumentException("A model must be selected");
         }
         String model = selectedModel.trim();
+        String candidate = keyForSave(apiKey);
         OpenCodeCandidateModels models = currentCandidateModels(candidate);
         if (!models.allModels().contains(model)) {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
                     "Selected OpenCode model is not currently available");
         }
-        transport.validateCredential(candidate, model);
+        transport.validateCredential(credentialFor(model, candidate, models.freeModels()), model);
 
         Instant now = Instant.now();
         repository.upsert(new OpenCodeSettings(candidate, suffix(candidate), model, now, now));
@@ -116,7 +121,7 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
                     "Selected OpenCode model is not currently available");
         }
-        transport.validateCredential(current.apiKey(), model);
+        transport.validateCredential(credentialFor(model, current.apiKey(), models.freeModels()), model);
 
         repository.upsert(new OpenCodeSettings(
                 current.apiKey(), current.maskedSuffix(), model,
@@ -136,7 +141,8 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
                     "Selected OpenCode model is not currently available");
         }
-        transport.validateCredential(current.apiKey(), current.selectedModel());
+        transport.validateCredential(credentialFor(current.selectedModel(), current.apiKey(), models.freeModels()),
+                current.selectedModel());
         return status();
     }
 
@@ -151,14 +157,12 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
                     "Unsupported OpenCode runtime settings source: " + runtimeSettingsSource);
         }
         OpenCodeSettings settings = requireStoredSettings();
-        if (settings.apiKey() == null || settings.apiKey().isBlank()
-                || settings.selectedModel() == null || settings.selectedModel().isBlank()) {
+        if (settings.selectedModel() == null || settings.selectedModel().isBlank()) {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
                     "OpenCode settings are not configured");
         }
-        // 模型选择已在 save/changeModel 时对照提供商实时列表(免费或付费)做过门禁;
-        // 运行时路径本身保持无策略,不再附加成本过滤
-        return new RuntimeOpenCodeSettings(settings.apiKey(), settings.selectedModel(),
+        String credential = credentialForRuntime(settings.selectedModel(), settings.apiKey());
+        return new RuntimeOpenCodeSettings(credential, settings.selectedModel(),
                 "database:opencode_settings");
     }
 
@@ -167,17 +171,16 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
      * evalLive 绝不能继承测试数据库里的提供商行或产品本地的模型选择。
      */
     private RuntimeOpenCodeSettings requireExternalRuntimeSettings() {
-        if (externalApiKey == null || externalApiKey.isBlank()
-                || externalSelectedModel == null || externalSelectedModel.isBlank()) {
+        if (externalSelectedModel == null || externalSelectedModel.isBlank()) {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
                     "Live OpenCode provider configuration is missing: set "
-                            + "SPEC_AGENT_EVAL_OPENCODE_KEY and "
-                            + "SPEC_AGENT_EVAL_OPENCODE_MODEL; test database settings are not used");
+                            + "SPEC_AGENT_EVAL_OPENCODE_MODEL; paid models also require "
+                            + "SPEC_AGENT_EVAL_OPENCODE_KEY; test database settings are not used");
         }
-        // 产品配置与其他提供商一样遵循"实时列表"策略:显式隔离的实测评估来源
-        // 可以选择提供商暴露的任意精确模型。资格验证是在模型作为参照使用之前
-        // 校验其可达性与 schema 合规性,不应受产品成本策略约束。
-        return new RuntimeOpenCodeSettings(externalApiKey.trim(), externalSelectedModel.trim(),
+        String key = hasKey(externalApiKey) ? externalApiKey.trim() : null;
+        String model = externalSelectedModel.trim();
+        String credential = credentialForRuntime(model, key);
+        return new RuntimeOpenCodeSettings(credential, model,
                 EXTERNAL_CREDENTIAL_SOURCE);
     }
 
@@ -191,9 +194,47 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
                     "OpenCode has no currently available models");
         }
         List<String> freeModels = catalog.listFreeModels(apiKey);
-        // 可达性探测优先用免费模型,密钥检查绝不消耗额度;任何已暴露模型都可作兜底
-        String probeModel = !freeModels.isEmpty() ? freeModels.get(0) : allModels.get(0);
+        // 有付费模型时优先验证 Key；如果目录只有免费模型，则用免费模型确认
+        // public 请求链路可达，不会把用户 Key 错发给免费档。
+        String probeModel = allModels.stream().filter(model -> !freeModels.contains(model))
+                .findFirst().orElse(allModels.get(0));
         return new OpenCodeCandidateModels(allModels, freeModels, probeModel);
+    }
+
+    /** Model-aware credential resolver used by the native GA broker with cached metadata. */
+    public String credentialForModelCached(String model, String apiKey) {
+        try {
+            return catalog.credentialForModelCached(model, apiKey);
+        } catch (IllegalArgumentException missingKey) {
+            throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
+                    missingKey.getMessage());
+        }
+    }
+
+    private String credentialForRuntime(String model, String apiKey) {
+        try {
+            return catalog.credentialForModel(model, apiKey);
+        } catch (IllegalArgumentException missingKey) {
+            throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
+                    missingKey.getMessage());
+        }
+    }
+
+    private static String credentialFor(String model, String apiKey, List<String> freeModels) {
+        try {
+            return OpenCodeZenCredentialPolicy.credentialForModel(freeModels.contains(model), apiKey);
+        } catch (IllegalArgumentException missingKey) {
+            throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
+                    missingKey.getMessage());
+        }
+    }
+
+    private String keyForSave(String requestedKey) {
+        if (hasKey(requestedKey)) {
+            return requestedKey.trim();
+        }
+        return repository.find().map(OpenCodeSettings::apiKey).filter(OpenCodeSettingsService::hasKey)
+                .orElse(null);
     }
 
     /** 一次探测/列表的结果:全部暴露的模型、免费子集,以及可达性检查应使用的模型。 */
@@ -221,7 +262,14 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
         return apiKey.trim();
     }
 
+    private static boolean hasKey(String apiKey) {
+        return apiKey != null && !apiKey.isBlank();
+    }
+
     private static String suffix(String apiKey) {
+        if (!hasKey(apiKey)) {
+            return null;
+        }
         // 过短的候选密钥绝不能把自己的原文当作脱敏后缀返回。正常 OpenCode
         // 密钥更长,但这里宁可 fail closed(直接不给后缀)。
         return apiKey.length() <= 4 ? "" : apiKey.substring(apiKey.length() - 4);

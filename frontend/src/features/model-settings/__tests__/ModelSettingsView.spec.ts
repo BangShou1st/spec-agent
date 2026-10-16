@@ -74,6 +74,43 @@ describe('ModelSettingsView', () => {
     expect(wrapper.get('[data-test="opencode-masked"]').text()).toContain('…1234')
   })
 
+  it('allows selecting and saving a free model without an API key', async () => {
+    mockedList.mockResolvedValue({
+      allModels: ['big-pickle', 'deepseek-v4-pro'],
+      freeModels: ['big-pickle'],
+    })
+    mockedSave.mockResolvedValue({ configured: true, maskedKey: null, selectedModel: 'big-pickle' })
+    const wrapper = await mountOnOpenCodeTab()
+    await flushPromises()
+
+    await wrapper.get('[data-test="opencode-model"]').setValue('big-pickle')
+    expect(wrapper.find('[data-test="opencode-save-test"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-test="opencode-save-test"]').trigger('click')
+    await flushPromises()
+
+    expect(mockedSave).toHaveBeenCalledWith(null, 'big-pickle')
+    expect(wrapper.get('[data-test="opencode-current"]').text()).toContain('未配置（免费模型无需）')
+  })
+
+  it('requires an API key when a paid model is selected without a saved key', async () => {
+    mockedList.mockResolvedValue({
+      allModels: ['big-pickle', 'deepseek-v4-pro'],
+      freeModels: ['big-pickle'],
+    })
+    mockedSave.mockResolvedValue({ configured: true, maskedKey: '••••paid', selectedModel: 'deepseek-v4-pro' })
+    const wrapper = await mountOnOpenCodeTab()
+    await flushPromises()
+
+    await wrapper.get('[data-test="opencode-model"]').setValue('deepseek-v4-pro')
+    expect(wrapper.find('[data-test="opencode-save-test"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-test="opencode-api-key"]').setValue('paid-key')
+    expect(wrapper.find('[data-test="opencode-save-test"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-test="opencode-save-test"]').trigger('click')
+    await flushPromises()
+
+    expect(mockedSave).toHaveBeenCalledWith('paid-key', 'deepseek-v4-pro')
+  })
+
   it('shows an existing configuration as masked status and never renders a raw key', async () => {
     mockedGet.mockResolvedValue({ configured: true, maskedKey: '••••1234', selectedModel: 'alpha-free' })
     const wrapper = await mountOnOpenCodeTab()

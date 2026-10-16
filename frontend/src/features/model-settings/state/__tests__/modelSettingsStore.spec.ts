@@ -64,6 +64,42 @@ describe('model settings store', () => {
     expect(store.error?.code).toBe('MODEL_PROVIDER_RATE_LIMITED')
   })
 
+  it('loads all and free model choices before a key is configured', async () => {
+    mockedList.mockResolvedValue({
+      allModels: ['big-pickle', 'deepseek-v4-pro'],
+      freeModels: ['big-pickle'],
+    })
+    const store = useModelSettingsStore()
+
+    await store.loadStatus()
+
+    expect(mockedList).toHaveBeenCalledTimes(1)
+    expect(store.allModels).toEqual(['big-pickle', 'deepseek-v4-pro'])
+    expect(store.freeModels).toEqual(['big-pickle'])
+    expect(store.displayModels).toEqual(['big-pickle', 'deepseek-v4-pro'])
+    store.setFreeOnly(true)
+    expect(store.displayModels).toEqual(['big-pickle'])
+  })
+
+  it('saves a free model with no key', async () => {
+    mockedSave.mockResolvedValue({ configured: true, maskedKey: null, selectedModel: 'big-pickle' })
+    const store = useModelSettingsStore()
+
+    await expect(store.save('', 'big-pickle')).resolves.toBe(true)
+
+    expect(mockedSave).toHaveBeenCalledWith(null, 'big-pickle')
+    expect(store.status?.maskedKey).toBeNull()
+  })
+
+  it('does not show paid models when free-only is enabled and no free models exist', () => {
+    const store = useModelSettingsStore()
+    store.allModels = ['deepseek-v4-pro']
+    store.freeModels = []
+    store.setFreeOnly(true)
+
+    expect(store.displayModels).toEqual([])
+  })
+
   it('loads saved-key models and switches model without a key in the request', async () => {
     mockedGet.mockResolvedValue({ configured: true, maskedKey: '••••1234', selectedModel: 'alpha-free' })
     mockedList.mockResolvedValue({ allModels: ['alpha-free', 'beta-free'], freeModels: ['alpha-free', 'beta-free'] })

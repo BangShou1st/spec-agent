@@ -1,5 +1,8 @@
 package com.specagent.model.provider;
 
+import com.sharedlibs.opencodezen.OpenCodeZenFreeModelPolicy;
+import com.sharedlibs.opencodezen.OpenCodeZenCredentialPolicy;
+import com.sharedlibs.opencodezen.ZenModelMetadata;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -94,17 +97,11 @@ public class OpenCodeModelCatalog {
      * 元数据不可用时无法判定,退回既有可用列表(不新增误判)。
      */
     public boolean chatExecutable(String modelId) {
-        if (modelId == null || modelId.isBlank()) {
-            return false;
-        }
-        if (metadata == null) {
-            return true;
-        }
-        OpenCodeZenModelMetadataSource.View view = metadata.view();
-        if (!view.available()) {
-            return true;
-        }
-        return view.find(modelId).map(OpenCodeZenModelMetadata::chatExecutable).orElse(false);
+        OpenCodeZenModelMetadataSource.View view = metadata == null ? null : metadata.view();
+        ZenModelMetadata model = view == null ? null
+                : view.find(modelId).map(OpenCodeZenModelMetadata::toSharedMetadata).orElse(null);
+        return OpenCodeZenFreeModelPolicy.isChatModelForListing(
+                modelId, metadata != null, view != null && view.available(), model);
     }
 
     /**
@@ -125,17 +122,11 @@ public class OpenCodeModelCatalog {
      * {@code /chat/completions}。
      */
     public boolean verifiedChatExecutable(String modelId) {
-        if (modelId == null || modelId.isBlank()) {
-            return false;
-        }
-        if (metadata == null) {
-            return false;
-        }
-        OpenCodeZenModelMetadataSource.View view = metadata.cachedView();
-        if (!view.available()) {
-            return false;
-        }
-        return view.find(modelId).map(OpenCodeZenModelMetadata::chatExecutable).orElse(false);
+        OpenCodeZenModelMetadataSource.View view = metadata == null ? null : metadata.cachedView();
+        ZenModelMetadata model = view == null ? null
+                : view.find(modelId).map(OpenCodeZenModelMetadata::toSharedMetadata).orElse(null);
+        return OpenCodeZenFreeModelPolicy.isVerifiedChatModel(
+                modelId, metadata != null, view != null && view.available(), model);
     }
 
     /**
@@ -156,18 +147,33 @@ public class OpenCodeModelCatalog {
      * 元数据不可用:退回 {@code -free} 后缀(既有规则),"没有价格"绝不等于免费。
      */
     public boolean isFreeModel(String modelId) {
-        if (modelId == null || modelId.isBlank()) {
-            return false;
-        }
-        if (metadata == null) {
-            return modelId.endsWith("-free");
-        }
-        OpenCodeZenModelMetadataSource.View view = metadata.view();
-        if (!view.available()) {
-            return modelId.endsWith("-free");
-        }
-        return view.find(modelId)
-                .map(metadata -> metadata.free() && !metadata.retired())
-                .orElse(false);
+        OpenCodeZenModelMetadataSource.View view = metadata == null ? null : metadata.view();
+        return isFreeModel(modelId, view);
+    }
+
+    /** Cached counterpart for run paths that must never fetch metadata under a run lock. */
+    public boolean isFreeModelCached(String modelId) {
+        OpenCodeZenModelMetadataSource.View view = metadata == null ? null : metadata.cachedView();
+        return isFreeModel(modelId, view);
+    }
+
+    /**
+     * Resolves the credential for a model using fresh metadata. An unverified model is
+     * treated as paid, so it can never receive the public credential by guesswork.
+     */
+    public String credentialForModel(String modelId, String apiKey) {
+        return OpenCodeZenCredentialPolicy.credentialForModel(isFreeModel(modelId), apiKey);
+    }
+
+    /** Cached credential resolution for execution paths that must not perform network I/O. */
+    public String credentialForModelCached(String modelId, String apiKey) {
+        return OpenCodeZenCredentialPolicy.credentialForModel(isFreeModelCached(modelId), apiKey);
+    }
+
+    private boolean isFreeModel(String modelId, OpenCodeZenModelMetadataSource.View view) {
+        ZenModelMetadata model = view == null ? null
+                : view.find(modelId).map(OpenCodeZenModelMetadata::toSharedMetadata).orElse(null);
+        return OpenCodeZenFreeModelPolicy.isFreeModel(
+                modelId, metadata != null, view != null && view.available(), model);
     }
 }

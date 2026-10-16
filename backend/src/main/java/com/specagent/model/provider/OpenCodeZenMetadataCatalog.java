@@ -1,5 +1,7 @@
 package com.specagent.model.provider;
 
+import com.sharedlibs.opencodezen.OpenCodeZenModelCatalogParser;
+import com.sharedlibs.opencodezen.ZenModelMetadata;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
@@ -11,9 +13,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,11 +49,6 @@ public class OpenCodeZenMetadataCatalog implements OpenCodeZenModelMetadataSourc
     static final String DEFAULT_METADATA_URL = "https://models.opencode.ai/api.json";
     private static final Logger LOG = LoggerFactory.getLogger(OpenCodeZenMetadataCatalog.class);
     private static final int MAX_METADATA_BYTES = 16 * 1024 * 1024;
-    private static final List<String> RETIRED_STATUSES =
-            List.of("deprecated", "retired", "retiring", "disabled");
-    private static final List<String> RETIREMENT_DATE_FIELDS =
-            List.of("deprecation_date", "retired_at", "deprecated_at", "retirement_date");
-
     private final ObjectMapper mapper;
     private final String metadataUrl;
     private final Duration timeout;
@@ -164,58 +160,16 @@ public class OpenCodeZenMetadataCatalog implements OpenCodeZenModelMetadataSourc
         } catch (IOException ex) {
             return View.unavailable();
         }
-        JsonNode provider = root == null ? null : root.get("opencode");
-        if (provider == null || !provider.isObject()) {
-            return View.unavailable();
-        }
-        OpenCodeModelProtocol providerProtocol =
-                OpenCodeModelProtocol.fromNpmPackage(text(provider.get("npm")));
-        JsonNode models = provider.get("models");
-        if (models == null || !models.isObject()) {
+        Optional<Map<String, ZenModelMetadata>> parsed = OpenCodeZenModelCatalogParser.parse(root);
+        if (parsed.isEmpty()) {
             return View.unavailable();
         }
         Map<String, OpenCodeZenModelMetadata> byId = new LinkedHashMap<>();
-        models.fieldNames().forEachRemaining(id -> {
-            JsonNode entry = models.get(id);
-            if (entry != null && entry.isObject()) {
-                byId.put(id, metadataFor(id, entry, providerProtocol));
-            }
+        parsed.get().forEach((id, metadata) -> {
+            byId.put(id, new OpenCodeZenModelMetadata(id, metadata.free(), metadata.retired(),
+                    OpenCodeModelProtocol.valueOf(metadata.protocol().name())));
         });
         return new View(true, byId);
-    }
-
-    private OpenCodeZenModelMetadata metadataFor(String id, JsonNode entry,
-                                                 OpenCodeModelProtocol providerProtocol) {
-        JsonNode cost = entry.get("cost");
-        // 只有明确 input=0 且 output=0 才算免费;缺字段或非数值一律按"未证明免费"处理。
-        boolean free = cost != null && cost.isObject()
-                && isZero(cost.get("input")) && isZero(cost.get("output"));
-        JsonNode modelNpm = entry.path("provider").path("npm");
-        OpenCodeModelProtocol protocol = modelNpm.isTextual() && !modelNpm.asText().isBlank()
-                ? OpenCodeModelProtocol.fromNpmPackage(modelNpm.asText())
-                : providerProtocol;
-        return new OpenCodeZenModelMetadata(id, free, isRetired(entry), protocol);
-    }
-
-    private static boolean isZero(JsonNode value) {
-        return value != null && value.isNumber() && value.asDouble() == 0d;
-    }
-
-    private static boolean isRetired(JsonNode entry) {
-        if (entry.path("deprecated").asBoolean(false)) {
-            return true;
-        }
-        for (String field : RETIREMENT_DATE_FIELDS) {
-            if (entry.hasNonNull(field)) {
-                return true;
-            }
-        }
-        String status = entry.path("status").asText("").trim().toLowerCase(Locale.ROOT);
-        return RETIRED_STATUSES.contains(status);
-    }
-
-    private static String text(JsonNode node) {
-        return node == null || !node.isTextual() ? null : node.asText();
     }
 
     /** 有界读取:超过上限返回 null(整体视为不可用),绝不解析半截报文。 */

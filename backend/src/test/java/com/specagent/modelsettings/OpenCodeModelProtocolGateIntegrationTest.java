@@ -178,7 +178,7 @@ class OpenCodeModelProtocolGateIntegrationTest {
         assertThat(saved.configured()).isTrue();
         assertThat(saved.selectedModel()).isEqualTo("big-pickle");
         assertThat(settings.requireRuntimeSettings().selectedModel()).isEqualTo("big-pickle");
-        var listed = settings.listSavedKeyModels();
+        var listed = settings.listModels();
         assertThat(listed.freeModels()).containsExactly("big-pickle", "cat-jam-free");
         assertThat(listed.allModels()).containsExactly("big-pickle", "cat-jam-free", "deepseek-v4-pro");
     }

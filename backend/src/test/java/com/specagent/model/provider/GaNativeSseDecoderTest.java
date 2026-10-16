@@ -100,4 +100,88 @@ class GaNativeSseDecoderTest {
         assertEquals("c1", decode(stream).toolCalls().getFirst().id());
         assertThrows(IllegalArgumentException.class, () -> decode(stream.replace("\"content\":null,\"tool_calls\":null", "\"content\":\"late\",\"tool_calls\":null")));
     }
+
+    /**
+     * deepseek 系列(Zen)先在带 finish_reason 的帧上报 usage,随后以 choices:[] 尾帧
+     * 重复一次完全相同的 usage。线上实测 5/5 两帧逐字段相同。必须接受,否则整条
+     * GA 原生路径对该模型系列确定性失败(GA_NATIVE_STREAM_USAGE)。
+     */
+    @Test void acceptsDuplicateIdenticalUsageAcrossFinishAndTailFrames() {
+        String usage = "{\"prompt_tokens\":403,\"completion_tokens\":64,\"total_tokens\":467,"
+                + "\"prompt_tokens_details\":{\"cached_tokens\":0},"
+                + "\"completion_tokens_details\":{\"reasoning_tokens\":19}}";
+        var response = decode(deepSeekStream(usage, usage));
+        assertEquals("c1", response.toolCalls().getFirst().id());
+        assertEquals("中文", response.toolCalls().getFirst().arguments().get("query"));
+        assertEquals(403, response.usage().promptTokens());
+        assertEquals(64, response.usage().completionTokens());
+    }
+
+    /** 放宽的是重复次数,绝不是内容:被改写的第二次 usage 仍是协议违规。 */
+    @Test void rejectsRewrittenUsageInTailFrame() {
+        String usage = "{\"prompt_tokens\":403,\"completion_tokens\":64}";
+        assertThrows(IllegalArgumentException.class,
+                () -> decode(deepSeekStream(usage, "{\"prompt_tokens\":403,\"completion_tokens\":65}")));
+    }
+
+    /** 缺失 usage 仍然失败:放宽重复不代表放弃 usage 强制。 */
+    @Test void stillRequiresUsageOnDeepSeekShape() {
+        assertThrows(IllegalArgumentException.class, () -> decode(deepSeekStream(null, null)));
+    }
+
+    /**
+     * 部分 Zen 模型(big-pickle、ll-alpha-free 等)在后续分片里显式回填 {@code role:null},
+     * 按 OpenAI 规范表达"本帧不携带 role"。null 必须与字段缺失同义地接受,
+     * 否则整条 GA 原生路径对这些模型确定性失败(GA_NATIVE_STREAM_DELTA)。
+     */
+    @Test void acceptsExplicitNullRoleAndNullToolFieldsInLaterFragments() {
+        String stream = """
+            data: {"choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":""}}]}
+
+            data: {"choices":[{"index":0,"finish_reason":null,"delta":{"role":null,"content":null,"reasoning_content":"想","tool_calls":null}}]}
+
+            data: {"choices":[{"index":0,"finish_reason":null,"delta":{"role":null,"content":null,"reasoning_content":null,"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"project_search","arguments":"{\\"query\\":\\"中文\\"}"}}]}}]}
+
+            data: {"choices":[{"index":0,"finish_reason":"tool_calls","delta":{"reasoning_content":null}}],"usage":{"prompt_tokens":235,"completion_tokens":77}}
+
+            data: [DONE]
+
+            """;
+        var response = decode(stream);
+        assertEquals("c1", response.toolCalls().getFirst().id());
+        assertEquals("中文", response.toolCalls().getFirst().arguments().get("query"));
+        assertEquals(235, response.usage().promptTokens());
+    }
+
+    /** 非 null 且非 assistant 的 role 仍是违规:放宽的只是 null 这一种"未携带"写法。 */
+    @Test void rejectsNonAssistantRoleInFragment() {
+        String stream = """
+            data: {"choices":[{"index":0,"finish_reason":null,"delta":{"role":"user","content":"hi"}}]}
+
+            data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}
+
+            data: [DONE]
+
+            """;
+        assertThrows(IllegalArgumentException.class, () -> decode(stream));
+    }
+
+    /**
+     * deepseek 系列线上实测帧序:带 tool_calls 的帧不带 finish_reason;finish 帧同时
+     * 携带 finish_reason 与 usage;随后是 choices:[] 尾帧再次携带 usage。
+     */
+    private static String deepSeekStream(String finishUsage, String tailUsage) {
+        String finish = finishUsage == null ? "" : ",\"usage\":" + finishUsage;
+        String tail = tailUsage == null ? "" : "\n\ndata: {\"choices\":[],\"usage\":" + tailUsage + "}\n";
+        return """
+            data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning_content":""}}],"usage":null}
+
+            data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"","tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"project_search","arguments":"{\\"query\\":\\"中文\\"}"}}]}}],"usage":null}
+
+            data: {"choices":[{"index":0,"finish_reason":"tool_calls","delta":{"role":"assistant","content":"","reasoning_content":""}}]%s}
+            %s
+            data: [DONE]
+
+            """.formatted(finish, tail);
+    }
 }

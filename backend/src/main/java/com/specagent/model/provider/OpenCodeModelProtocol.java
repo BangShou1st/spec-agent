@@ -1,5 +1,7 @@
 package com.specagent.model.provider;
 
+import com.sharedlibs.opencodezen.ZenModelProtocol;
+
 /**
  * 文件名:OpenCodeModelProtocol.java
  *
@@ -34,24 +36,11 @@ public enum OpenCodeModelProtocol {
      * Chat,因为猜错会让请求打到不存在的端点。
      */
     public static OpenCodeModelProtocol fromNpmPackage(String npmPackage) {
-        if (npmPackage == null || npmPackage.isBlank()) {
-            return UNKNOWN;
-        }
-        String value = npmPackage.trim();
-        if (value.contains("anthropic")) {
-            return ANTHROPIC;
-        }
-        if ("@ai-sdk/openai".equals(value)) {
-            return RESPONSES;
-        }
-        if (value.contains("openai-compatible")) {
-            return CHAT;
-        }
-        return OTHER;
+        return valueOf(ZenModelProtocol.fromNpmPackage(npmPackage).name());
     }
 
     /** 本产品已实现的调用链是否覆盖该协议。 */
     public boolean chatExecutable() {
-        return this == CHAT;
+        return ZenModelProtocol.valueOf(name()).chatExecutable();
     }
 }

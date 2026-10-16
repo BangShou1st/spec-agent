@@ -1,5 +1,8 @@
 package com.specagent.model.provider;
 
+import com.sharedlibs.opencodezen.ZenModelMetadata;
+import com.sharedlibs.opencodezen.ZenModelProtocol;
+
 /**
  * 文件名:OpenCodeZenModelMetadata.java
  *
@@ -28,5 +31,9 @@ public record OpenCodeZenModelMetadata(String modelId, boolean free, boolean ret
     /** 免费且可执行:只有这种模型才会出现在"免费模型"选择列表里。 */
     public boolean freeAndChatExecutable() {
         return free && chatExecutable();
+    }
+
+    ZenModelMetadata toSharedMetadata() {
+        return new ZenModelMetadata(modelId, free, retired, ZenModelProtocol.valueOf(protocol.name()));
     }
 }

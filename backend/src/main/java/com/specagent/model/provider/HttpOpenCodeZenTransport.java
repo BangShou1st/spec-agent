@@ -1,5 +1,8 @@
 package com.specagent.model.provider;
 
+import com.sharedlibs.opencodezen.OpenCodeZenProtocolPolicy;
+import com.sharedlibs.opencodezen.autoconfigure.OpenCodeZenRequestFactory;
+import com.sharedlibs.opencodezen.SseFrameDecoder;
 import com.specagent.model.contract.FragmentListener;
 import com.specagent.model.contract.StreamCancelledException;
 
@@ -8,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.common.Hashes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -34,6 +38,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 文件名:HttpOpenCodeZenTransport.java
@@ -79,42 +84,33 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
      * 这些工具纯粹是为了让请求带上 Zen 期望的客户端形态载荷。已验证:真实提示词
      * 附带这些工具时,模型仍返回普通文本内容。
      */
-    private static final List<Map<String, Object>> RESERVED_TOOLS = List.of(
-            Map.<String, Object>of(
-                    "type", "function",
-                    "function", Map.<String, Object>of(
-                            "name", "bash",
-                            "description", "Reserved by the transport. Never call this tool.",
-                            "parameters", Map.<String, Object>of(
-                                    "type", "object",
-                                    "properties", Map.<String, Object>of(
-                                            "command", Map.of("type", "string"))))),
-            Map.<String, Object>of(
-                    "type", "function",
-                    "function", Map.<String, Object>of(
-                            "name", "read",
-                            "description", "Reserved by the transport. Never call this tool.",
-                            "parameters", Map.<String, Object>of(
-                                    "type", "object",
-                                    "properties", Map.<String, Object>of(
-                                            "filePath", Map.of("type", "string"))))));
-
     private final ObjectMapper mapper;
     private final String baseUrl;
     private final Duration settingsTimeout;
     private final HttpClient productionHttpClient;
     private final HttpClient settingsHttpClient;
+    private final OpenCodeZenRequestFactory requestFactory;
 
+    @Autowired
     public HttpOpenCodeZenTransport(ObjectMapper mapper,
                                     @Value("${spec.agent.model.opencode.base-url:" + BASE_URL + "}") String baseUrl,
                                     @Value("${spec.agent.model.opencode.settings-timeout-seconds:45}") long settingsTimeoutSeconds,
-                                    @Value("${spec.agent.model.opencode.proxy:DIRECT}") String proxyConfig) {
+                                    @Value("${spec.agent.model.opencode.proxy:DIRECT}") String proxyConfig,
+                                    OpenCodeZenRequestFactory requestFactory) {
         this.mapper = mapper;
         this.baseUrl = baseUrl == null || baseUrl.isBlank() ? BASE_URL : stripTrailingSlash(baseUrl);
         this.settingsTimeout = Duration.ofSeconds(settingsTimeoutSeconds);
         java.net.ProxySelector selector = proxySelectorFor(proxyConfig);
         this.productionHttpClient = HttpClient.newBuilder().proxy(selector).build();
         this.settingsHttpClient = HttpClient.newBuilder().proxy(selector).connectTimeout(settingsTimeout).build();
+        this.requestFactory = requestFactory;
+    }
+
+    /** Test and non-Spring construction keeps the same shared defaults. */
+    public HttpOpenCodeZenTransport(ObjectMapper mapper, String baseUrl,
+                                    long settingsTimeoutSeconds, String proxyConfig) {
+        this(mapper, baseUrl, settingsTimeoutSeconds, proxyConfig,
+                new OpenCodeZenRequestFactory(OpenCodeZenProtocolPolicy.USER_AGENT));
     }
 
     @Override
@@ -188,16 +184,15 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
         var payload = new GaChatCompletionsAdapter().streamingRequestBody(request, pinnedModel);
         // Keep the verified Zen free-tier envelope. Reserved names have no host execution route;
         // validateResponse below accepts only the actual run catalog.
-        if (request.tools().stream().anyMatch(tool -> tool.name().equals("bash") || tool.name().equals("read")))
+        if (OpenCodeZenProtocolPolicy.hasReservedToolName(
+                request.tools().stream().map(tool -> tool.name()).toList()))
             throw new IllegalArgumentException("GA catalog conflicts with reserved Zen tool names");
-        List<Object> nativeTools = new ArrayList<>();
         Object authorizedTools = payload.get("tools");
-        if (authorizedTools instanceof List<?> approved) nativeTools.addAll(approved);
-        nativeTools.addAll(RESERVED_TOOLS);
-        payload.put("tools", nativeTools);
+        List<?> approvedTools = authorizedTools instanceof List<?> approved ? approved : List.of();
+        payload.put("tools", OpenCodeZenProtocolPolicy.appendReservedTools(approvedTools));
         payload.put("tool_choice", request.toolChoice());
         payload.put("parallel_tool_calls", false);
-        PreparedRequest prepared = prepareRequest("POST", "/chat/completions", apiKey,
+        PreparedRequest prepared = prepareRequest("POST", OpenCodeZenProtocolPolicy.CHAT_COMPLETIONS_PATH, apiKey,
                 requireSessionId(sessionId), writeJson(payload), pinnedModel, RequestType.PRODUCTION_COMPLETION,
                 request.messages().stream().map(com.specagent.model.contract.GaModelContract.Message::content).toList(),
                 true, false);
@@ -271,7 +266,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
 
     @Override
     public OpenCodeModelList listModels(String apiKey) {
-        PreparedRequest prepared = prepareSettingsRequest("GET", "/models", apiKey, null,
+        PreparedRequest prepared = prepareSettingsRequest("GET", OpenCodeZenProtocolPolicy.MODELS_PATH, apiKey, null,
                 List.of(), false);
         HttpResponse<String> response = sendBuffered(prepared, null);
         return parseModelList(response.body());
@@ -284,9 +279,8 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
         probe.put("messages", List.of(Map.of("role", "user", "content", PROBE_USER_CONTENT)));
         probe.put("max_tokens", PROBE_MAX_TOKENS);
         probe.put("response_format", Map.of("type", "json_object"));
-        probe.put("tools", RESERVED_TOOLS);
-        probe.put("stream", true);
-        PreparedRequest prepared = prepareSettingsRequest("POST", "/chat/completions", apiKey,
+        OpenCodeZenProtocolPolicy.applyRequiredChatEnvelope(probe, false);
+        PreparedRequest prepared = prepareSettingsRequest("POST", OpenCodeZenProtocolPolicy.CHAT_COMPLETIONS_PATH, apiKey,
                 writeJson(probe), List.of(PROBE_USER_CONTENT), true);
         HttpResponse<InputStream> response = sendStreaming(prepared, model);
         parseStreaming(response, model, prepared.execution(), fragment -> true);
@@ -315,7 +309,8 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                                                       String sessionId,
                                                       OpenCodeChatCompletionRequest request) {
         byte[] body = completionPayload(request);
-        return prepareRequest("POST", "/chat/completions", apiKey, sessionId, body, request.model(),
+        return prepareRequest("POST", OpenCodeZenProtocolPolicy.CHAT_COMPLETIONS_PATH,
+                apiKey, sessionId, body, request.model(),
                 RequestType.PRODUCTION_COMPLETION, request.messages().stream()
                         .map(OpenCodeChatMessage::content).toList(), true,
                 request.responseFormat() != null);
@@ -343,21 +338,11 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                                            boolean responseFormatPresent) {
         HttpClient client = requestType == RequestType.PRODUCTION_COMPLETION
                 ? productionHttpClient : settingsHttpClient;
-        HttpRequest.Builder builder = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + path))
-                .header("User-Agent", USER_AGENT)
-                .header(CLIENT_HEADER, CLIENT_ID)
-                .header(REQUEST_HEADER, OpenCodeZenIds.requestId())
-                .header(PROJECT_HEADER, GLOBAL_PROJECT)
-                .header(SESSION_HEADER, sessionId)
-                .header(SESSION_ID_HEADER, sessionId);
+        HttpRequest.Builder builder = requestFactory.newRequestBuilder(
+                URI.create(baseUrl + path), apiKey, sessionId, OpenCodeZenIds.requestId());
         if (requestType == RequestType.SETTINGS) {
             builder.timeout(settingsTimeout);
         }
-        // 免费档凭据:密钥缺省时以免费客户端的公开凭据发送;真实密钥仅在存在时
-        // 覆盖(付费模型)。空白值绝不做静默 trim 复用。
-        String credential = apiKey != null && !apiKey.isBlank() ? apiKey : FREE_TIER_CREDENTIAL;
-        builder.header("Authorization", "Bearer " + credential);
         if (body != null) {
             builder.header("Content-Type", "application/json")
                     .method(method, HttpRequest.BodyPublishers.ofByteArray(body));
@@ -546,7 +531,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                                                       String selectedModel,
                                                       RequestExecution execution,
                                                       FragmentListener listener) {
-        StringBuilder eventData = new StringBuilder();
+        SseFrameDecoder sseDecoder = new SseFrameDecoder();
         StringBuilder content = new StringBuilder();
         StreamState state = new StreamState();
         state.execution = execution;
@@ -559,13 +544,10 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                 response.body(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                if (line.isEmpty()) {
-                    if (eventData.length() == 0) {
-                        continue;
-                    }
-                    StreamChunk chunk = parseStreamEvent(eventData, state, content,
+                Optional<String> eventData = sseDecoder.accept(line);
+                if (eventData.isPresent()) {
+                    StreamChunk chunk = parseStreamEvent(eventData.get(), state, content,
                             response.statusCode(), response.headers(), selectedModel);
-                    eventData.setLength(0);
                     if (chunk.done()) {
                         done = true;
                         break;
@@ -576,21 +558,12 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                     promptTokens = firstNonNull(chunk.promptTokens(), promptTokens);
                     completionTokens = firstNonNull(chunk.completionTokens(), completionTokens);
                     totalTokens = firstNonNull(chunk.totalTokens(), totalTokens);
-                } else if (line.startsWith("data:")) {
-                    String data = line.substring("data:".length());
-                    if (data.startsWith(" ")) {
-                        data = data.substring(1);
-                    }
-                    if (eventData.length() > 0) {
-                        eventData.append('\n');
-                    }
-                    eventData.append(data);
                 }
-                // SSE 注释、事件名和 id 不影响内容提取。
             }
 
-            if (!done && eventData.length() > 0) {
-                StreamChunk chunk = parseStreamEvent(eventData, state, content,
+            Optional<String> trailingEvent = sseDecoder.finish();
+            if (!done && trailingEvent.isPresent()) {
+                StreamChunk chunk = parseStreamEvent(trailingEvent.get(), state, content,
                         response.statusCode(), response.headers(), selectedModel);
                 if (chunk.done()) {
                     done = true;
@@ -826,9 +799,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
         if (request.responseFormat() != null) {
             payload.put("response_format", request.responseFormat());
         }
-        payload.put("stream", true);
-        payload.put("stream_options", Map.of("include_usage", true));
-        payload.put("tools", RESERVED_TOOLS);
+        OpenCodeZenProtocolPolicy.applyRequiredChatEnvelope(payload, true);
         return writeJson(payload);
     }
 

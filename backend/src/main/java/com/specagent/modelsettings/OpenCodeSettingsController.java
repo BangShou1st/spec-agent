@@ -38,7 +38,7 @@ public class OpenCodeSettingsController {
 
     @GetMapping("/models")
     public OpenCodeProbeResponse models() {
-        return toModelResponse(service.listSavedKeyModels());
+        return toModelResponse(service.listModels());
     }
 
     private static OpenCodeProbeResponse toModelResponse(

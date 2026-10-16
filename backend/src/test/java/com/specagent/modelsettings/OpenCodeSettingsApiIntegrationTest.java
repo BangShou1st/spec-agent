@@ -30,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 文件名:OpenCodeSettingsApiIntegrationTest.java
  *
  * 测试目标:通过 MockMvc 对 OpenCode 设置 REST API 做集成测试:状态接口永不返回
- * apiKey、probe 只做发现不持久化候选键;保存要求模型必须是当前免费列表中的模型,
+ * apiKey、probe 只做发现不持久化候选键;免费模型可无 Key 保存,付费模型要求 Key,
  * 且响应只返回安全投影(maskedKey,不出现明文 Key);Provider 限流错误映射为 429
  * 且不替换已有设置;已保存 Key 后的 models / model 接口既不需要提交 Key 也不回显 Key。
  */
@@ -61,7 +61,7 @@ class OpenCodeSettingsApiIntegrationTest {
         when(catalog.listAvailableModels("candidate-key"))
                 .thenReturn(List.of("alpha-free", "beta-free", "paid-model"));
         when(catalog.listFreeModels("candidate-key")).thenReturn(List.of("alpha-free", "beta-free"));
-        doNothing().when(transport).validateCredential("candidate-key", "alpha-free");
+        doNothing().when(transport).validateCredential("candidate-key", "paid-model");
 
         mockMvc.perform(get("/api/v1/settings/opencode"))
                 .andExpect(status().isOk())
@@ -82,9 +82,10 @@ class OpenCodeSettingsApiIntegrationTest {
     }
 
     @Test
-    void saveRequiresCurrentFreeModelAndReturnsOnlySafeProjection() throws Exception {
+    void saveFreeModelWithKeyUsesPublicAndReturnsOnlySafeProjection() throws Exception {
         when(catalog.listAvailableModels("candidate-key")).thenReturn(List.of("alpha-free"));
-        doNothing().when(transport).validateCredential("candidate-key", "alpha-free");
+        when(catalog.listFreeModels("candidate-key")).thenReturn(List.of("alpha-free"));
+        doNothing().when(transport).validateCredential("public", "alpha-free");
 
         mockMvc.perform(put("/api/v1/settings/opencode")
                         .contentType("application/json")
@@ -97,6 +98,26 @@ class OpenCodeSettingsApiIntegrationTest {
     }
 
     @Test
+    void freeModelsCanBeListedAndSavedWithoutAnyKey() throws Exception {
+        when(catalog.listAvailableModels(null)).thenReturn(List.of("alpha-free", "paid-model"));
+        when(catalog.listFreeModels(null)).thenReturn(List.of("alpha-free"));
+        doNothing().when(transport).validateCredential("public", "alpha-free");
+
+        mockMvc.perform(get("/api/v1/settings/opencode/models"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.allModels.length()").value(2))
+                .andExpect(jsonPath("$.freeModels[0]").value("alpha-free"));
+
+        mockMvc.perform(put("/api/v1/settings/opencode")
+                        .contentType("application/json")
+                        .content("{\"selectedModel\":\"alpha-free\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.configured").value(true))
+                .andExpect(jsonPath("$.maskedKey").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.selectedModel").value("alpha-free"));
+    }
+
+    @Test
     void rateLimitIsMappedWithoutReplacingExistingSettings() throws Exception {
         when(catalog.listAvailableModels("working-key")).thenReturn(List.of("alpha-free"));
         doNothing().when(transport).validateCredential("working-key", "alpha-free");
@@ -106,6 +127,7 @@ class OpenCodeSettingsApiIntegrationTest {
                 .andExpect(status().isOk());
 
         when(catalog.listAvailableModels("candidate-key")).thenReturn(List.of("alpha-free"));
+        when(catalog.listFreeModels("candidate-key")).thenReturn(List.of());
         doThrow(new OpenCodeModelException(OpenCodeModelErrorCategory.RATE_LIMITED,
                 "provider limited the request", 429))
                 .when(transport).validateCredential("candidate-key", "alpha-free");
@@ -124,7 +146,7 @@ class OpenCodeSettingsApiIntegrationTest {
     void savedKeyModelEndpointsDoNotRequireTheKeyOrReturnIt() throws Exception {
         when(catalog.listAvailableModels("saved-key")).thenReturn(List.of("alpha-free", "beta-free"));
         when(catalog.listFreeModels("saved-key")).thenReturn(List.of("alpha-free", "beta-free"));
-        doNothing().when(transport).validateCredential("saved-key", "alpha-free");
+        doNothing().when(transport).validateCredential("public", "alpha-free");
         mockMvc.perform(put("/api/v1/settings/opencode")
                         .contentType("application/json")
                         .content("{\"apiKey\":\"saved-key\",\"selectedModel\":\"alpha-free\"}"))
@@ -136,7 +158,7 @@ class OpenCodeSettingsApiIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("saved-key"))));
 
-        doNothing().when(transport).validateCredential("saved-key", "beta-free");
+        doNothing().when(transport).validateCredential("public", "beta-free");
         mockMvc.perform(put("/api/v1/settings/opencode/model")
                         .contentType("application/json")
                         .content("{\"selectedModel\":\"beta-free\"}"))

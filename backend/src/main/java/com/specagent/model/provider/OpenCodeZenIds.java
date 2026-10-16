@@ -1,7 +1,6 @@
 package com.specagent.model.provider;
 
-import java.util.Locale;
-import java.util.concurrent.ThreadLocalRandom;
+import com.sharedlibs.opencodezen.OpenCodeZenIdGenerator;
 
 /**
  * 文件名:OpenCodeZenIds.java
@@ -29,60 +28,16 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 final class OpenCodeZenIds {
 
-    private static final String BASE62 =
-            "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-    private static final int ID_LENGTH = 26;
-    private static final int PREFIX_HEX_LENGTH = 12;
-
-    /** 真实客户端语义:同一毫秒内从 0 单调递增,跨毫秒重置。 */
-    private static final Object COUNTER_LOCK = new Object();
-    private static long counterMillis;
-    private static int counter;
-
     private OpenCodeZenIds() {
     }
 
     /** {@code ses_} 会话 id;同一 run 内稳定不变,前缀为降序。 */
     static String sessionId() {
-        return "ses_" + generate(true);
+        return OpenCodeZenIdGenerator.newSessionId();
     }
 
     /** {@code msg_} 请求 id;每个 HTTP 请求生成一个新值,前缀为升序。 */
     static String requestId() {
-        return "msg_" + generate(false);
-    }
-
-    private static String generate(boolean descending) {
-        long timestamp;
-        int slot;
-        synchronized (COUNTER_LOCK) {
-            timestamp = System.currentTimeMillis();
-            if (timestamp != counterMillis) {
-                counterMillis = timestamp;
-                counter = 0;
-            }
-            // 真实客户端 1ms 内不会发出 16 个以上请求;上游对 counter > 0xF 的
-            // 降序 id 按不合规处理(2026-10-16 线上 A/B:随机计数器 → 403)。
-            // 同一毫秒的槽位耗尽时推进到下一毫秒,绝不生成越界 id。
-            while (counter > 0xF) {
-                timestamp = System.currentTimeMillis();
-                if (timestamp != counterMillis) {
-                    counterMillis = timestamp;
-                    counter = 0;
-                }
-            }
-            slot = counter++;
-        }
-        long current = timestamp * 0x1000L + slot;
-        long value = descending ? ~current : current;
-        StringBuilder id = new StringBuilder(ID_LENGTH);
-        for (int i = 0; i < PREFIX_HEX_LENGTH / 2; i++) {
-            id.append(String.format(Locale.ROOT, "%02x", (int) ((value >> (40 - 8 * i)) & 0xFF)));
-        }
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-        for (int i = PREFIX_HEX_LENGTH; i < ID_LENGTH; i++) {
-            id.append(BASE62.charAt(random.nextInt(BASE62.length())));
-        }
-        return id.toString();
+        return OpenCodeZenIdGenerator.newRequestId();
     }
 }

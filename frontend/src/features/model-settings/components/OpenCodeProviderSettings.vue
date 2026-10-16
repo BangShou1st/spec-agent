@@ -35,6 +35,9 @@ const retryAction = ref<RetryAction>(null)
 
 const isActive = computed(() => providers.activeProvider === 'OPENCODE_ZEN')
 const configured = computed(() => store.status?.configured === true)
+const hasSavedKey = computed(() => Boolean(store.status?.maskedKey))
+const selectedRequiresKey = computed(() => store.selectedModel !== null
+  && !store.freeModels.includes(store.selectedModel))
 const failed = computed(() => store.error !== null)
 const state = computed(() => providerCardState(
   configured.value,
@@ -44,14 +47,16 @@ const state = computed(() => providerCardState(
   store.validating || store.probing || store.saving,
 ))
 
-const showCredentialForm = computed(() => !configured.value || store.changingCredential)
+const showCredentialForm = computed(() => !configured.value || store.changingCredential
+  || (selectedRequiresKey.value && !hasSavedKey.value))
 const canProbe = computed(() => canManage.value && apiKey.value.trim().length > 0 && !store.probing && !store.saving)
 /** 保存动作同时会在服务端验证可达性,所以是"保存并测试"一步完成。 */
 const canSave = computed(() => canManage.value && store.selectedModel !== null
   && store.displayModels.includes(store.selectedModel)
   && !store.modelUnavailable
   && !store.saving && !store.probing && !store.validating
-  && (showCredentialForm.value ? apiKey.value.trim().length > 0 : true))
+  && (!selectedRequiresKey.value || apiKey.value.trim().length > 0
+    || (hasSavedKey.value && !store.changingCredential)))
 const canValidate = computed(() => canManage.value && configured.value && !store.validating && !store.saving)
 const canActivate = computed(() => canManage.value && configured.value && store.validated
   && !isActive.value && !providers.activating)
@@ -159,7 +164,7 @@ onMounted(() => {
     @retry="retryLastAction"
   >
     <template v-if="configured" #summary>
-      <ProviderSummaryItem label="API Key" :value="store.status?.maskedKey" test-id="opencode-masked" />
+      <ProviderSummaryItem label="API Key" :value="store.status?.maskedKey ?? '未配置（免费模型无需）'" test-id="opencode-masked" />
       <ProviderSummaryItem label="当前模型" :value="store.status?.selectedModel" test-id="opencode-selected" ellipsis />
       <button
         class="btn settings-action"
@@ -168,14 +173,14 @@ onMounted(() => {
         :disabled="store.probing || store.saving"
         @click="store.beginCredentialChange()"
       >
-        更换 API Key
+        {{ hasSavedKey ? '更换 API Key' : '添加 API Key' }}
       </button>
     </template>
 
     <div v-if="canManage && showCredentialForm" class="settings-form settings-form--credential">
       <label class="settings-field" for="opencode-api-key">
-        <span class="settings-field__label">{{ configured ? '新 API Key' : 'API Key' }}</span>
-        <span class="settings-field__hint">密钥只用于验证和保存，不会显示完整内容</span>
+        <span class="settings-field__label">{{ hasSavedKey ? '新 API Key' : 'API Key' }}</span>
+        <span class="settings-field__hint">免费模型留空即可；付费模型必须填写。密钥不会显示完整内容。</span>
         <input
           id="opencode-api-key"
           v-model="apiKey"
@@ -183,7 +188,7 @@ onMounted(() => {
           type="password"
           autocomplete="off"
           data-test="opencode-api-key"
-          placeholder="输入你的 API Key"
+          :placeholder="selectedRequiresKey ? '付费模型需要 API Key' : '免费模型无需 API Key，可选填'"
         />
       </label>
       <div class="settings-form__action-row">
@@ -208,15 +213,15 @@ onMounted(() => {
         :loading="store.loadingModels"
         :free-only="store.freeOnly"
         free-toggle-id="opencode-free-only"
-        :hint="configured
-          ? '使用当前已保存的 API Key 获取，不需要重新输入密钥'
-          : '展示当前可用模型；保存前会做连通性验证'"
-        :empty-text="configured ? '暂无可用模型，请点击“刷新模型”' : '暂无可用模型，请先验证 Key'"
+        :hint="hasSavedKey
+          ? '免费模型使用公开凭证；付费模型使用已保存的 API Key。'
+          : '免费模型无需 Key；选择付费模型时需要填写 API Key。'"
+        empty-text="暂无可用模型，请点击“刷新模型”"
         :warning-text="store.modelUnavailable ? '已保存的模型当前不可用，请重新选择' : null"
         @update:model-value="canManage && (store.selectedModel = $event)"
         @update:free-only="store.setFreeOnly"
       />
-      <div v-if="configured" class="settings-form__action-row">
+      <div v-if="canManage" class="settings-form__action-row">
         <button
           class="btn settings-action"
           type="button"
