@@ -283,13 +283,13 @@ public class RetrievalEntryRepository {
         StringBuilder sql = new StringBuilder("""
                 SELECT * FROM retrieval_entries
                 WHERE project_id = :projectId AND retracted_at IS NULL
-                  AND search_vector @@ plainto_tsquery('simple', :queryText)
+                  AND search_vector @@ cjk_tsquery(:queryText)
                 """);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("projectId", projectId);
         params.put("queryText", queryText);
         appendFilters(sql, params, sourceKind, sourceRefs);
-        sql.append(" ORDER BY ts_rank_cd(search_vector, plainto_tsquery('simple', :queryText)) DESC, updated_at DESC LIMIT :limit");
+        sql.append(" ORDER BY ts_rank_cd(search_vector, cjk_tsquery(:queryText)) DESC, updated_at DESC LIMIT :limit");
         params.put("limit", Math.max(1, limit));
         return jdbcTemplate.query(sql.toString(), params, rowMapper);
     }

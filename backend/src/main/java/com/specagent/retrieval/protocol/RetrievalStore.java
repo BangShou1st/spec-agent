@@ -207,8 +207,10 @@ public class RetrievalStore {
                 laneFilter=" AND source_ref IN (:refs)"; params.put("refs",scope.graphRefs());
             }
             if(lane.endsWith("lexical")) {
-                relevance="(search_vector @@ plainto_tsquery('simple',:query) OR position(lower(:query) in lower(source_ref))>0 OR position(lower(:query) in lower(content))>0)";
-                order="ts_rank_cd(search_vector,plainto_tsquery('simple',:query)) DESC, source_ref";
+                // cjk_tsquery augments plainto_tsquery with CJK bigram alternatives, so
+                // Chinese paraphrases match while ASCII identifiers keep the old semantics.
+                relevance="(search_vector @@ cjk_tsquery(:query) OR position(lower(:query) in lower(source_ref))>0 OR position(lower(:query) in lower(content))>0)";
+                order="ts_rank_cd(search_vector,cjk_tsquery(:query)) DESC, source_ref";
             } else if(lane.endsWith("trigram")) {
                 relevance="(similarity(content,:query)>0.15 OR word_similarity(:query,content)>0.15)";
                 order="GREATEST(similarity(content,:query),word_similarity(:query,content)) DESC, source_ref";
