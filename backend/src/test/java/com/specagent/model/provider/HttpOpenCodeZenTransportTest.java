@@ -42,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class HttpOpenCodeZenTransportTest {
 
     private static final String TEST_KEY = "sk-test-only-key";
-    private static final String TEST_SESSION = "ses_testsession01";
+    private static final String TEST_SESSION = "ses_0123456789abABCDEFGHIJKLMN";
 
     private final ObjectMapper mapper = new ObjectMapper();
     private HttpServer server;
@@ -99,9 +99,15 @@ class HttpOpenCodeZenTransportTest {
         assertThat(payload.path("stream").asBoolean()).isTrue();
         assertThat(payload.path("stream_options").path("include_usage").asBoolean()).isTrue();
         assertThat(payload.path("messages").get(3).path("tool_call_id").asText()).isEqualTo("native-1");
-        assertThat(payload.path("tools").size()).isEqualTo(request.tools().size() + 2);
-        assertThat(payload.path("tools").get(request.tools().size()).path("function").path("name").asText()).isEqualTo("bash");
-        assertThat(payload.path("tools").get(request.tools().size() + 1).path("function").path("name").asText()).isEqualTo("read");
+        // Zen 的免费档要求请求携带完整 CLI 核心工具信封(bash/edit/glob/grep/read);
+        // 应用已授权的工具排在其前,且保留名绝不重复。
+        assertThat(payload.path("tools").size()).isEqualTo(request.tools().size() + 5);
+        List<String> appended = new ArrayList<>();
+        for (int index = 0; index < 5; index++) {
+            appended.add(payload.path("tools").get(request.tools().size() + index)
+                    .path("function").path("name").asText());
+        }
+        assertThat(appended).containsExactly("bash", "edit", "glob", "grep", "read");
         assertThat(payload.toString()).doesNotContain(TEST_KEY);
     }
 
@@ -396,19 +402,19 @@ class HttpOpenCodeZenTransportTest {
     /**
      * 上游基址有三种互不相同的含义,绝不能混为一谈:
      * <ul>
-     *   <li>{@code https://opencode.ai/zen/v1} —— 产品当前默认基址(真实端点仍返回 200);</li>
-     *   <li>{@code https://opencode.ai/inference/v1} —— 官方模型目录元数据
-     *       ({@code models.opencode.ai/api.json} 的 {@code opencode.api})给出的规范基址,
-     *       真实端点同样返回 200;</li>
+     *   <li>{@code https://opencode.ai/inference/v1} —— 规范推理基址,也是产品**默认**基址
+     *       ({@code OpenCodeZenProtocolPolicy.DEFAULT_BASE_URL});</li>
+     *   <li>{@code https://opencode.ai/zen/v1} —— 仅作模型目录发现的 legacy 地址,
+     *       推理流量绝不发往这里;</li>
      *   <li>第三方本地兼容网关的 {@code http://127.0.0.1:18991/v1} 形态 —— 与本产品的
      *       传输层无关,绝不能被当作默认基址写进产品。</li>
      * </ul>
-     * 因此本测试断言:配置机制把三种基址都原样拼接({@code <base>/models}、
-     * {@code <base>/chat/completions}),且默认生产基址未被替换。
+     * 因此本测试断言:配置机制把任意基址都原样拼接({@code <base>/models}、
+     * {@code <base>/chat/completions}),且默认基址就是规范推理基址。
      */
     @Test
-    void configuredBaseUrlIsUsedVerbatimForEveryPathWhileTheDefaultStaysUnchanged() throws IOException {
-        assertThat(OpenCodeZenTransport.BASE_URL).isEqualTo("https://opencode.ai/zen/v1");
+    void configuredBaseUrlIsUsedVerbatimForEveryPathWhileTheDefaultIsTheInferenceBase() throws IOException {
+        assertThat(OpenCodeZenTransport.BASE_URL).isEqualTo("https://opencode.ai/inference/v1");
         for (String configured : List.of("/zen/v1", "/inference/v1", "/v1")) {
             captured.clear();
             String base = "http://127.0.0.1:" + server.getAddress().getPort() + configured;

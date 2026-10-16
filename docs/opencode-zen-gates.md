@@ -12,7 +12,7 @@ docs/OPENCODE_SHARED_COMPONENT.md。
 
 ## 一、本项目怎么用 zen
 
-后端 **直连** `https://opencode.ai/zen/v1`（默认 `DIRECT`，不走 18991 本地代理，不走 7897 Clash；`spec.agent.model.opencode.proxy` 未显式设置时永远是 `HttpClient.Builder.NO_PROXY`，见 `HttpOpenCodeZenTransport` 构造器与 `proxySelectorFor`）。
+后端 **直连** `https://opencode.ai/inference/v1`（默认 `DIRECT`，不走 18991 本地代理，不走 7897 Clash；`spec.agent.model.opencode.proxy` 未显式设置时永远是 `HttpClient.Builder.NO_PROXY`，见 `HttpOpenCodeZenTransport` 构造器与 `proxySelectorFor`）。
 
 伪装由 transport 内部完成，调用方无感：
 

@@ -20,9 +20,26 @@ The backend includes the in-repository Gradle build from backend/settings.gradle
 
 ## Spring Boot use
 
-Add com.sharedlibs:opencode-zen-spring-boot-starter:1.1.1. The starter registers an OpenCodeZenRequestFactory bean and binds opencode.zen.user-agent. Applications keep credential storage, model classification, request bodies, timeouts, traces, routing, and business contracts. The factory accepts an application-resolved credential (public for a free model, the user's key for a paid model) and applies shared identity and authorization headers.
+Add com.sharedlibs:opencode-zen-spring-boot-starter:1.2.0. The starter registers an
+OpenCodeZenRequestFactory bean and binds opencode.zen.user-agent. Applications keep credential
+storage, model classification, request bodies, timeouts, traces, routing, and business contracts.
 
-The model list contains free and paid Chat models. The UI's 仅免费 control is only a filter. Free selections use Bearer public without requiring or sending a user key. Paid selections require a key; unknown models are treated as paid.
+Consumers that do not want to manage anything about the wire shape can use the one-stop factory
+methods `newConversationRequest(endpoint, freeModel, apiKey, conversationKey)` and
+`newEphemeralRequest(endpoint, freeModel, apiKey)`: the factory generates the shaped `ses_`/`msg_`
+identifiers itself (caching one session per conversation), resolves the credential, and applies the
+shared identity headers. Identifiers supplied by hand are validated fail-closed, so a UUID or an
+arbitrary string is rejected locally instead of being answered upstream with `403 FreeTierError`.
+
+`OpenCodeZenProtocolPolicy.DEFAULT_BASE_URL` is the canonical inference base
+`https://opencode.ai/inference/v1`; the legacy `https://opencode.ai/zen/v1` is exposed separately as
+`LEGACY_DISCOVERY_BASE_URL` for model-catalogue discovery only. `applyRequiredChatEnvelope`
+attaches the full CLI core tool envelope (`bash, edit, glob, grep, read`), which the free tier
+requires: a body without it is rejected with `403 FreeTierError`.
+
+The model list contains free and paid Chat models. The UI's 仅免费 control is only a filter. Free
+selections use Bearer public without requiring or sending a user key. Paid selections require a key;
+unknown models are treated as paid.
 
 ## Build
 
@@ -41,3 +58,8 @@ For a new release, update the version in the shared modules and the backend depe
 ## Failure handling
 
 The transport does not retry or switch providers automatically. HTTP 429 remains RATE_LIMITED; other HTTP, connection, timeout, empty-content, and malformed-response failures keep their existing categories and diagnostics.
+
+An upstream `403 FreeTierError` is **not** a provider-side rejection of the product: it means the
+request itself is not accepted (shaped identifiers/counter, CLI tool envelope, or the base URL).
+`gradlew.bat zenUpstreamContract` in the backend asserts the shared construction path returns
+`200` or `429` and fails on anything else.

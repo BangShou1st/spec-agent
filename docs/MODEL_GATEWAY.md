@@ -70,7 +70,7 @@ Provider transport configuration shape:
 spec-agent:
   model:
     provider: opencode-zen
-    base-url: https://opencode.ai/zen/v1
+    base-url: https://opencode.ai/inference/v1
     chat-completions-path: /chat/completions
     model: resolved-from-opencode-settings
     api-key: resolved-from-opencode-settings

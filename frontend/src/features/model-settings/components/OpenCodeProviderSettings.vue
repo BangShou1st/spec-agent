@@ -3,7 +3,7 @@
   用途:OpenCode Zen 的 Provider 卡片,对齐 OpenRouter 卡片范式:
        统一外壳、统一状态胶囊与统一的 保存并测试/重新测试/设为当前 操作行,
        不再有"先存凭证再存模型"的两步流程。
-       请求形态的差异(绝对直连 https://opencode.ai/zen/v1、自带请求头)由后端传输层特判。
+       请求形态的差异(绝对直连 https://opencode.ai/inference/v1、自带请求头)由后端传输层特判。
 -->
 <script setup lang="ts">
 import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
@@ -20,7 +20,7 @@ import { providerCardState } from '@/features/model-settings/presentation/provid
  * OpenCode Zen 卡片,对齐 OpenRouter 范式。
  *
  * 请求形态的差异仍由后端传输层特判(使用自带请求头绝对直连
- * https://opencode.ai/zen/v1);这里统一的是卡片本身——与其他 Provider 相同的外壳、
+ * https://opencode.ai/inference/v1);这里统一的是卡片本身——与其他 Provider 相同的外壳、
  * 相同的状态胶囊、相同的 保存并测试 / 重新测试 / 设为当前 Provider 操作行,
  * 并且不再有"先 保存凭证 再 保存模型"的两步流程。
  */

@@ -28,7 +28,7 @@ dependencies {
 }
 
 dependencies {
-    implementation("com.sharedlibs:opencode-zen-spring-boot-starter:1.1.1")
+    implementation("com.sharedlibs:opencode-zen-spring-boot-starter:1.2.0")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-data-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-validation")
@@ -195,6 +195,17 @@ tasks.register<JavaExec>("qualifyGaNative") {
     description = "Records native SSE tool/followup qualification of the configured host model (no retry)."
     classpath = eval.runtimeClasspath
     mainClass.set("com.specagent.eval.GaNativeQualification")
+}
+
+// OpenCode Zen upstream request-contract gate: the shared-library request must be accepted
+// upstream (HTTP 200 or 429). Any other status — notably 403 FreeTierError — means the request
+// construction is wrong, not that the provider is refusing the product. Opt-in: it dials the
+// real upstream directly (NO_PROXY), so it is never part of test / testNonLive.
+tasks.register<JavaExec>("zenUpstreamContract") {
+    group = "verification"
+    description = "Asserts the shared OpenCode Zen request is accepted upstream (200/429 only)."
+    classpath = eval.runtimeClasspath
+    mainClass.set("com.specagent.eval.ZenUpstreamContractCheck")
 }
 
 // P2 Phase 2 — Live agent behavioral baseline (explicit, non-blocking).

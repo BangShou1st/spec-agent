@@ -52,7 +52,7 @@ class HttpOpenCodeZenTransportUserAgentTest {
 
         transport.listModels(null);
         transport.validateCredential("probe-key", "alpha-free");
-        transport.complete("completion-key", "ses_useragentprobe01", new OpenCodeChatCompletionRequest(
+        transport.complete("completion-key", "ses_0123456789abUSERAGENTPROBE", new OpenCodeChatCompletionRequest(
                 "alpha-free",
                 List.of(new OpenCodeChatMessage("user", "hello"))));
 
@@ -74,10 +74,10 @@ class HttpOpenCodeZenTransportUserAgentTest {
 
         transport.listModels(null);
         transport.validateCredential("probe-key", "alpha-free");
-        transport.complete("completion-key", "ses_identityprobe0001", new OpenCodeChatCompletionRequest(
+        transport.complete("completion-key", "ses_0123456789abIDENTITYPROBE0", new OpenCodeChatCompletionRequest(
                 "alpha-free",
                 List.of(new OpenCodeChatMessage("user", "hello"))));
-        transport.complete("completion-key", "ses_identityprobe0001", new OpenCodeChatCompletionRequest(
+        transport.complete("completion-key", "ses_0123456789abIDENTITYPROBE0", new OpenCodeChatCompletionRequest(
                 "alpha-free",
                 List.of(new OpenCodeChatMessage("user", "again"))));
 

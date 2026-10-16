@@ -17,7 +17,7 @@ package com.specagent.model.contract;
  */
 public enum ModelProvider {
 
-    OPENCODE_ZEN("OpenCode Zen", "https://opencode.ai/zen/v1",
+    OPENCODE_ZEN("OpenCode Zen", "https://opencode.ai/inference/v1",
             false, false, false, true, true),
 
     OPENROUTER("OpenRouter", "https://openrouter.ai/api/v1",

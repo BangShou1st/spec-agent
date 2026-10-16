@@ -49,7 +49,7 @@ project:11111111-…                      | starts_with(v,'project:') = t
 
 | # | 事项 | 本地代理参考 | Spec Agent（修复前） | 结论 |
 | --- | --- | --- | --- | --- |
-| 1 | 上游基址 | `https://opencode.ai/inference/v1`（`ZEN_API_BASE`） | `https://opencode.ai/zen/v1` | 两者都真实可用（见 §3）；**默认不改**，用既有配置支持新地址 |
+| 1 | 上游基址 | `https://opencode.ai/inference/v1`（`ZEN_API_BASE`） | `https://opencode.ai/inference/v1`（共享库 `DEFAULT_BASE_URL`） | 两者都真实可用（见 §3）；**2026-10-16 起默认已切到规范推理基址**，legacy `…/zen/v1` 仅保留为模型目录发现地址 |
 | 2 | 协议选择 | chat / responses / anthropic 三端点，异协议 → 422 | 只有 `/chat/completions` | 不实现多协议执行（越界）；改为**显式记录协议**并只提供 Chat 模型 |
 | 3 | 模型目录 | `GET /models` + `models.opencode.ai/api.json`（价格、`provider.npm`） | 只看 id 后缀 `-free` | 采用官方目录元数据（成本 + npm + 下线状态） |
 | 4 | 免费判定 | `cost.input==0 && cost.output==0`；付费模型即使名字带 `-free` 也不放行；缺元数据不默认免费 | 仅 `endswith("-free")` | 等价修正（见 §4） |
@@ -74,14 +74,15 @@ project:11111111-…                      | starts_with(v,'project:') = t
 | `https://opencode.ai/inference/v1/models` | HTTP 200，同一份列表 |
 | `https://models.opencode.ai/api.json` → `opencode.api` | `https://opencode.ai/inference/v1`（官方目录声明的规范基址） |
 
-结论：
-- **不替换**已存在的生产默认基址 `https://opencode.ai/zen/v1`（它仍受支持）；
-- `https://opencode.ai/inference/v1` 通过既有配置
-  `spec.agent.model.opencode.base-url` 使用（传输层原样拼接 `<base>/models`、
+结论（2026-10-16 复核更新）：
+- 生产默认基址**已切换**到规范推理基址 `https://opencode.ai/inference/v1`
+  （参考实现明确警告 `…/zen/v1` 是 legacy discovery-only，绝不承载推理流量）；
+- legacy `https://opencode.ai/zen/v1` 仅保留为模型目录发现地址，仍可通过
+  `spec.agent.model.opencode.base-url` 显式配置（传输层原样拼接 `<base>/models`、
   `<base>/chat/completions`）；
 - 三种地址（`/zen/v1`、`/inference/v1`、第三方本地 `/v1`）语义不同，测试
-  `HttpOpenCodeZenTransportTest#configuredBaseUrlIsUsedVerbatimForEveryPathWhileTheDefaultStaysUnchanged`
-  分别断言其路径拼接，且默认值未被替换。
+  `HttpOpenCodeZenTransportTest#configuredBaseUrlIsUsedVerbatimForEveryPathWhileTheDefaultIsTheInferenceBase`
+  分别断言其路径拼接，并断言**默认值就是规范推理基址**。
 
 ---
 

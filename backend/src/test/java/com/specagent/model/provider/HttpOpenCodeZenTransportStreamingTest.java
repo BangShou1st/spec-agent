@@ -85,7 +85,7 @@ class HttpOpenCodeZenTransportStreamingTest {
         sseBody = frame(choiceFrame("A")) + frame(choiceFrame("B")) + frame(choiceFrame("C")) + doneFrame();
         List<String> seen = new CopyOnWriteArrayList<>();
         List<Long> nanos = new CopyOnWriteArrayList<>();
-        OpenCodeCompletionResponse response = transport().completeStreaming("k", "ses_testsession02", request(), fragment -> {
+        OpenCodeCompletionResponse response = transport().completeStreaming("k", "ses_0123456789acABCDEFGHIJKLMN", request(), fragment -> {
             seen.add(fragment);
             nanos.add(System.nanoTime());
             return true;
@@ -100,7 +100,7 @@ class HttpOpenCodeZenTransportStreamingTest {
     void declinedFragmentAbortsStream() {
         sseBody = frame(choiceFrame("A")) + frame(choiceFrame("B")) + doneFrame();
         AtomicBoolean first = new AtomicBoolean(false);
-        assertThatThrownBy(() -> transport().completeStreaming("k", "ses_testsession02", request(), fragment -> {
+        assertThatThrownBy(() -> transport().completeStreaming("k", "ses_0123456789acABCDEFGHIJKLMN", request(), fragment -> {
             if (first.compareAndSet(false, true)) return true;
             return false;
         })).isInstanceOf(StreamCancelledException.class);
@@ -114,7 +114,7 @@ class HttpOpenCodeZenTransportStreamingTest {
     void reasoningOnlyEventsOfferCancellationCheckpoints() {
         sseBody = frame(reasoningFrame("thinking")) + frame(choiceFrame("Hi")) + doneFrame();
         List<String> seen = new CopyOnWriteArrayList<>();
-        OpenCodeCompletionResponse response = transport().completeStreaming("k", "ses_testsession03", request(), fragment -> {
+        OpenCodeCompletionResponse response = transport().completeStreaming("k", "ses_0123456789adABCDEFGHIJKLMN", request(), fragment -> {
             seen.add(fragment);
             return true;
         });
@@ -125,7 +125,7 @@ class HttpOpenCodeZenTransportStreamingTest {
     @Test
     void declineDuringReasoningAbortsBeforeContent() {
         sseBody = frame(reasoningFrame("thinking")) + frame(choiceFrame("Hi")) + doneFrame();
-        assertThatThrownBy(() -> transport().completeStreaming("k", "ses_testsession04", request(), fragment -> {
+        assertThatThrownBy(() -> transport().completeStreaming("k", "ses_0123456789aeABCDEFGHIJKLMN", request(), fragment -> {
             return !fragment.isEmpty();
         })).isInstanceOf(StreamCancelledException.class);
     }

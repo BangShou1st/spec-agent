@@ -34,7 +34,7 @@ import static org.mockito.Mockito.when;
         "spec.agent.model.runtime-settings-source=external-environment",
         "spec.agent.model.external.api-key=external-test-marker-not-a-secret",
         "spec.agent.model.external.selected-model=gpt-5.6-terra",
-        "spec.agent.model.opencode.base-url=https://opencode.ai/zen/v1"
+        "spec.agent.model.opencode.base-url=https://opencode.ai/inference/v1"
 })
 @ActiveProfiles("test")
 class OpenCodeLiveRuntimeSettingsProvenanceTest {

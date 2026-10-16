@@ -29,7 +29,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
         "spec.agent.model.runtime-settings-source=external-environment",
         "spec.agent.model.external.api-key=",
         "spec.agent.model.external.selected-model=",
-        "spec.agent.model.opencode.base-url=https://opencode.ai/zen/v1"
+        "spec.agent.model.opencode.base-url=https://opencode.ai/inference/v1"
 })
 @ActiveProfiles("test")
 class OpenCodeLiveRuntimeSettingsNegativeTest {

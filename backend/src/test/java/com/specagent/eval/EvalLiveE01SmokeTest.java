@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "spec.agent.model.runtime-settings-source=external-environment",
                 "spec.agent.model.external.api-key=${SPEC_AGENT_EVAL_OPENCODE_KEY:}",
                 "spec.agent.model.external.selected-model=${SPEC_AGENT_EVAL_OPENCODE_MODEL:}",
-                "spec.agent.model.opencode.base-url=https://opencode.ai/zen/v1"
+                "spec.agent.model.opencode.base-url=https://opencode.ai/inference/v1"
         })
 class EvalLiveE01SmokeTest extends EvalLiveHarnessBase {
 
@@ -43,7 +43,7 @@ class EvalLiveE01SmokeTest extends EvalLiveHarnessBase {
         assertThat(before.javaWiring().inferenceGateway())
                 .isEqualTo("com.specagent.model.provider.OpenCodeModelInferenceGateway");
         assertThat(before.pythonBefore().modelMode()).isEqualTo("broker");
-        assertThat(before.endpoint()).isEqualTo("https://opencode.ai/zen/v1");
+        assertThat(before.endpoint()).isEqualTo("https://opencode.ai/inference/v1");
         assertThat(before.credentialSource())
                 .isEqualTo("external-environment:SPEC_AGENT_EVAL_OPENCODE_KEY");
         assertThat(before.selectedModel()).isNotBlank().endsWith("-free");

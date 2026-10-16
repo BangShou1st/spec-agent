@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class HttpOpenCodeZenClientShapeTest {
 
-    private static final String SESSION = "ses_clientshapeprobe01";
+    private static final String SESSION = "ses_0123456789abCLIENTSHAPEPRO";
 
     private HttpServer server;
     private final ObjectMapper mapper = new ObjectMapper();

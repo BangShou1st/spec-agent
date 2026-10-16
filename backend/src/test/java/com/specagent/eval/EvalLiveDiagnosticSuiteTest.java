@@ -33,7 +33,7 @@ import java.util.Map;
                 "spec.agent.model.runtime-settings-source=external-environment",
                 "spec.agent.model.external.api-key=${SPEC_AGENT_EVAL_OPENCODE_KEY:}",
                 "spec.agent.model.external.selected-model=${SPEC_AGENT_EVAL_OPENCODE_MODEL:}",
-                "spec.agent.model.opencode.base-url=https://opencode.ai/zen/v1",
+                "spec.agent.model.opencode.base-url=https://opencode.ai/inference/v1",
                 "spec.agent.semantic-trace.enabled=true"
         })
 class EvalLiveDiagnosticSuiteTest extends EvalLiveHarnessBase {

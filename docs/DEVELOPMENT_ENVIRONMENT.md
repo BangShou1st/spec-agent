@@ -261,7 +261,7 @@ and reads only these process environment variables:
 | `SPEC_AGENT_EVAL_OPENCODE_KEY` | OpenCode Zen API key for the live evaluation process | **Yes** |
 | `SPEC_AGENT_EVAL_OPENCODE_MODEL` | Current OpenCode model id (from the live provider list) | **Yes** |
 
-The endpoint is pinned to `https://opencode.ai/zen/v1` by the live suite. No
+The endpoint is pinned to `https://opencode.ai/inference/v1` by the live suite. No
 default model is applied in this mode. Missing or invalid values fail before
 the first behavioral scenario; the suite never reads or mutates the
 `spec_agent_test` database's `opencode_settings` row. The credential value is
