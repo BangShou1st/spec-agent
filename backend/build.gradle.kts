@@ -206,6 +206,11 @@ tasks.register<JavaExec>("zenUpstreamContract") {
     description = "Asserts the shared OpenCode Zen request is accepted upstream (200/429 only)."
     classpath = eval.runtimeClasspath
     mainClass.set("com.specagent.eval.ZenUpstreamContractCheck")
+    // -PzenModel=<model-id> selects the model (defaults to a free model).
+    val zenModel = providers.gradleProperty("zenModel")
+    doFirst {
+        zenModel.orNull?.takeIf { it.isNotBlank() }?.let { systemProperty("zen.contract.model", it) }
+    }
 }
 
 // P2 Phase 2 — Live agent behavioral baseline (explicit, non-blocking).

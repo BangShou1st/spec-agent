@@ -1,6 +1,7 @@
 package com.specagent.eval;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sharedlibs.opencodezen.OpenCodeZenIdGenerator;
 import com.sharedlibs.opencodezen.OpenCodeZenProtocolPolicy;
 import com.sharedlibs.opencodezen.autoconfigure.OpenCodeZenRequestFactory;
 
@@ -41,8 +42,7 @@ public final class ZenUpstreamContractCheck {
         OpenCodeZenRequestFactory factory =
                 new OpenCodeZenRequestFactory(OpenCodeZenProtocolPolicy.USER_AGENT);
 
-        String model = System.getenv().getOrDefault(
-                "SPEC_AGENT_ZEN_CONTRACT_MODEL", "mimo-v2.6-flash-free");
+        String model = modelOverride();
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", model);
         payload.put("messages", List.of(Map.of("role", "user",
@@ -74,6 +74,38 @@ public final class ZenUpstreamContractCheck {
         }
         System.out.println("[zen-contract] OK: upstream recognised the shared-library request"
                 + " (200 or 429).");
+
+        // Phase 2: drive the product's own transport end to end so the model's stream is decoded
+        // by the shared SseFrameDecoder and aggregated into a real completion.
+        com.specagent.model.provider.HttpOpenCodeZenTransport transport =
+                new com.specagent.model.provider.HttpOpenCodeZenTransport(
+                        mapper, OpenCodeZenProtocolPolicy.DEFAULT_BASE_URL, 120, "DIRECT");
+        var completion = transport.complete(null, OpenCodeZenIdGenerator.newSessionId(),
+                new com.specagent.model.provider.OpenCodeChatCompletionRequest(
+                        model,
+                        List.of(new com.specagent.model.provider.OpenCodeChatMessage(
+                                "user", "Reply with the single word: ok"))));
+        System.out.println("[zen-contract] transport completion: content="
+                + snippet(completion.content()) + " finishReason="
+                + completion.finishReason() + " tokens="
+                + completion.promptTokens() + "/" + completion.completionTokens());
+        if (completion.content() == null || completion.content().isBlank()) {
+            System.err.println("[zen-contract] FAIL: the transport decoded an empty completion.");
+            System.exit(1);
+        }
+        System.out.println("[zen-contract] OK: model " + model
+                + " completed through the product transport (real content decoded).");
+    }
+
+    /** {@code -PzenModel=<id>} (forwarded as a system property) wins over the env default. */
+    private static String modelOverride() {
+        String property = System.getProperty("zen.contract.model");
+        if (property != null && !property.isBlank()) {
+            return property.trim();
+        }
+        String environment = System.getenv("SPEC_AGENT_ZEN_CONTRACT_MODEL");
+        return environment == null || environment.isBlank()
+                ? "mimo-v2.6-flash-free" : environment.trim();
     }
 
     private static String snippet(String body) {
