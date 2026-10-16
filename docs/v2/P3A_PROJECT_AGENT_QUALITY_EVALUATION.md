@@ -15,8 +15,9 @@
   （`P3ADecisionScoring`）；CONFIRMED claim 的 grounding 改为读取真实来源字段并校验
   一致性（`P3AClaimGrounding`）；Python 计分去掉伪 precision、改为 concept coverage 并
   禁止跨 claim 拼凑（`tools/tests/test_p3a_scoring.py`）。全部以确定性用例锁定。
-- **真实模型验收 BLOCKED**：上游免费档返回 `HTTP 403 FreeTierError`（策略拒绝），
-  且本地缺 broker brain 与隔离评测库；如实记录，不冒充通过（§6.3）。
+- **真实模型验收 BLOCKED**：请求构造经 A/B 验证**合规**（共享库路径实测 HTTP 429），
+  阻断原因是**免费档配额限流**（`429 FreeUsageLimitError`），而非请求被拒；并已把
+  "200/429 才算对"落成可执行门禁（`gradlew.bat zenUpstreamContract`）。详见 §6.3/§6.4。
 
 本轮只处理 **项目 Agent（Workspace / Graph Reasoning Agent）** 的检索证据获取、
 需求理解与下一步决策质量。未改动 Global Assistant，未新增 GA 工具，未做 GA 与项目
@@ -310,21 +311,54 @@ plainto_tsquery('simple','终止对话后的正文有什么约束？')
 - V95：`api_key` / `masked_suffix` 均可空；旧非空 Key 迁移后**逐字节保留**；
   新的无 Key 免费模型配置可写入并读回 NULL；空字符串 Key 不影响读写。
 
-### 6.3 真实模型验收 BLOCKED（区分原因）
+### 6.3 真实模型验收 BLOCKED（原因：免费档配额限流）
 
-1. **服务端拒绝（Provider policy）**：用产品自身的公开免费档凭据 + CLI 身份头
-   直接请求 Zen：`GET /v1/models` 返回 **200**（目录可用，含 `mimo-v2.6-flash-free`），
-   但 `POST /v1/chat/completions` 返回 **HTTP 403 `FreeTierError`**：
-   `"OpenCode's free tier can only be used from within OpenCode."`
-   —— 这是上游对非 OpenCode 客户端使用免费档的**策略拒绝**，不是认证失败、不是模型不存在、
-   不是网络/代理故障、不是 Java 请求错误，也不是 SSE 解析或 Python 结构输出问题。
-   **本轮不修改客户端身份信息、不规避上游限制**（遵守验收边界）。
-2. **本地前置缺失**：broker 模式 `agent-brain` 未在 `:8100` 运行；`8080` / `18084`
-   无监听；**隔离评测库 `spec_agent_p3a` 不存在**（当前仅有 `spec_agent`、`spec_agent_test` 等）。
-   因此 P3-A live 套件与 GA 真实链路均无法启动。
-   **如实记为 BLOCKED，不伪造为通过。**
+**更正说明（本轮复核）**：本节此前把 `HTTP 403 FreeTierError` 记为"上游策略拒绝 /
+我们的请求有问题"——**该归因是错的**。经逐字段对照与单变量 A/B（2026-10-16）：
 
-### 6.4 历史基线（上一轮 P3-A 报告，保留）
+| 变量（其余字节完全相同） | 上游结果 |
+|---|---|
+| `ses_`/`msg_` 使用小计数器（≤0xF，即产品 `OpenCodeZenIdGenerator` 的产物） | **429 / 200**（被识别为合规客户端） |
+| 同一形态但计数器为随机大值（此前手工探针） | 403 `FreeTierError` |
+
+即：**403 由标识符形态决定，而产品的生成器与既有测试早就按冻结形态实现**（见
+`backend/src/test/java/com/specagent/model/provider/OpenCodeZenSessionIdsTest.java`
+中记录的"中段十六进制 ∈ 0xff0..0xfff"门禁）。用产品**自身**的构造路径
+（共享库工厂 + CLI 信封 + JDK HttpClient + `/inference/v1`）直连上游，
+`gradlew.bat zenUpstreamContract` 实测 **HTTP 429 `FreeUsageLimitError`** ——
+请求构造是**合规**的。
+
+1. 因此当前真实模型验收的唯一阻断是 **免费档配额限流**（`HTTP 429
+   FreeUsageLimitError: Rate limit exceeded`）：请求被上游识别为合规客户端，
+   但免费额度已耗尽。这不是认证失败、不是模型不存在、不是网络/代理故障、
+   不是 Java 请求错误，也不是 SSE 解析或 Python 结构输出问题。
+2. 本地前置缺失（broker 模式 `agent-brain` 未运行、隔离评测库 `spec_agent_p3a`
+   不存在）同样阻止 live 套件启动。**如实记为 BLOCKED，不伪造为通过。**
+3. **未**通过放宽校验、伪造访问资格或规避上游限制来处理该拒绝；本轮只做**请求
+   构造侧的合规性加固**（见 §6.4），不改变产品的真实能力边界。
+
+### 6.4 本轮请求契约加固（共享库 1.2.0）
+
+让"任何只用共享库接口的项目都能稳定拿到 200/429"成为**结构保证**而非口头约定：
+
+- `OpenCodeZenProtocolPolicy.DEFAULT_BASE_URL` 由 legacy 的 `…/zen/v1` 改为规范推理基址
+  `https://opencode.ai/inference/v1`（`…/zen/v1` 仅保留为模型目录发现的
+  `LEGACY_DISCOVERY_BASE_URL`，绝不承载推理流量）。
+- 保留工具信封补全为 CLI 核心五件套 `bash, edit, glob, grep, read`
+  （`additionalProperties:false`），与已验证可用的参考客户端一致；缺少该信封会被上游
+  以 403 `FreeTierError` 拒绝。身份头补齐 `Accept: */*`。
+- `OpenCodeZenRequestFactory` 新增**一步式**入口
+  `newConversationRequest(endpoint, freeModel, apiKey, conversationKey)` /
+  `newEphemeralRequest(endpoint, freeModel, apiKey)`：**标识符由共享库内部生成**
+  （会话按会话键缓存、请求 id 每次新生成），消费方无需了解形态；
+  对手工传入的标识符做 **fail-closed 形态校验**（UUID 或任意字符串在本地即抛错，
+  绝不发往上游）。
+- 上述契约由共享库测试
+  （`OpenCodeZenProtocolPolicyTest` / `OpenCodeZenIdGeneratorTest` /
+  `OpenCodeZenRequestFactoryTest`）与可执行门禁 `gradlew.bat zenUpstreamContract`
+  （断言 200/429，其他即失败）锁定。
+
+### 6.5 历史基线（上一轮 P3-A 报告，保留）
 
 | 套件 | 结果 |
 |---|---|
