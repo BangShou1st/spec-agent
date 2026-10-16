@@ -58,9 +58,7 @@ class OpenCodeSettingsApiIntegrationTest {
 
     @Test
     void statusNeverReturnsTheKeyAndProbeDoesNotPersist() throws Exception {
-        when(catalog.listAvailableModels("candidate-key"))
-                .thenReturn(List.of("alpha-free", "beta-free", "paid-model"));
-        when(catalog.listFreeModels("candidate-key")).thenReturn(List.of("alpha-free", "beta-free"));
+        when(catalog.candidateLists("candidate-key")).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("alpha-free", "beta-free", "paid-model"), List.of("alpha-free", "beta-free")));
         doNothing().when(transport).validateCredential("candidate-key", "paid-model");
 
         mockMvc.perform(get("/api/v1/settings/opencode"))
@@ -83,8 +81,7 @@ class OpenCodeSettingsApiIntegrationTest {
 
     @Test
     void saveFreeModelWithKeyUsesPublicAndReturnsOnlySafeProjection() throws Exception {
-        when(catalog.listAvailableModels("candidate-key")).thenReturn(List.of("alpha-free"));
-        when(catalog.listFreeModels("candidate-key")).thenReturn(List.of("alpha-free"));
+        when(catalog.candidateLists("candidate-key")).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("alpha-free"), List.of("alpha-free")));
         doNothing().when(transport).validateCredential("public", "alpha-free");
 
         mockMvc.perform(put("/api/v1/settings/opencode")
@@ -99,8 +96,7 @@ class OpenCodeSettingsApiIntegrationTest {
 
     @Test
     void freeModelsCanBeListedAndSavedWithoutAnyKey() throws Exception {
-        when(catalog.listAvailableModels(null)).thenReturn(List.of("alpha-free", "paid-model"));
-        when(catalog.listFreeModels(null)).thenReturn(List.of("alpha-free"));
+        when(catalog.candidateLists(null)).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("alpha-free", "paid-model"), List.of("alpha-free")));
         doNothing().when(transport).validateCredential("public", "alpha-free");
 
         mockMvc.perform(get("/api/v1/settings/opencode/models"))
@@ -119,15 +115,14 @@ class OpenCodeSettingsApiIntegrationTest {
 
     @Test
     void rateLimitIsMappedWithoutReplacingExistingSettings() throws Exception {
-        when(catalog.listAvailableModels("working-key")).thenReturn(List.of("alpha-free"));
+        when(catalog.candidateLists("working-key")).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("alpha-free"), List.of()));
         doNothing().when(transport).validateCredential("working-key", "alpha-free");
         mockMvc.perform(put("/api/v1/settings/opencode")
                         .contentType("application/json")
                         .content("{\"apiKey\":\"working-key\",\"selectedModel\":\"alpha-free\"}"))
                 .andExpect(status().isOk());
 
-        when(catalog.listAvailableModels("candidate-key")).thenReturn(List.of("alpha-free"));
-        when(catalog.listFreeModels("candidate-key")).thenReturn(List.of());
+        when(catalog.candidateLists("candidate-key")).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("alpha-free"), List.of()));
         doThrow(new OpenCodeModelException(OpenCodeModelErrorCategory.RATE_LIMITED,
                 "provider limited the request", 429))
                 .when(transport).validateCredential("candidate-key", "alpha-free");
@@ -144,8 +139,7 @@ class OpenCodeSettingsApiIntegrationTest {
 
     @Test
     void savedKeyModelEndpointsDoNotRequireTheKeyOrReturnIt() throws Exception {
-        when(catalog.listAvailableModels("saved-key")).thenReturn(List.of("alpha-free", "beta-free"));
-        when(catalog.listFreeModels("saved-key")).thenReturn(List.of("alpha-free", "beta-free"));
+        when(catalog.candidateLists("saved-key")).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("alpha-free", "beta-free"), List.of("alpha-free", "beta-free")));
         doNothing().when(transport).validateCredential("public", "alpha-free");
         mockMvc.perform(put("/api/v1/settings/opencode")
                         .contentType("application/json")

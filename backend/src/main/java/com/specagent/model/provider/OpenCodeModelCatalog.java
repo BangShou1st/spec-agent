@@ -74,6 +74,23 @@ public class OpenCodeModelCatalog {
     }
 
     /**
+     * 可执行目录与其免费子集,**只向上游查询一次目录**。
+     *
+     * <p>此前调用方分别调 {@link #listAvailableModels} 与 {@link #listFreeModels},两者各自触发
+     * 一次 {@code GET /models}({@link #listAllModels} 不缓存),于是一次设置操作会重复拉取同一份
+     * 目录。这里一次列举后同时派生两份列表,消除那次多余的上游请求。
+     */
+    public OpenCodeCandidateLists candidateLists(String apiKey) {
+        List<String> executable = listAllModels(apiKey).stream().filter(this::chatExecutable).toList();
+        List<String> free = executable.stream().filter(this::isFreeModel).toList();
+        return new OpenCodeCandidateLists(executable, free);
+    }
+
+    /** 一次目录列举的结果:全部可执行模型 + 其中的免费子集。 */
+    public record OpenCodeCandidateLists(List<String> models, List<String> freeModels) {
+    }
+
+    /**
      * 免费模型:可执行且被元数据明确标记为免费。
      */
     public List<String> listFreeModels(String apiKey) {

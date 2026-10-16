@@ -207,4 +207,41 @@ class OpenCodeModelCatalogTest {
         assertThat(unavailable.listAvailableModels(null)).containsExactly("big-pickle", "cat-jam-free");
         assertThat(unavailable.protocolOf("cat-jam-free")).isEqualTo(OpenCodeModelProtocol.UNKNOWN);
     }
+
+    @Test
+    void candidateListsFetchesTheModelDirectoryExactlyOnce() {
+        java.util.concurrent.atomic.AtomicInteger fetches = new java.util.concurrent.atomic.AtomicInteger();
+        OpenCodeZenTransport transport = new OpenCodeZenTransport() {
+            @Override
+            public OpenCodeCompletionResponse complete(String apiKey, String sessionId,
+                                                       OpenCodeChatCompletionRequest request) {
+                throw new UnsupportedOperationException("catalog test does not complete");
+            }
+
+            @Override
+            public OpenCodeModelList listModels(String apiKey) {
+                fetches.incrementAndGet();
+                return new OpenCodeModelList(List.of(
+                        new OpenCodeModel("cat-jam-free", "opencode"),
+                        new OpenCodeModel("deepseek-v4-pro", "opencode")));
+            }
+
+            @Override
+            public void validateCredential(String apiKey, String model) {
+                throw new UnsupportedOperationException("catalog test does not probe");
+            }
+        };
+        OpenCodeModelCatalog catalog = new OpenCodeModelCatalog(transport,
+                sourceOf(true,
+                        meta("cat-jam-free", true, false, OpenCodeModelProtocol.CHAT),
+                        meta("deepseek-v4-pro", false, false, OpenCodeModelProtocol.CHAT)));
+
+        OpenCodeModelCatalog.OpenCodeCandidateLists lists = catalog.candidateLists(null);
+
+        // 可执行目录与免费子集必须来自同一次上游列举:此前调用方分别调
+        // listAvailableModels/listFreeModels,会把同一个 GET /models 发两遍。
+        assertThat(fetches.get()).isEqualTo(1);
+        assertThat(lists.models()).containsExactly("cat-jam-free", "deepseek-v4-pro");
+        assertThat(lists.freeModels()).containsExactly("cat-jam-free");
+    }
 }

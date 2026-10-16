@@ -56,9 +56,7 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void probeValidatesCandidateAgainstPaidModelWithoutPersistingIt() {
-        when(catalog.listAvailableModels("candidate-key"))
-                .thenReturn(List.of("alpha-free", "beta-free", "paid-model"));
-        when(catalog.listFreeModels("candidate-key")).thenReturn(List.of("alpha-free", "beta-free"));
+        when(catalog.candidateLists("candidate-key")).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("alpha-free", "beta-free", "paid-model"), List.of("alpha-free", "beta-free")));
         doNothing().when(transport).validateCredential("candidate-key", "paid-model");
 
         assertThat(service.status()).isEqualTo(OpenCodeSettingsStatus.unconfigured());
@@ -71,8 +69,7 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void paidModelSaveRequiresAndPersistsKeyAtomically() {
-        when(catalog.listAvailableModels("candidate-key")).thenReturn(List.of("alpha-free", "paid-model"));
-        when(catalog.listFreeModels("candidate-key")).thenReturn(List.of("alpha-free"));
+        when(catalog.candidateLists("candidate-key")).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("alpha-free", "paid-model"), List.of("alpha-free")));
         doNothing().when(transport).validateCredential("candidate-key", "paid-model");
         when(catalog.credentialForModel("paid-model", "candidate-key")).thenReturn("candidate-key");
 
@@ -88,8 +85,7 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void freeModelCanBeSavedWithoutKeyAndUsesPublicCredential() {
-        when(catalog.listAvailableModels(null)).thenReturn(List.of("alpha-free", "paid-model"));
-        when(catalog.listFreeModels(null)).thenReturn(List.of("alpha-free"));
+        when(catalog.candidateLists(null)).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("alpha-free", "paid-model"), List.of("alpha-free")));
         doNothing().when(transport).validateCredential("public", "alpha-free");
         when(catalog.credentialForModel("alpha-free", null)).thenReturn("public");
 
@@ -105,8 +101,7 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void freeModelNeverReceivesAStoredPaidKey() {
-        when(catalog.listAvailableModels("stored-key")).thenReturn(List.of("alpha-free", "paid-model"));
-        when(catalog.listFreeModels("stored-key")).thenReturn(List.of("alpha-free"));
+        when(catalog.candidateLists("stored-key")).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("alpha-free", "paid-model"), List.of("alpha-free")));
         doNothing().when(transport).validateCredential("public", "alpha-free");
         when(catalog.credentialForModel("alpha-free", "stored-key")).thenReturn("public");
 
@@ -119,8 +114,7 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void paidModelCannotBeSavedWithoutKey() {
-        when(catalog.listAvailableModels(null)).thenReturn(List.of("alpha-free", "paid-model"));
-        when(catalog.listFreeModels(null)).thenReturn(List.of("alpha-free"));
+        when(catalog.candidateLists(null)).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("alpha-free", "paid-model"), List.of("alpha-free")));
 
         assertThatThrownBy(() -> service.save(null, "paid-model"))
                 .isInstanceOf(com.specagent.model.provider.OpenCodeModelException.class)
@@ -130,8 +124,7 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void modelListCanBeLoadedBeforeAnyKeyIsConfigured() {
-        when(catalog.listAvailableModels(null)).thenReturn(List.of("alpha-free", "paid-model"));
-        when(catalog.listFreeModels(null)).thenReturn(List.of("alpha-free"));
+        when(catalog.candidateLists(null)).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("alpha-free", "paid-model"), List.of("alpha-free")));
 
         assertThat(service.listModels().allModels()).containsExactly("alpha-free", "paid-model");
         assertThat(service.status()).isEqualTo(OpenCodeSettingsStatus.unconfigured());
@@ -139,14 +132,12 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void invalidModelLeavesPreviousWorkingSettingsUntouched() {
-        when(catalog.listAvailableModels("first-key")).thenReturn(List.of("paid-model"));
-        when(catalog.listFreeModels("first-key")).thenReturn(List.of());
+        when(catalog.candidateLists("first-key")).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("paid-model"), List.of()));
         doNothing().when(transport).validateCredential("first-key", "paid-model");
         service.save("first-key", "paid-model");
         when(catalog.credentialForModel("paid-model", "first-key")).thenReturn("first-key");
 
-        when(catalog.listAvailableModels("second-key")).thenReturn(List.of("another-paid"));
-        when(catalog.listFreeModels("second-key")).thenReturn(List.of());
+        when(catalog.candidateLists("second-key")).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("another-paid"), List.of()));
 
         assertThatThrownBy(() -> service.save("second-key", "paid-model"))
                 .isInstanceOf(RuntimeException.class);
@@ -156,8 +147,7 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void savedKeyListsModelsAndChangesModelWithoutBeingSubmittedAgain() {
-        when(catalog.listAvailableModels("saved-key")).thenReturn(List.of("paid-alpha", "paid-beta"));
-        when(catalog.listFreeModels("saved-key")).thenReturn(List.of());
+        when(catalog.candidateLists("saved-key")).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("paid-alpha", "paid-beta"), List.of()));
         doNothing().when(transport).validateCredential("saved-key", "paid-alpha");
         service.save("saved-key", "paid-alpha");
         when(catalog.credentialForModel("paid-beta", "saved-key")).thenReturn("saved-key");
@@ -180,14 +170,12 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void failedSavedKeyModelChangePreservesTheExistingConfiguration() {
-        when(catalog.listAvailableModels("saved-key")).thenReturn(List.of("paid-alpha"));
-        when(catalog.listFreeModels("saved-key")).thenReturn(List.of());
+        when(catalog.candidateLists("saved-key")).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("paid-alpha"), List.of()));
         doNothing().when(transport).validateCredential("saved-key", "paid-alpha");
         service.save("saved-key", "paid-alpha");
         when(catalog.credentialForModel("paid-alpha", "saved-key")).thenReturn("saved-key");
 
-        when(catalog.listAvailableModels("saved-key")).thenReturn(List.of("paid-beta"));
-        when(catalog.listFreeModels("saved-key")).thenReturn(List.of());
+        when(catalog.candidateLists("saved-key")).thenReturn(new OpenCodeModelCatalog.OpenCodeCandidateLists(List.of("paid-beta"), List.of()));
         assertThatThrownBy(() -> service.changeModel("paid-alpha"))
                 .isInstanceOf(RuntimeException.class);
 
