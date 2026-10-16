@@ -280,7 +280,7 @@ plainto_tsquery('simple','终止对话后的正文有什么约束？')
 | 其中既有 GA SSE | `GlobalAssistantSliceFStreamTest`、`GlobalAssistantSseHardeningTest` | 4 / 0、6 / 0 —— 本轮**均通过**（历史报告中的 2 例失败未复现） |
 | P3-A A 层 | `backend> gradlew.bat evalP3ARetrieval` | 5 / 0 / 0 |
 | 既有 Agent 评测 | `backend> gradlew.bat evalBFast` | 102 / 0 / 0（19 suites） |
-| Zen 共享库 | `shared-libs/opencode-zen> gradlew.bat test` | 17 / 0 / 0（含新增 SSE 6 + 装配 3） |
+| Zen 共享库 | `E:\project\shared-libs\opencode-zen> gradlew.bat test`（库已独立成仓库，项目按坐标消费） | 17 / 0 / 0（含新增 SSE 6 + 装配 3） |
 | Python Brain | `agent-brain> .venv/Scripts/python -m pytest -q` | 239 passed |
 | 评测工具 | `agent-brain/.venv/Scripts/python -m pytest tools/tests -q` | 116 passed（含新增 P3-A 计分 8） |
 | 前端 Vitest | `frontend> npm run test` | 946 / 0 / 1（116 files passed） |
