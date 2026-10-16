@@ -95,6 +95,17 @@ public final class ZenUpstreamContractCheck {
         }
         System.out.println("[zen-contract] OK: model " + model
                 + " completed through the product transport (real content decoded).");
+
+        // Phase 3: exactly one request on the GA native surface (tool envelope + strict decode).
+        var gaRequest = com.specagent.model.contract.GaModelContract.readRequest(
+                java.nio.file.Files.readString(java.nio.file.Path.of(
+                        "../contracts/global-assistant/fixtures/ga-model-request-valid.json")));
+        var ga = transport.completeNativeGa(null, OpenCodeZenIdGenerator.newSessionId(),
+                gaRequest, model, Duration.ofSeconds(90), () -> true);
+        System.out.println("[zen-contract] GA native: toolCalls=" + ga.toolCalls().size()
+                + " content=" + snippet(ga.content()));
+        System.out.println("[zen-contract] OK: GA native surface answered through the shared"
+                + " decoder (one request).");
     }
 
     /** {@code -PzenModel=<id>} (forwarded as a system property) wins over the env default. */
