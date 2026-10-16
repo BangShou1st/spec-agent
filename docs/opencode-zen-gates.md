@@ -2,12 +2,13 @@
 
 > 最后更新：2026-10-16。本文档沉淀本项目 `HttpOpenCodeZenTransport` 直连 opencode zen 免费模型的全部逆向/实测结论，与 `D:/OpenCode-UA-Start/README.md`（本地代理版 V2）同源互证。
 
-共享实现由 E:/project/shared-libs/opencode-zen 维护，并以源码快照纳入仓库的
-shared-libs/opencode-zen/。目录只保留 opencode-zen-spring-boot-autoconfigure 与
-opencode-zen-spring-boot-starter 两个模块；协议与模型规则也包含在自动配置模块中
-（版本 1.1.1）。后端通过 Gradle composite build 引入仓库内源码，不依赖本机
-mavenLocal()。请求身份、标识符、保留工具、SSE 帧、模型元数据解析、免费资格规则
-及免费/付费凭证选择以共享库为代码源；本文保留验证结论与排障说明。升级流程见
+共享实现由独立仓库 E:/project/shared-libs/opencode-zen 维护（两个模块：
+opencode-zen-spring-boot-autoconfigure 与 opencode-zen-spring-boot-starter；协议与模型规则
+也包含在自动配置模块中，版本 1.2.0）。本项目**不再保存源码快照**：后端以普通依赖
+`com.sharedlibs:opencode-zen-spring-boot-starter` 解析制品（本机 mavenLocal，CI 用私有
+GitHub Packages）；联调时设 `OPENCODE_ZEN_LOCAL` 指向库检出目录，Gradle 用本地源码替换同坐标
+依赖。请求身份、标识符、保留工具、SSE 帧、模型元数据解析、免费资格规则及免费/付费凭证选择
+以共享库为代码源；本文保留验证结论与排障说明。升级与发布流程见
 docs/OPENCODE_SHARED_COMPONENT.md。
 
 ## 一、本项目怎么用 zen

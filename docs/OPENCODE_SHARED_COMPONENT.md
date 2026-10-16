@@ -12,11 +12,22 @@ The OpenCode Zen library has the conventional two-module Spring Boot layout unde
 | opencode-zen-spring-boot-autoconfigure | Shared OpenCode Zen protocol and model rules, Spring Boot properties, auto-configuration, and request factory. |
 | opencode-zen-spring-boot-starter | Dependency aggregation entry point for Spring Boot applications. |
 
-The former framework-neutral core code is included in the autoconfigure module. The external working copy is E:\project\shared-libs\opencode-zen. A source snapshot is also committed at shared-libs/opencode-zen in this repository, so a GitHub clone contains everything required to build Spec Agent. Refresh the snapshot on this machine with:
+The library lives in its own repository at `E:\project\shared-libs\opencode-zen`; Spec Agent does
+**not** keep a copy of the sources and there is no sync step. The backend declares a normal
+dependency on `com.sharedlibs:opencode-zen-spring-boot-starter` and resolves it from `mavenLocal` on
+a workstation or from the private GitHub Packages repository everywhere else.
 
-    .\scripts\sync-opencode-shared-libs.ps1
+For co-development, point `OPENCODE_ZEN_LOCAL` at a local library checkout: Gradle then substitutes
+those coordinates with the local source build, so a library change takes effect immediately without
+publishing anything.
 
-The backend includes the in-repository Gradle build from backend/settings.gradle.kts; it does not depend on this machine's Maven Local cache.
+```powershell
+$env:OPENCODE_ZEN_LOCAL = "E:\project\shared-libs\opencode-zen"
+```
+
+By default the backend resolves the published coordinates (mavenLocal on a workstation, the private
+GitHub Packages repository in CI); the `OPENCODE_ZEN_LOCAL` override above switches it to the local
+source build.
 
 ## Spring Boot use
 
@@ -45,10 +56,11 @@ unknown models are treated as paid.
 
 Build the shared modules:
 
-    Set-Location E:\project\spec-agent\shared-libs\opencode-zen
+    Set-Location E:\project\shared-libs\opencode-zen
     .\gradlew.bat compileJava
 
-The backend uses the same checked-in source through Gradle composite substitution. To build the backend:
+The backend consumes the same library either as published coordinates or, with
+`OPENCODE_ZEN_LOCAL` set, as the local source build. To build the backend:
 
     Set-Location E:\project\spec-agent\backend
     .\gradlew.bat compileJava

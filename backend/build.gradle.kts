@@ -11,6 +11,25 @@ java.targetCompatibility = JavaVersion.VERSION_21
 
 repositories {
     mavenCentral()
+    // 本机开发：在库仓库执行 `.\gradlew.bat publishToMavenLocal` 后即可解析。
+    mavenLocal()
+    // 私有生态仓库（GitHub Packages / Nexus）。地址与凭据来自环境或
+    // ~/.gradle/gradle.properties（zenRepoUrl / zenRepoUser / zenRepoToken），绝不写进仓库。
+    val zenRepoUrl = providers.gradleProperty("zenRepoUrl").orNull
+        ?: System.getenv("ZEN_MAVEN_REPO_URL")
+    if (!zenRepoUrl.isNullOrBlank()) {
+        maven {
+            name = "zenEcosystem"
+            url = uri(zenRepoUrl)
+            isAllowInsecureProtocol = zenRepoUrl.startsWith("http://")
+            credentials {
+                username = providers.gradleProperty("zenRepoUser").orNull
+                    ?: System.getenv("ZEN_MAVEN_USER").orEmpty()
+                password = providers.gradleProperty("zenRepoToken").orNull
+                    ?: System.getenv("ZEN_MAVEN_TOKEN").orEmpty()
+            }
+        }
+    }
 }
 
 // Evaluation harness source set: com.specagent.eval (+ com.specagent.trace)

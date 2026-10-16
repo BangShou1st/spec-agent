@@ -177,7 +177,6 @@ Runtime owns history.
 ```text
 spec-agent/
 ├── backend/          # Java 21 + Spring Boot，Runtime、Graph、API、模型 Broker、MCP
-├── shared-libs/      # OpenCode Zen 源码快照（自动配置模块 + Starter）
 ├── agent-brain/      # Python Agent Brain，只做推理与结构化决策
 ├── frontend/         # Vue 3 + TypeScript + Vue Flow 图式工作台
 ├── contracts/        # Java / Python 共享契约与结构化数据定义
@@ -378,12 +377,16 @@ cd backend
 ./gradlew testNonLive
 ```
 
-OpenCode Zen 共享组件单独构建：
+OpenCode Zen 共享组件是独立仓库（`E:\project\shared-libs\opencode-zen`），单独构建：
 
 ```powershell
-cd shared-libs/opencode-zen
+cd E:\project\shared-libs\opencode-zen
 .\gradlew.bat test
 ```
+
+本项目以坐标依赖消费它（本机 `mavenLocal`，CI 用私有 GitHub Packages）；联调时设
+`OPENCODE_ZEN_LOCAL` 指向该目录即可用本地源码构建。详见
+[docs/OPENCODE_SHARED_COMPONENT.md](docs/OPENCODE_SHARED_COMPONENT.md)。
 
 或者：
 
