@@ -384,8 +384,8 @@ cd E:\project\shared-libs\opencode-zen
 .\gradlew.bat test
 ```
 
-本项目以坐标依赖消费它（本机 `mavenLocal`，CI 用私有 GitHub Packages）；联调时设
-`OPENCODE_ZEN_LOCAL` 指向该目录即可用本地源码构建。详见
+本项目以坐标依赖消费它（从私有 GitHub Packages 解析，凭据放 `~/.gradle/gradle.properties`）；
+联调时设 `OPENCODE_ZEN_LOCAL` 指向该目录即可用本地源码构建。详见
 [docs/OPENCODE_SHARED_COMPONENT.md](docs/OPENCODE_SHARED_COMPONENT.md)。
 
 或者：
