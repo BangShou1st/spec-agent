@@ -33,6 +33,31 @@ class OpenCodeZenSessionIdsTest {
         assertThat(OpenCodeZenSessionIds.forConversation(UUID.randomUUID())).isNotEqualTo(first);
     }
 
+    /**
+     * 线上计数器门禁(2026-10-16 字节级 A/B 定位的 403 根因):降序会话 id 的
+     * 中段三位十六进制必须落在 0xff0..0xfff(真实客户端"同一毫秒内从 0 递增"
+     * 的计数器语义,经位取反后形成)。随机计数器只有 16/4096 的概率合规,
+     * 上游对不合规 id 返回 403 FreeTierError。此处对一批连续生成的会话 id
+     * 逐个断言该门禁形态——测试内的生成跨越毫秒边界也不会产生不合格 id。
+     */
+    @Test
+    void sessionIdsCarryTheUpstreamCounterGateShape() {
+        for (int i = 0; i < 64; i++) {
+            String id = OpenCodeZenSessionIds.newEphemeral();
+            String payload = id.substring("ses_".length());
+            // 前 12 位十六进制是取反后的(时间戳*0x1000 + 小值计数器):
+            // 中段三位即 0xfff - counter,counter 从 0 单调递增,必然 <= 0xF。
+            String mid = payload.substring(9, 12);
+            int counterValue = 0xFFF - Integer.parseInt(mid, 16);
+            assertThat(counterValue)
+                    .as("session id %s must carry a small monotonically increasing counter", id)
+                    .isBetween(0, 0xF);
+            assertThat(Integer.parseInt(payload.substring(0, 3), 16))
+                    .as("descending prefix high bits must decrease with time")
+                    .isPositive();
+        }
+    }
+
     @Test
     void nullConversationIdFailsClosed() {
         assertThatThrownBy(() -> OpenCodeZenSessionIds.forConversation(null))

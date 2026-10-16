@@ -16,11 +16,16 @@ import java.util.concurrent.ThreadLocalRandom;
  * - {@code ses_} + 32 位 UUID  → 403 {@code FreeTierError}
  * - {@code ses_} + 26 位带时间前缀的 id → 200
  * - 缺少该头 → 403
+ * - 时间前缀内<b>计数器必须是小值(≤ 0xF)</b>:上游按真实客户端的"同一毫秒内
+ *   从 0 单调递增"的计数器语义校验降序会话 id 的中段十六进制(取反后落在
+ *   {@code 0xff0..0xfff})。随机计数器只有 16/4096 的概率合规——2026-10-16 的
+ *   字节级 A/B 复现证实:除计数器外与成功代理逐字节一致的请求,随机计数器
+ *   稳定得到 403 {@code FreeTierError},真实小值计数器稳定 200。
  *
- * 前缀编码了一个毫秒时间戳(乘以 {@code 0x1000} 后加一个 12 位计数器),
- * 可按位取反以得到降序 id;后缀是随机的。该算法与已验证的客户端保持一致,因此
- * 生成的 id 与真实 id 无法区分。顺序字母表式 id(abcdefg...)会被上游的低熵
- * 黑名单拒绝;这种"时间戳 + 随机"的方案永远不会产生它们。
+ * 因此计数器由本类持有:同一毫秒内单调递增,跨毫秒重置,与真实客户端一致。
+ * 前缀其余部分编码毫秒时间戳(乘以 {@code 0x1000} 后加计数器),可按位取反以
+ * 得到降序 id;后缀是随机的。顺序字母表式 id(abcdefg...)会被上游的低熵
+ * 黑名单拒绝;这种"时间戳 + 单调计数器 + 随机后缀"的方案永远不会产生它们。
  */
 final class OpenCodeZenIds {
 
@@ -28,6 +33,11 @@ final class OpenCodeZenIds {
             "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     private static final int ID_LENGTH = 26;
     private static final int PREFIX_HEX_LENGTH = 12;
+
+    /** 真实客户端语义:同一毫秒内从 0 单调递增,跨毫秒重置。 */
+    private static final Object COUNTER_LOCK = new Object();
+    private static long counterMillis;
+    private static int counter;
 
     private OpenCodeZenIds() {
     }
@@ -43,8 +53,27 @@ final class OpenCodeZenIds {
     }
 
     private static String generate(boolean descending) {
-        long timestamp = System.currentTimeMillis();
-        long current = timestamp * 0x1000L + ThreadLocalRandom.current().nextInt(0x1000);
+        long timestamp;
+        int slot;
+        synchronized (COUNTER_LOCK) {
+            timestamp = System.currentTimeMillis();
+            if (timestamp != counterMillis) {
+                counterMillis = timestamp;
+                counter = 0;
+            }
+            // 真实客户端 1ms 内不会发出 16 个以上请求;上游对 counter > 0xF 的
+            // 降序 id 按不合规处理(2026-10-16 线上 A/B:随机计数器 → 403)。
+            // 同一毫秒的槽位耗尽时推进到下一毫秒,绝不生成越界 id。
+            while (counter > 0xF) {
+                timestamp = System.currentTimeMillis();
+                if (timestamp != counterMillis) {
+                    counterMillis = timestamp;
+                    counter = 0;
+                }
+            }
+            slot = counter++;
+        }
+        long current = timestamp * 0x1000L + slot;
         long value = descending ? ~current : current;
         StringBuilder id = new StringBuilder(ID_LENGTH);
         for (int i = 0; i < PREFIX_HEX_LENGTH / 2; i++) {

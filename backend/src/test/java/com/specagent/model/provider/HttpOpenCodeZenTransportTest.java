@@ -153,6 +153,8 @@ class HttpOpenCodeZenTransportTest {
         assertThat(request.headers().getFirst("Authorization")).isEqualTo("Bearer " + TEST_KEY);
         assertThat(request.headers().getFirst("Content-Type")).isEqualTo("application/json");
         assertThat(request.headers().getFirst("x-opencode-session")).isEqualTo(TEST_SESSION);
+        assertThat(request.headers().getFirst(OpenCodeZenTransport.SESSION_ID_HEADER))
+                .isEqualTo(TEST_SESSION);
         assertThat(request.headers().getFirst(OpenCodeZenTransport.CLIENT_HEADER))
                 .isEqualTo(OpenCodeZenTransport.CLIENT_ID);
         assertThat(request.headers().getFirst(OpenCodeZenTransport.REQUEST_HEADER))
@@ -167,7 +169,7 @@ class HttpOpenCodeZenTransportTest {
         assertThat(payload.get("messages").get(1).get("content").asText()).isEqualTo("user context");
         assertThat(payload.get("stream").asBoolean()).isTrue();
         assertThat(payload.fieldNames()).toIterable()
-                .containsExactlyInAnyOrder("model", "messages", "stream", "tools");
+                .containsExactlyInAnyOrder("model", "messages", "stream", "stream_options", "tools");
         // Zen 免费档只应答客户端形状的请求,所以每次 completion
         // 都携带由传输层持有的占位 tools 数组。
         assertThat(payload.get("tools")).isNotEmpty();
@@ -180,7 +182,8 @@ class HttpOpenCodeZenTransportTest {
         assertThat(payload.get("response_format")).isNull();
         assertThat(payload.get("reasoning_effort")).isNull();
         assertThat(payload.get("thinking")).isNull();
-        assertThat(payload.get("stream_options")).isNull();
+        // 与已验证的客户端报文一致:生产补全携带 include_usage 的流选项。
+        assertThat(payload.get("stream_options").get("include_usage").asBoolean()).isTrue();
 
         OpenCodeRequestDiagnostics diagnostics = result.requestDiagnostics();
         assertThat(diagnostics.requestType()).isEqualTo("PRODUCTION_COMPLETION");
@@ -296,17 +299,21 @@ class HttpOpenCodeZenTransportTest {
     }
 
     @Test
-    void modelListRequestWorksWithoutAuthorization() throws IOException {
+    void modelListRequestWithoutKeyFallsBackToFreeTierCredential() throws IOException {
         stubBody = mapper.writeValueAsString(Map.of("data", List.of(
                 Map.of("id", "one-free", "object", "model"))));
 
         OpenCodeModelList models = transport().listModels(null);
 
         assertThat(models.data()).extracting(OpenCodeModel::id).containsExactly("one-free");
-        assertThat(captured.get(0).headers().getFirst("Authorization")).isNull();
+        // 免费档凭据:无产品密钥时以免费客户端的公开凭据发送,而不是省略授权头。
+        assertThat(captured.get(0).headers().getFirst("Authorization"))
+                .isEqualTo("Bearer " + OpenCodeZenTransport.FREE_TIER_CREDENTIAL);
         assertThat(captured.get(0).headers().getFirst("User-Agent"))
                 .isEqualTo(OpenCodeZenTransport.USER_AGENT);
         assertThat(captured.get(0).headers().getFirst("x-opencode-session")).isNotBlank().startsWith("ses_");
+        assertThat(captured.get(0).headers().getFirst(OpenCodeZenTransport.SESSION_ID_HEADER))
+                .isEqualTo(captured.get(0).headers().getFirst("x-opencode-session"));
     }
 
     @Test
@@ -320,6 +327,8 @@ class HttpOpenCodeZenTransportTest {
         // 探测请求必须携带与正式请求完全一致的传输策略。
         assertThat(request.headers().getFirst("User-Agent")).isEqualTo(OpenCodeZenTransport.USER_AGENT);
         assertThat(request.headers().getFirst("Authorization")).isEqualTo("Bearer " + TEST_KEY);
+        assertThat(request.headers().getFirst(OpenCodeZenTransport.SESSION_ID_HEADER))
+                .isEqualTo(request.headers().getFirst("x-opencode-session"));
         assertThat(request.headers().getFirst("Content-Type")).isEqualTo("application/json");
 
         // 探测模型来自调用方(当前发现的免费模型),传输层绝不硬编码。

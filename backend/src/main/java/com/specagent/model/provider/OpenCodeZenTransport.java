@@ -30,15 +30,29 @@ public interface OpenCodeZenTransport {
      *
      * 经线上验证的完整形态:CLI(Bun fetch + @ai-sdk/provider-utils)会追加
      * sdk/runtime 后缀,且免费额度门禁要求 {@code opencode/} 前缀内的版本
-     * >= 1.18.0(1.17 会得到 426)。保持完整的后缀链,让请求与真实 CLI 调用
-     * 无法区分。
+     * >= 1.18.0(1.17 会得到 426)。与已验证可用的本地 V2 客户端保持同版本
+     * (1.19.0),让请求与真实 CLI 调用无法区分。
      */
-    String USER_AGENT = "opencode/1.18.31 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14";
+    String USER_AGENT = "opencode/1.19.0 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14";
 
     /**
      * 提供商会话关联头,随每个 Zen HTTP 请求由下方传输层独有的线上策略统一发送。
      */
     String SESSION_HEADER = "x-opencode-session";
+
+    /**
+     * 第二会话关联头:已验证的客户端对补全请求同时携带
+     * {@code x-opencode-session} 与本头(同值)。缺省它是与成功客户端的报文差异,
+     * 统一补齐。
+     */
+    String SESSION_ID_HEADER = "x-opencode-session-id";
+
+    /**
+     * 免费档的公开凭据。已验证的免费客户端以 {@code Bearer public} 调用
+     * 免费模型(2026-10-16 线上验证:存储的真实密钥对免费档返回 401,
+     * {@code public} 返回 200);产品密钥仅在付费模型路径上发送。
+     */
+    String FREE_TIER_CREDENTIAL = "public";
 
     /**
      * 应用到每个 Zen HTTP 请求的桌面客户端身份头,让 OpenCode 把请求识别为来自

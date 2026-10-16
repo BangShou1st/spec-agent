@@ -46,9 +46,10 @@ import java.util.Map;
  * 因此运行时和结构化输出校验依然与提供商无关。
  *
  * 每个请求都携带传输层自有的身份策略:User-Agent
- * {@code opencode/1.18.31 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14}、
- * 有密钥时携带 bearer 授权、完整的 OpenCode 客户端身份头集合
- * ({@code x-opencode-client: cli}、{@code x-opencode-session}、
+ * {@code opencode/1.19.0 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14}、
+ * bearer 授权(密钥缺省时使用免费档公开凭据 {@code public})、完整的 OpenCode
+ * 客户端身份头集合({@code x-opencode-client: cli}、
+ * {@code x-opencode-session} 与 {@code x-opencode-session-id}(同值)、
  * {@code x-opencode-request}、{@code x-opencode-project: global}),让 OpenCode
  * 把请求识别为客户端发起;携带载荷的请求还要设置 JSON content type。生产补全
  * 使用不设超时上限的 JDK 请求/客户端策略;模型发现和凭据探测使用单独的
@@ -348,13 +349,15 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                 .header(CLIENT_HEADER, CLIENT_ID)
                 .header(REQUEST_HEADER, OpenCodeZenIds.requestId())
                 .header(PROJECT_HEADER, GLOBAL_PROJECT)
-                .header(SESSION_HEADER, sessionId);
+                .header(SESSION_HEADER, sessionId)
+                .header(SESSION_ID_HEADER, sessionId);
         if (requestType == RequestType.SETTINGS) {
             builder.timeout(settingsTimeout);
         }
-        if (apiKey != null && !apiKey.isBlank()) {
-            builder.header("Authorization", "Bearer " + apiKey);
-        }
+        // 免费档凭据:密钥缺省时以免费客户端的公开凭据发送;真实密钥仅在存在时
+        // 覆盖(付费模型)。空白值绝不做静默 trim 复用。
+        String credential = apiKey != null && !apiKey.isBlank() ? apiKey : FREE_TIER_CREDENTIAL;
+        builder.header("Authorization", "Bearer " + credential);
         if (body != null) {
             builder.header("Content-Type", "application/json")
                     .method(method, HttpRequest.BodyPublishers.ofByteArray(body));
@@ -824,6 +827,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
             payload.put("response_format", request.responseFormat());
         }
         payload.put("stream", true);
+        payload.put("stream_options", Map.of("include_usage", true));
         payload.put("tools", RESERVED_TOOLS);
         return writeJson(payload);
     }

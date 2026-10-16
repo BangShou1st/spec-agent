@@ -1,6 +1,6 @@
 # OpenCode Zen 免费档接入 — 原理、闸门与维护手册
 
-> 最后更新：2026-09-18。本文档沉淀本项目 `HttpOpenCodeZenTransport` 直连 opencode zen 免费模型的全部逆向/实测结论，与 `D:/OpenCode-UA-Start/README.md`（本地代理版）同源互证。
+> 最后更新：2026-10-16。本文档沉淀本项目 `HttpOpenCodeZenTransport` 直连 opencode zen 免费模型的全部逆向/实测结论，与 `D:/OpenCode-UA-Start/README.md`（本地代理版 V2）同源互证。
 
 ## 一、本项目怎么用 zen
 
@@ -19,15 +19,27 @@
 
 | # | 闸门 | 本项目实现 | 验证结论 |
 |---|---|---|---|
-| 1 | UA 含 `opencode/<ver>` 且版本 ≥1.18（1.17→426） | `opencode/1.18.31 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14`（CLI 真实全串，Bun fetch + ai-sdk 追加） | Mozilla/5.0 前缀可有可无 |
-| 2 | `x-opencode-session` = `ses_`+12hex+14base62（总长30） | `OpenCodeZenIds.sessionId()`，位取反降序 | 只验格式；UUID 形状 403；顺序字母型 id 被上游低熵黑名单拒（时间戳+随机算法天然规避） |
+| 1 | UA 含 `opencode/<ver>` 且版本 ≥1.18（1.17→426） | `opencode/1.19.0 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14`（与已验证的本地 V2 客户端同版本） | Mozilla/5.0 前缀可有可无；1.18.31 与 1.19.0 均实测 200 |
+| 2 | `x-opencode-session` = `ses_`+12hex+14base62（总长30），且**中段 hex ∈ 0xff0..0xfff**（真实客户端"同毫秒内从 0 单调递增"的计数器语义） | `OpenCodeZenIds.sessionId()`，位取反降序 + **同毫秒单调计数器（≤0xF，耗尽则推进毫秒）** | 只验格式不足以通过：**2026-10-16 字节级 A/B 证实随机计数器稳定 403**（唯一根因），真实小值计数器稳定 200；UUID 形状 403；顺序字母型 id 被上游低熵黑名单拒 |
 | 3 | body `stream:true` | `completionPayload` 固定 true | false 一定 403 |
-| 4 | body `tools` 含名为 `bash` 和 `read` 的 function | `RESERVED_TOOLS`（名字精确大小写敏感，描述/参数可伪造） | 旧占位名 `reserved_noop` 不满足名称闸门，2026-09-18 已改 |
-| 5 | 免费模型免 Authorization | 透传用户 key（有就带） | `hy3-free`/`kimi-k2.5-free`/`glm-5-free`/`ling-3.0-flash-free` 上游要付费 key（401），换 `mimo-v2.5-free` 等 |
+| 4 | body `tools` 含名为 `bash` 和 `read` 的 function | `RESERVED_TOOLS`（名字精确大小写敏感，描述/参数可伪造） | 旧占位名 `reserved_noop` 不满足名称闸门，2026-09-18 已改；2 工具与 5 工具形态均实测 200 |
+| 5 | 凭据：免费档用公开凭据 `Bearer public` | 密钥缺省/空白 → `public`；真实密钥仅付费模型路径发送 | 2026-10-16 实测：免费模型带存储密钥 → 401，`public` → 200 |
 
-身份头四件套：`x-opencode-client: cli`、`x-opencode-project: global`（CLI 全局配置时 project.id 就是字面量 `global`，替代旧的 `prj_` 随机 id）、`x-opencode-request: msg_+26`（每请求新值）、`x-opencode-session`（每会话稳定复用）。
+身份头五件套：`x-opencode-client: cli`、`x-opencode-project: global`（CLI 全局配置时 project.id 就是字面量 `global`，替代旧的 `prj_` 随机 id）、`x-opencode-request: msg_+26`（每请求新值）、`x-opencode-session`（每会话稳定复用）、`x-opencode-session-id`（与 session 同值，已验证客户端双头齐发）。生产补全 body 另带 `stream_options.include_usage:true`（与已验证客户端一致，可选项）。
 
-## 三、2026-09-18 改动记录
+## 三、2026-10-16 改动记录（对齐已验证可用的本地 V2 客户端）
+
+产品验收发现 Java 直连持续 403 FreeTierError,而同机的本地 V2 代理(`D:/OpenCode-UA-Start/opencode-zen-proxy.py`)成功。通过对上游做单变量 A/B + 回声服务器字节级抓包,把差异隔离到唯一根因并修复:
+
+1. **`OpenCodeZenIds` 计数器语义(403 根因)**:旧实现用 `ThreadLocalRandom` 随机填 12bit 计数器,而真实客户端是"同一毫秒内从 0 单调递增"——上游据此校验降序会话 id 的中段 hex(取反后必须落在 `0xff0..0xfff`,即计数器 ≤0xF)。随机计数器只有 16/4096 概率合规,叠加会话 id 缓存复用,几乎 100% 被拒。修复:共享单调计数器,槽位耗尽推进毫秒。
+2. **凭据策略**:免费模型实测对存储密钥返回 401(该免费档不认用户 key),对 `Bearer public` 返回 200。密钥缺省/空白时改发 `public`,真实密钥保留给付费模型。
+3. **`x-opencode-session-id` 双头**:补齐与 `x-opencode-session` 同值的第二个会话头(已验证客户端双头齐发)。
+4. **UA 对齐**:`1.18.31` → `1.19.0`(与 V2 代理同版;两者实测都被接受,属防御性对齐)。
+5. **`stream_options.include_usage`**:生产补全补上(与 V2 客户端一致;实测可选项,usage 便于计量)。
+
+实验同时证明**无需改动**:基址(`/zen/v1` 与 `/inference/v1` 等价)、2 工具占位形态、探测请求(max_tokens+response_format)、GA Chat 形态(tool 消息+tool_choice)、SSE 解析与协议门禁。修复后 Java 传输直连上游获得真实模型正文,GA 端到端(COMPLETED)与网页对话全部验证通过。
+
+## 四、2026-09-18 改动记录
 
 依据 `D:/OpenCode-UA-Start` 代理版同日实测（mimo/nemotron 200 通过），修正四处偏差：
 
@@ -38,24 +50,24 @@
 
 同步更新 `HttpOpenCodeZenTransportTest` / `HttpOpenCodeZenTransportUserAgentTest` 断言。编译 + 三个 transport 测试类全绿。构建需 JDK 17+：`JAVA_HOME=E:/Java/jdk-21.0.10 ./gradlew test`。
 
-## 四、故障排查
+## 五、故障排查
 
 | 症状 | 原因 | 处理 |
 |---|---|---|
-| 403 FreeTierError | 5 道闸门缺一 | 逐项核对上表，重点看 tools 名字与 UA 版本 |
+| 403 FreeTierError | 5 道闸门缺一,最常见是 id 计数器形态不合规 | 逐项核对上表,重点看会话 id 中段 hex 是否落在 0xff0..0xfff |
 | 426 UpgradeRequired | UA 版本 <1.18 | 用全串 UA |
 | 403 error code: 1010 | Cloudflare 盾拦（请求不像 CLI） | 确认 transport 常量未被改动 |
-| 401 ModelError | 该免费模型上游要付费 key | 换 mimo-v2.5-free / nemotron-3.5-lightning-free |
+| 401 ModelError / 401 server_error | 免费模型带了付费 key,或存储密钥已失效 | 免费模型走 `Bearer public`(密钥缺省时传输层自动回退);付费模型才发真实 key |
 | 连接超时 | 本地网络到 opencode.ai 不通 | 本项目强制直连不兜底；可临时设 `spec.agent.model.opencode.proxy=http://127.0.0.1:7897`（仅排障用） |
 | 空内容/EMPTY_CONTENT | 上游免费档高峰期偶发 | 重试；首字延迟可达 10s+ 属正常 |
 
-## 五、失效条件与对策
+## 六、失效条件与对策
 
 - 服务端目前只有"像不像 CLI"的格式校验。若升级为 **TLS 指纹**校验：JDK HttpClient 指纹与 Bun 不同，需换 curl_cffi 类方案
 - 若升级为**请求签名**：需重新逆向新 CLI 二进制（`D:/npm-global/node_modules/opencode-ai`，Bun 打包 JS 可直接提取字符串）
-- 免费模型名单会变：以 `GET /models` 实时返回为准（约 71 个，带 `-free` 后缀为候选，401 的除外）
+- 免费模型名单会变：以 `GET /models` 实时返回为准,并以官方目录 `models.opencode.ai/api.json` 的价格/协议元数据双重判定
 
-## 六、相关文档
+## 七、相关文档
 
 - `D:/OpenCode-UA-Start/README.md` — 本地代理版（18991），原理同源，含代理专属的路径映射与流式透传说明
 - 逆向来源：opencode.exe v1.18.31 二进制 + `github.com/anomalyco/opencode` 官方源码交叉验证
