@@ -11,11 +11,24 @@ public final class OpenCodeZenIdGenerator {
     private static final int ID_LENGTH = 26;
     private static final int PREFIX_HEX_LENGTH = 12;
 
+    /** 12 lowercase hex time-prefix characters followed by 14 base62 characters. */
+    private static final String PAYLOAD_SHAPE = "[0-9a-f]{12}[0-9A-Za-z]{14}";
+
     private static final Object COUNTER_LOCK = new Object();
     private static long counterMillis;
     private static int counter;
 
     private OpenCodeZenIdGenerator() {
+    }
+
+    /** True when the value carries the frozen {@code ses_} client shape. */
+    public static boolean isSessionShaped(String id) {
+        return id != null && id.matches("ses_" + PAYLOAD_SHAPE);
+    }
+
+    /** True when the value carries the frozen {@code msg_} client shape. */
+    public static boolean isRequestShaped(String id) {
+        return id != null && id.matches("msg_" + PAYLOAD_SHAPE);
     }
 
     /** Creates a descending session id; callers should cache it for a conversation. */
