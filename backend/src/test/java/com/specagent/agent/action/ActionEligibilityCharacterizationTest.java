@@ -277,6 +277,98 @@ class ActionEligibilityCharacterizationTest {
                 .doesNotThrowAnyException();
     }
 
+    @Test
+    void rejectsCapabilityInvocationMissingACompactDeclaredRequiredArgument() throws Exception {
+        // 紧凑描述符形态 {"query":{"type":"string","required":true}}:提案没有
+        // 给出 query。这类调用注定以 arguments.query must be non-blank 失败并
+        // 白白消耗一次调用,因此必须在 eligibility 边界 fail-closed。
+        AgentRequestEnvelope request = requestWithCapability(compactRequiredQueryCapability());
+        ActionProposal proposal = proposal(request, "INVOKE_CAPABILITY", Map.of(
+                "capabilityId", "memory.search",
+                "arguments", Map.of("scope", "PROJECT")));
+
+        assertIneligible(request, proposal, "MISSING_REQUIRED_CAPABILITY_ARGUMENT");
+    }
+
+    @Test
+    void rejectsCapabilityInvocationWhoseRequiredArgumentIsBlank() throws Exception {
+        AgentRequestEnvelope request = requestWithCapability(compactRequiredQueryCapability());
+        ActionProposal proposal = proposal(request, "INVOKE_CAPABILITY", Map.of(
+                "capabilityId", "memory.search",
+                "arguments", Map.of("query", "   ")));
+
+        assertIneligible(request, proposal, "MISSING_REQUIRED_CAPABILITY_ARGUMENT");
+    }
+
+    @Test
+    void rejectsCapabilityInvocationMissingAJsonSchemaRequiredArgument() throws Exception {
+        // JSON-Schema 形态 {"properties":{…},"required":["query"]}:同样必须
+        // 被确定性判定,而不是只认一种描述符形态。
+        AgentRequestEnvelope request = requestWithCapability(jsonSchemaRequiredQueryCapability());
+        ActionProposal proposal = proposal(request, "INVOKE_CAPABILITY", Map.of(
+                "capabilityId", "memory.search",
+                "arguments", Map.of("maxResults", 3)));
+
+        assertIneligible(request, proposal, "MISSING_REQUIRED_CAPABILITY_ARGUMENT");
+    }
+
+    @Test
+    void allowsCapabilityInvocationWhenTheDeclaredRequiredArgumentIsPresent() throws Exception {
+        AgentRequestEnvelope request = requestWithCapability(compactRequiredQueryCapability());
+        ActionProposal proposal = proposal(request, "INVOKE_CAPABILITY", Map.of(
+                "capabilityId", "memory.search",
+                "arguments", Map.of("query", "会议室预约规则", "scope", "PROJECT")));
+
+        ActionEligibility eligibility = evaluator.evaluate(request);
+        assertThatCode(() -> validator.validateSelection(request, proposal, eligibility))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void allowsCapabilityThatDeclaresNoRequiredArguments() throws Exception {
+        // 未声明必填字段的描述符(评测探针、旧版冻结 payload)永不凭空获得
+        // 必填条件——否则会制造新的 eligibility false negative。
+        AgentRequestEnvelope request = requestWithCapability(new CapabilityDescriptor(
+                "eval.decoy.read-only", "1", "probe", Map.of(), true, "NONE", List.of()));
+        ActionProposal proposal = proposal(request, "INVOKE_CAPABILITY", Map.of(
+                "capabilityId", "eval.decoy.read-only",
+                "arguments", Map.of()));
+
+        ActionEligibility eligibility = evaluator.evaluate(request);
+        assertThatCode(() -> validator.validateSelection(request, proposal, eligibility))
+                .doesNotThrowAnyException();
+    }
+
+    private CapabilityDescriptor compactRequiredQueryCapability() {
+        return new CapabilityDescriptor("memory.search", "1", "search memory",
+                Map.of("query", Map.of("type", "string", "required", true),
+                        "scope", Map.of("type", "string")),
+                true, "NONE", List.of());
+    }
+
+    private CapabilityDescriptor jsonSchemaRequiredQueryCapability() {
+        return new CapabilityDescriptor("memory.search", "1", "search memory",
+                Map.of("properties", Map.of("query", Map.of("type", "string")),
+                        "required", List.of("query")),
+                true, "NONE", List.of());
+    }
+
+    private AgentRequestEnvelope requestWithCapability(CapabilityDescriptor capability)
+            throws Exception {
+        AgentRequestEnvelope base = request();
+        AgentInputSnapshot snapshot = base.snapshot();
+        AgentInputSnapshot withCapability = new AgentInputSnapshot(
+                snapshot.snapshotId(), snapshot.contextHash(), snapshot.projectId(),
+                snapshot.routeId(), snapshot.anchorNodeId(), snapshot.routeContext(),
+                snapshot.lineage(), snapshot.effectiveClaims(), snapshot.metadata(),
+                snapshot.allowedSourceRefs(), List.of(capability),
+                snapshot.capabilityResults(), snapshot.relations(),
+                snapshot.relatedNodes(), snapshot.autonomy());
+        return new AgentRequestEnvelope(
+                base.protocolVersion(), base.runId(), base.event(), withCapability,
+                base.capabilities(), base.decisionBudget());
+    }
+
     private void assertIneligible(AgentRequestEnvelope request,
                                   ActionProposal proposal,
                                   String reasonCode) {

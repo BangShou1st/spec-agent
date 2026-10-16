@@ -11,6 +11,7 @@ import com.specagent.agent.protocol.ActionFamily;
 import com.specagent.agent.protocol.ActionProposal;
 import com.specagent.agent.protocol.AgentEvent;
 import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.CapabilityDescriptor;
 import com.specagent.agent.protocol.ClaimView;
 import com.specagent.agent.protocol.LineageEntry;
 
@@ -161,15 +162,101 @@ public final class ActionEligibilityValidator {
         }
     }
 
+    /**
+     * 能力调用必须同时满足两件事:该能力对本上下文可见,且它<b>声明的必填
+     * 参数</b>都真的出现在提案参数里。
+     *
+     * 第二个条件不是语义判断——它直接来自 Runtime 持有的 {@code inputSchema},
+     * 因此能在 eligibility 边界确定性判定。缺了它,一次注定以
+     * {@code arguments.query must be non-blank} 失败、白白消耗一次调用的
+     * 提案仍会被放行;既有确定性决策引擎早就在用同一份必填参数事实避开
+     * 这类调用(见 {@code LocalDeterministicDecisionEngine} 对必填 query
+     * 的处理),两个实现此前并不一致。
+     *
+     * 判据只读描述符自己声明的内容:没有声明必填字段的能力永远不受影响,
+     * 因此不会凭空制造新的必填条件。
+     */
     private void validateVisibleCapability(AgentRequestEnvelope request,
                                            Map<String, Object> payload) {
         Object id = payload.get("capabilityId");
-        boolean visible = id instanceof String capabilityId
-                && request.snapshot().availableCapabilities().stream()
-                .anyMatch(descriptor -> descriptor.id().equals(capabilityId));
-        if (!visible) {
+        String capabilityId = id instanceof String text ? text : null;
+        if (capabilityId == null) {
             reject(ActionEligibilityReasonCode.CAPABILITY_NOT_VISIBLE);
         }
+        CapabilityDescriptor descriptor = request.snapshot().availableCapabilities().stream()
+                .filter(candidate -> candidate.id().equals(capabilityId))
+                .findFirst()
+                .orElse(null);
+        if (descriptor == null) {
+            reject(ActionEligibilityReasonCode.CAPABILITY_NOT_VISIBLE);
+        }
+        if (missingRequiredArguments(descriptor.inputSchema(), payload.get("arguments"))) {
+            reject(ActionEligibilityReasonCode.MISSING_REQUIRED_CAPABILITY_ARGUMENT);
+        }
+    }
+
+    /**
+     * 声明的必填参数中只要有一个没有给出实值,即返回 true。空字符串与 null
+     * 同样视为"没有给出"——这与能力自身对必填参数的 fail-closed 判定一致。
+     *
+     * 读取的是运行时已存在的两种描述符形态(与确定性决策引擎的读法一致):
+     * JSON-Schema 形态 {@code {"properties":{…},"required":["query"]}} 与紧凑
+     * 形态 {@code {"query":{"type":"string","required":true}}}。
+     */
+    private static boolean missingRequiredArguments(Map<String, Object> inputSchema,
+                                                    Object rawArguments) {
+        if (inputSchema == null || inputSchema.isEmpty()) {
+            return false;
+        }
+        List<String> required = declaredRequiredFields(inputSchema);
+        if (required.isEmpty()) {
+            return false;
+        }
+        Map<?, ?> arguments = rawArguments instanceof Map<?, ?> map ? map : Map.of();
+        for (String field : required) {
+            Object value = arguments.get(field);
+            if (value == null) {
+                return true;
+            }
+            if (value instanceof String text && text.isBlank()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static List<String> declaredRequiredFields(Map<String, Object> inputSchema) {
+        List<String> required = new java.util.ArrayList<>();
+        Object properties = inputSchema.get("properties");
+        if (properties instanceof Map<?, ?> propertyMap) {
+            Object declared = inputSchema.get("required");
+            if (declared instanceof List<?> names) {
+                for (Object name : names) {
+                    if (name != null && !required.contains(String.valueOf(name))) {
+                        required.add(String.valueOf(name));
+                    }
+                }
+            }
+            for (Map.Entry<?, ?> entry : propertyMap.entrySet()) {
+                if (entry.getValue() instanceof Map<?, ?> definition
+                        && isRequiredFlag(definition.get("required"))
+                        && !required.contains(String.valueOf(entry.getKey()))) {
+                    required.add(String.valueOf(entry.getKey()));
+                }
+            }
+            return required;
+        }
+        for (Map.Entry<String, Object> entry : inputSchema.entrySet()) {
+            if (entry.getValue() instanceof Map<?, ?> definition
+                    && isRequiredFlag(definition.get("required"))) {
+                required.add(entry.getKey());
+            }
+        }
+        return required;
+    }
+
+    private static boolean isRequiredFlag(Object value) {
+        return Boolean.TRUE.equals(value) || "true".equalsIgnoreCase(String.valueOf(value));
     }
 
     private void validateCapabilityArguments(AgentRequestEnvelope request,
