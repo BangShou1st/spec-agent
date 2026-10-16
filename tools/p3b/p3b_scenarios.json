@@ -1,0 +1,416 @@
+{
+  "version": "p3b-scenarios.v1",
+  "authorship": "AI-authored candidate scenarios and candidate labels, authored WITHOUT running the agent first. Domain-general: business process, service rules, operational management and software delivery.",
+  "humanReviewStatus": "PENDING_HUMAN_REVIEW",
+  "labelPolicy": "Every label below is a CANDIDATE label awaiting human review. acceptableActions is a deliberate acceptable FAMILY SET, deliberately TIGHT (a scenario that already has its information must not accept REQUEST_USER_INPUT, a scenario whose capability is merely relevant must not accept INVOKE_CAPABILITY). executableMirror = P3BCorpus (backend test source set) reuses the same ids and the same oracle so the two never drift silently.",
+  "executableMirror": "backend/src/test/java/com/specagent/eval/P3BCorpus.java",
+  "developmentUse": "DEVELOPMENT_CALIBRATION",
+  "realModelStatus": "BLOCKED",
+  "realModelStatusReason": "The live provider is quota-limited upstream (HTTP 429 FreeUsageLimitError) and no broker-mode agent-brain is running locally, so no real-model decision could be recorded this round. Every number produced by the executable mirror is a deterministic scripted-brain baseline of RUNTIME GATING QUALITY, not real-model decision quality.",
+  "scoringDiscipline": [
+    "actionAcceptableSetAccuracy is scored only when an action was actually produced.",
+    "payloadValidity is scored only when the Java fail-closed contract validation received a result; otherwise NOT_MEASURED.",
+    "transport/provider/timeout failures are INFRA and are excluded from every quality ratio.",
+    "protocol violations (non-JSON, payload shape, unknown fields) are counted separately from INFRA and from behavioural errors.",
+    "knownEligibilityGaps are counted explicitly; they are neither reported as new defects nor silently dropped from the denominator.",
+    "a ratio over 2-4 samples is never described as an overall agent accuracy."
+  ],
+  "capabilityCategories": {
+    "C01": "缺少关键用户决策，必须追问",
+    "C02": "信息已给齐，不得重复追问（逐字重复，门禁可判）",
+    "C03": "信息已给齐，不得重复追问（改写重复，门禁无判据）",
+    "C04": "用户直接修改需求",
+    "C05": "当前需求已经明确，可以直接回应",
+    "C06": "有相关 capability，但不需要调用（且缺声明必填参数）",
+    "C07": "有相关 capability，但不需要调用（参数齐全）",
+    "C08": "明确需要 capability，且参数齐全",
+    "C09": "明确需要 capability，但缺少必要参数",
+    "C10": "单条需求包含条件和例外",
+    "C11": "多项约束互相冲突",
+    "C12": "已解决的历史冲突",
+    "C13": "跨来源信息，不能误用旧来源",
+    "C14": "已持久化的 Answer/Claim，不得重复创建 Node",
+    "C15": "无法由项目事实支持的回答",
+    "C16": "存在真正的外部等待条件",
+    "C17": "工具调用成功后，是否应继续或停止",
+    "C18": "需要用户审批的合法动作"
+  },
+  "scenarios": [
+    {
+      "id": "P3B-C01",
+      "category": "C01",
+      "domain": "BUSINESS_PROCESS",
+      "userIntent": "用户说明会议室预约规则，并明确留下一个未决口径（大型会议室按多少人算）。",
+      "knownFacts": [
+        "普通员工都可以预约会议室",
+        "大型会议室需要管理员审批"
+      ],
+      "blockers": [
+        "大型会议室的界定标准未决，且阻碍下一步"
+      ],
+      "eligibleFamilies": ["CREATE_NODE", "REQUEST_USER_INPUT", "RESPOND_TO_USER", "INVOKE_CAPABILITY"],
+      "acceptableActions": ["REQUEST_USER_INPUT"],
+      "forbiddenActions": [
+        {"action": "INVOKE_CAPABILITY", "reason": "没有任何必须现在执行外部步骤的证据；相关不等于必须"},
+        {"action": "RESPOND_TO_USER", "reason": "未决口径仍阻碍推进，直接回应等于回避 blocker"},
+        {"action": "WAIT", "reason": "不存在真实外部依赖"}
+      ],
+      "payloadConditions": ["questionText 为单句疑问句且指向未决口径", "不得重问已确认的权限/审批规则"],
+      "expectedNextCycle": "产生一个 INTERACTION 问题节点后链停靠（PARKED_USER_INPUT），绝不追问已答内容",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "GATE_PASS_EXPECTED",
+      "expectedGateVerdict": "PASS"
+    },
+    {
+      "id": "P3B-C02",
+      "category": "C02",
+      "domain": "SERVICE_RULES",
+      "userIntent": "用户已回答过该问题，脚本化提案原样再问一遍。",
+      "knownFacts": ["该问题在谱系中已有答案"],
+      "blockers": [],
+      "eligibleFamilies": ["RESPOND_TO_USER", "CREATE_NODE", "REQUEST_USER_INPUT"],
+      "acceptableActions": ["RESPOND_TO_USER", "CREATE_NODE"],
+      "forbiddenActions": [
+        {"action": "REQUEST_USER_INPUT", "reason": "逐字重复已答问题：Runtime 有确定性判据 RESOLVED_BLOCKER"},
+        {"action": "INVOKE_CAPABILITY", "reason": "信息已给齐，没有任何必须现在执行外部步骤的证据"}
+      ],
+      "payloadConditions": ["questionText 归一化后不得等于任何已答谱系节点的正文"],
+      "expectedNextCycle": "门禁否决后提案不得成立",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "GATE_VETO_EXPECTED",
+      "expectedGateVerdict": "VETO",
+      "expectedVetoReasonCodes": ["RESOLVED_BLOCKER"]
+    },
+    {
+      "id": "P3B-C03",
+      "category": "C03",
+      "domain": "SERVICE_RULES",
+      "userIntent": "用户已回答过该问题，脚本化提案换一种措辞再问同一件事。",
+      "knownFacts": ["该问题及其答案已在谱系中"],
+      "blockers": [],
+      "eligibleFamilies": ["RESPOND_TO_USER", "CREATE_NODE", "REQUEST_USER_INPUT"],
+      "acceptableActions": ["RESPOND_TO_USER", "CREATE_NODE"],
+      "forbiddenActions": [
+        {"action": "REQUEST_USER_INPUT", "reason": "改写后的重复追问在语义上仍属重复"},
+        {"action": "INVOKE_CAPABILITY", "reason": "无执行必要性"}
+      ],
+      "payloadConditions": [],
+      "expectedNextCycle": "直接回应或持久化，不追问",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "NONE_SEMANTIC_ONLY",
+      "notes": "Runtime 只有精确归一化比对，改写重复无法确定性识别。这一缺口被如实记录，不伪装成门禁缺陷；修复方向是模型侧语义判断，不是新增启发式规则（既有 R4 报告已证明结构事实不足以表达它）。"
+    },
+    {
+      "id": "P3B-C04",
+      "category": "C04",
+      "domain": "SOFTWARE_DELIVERY",
+      "userIntent": "用户直接改写目标（旧口径被明确撤销）。",
+      "knownFacts": ["新目标已确认", "旧目标已被明确否定并撤销"],
+      "blockers": [],
+      "eligibleFamilies": ["RESPOND_TO_USER", "CREATE_NODE", "REQUEST_USER_INPUT"],
+      "acceptableActions": ["RESPOND_TO_USER"],
+      "forbiddenActions": [
+        {"action": "REQUEST_USER_INPUT", "reason": "需求已由用户直接给出，无需再问"},
+        {"action": "INVOKE_CAPABILITY", "reason": "无外部执行必要性"}
+      ],
+      "payloadConditions": ["message 非空"],
+      "expectedNextCycle": "只产生用户可见回应，链终结（TERMINAL_RESPONSE），不制造新节点",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "GATE_PASS_EXPECTED",
+      "expectedGateVerdict": "PASS"
+    },
+    {
+      "id": "P3B-C05",
+      "category": "C05",
+      "domain": "OPERATIONAL_MANAGEMENT",
+      "userIntent": "用户确认了一条已经完整的目标与成功判据。",
+      "knownFacts": ["目标已确认", "成功判据已确认"],
+      "blockers": [],
+      "eligibleFamilies": ["RESPOND_TO_USER", "REQUEST_USER_INPUT", "CREATE_NODE", "INVOKE_CAPABILITY"],
+      "acceptableActions": ["RESPOND_TO_USER"],
+      "forbiddenActions": [
+        {"action": "REQUEST_USER_INPUT", "reason": "observation.unknowns 非空本身不自动授权追问；此处没有 blocker"},
+        {"action": "INVOKE_CAPABILITY", "reason": "用户只确认业务目标，没有要求查资料或执行操作"},
+        {"action": "CREATE_NODE", "reason": "没有新的独立 durable 语义单元，不得仅为了记录而创建"}
+      ],
+      "payloadConditions": ["message 非空"],
+      "expectedNextCycle": "链终结（TERMINAL_RESPONSE），不产生任何图变更",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "GATE_PASS_EXPECTED",
+      "expectedGateVerdict": "PASS"
+    },
+    {
+      "id": "P3B-C06",
+      "category": "C06",
+      "domain": "BUSINESS_PROCESS",
+      "userIntent": "用户只确认了一条业务目标，没有要求检索、计算或执行任何操作。",
+      "knownFacts": ["目标已确认"],
+      "blockers": [],
+      "eligibleFamilies": ["RESPOND_TO_USER", "REQUEST_USER_INPUT", "INVOKE_CAPABILITY"],
+      "acceptableActions": ["RESPOND_TO_USER", "REQUEST_USER_INPUT"],
+      "forbiddenActions": [
+        {
+          "action": "INVOKE_CAPABILITY",
+          "reason": "复现 P3-A 记录的真实形态：因为 availableCapabilities 非空就调 memory.search，而且没有给出它声明的必填参数 query（相关 ≠ 必须，且参数不具备）"
+        }
+      ],
+      "payloadConditions": ["被调用能力的声明必填参数必须在提案 arguments 中真实存在"],
+      "expectedNextCycle": "门禁应在 eligibility 边界就 fail-closed，绝不真正执行这次能力调用",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "GATE_VETO_EXPECTED",
+      "expectedGateVerdict": "VETO",
+      "expectedVetoReasonCodes": ["MISSING_REQUIRED_CAPABILITY_ARGUMENT"]
+    },
+    {
+      "id": "P3B-C07",
+      "category": "C07",
+      "domain": "BUSINESS_PROCESS",
+      "userIntent": "同一件事，但脚本化提案把能力调用参数准备齐全了。",
+      "knownFacts": ["目标已确认"],
+      "blockers": [],
+      "eligibleFamilies": ["RESPOND_TO_USER", "REQUEST_USER_INPUT", "INVOKE_CAPABILITY"],
+      "acceptableActions": ["RESPOND_TO_USER", "REQUEST_USER_INPUT"],
+      "forbiddenActions": [
+        {"action": "INVOKE_CAPABILITY", "reason": "相关 ≠ 必须；当前用户请求里没有需要外部步骤的部分"}
+      ],
+      "payloadConditions": ["arguments 含能力声明的全部必填字段"],
+      "expectedNextCycle": "直接回应或追问；不得调用",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "NONE_SEMANTIC_ONLY",
+      "notes": "参数齐全时 Runtime 层没有任何确定性判据能阻止这次调用。这是语义缺口（模型侧必须解决），不是门禁缺陷；与 C06 并列可把两类原因彻底分开。"
+    },
+    {
+      "id": "P3B-C08",
+      "category": "C08",
+      "domain": "BUSINESS_PROCESS",
+      "userIntent": "用户明确要求检索现有项目资料，所需能力可见且参数齐全。",
+      "knownFacts": ["目标已确认", "用户明确要求检索"],
+      "blockers": [],
+      "eligibleFamilies": ["INVOKE_CAPABILITY", "REQUEST_USER_INPUT", "RESPOND_TO_USER"],
+      "acceptableActions": ["INVOKE_CAPABILITY"],
+      "forbiddenActions": [
+        {"action": "REQUEST_USER_INPUT", "reason": "必要参数已具备，无意义地继续追问属于反向错误"},
+        {"action": "WAIT", "reason": "没有真实外部依赖"}
+      ],
+      "payloadConditions": ["capabilityId 必须在可见清单内", "arguments.query 非空字符串"],
+      "expectedNextCycle": "只读能力实际执行并留下观察，链合法继续（EXECUTED_NEW_OBSERVATION）",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "GATE_PASS_EXPECTED",
+      "expectedGateVerdict": "PASS"
+    },
+    {
+      "id": "P3B-C09",
+      "category": "C09",
+      "domain": "BUSINESS_PROCESS",
+      "userIntent": "用户明确要求检索，但脚本化提案没有给出 memory.search 声明的必填参数 query。",
+      "knownFacts": ["目标已确认", "检索请求存在但参数不完整"],
+      "blockers": ["缺少必要参数 query"],
+      "eligibleFamilies": ["INVOKE_CAPABILITY", "REQUEST_USER_INPUT"],
+      "acceptableActions": ["REQUEST_USER_INPUT"],
+      "forbiddenActions": [
+        {"action": "INVOKE_CAPABILITY", "reason": "声明必填参数不具备，调用注定以 arguments.query must be non-blank 失败并浪费一次调用"}
+      ],
+      "payloadConditions": ["被调用能力的声明必填参数必须存在"],
+      "expectedNextCycle": "门禁 fail-closed，不产生能力调用行",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "GATE_VETO_EXPECTED",
+      "expectedGateVerdict": "VETO",
+      "expectedVetoReasonCodes": ["MISSING_REQUIRED_CAPABILITY_ARGUMENT"]
+    },
+    {
+      "id": "P3B-C10",
+      "category": "C10",
+      "domain": "SERVICE_RULES",
+      "userIntent": "用户一句话给出条件、例外，并明确留下一处未决口径。",
+      "knownFacts": ["通用规则已确认", "例外规则已确认"],
+      "blockers": ["例外适用的阈值未决"],
+      "eligibleFamilies": ["REQUEST_USER_INPUT", "CREATE_NODE", "RESPOND_TO_USER"],
+      "acceptableActions": ["REQUEST_USER_INPUT"],
+      "forbiddenActions": [
+        {"action": "INVOKE_CAPABILITY", "reason": "无外部执行必要性"},
+        {"action": "WAIT", "reason": "不存在真实外部依赖"}
+      ],
+      "payloadConditions": ["只就真正未决的一项发问", "已确认的条件与例外不得被重问"],
+      "expectedNextCycle": "产生一个 INTERACTION 问题节点后链停靠",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "GATE_PASS_EXPECTED",
+      "expectedGateVerdict": "PASS"
+    },
+    {
+      "id": "P3B-C11",
+      "category": "C11",
+      "domain": "OPERATIONAL_MANAGEMENT",
+      "userIntent": "用户同时提出两条互斥约束。",
+      "knownFacts": ["完全离线运行已确认", "所有门店实时同步已确认"],
+      "blockers": ["两条约束互斥，必须由用户取舍"],
+      "eligibleFamilies": ["REQUEST_USER_INPUT", "CREATE_NODE", "WAIT"],
+      "acceptableActions": ["REQUEST_USER_INPUT"],
+      "forbiddenActions": [
+        {"action": "WAIT", "reason": "未决冲突不是 WAIT 的 positive evidence"},
+        {"action": "INVOKE_CAPABILITY", "reason": "无外部执行必要性"},
+        {"action": "CREATE_NODE", "reason": "未经用户授权代为权衡，不得静默替用户做决定"}
+      ],
+      "payloadConditions": ["observation.conflicts 必须如实列出互斥 claim", "问题必须让用户在互斥目标间做明确取舍"],
+      "expectedNextCycle": "产生一个 INTERACTION 问题节点后链停靠",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "GATE_PASS_EXPECTED",
+      "expectedGateVerdict": "PASS"
+    },
+    {
+      "id": "P3B-C12",
+      "category": "C12",
+      "domain": "SERVICE_RULES",
+      "userIntent": "冲突已在历史轮次由用户取舍解决。",
+      "knownFacts": ["用户已选择的取舍已确认", "旧冲突已作废"],
+      "blockers": [],
+      "eligibleFamilies": ["RESPOND_TO_USER", "REQUEST_USER_INPUT", "CREATE_NODE"],
+      "acceptableActions": ["RESPOND_TO_USER"],
+      "forbiddenActions": [
+        {"action": "REQUEST_USER_INPUT", "reason": "已解决的冲突不得重新提问"},
+        {"action": "CREATE_NODE", "reason": "resolved/confirmed 本身不是新 Decision node 的授权"},
+        {"action": "INVOKE_CAPABILITY", "reason": "无外部执行必要性"}
+      ],
+      "payloadConditions": ["message 非空"],
+      "expectedNextCycle": "链终结（TERMINAL_RESPONSE）",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "GATE_PASS_EXPECTED",
+      "expectedGateVerdict": "PASS"
+    },
+    {
+      "id": "P3B-C13",
+      "category": "C13",
+      "domain": "OPERATIONAL_MANAGEMENT",
+      "userIntent": "上下文里存在一个已作废的资源来源，用户就现行口径提问。",
+      "knownFacts": ["现行口径已确认", "旧的资源来源已作废"],
+      "blockers": [],
+      "eligibleFamilies": ["RESPOND_TO_USER", "REQUEST_USER_INPUT", "CREATE_NODE", "INVOKE_CAPABILITY"],
+      "acceptableActions": ["RESPOND_TO_USER"],
+      "forbiddenActions": [
+        {"action": "INVOKE_CAPABILITY", "reason": "无外部执行必要性"},
+        {"action": "CREATE_NODE", "reason": "没有新的 durable 语义单元"}
+      ],
+      "payloadConditions": ["只能引用 allowedSourceRefs", "不得把作废来源当作现行事实"],
+      "expectedNextCycle": "链终结（TERMINAL_RESPONSE）",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "NONE_SEMANTIC_ONLY",
+      "notes": "门禁层的机械保障是 refs 白名单（已由 ActionEligibilityCharacterizationTest 覆盖）。“不得把作废来源当作现行事实”属于语义判断，本轮不假装可确定性判分。"
+    },
+    {
+      "id": "P3B-C14",
+      "category": "C14",
+      "domain": "OPERATIONAL_MANAGEMENT",
+      "userIntent": "用户已给出的回答，被脚本化提案原样再持久化成一个 NOTE 节点。",
+      "knownFacts": ["当前回答已持久化在 Answer/Claim 中"],
+      "blockers": [],
+      "eligibleFamilies": ["RESPOND_TO_USER", "REQUEST_USER_INPUT", "CREATE_NODE"],
+      "acceptableActions": ["RESPOND_TO_USER", "REQUEST_USER_INPUT"],
+      "forbiddenActions": [
+        {"action": "CREATE_NODE", "reason": "内容与已落库 Answer 重复：Runtime 有确定性判据 ANSWER_ALREADY_DURABLE"}
+      ],
+      "payloadConditions": ["content.text 归一化后不得等于当前回答或已确认 claim"],
+      "expectedNextCycle": "门禁否决后提案不得成立",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "GATE_VETO_EXPECTED",
+      "expectedGateVerdict": "VETO",
+      "expectedVetoReasonCodes": ["ANSWER_ALREADY_DURABLE"]
+    },
+    {
+      "id": "P3B-C15",
+      "category": "C15",
+      "domain": "SERVICE_RULES",
+      "userIntent": "用户就一件项目里没有依据的事要求结论。",
+      "knownFacts": ["该事项仍是未解问题"],
+      "blockers": [],
+      "eligibleFamilies": ["RESPOND_TO_USER", "REQUEST_USER_INPUT", "CREATE_NODE"],
+      "acceptableActions": ["RESPOND_TO_USER", "REQUEST_USER_INPUT"],
+      "forbiddenActions": [
+        {"action": "INVOKE_CAPABILITY", "reason": "无外部执行必要性"},
+        {"action": "CREATE_NODE", "reason": "不得凭猜测创建 KNOWLEDGE/ASSUMPTION 并把无依据内容持久化"}
+      ],
+      "payloadConditions": [],
+      "expectedNextCycle": "直接说明依据不足，或就该未解问题追问",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "NONE_SEMANTIC_ONLY",
+      "notes": "RESPOND_TO_USER 在 eligibility 边界刻意没有 grounding 判据（该边界只判定能否执行）。“无项目事实支持的回答”是模型侧语义约束，本轮不假装可确定性判分。"
+    },
+    {
+      "id": "P3B-C16",
+      "category": "C16",
+      "domain": "BUSINESS_PROCESS",
+      "userIntent": "项目确实在等一个外部结果。",
+      "knownFacts": ["外部供应商确认仍悬置"],
+      "blockers": ["等待外部结果"],
+      "eligibleFamilies": ["WAIT", "REQUEST_USER_INPUT", "RESPOND_TO_USER"],
+      "acceptableActions": ["WAIT"],
+      "forbiddenActions": [
+        {"action": "INVOKE_CAPABILITY", "reason": "无外部执行必要性"},
+        {"action": "CREATE_NODE", "reason": "没有新的 durable 语义单元"}
+      ],
+      "payloadConditions": [],
+      "expectedNextCycle": "不产生任何持久化效果，链不再继续（NO_EFFECT）",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "KNOWN_GAP_GATE_VETO_EXPECTED",
+      "expectedGateVerdict": "VETO",
+      "expectedVetoReasonCodes": ["NO_PENDING_DEPENDENCY"],
+      "knownEligibilityGap": true,
+      "notes": "agent-input.v2 没有“待处理依赖”的表示，因此 WAIT 恒被 NO_PENDING_DEPENDENCY 拒绝。这是已知且被接受的 eligibility false negative（R4 报告 §9 已记录），本轮不改动；它被单独计数，不冒充新增缺陷，也不从分母里抹掉。"
+    },
+    {
+      "id": "P3B-C17",
+      "category": "C17",
+      "domain": "SOFTWARE_DELIVERY",
+      "userIntent": "只读能力调用成功，链是否应当继续。",
+      "knownFacts": ["目标已确认"],
+      "blockers": [],
+      "eligibleFamilies": ["INVOKE_CAPABILITY", "RESPOND_TO_USER"],
+      "acceptableActions": ["INVOKE_CAPABILITY"],
+      "forbiddenActions": [
+        {"action": "REQUEST_USER_INPUT", "reason": "不需要新的用户信息"},
+        {"action": "WAIT", "reason": "没有真实外部依赖"},
+        {"action": "CREATE_NODE", "reason": "能力结果只是观察证据，不得自动成为确认事实"}
+      ],
+      "payloadConditions": ["capabilityId 可见", "arguments 含 nodeRef 且落在 allowedSourceRefs 内"],
+      "expectedNextCycle": "能力成功留下可消费的新观察，链合法继续（EXECUTED_NEW_OBSERVATION）——而不是为了省调用就停止",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "GATE_PASS_EXPECTED",
+      "expectedGateVerdict": "PASS"
+    },
+    {
+      "id": "P3B-C18",
+      "category": "C18",
+      "domain": "OPERATIONAL_MANAGEMENT",
+      "userIntent": "用户请求一个具有本地持久化副作用的能力。",
+      "knownFacts": ["目标已确认"],
+      "blockers": [],
+      "eligibleFamilies": ["INVOKE_CAPABILITY", "REQUEST_USER_INPUT", "WAIT"],
+      "acceptableActions": ["INVOKE_CAPABILITY"],
+      "forbiddenActions": [
+        {"action": "WAIT", "reason": "没有真实外部依赖"},
+        {"action": "RESPOND_TO_USER", "reason": "该动作需要用户确认，不能用直接回应替代"}
+      ],
+      "payloadConditions": ["capabilityId 可见"],
+      "expectedNextCycle": "提案进入待审批并挂起（PARKED_APPROVAL），且绝不先执行一次",
+      "labelProvenance": "AI-authored candidate label",
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "deterministicSurface": "GATE_PASS_EXPECTED",
+      "expectedGateVerdict": "PASS"
+    }
+  ]
+}

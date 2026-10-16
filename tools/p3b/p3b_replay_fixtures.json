@@ -1,0 +1,159 @@
+{
+  "version": "p3b-replay-fixtures.v1",
+  "purpose": "确定性回放 P3-B 的 Payload / protocol 故障类:把冻结的模型输出送过真实的 Python DECISION 引擎与 Java fail-closed 契约等价形状检查,判断失败发生在哪一层。",
+  "honesty": "这些 fixture 是 SYNTHETIC_FROZEN_FIXTURE:由 prompt 契约文档与既有真实缺陷记录(P3-A B05 的 'questionText must be a string'、两次非 JSON 输出、一次 'Extra inputs are not permitted')逐字重构而来,不是本轮捕获的真实模型响应。因此它们度量的是**契约边界行为**,不是真实模型决策质量;真实模型成绩本轮为 BLOCKED。",
+  "baseRequest": "contracts/fixtures/agent-input-valid.json",
+  "fixtures": [
+    {
+      "id": "P3B-RP-01",
+      "category": "C05",
+      "class": "WELL_FORMED_CLARIFICATION",
+      "provenance": "SYNTHETIC_FROZEN_FIXTURE",
+      "derivedFrom": "prompt 规则 5 记录的 REQUEST_USER_INPUT payload 形状",
+      "expectedOutcome": "ACCEPTED_PROPOSAL",
+      "expectedActionFamily": "REQUEST_USER_INPUT",
+      "expectedPayloadValid": true,
+      "modelOutput": "{\"observation\":{\"known\":[\"用户希望减少因邮件沟通导致的需求遗漏。\"],\"unknowns\":[\"未决口径尚未确定。\"],\"conflicts\":[],\"risks\":[]},\"action\":{\"actionFamily\":\"REQUEST_USER_INPUT\",\"payload\":{\"questionText\":\"未决口径该如何界定？\",\"options\":[{\"label\":\"由我明确口径\"}],\"allowFreeAnswer\":true},\"sourceRefs\":[]}}"
+    },
+    {
+      "id": "P3B-RP-02",
+      "category": "C09",
+      "class": "PAYLOAD_SHAPE_DRIFT_QUESTION_TEXT_NOT_STRING",
+      "provenance": "SYNTHETIC_FROZEN_FIXTURE",
+      "derivedFrom": "P3-A 真实模型观察:Java 侧 'AgentContractException: questionText must be a string'(P3A-B05)",
+      "expectedOutcome": "ACCEPTED_PROPOSAL",
+      "expectedActionFamily": "REQUEST_USER_INPUT",
+      "expectedPayloadValid": false,
+      "note": "Brain 不在 action 边界校验按动作族的 payload 形状(payload 是 Dict[str, Any]),因此这条畸形输出会一路送到 Java;Java 以其 fail-closed 契约(AgentBrainResponseValidator.validateRequestUserInput → asString)拒绝。真实差异就定位在这里:模型把 questionText 写成了对象。",
+      "modelOutput": "{\"observation\":{\"known\":[\"目标已确认。\"],\"unknowns\":[],\"conflicts\":[],\"risks\":[]},\"action\":{\"actionFamily\":\"REQUEST_USER_INPUT\",\"payload\":{\"questionText\":{\"text\":\"未决口径该如何界定？\"},\"options\":[{\"label\":\"由我明确口径\"}],\"allowFreeAnswer\":true},\"sourceRefs\":[]}}"
+    },
+    {
+      "id": "P3B-RP-03",
+      "category": "C09",
+      "class": "PAYLOAD_SHAPE_DRIFT_MISSING_ALLOW_FREE_ANSWER",
+      "provenance": "SYNTHETIC_FROZEN_FIXTURE",
+      "derivedFrom": "Java 契约 validateRequestUserInput 要求 boolean allowFreeAnswer",
+      "expectedOutcome": "ACCEPTED_PROPOSAL",
+      "expectedActionFamily": "REQUEST_USER_INPUT",
+      "expectedPayloadValid": false,
+      "modelOutput": "{\"observation\":{\"known\":[\"目标已确认。\"],\"unknowns\":[],\"conflicts\":[],\"risks\":[]},\"action\":{\"actionFamily\":\"REQUEST_USER_INPUT\",\"payload\":{\"questionText\":\"未决口径该如何界定？\",\"options\":[{\"label\":\"由我明确口径\"}]},\"sourceRefs\":[]}}"
+    },
+    {
+      "id": "P3B-RP-04",
+      "category": "C09",
+      "class": "PAYLOAD_SHAPE_DRIFT_CAPABILITY_MISSING_REQUIRED_ARGUMENT",
+      "provenance": "SYNTHETIC_FROZEN_FIXTURE",
+      "derivedFrom": "P3-B C06/C09 基线观察:memory.search 声明必填 query,提案却没有给出",
+      "expectedOutcome": "ACCEPTED_PROPOSAL",
+      "expectedActionFamily": "INVOKE_CAPABILITY",
+      "expectedPayloadValid": true,
+      "note": "payload 的传输形状合法(capabilityId 非空、arguments 是对象),所以既不能用形状违约解释,也不能由 Brain 判定;声明必填参数缺失这一条由 Java 的 eligibility 门禁判定(本轮修复:MISSING_REQUIRED_CAPABILITY_ARGUMENT)。",
+      "requestOverrides": {
+        "availableCapabilities": [
+          {
+            "id": "memory.search",
+            "version": "1",
+            "readOnly": true,
+            "description": "在当前 Workspace 的受控 Memory / Resource 范围内检索证据",
+            "sideEffectClass": "NONE",
+            "inputSchema": {"query": {"type": "string", "required": true}},
+            "supports": []
+          }
+        ]
+      },
+      "modelOutput": "{\"observation\":{\"known\":[\"目标已确认。\"],\"unknowns\":[],\"conflicts\":[],\"risks\":[]},\"action\":{\"actionFamily\":\"INVOKE_CAPABILITY\",\"payload\":{\"capabilityId\":\"memory.search\",\"arguments\":{\"scope\":\"PROJECT\"}},\"sourceRefs\":[]}}"
+    },
+    {
+      "id": "P3B-RP-05",
+      "category": "PROTOCOL",
+      "class": "NON_JSON_OUTPUT",
+      "provenance": "SYNTHETIC_FROZEN_FIXTURE",
+      "derivedFrom": "P3-A 真实观察:'BrainContractError: model output is not valid JSON'(B02/B03,各一次)",
+      "expectedOutcome": "CONTRACT_VIOLATION_NON_JSON",
+      "expectedActionFamily": null,
+      "expectedPayloadValid": null,
+      "modelOutput": "好的，我需要先确认未决口径，然后再继续推进。"
+    },
+    {
+      "id": "P3B-RP-06",
+      "category": "PROTOCOL",
+      "class": "UNKNOWN_TOP_LEVEL_FIELD",
+      "provenance": "SYNTHETIC_FROZEN_FIXTURE",
+      "derivedFrom": "P3-A 真实观察:'STATE_UPDATE contract: Extra inputs are not permitted'(B08)",
+      "expectedOutcome": "CONTRACT_VIOLATION_MODEL_OUTPUT_SCHEMA",
+      "expectedActionFamily": null,
+      "expectedPayloadValid": null,
+      "modelOutput": "{\"observation\":{\"known\":[\"目标已确认。\"],\"unknowns\":[],\"conflicts\":[],\"risks\":[]},\"action\":{\"actionFamily\":\"RESPOND_TO_USER\",\"payload\":{\"message\":\"已收到。\"},\"sourceRefs\":[]},\"confidence\":0.9}"
+    },
+    {
+      "id": "P3B-RP-07",
+      "category": "PROTOCOL",
+      "class": "UNGROUNDED_SOURCE_REFERENCE",
+      "provenance": "SYNTHETIC_FROZEN_FIXTURE",
+      "derivedFrom": "Brain 的 allowedSourceRefs 白名单(与 Java 复核一致)",
+      "expectedOutcome": "CONTRACT_VIOLATION_UNGROUNDED_REFERENCE",
+      "expectedActionFamily": null,
+      "expectedPayloadValid": null,
+      "modelOutput": "{\"observation\":{\"known\":[\"目标已确认。\"],\"unknowns\":[],\"conflicts\":[],\"risks\":[]},\"action\":{\"actionFamily\":\"RESPOND_TO_USER\",\"payload\":{\"message\":\"已收到。\"},\"sourceRefs\":[\"node:deadbeef-dead-beef-dead-beefdeadbeef\"]}}"
+    },
+    {
+      "id": "P3B-RP-08",
+      "category": "PROTOCOL",
+      "class": "UNKNOWN_ACTION_FAMILY",
+      "provenance": "SYNTHETIC_FROZEN_FIXTURE",
+      "derivedFrom": "protocol.ACTION_FAMILIES 冻结集合",
+      "expectedOutcome": "CONTRACT_VIOLATION_MODEL_OUTPUT_SCHEMA",
+      "expectedActionFamily": null,
+      "expectedPayloadValid": null,
+      "modelOutput": "{\"observation\":{\"known\":[\"目标已确认。\"],\"unknowns\":[],\"conflicts\":[],\"risks\":[]},\"action\":{\"actionFamily\":\"PLAN_AHEAD\",\"payload\":{},\"sourceRefs\":[]}}"
+    },
+    {
+      "id": "P3B-RP-09",
+      "category": "PROTOCOL",
+      "class": "STRAY_TOP_LEVEL_SOURCE_REFS_EQUIVALENT",
+      "provenance": "SYNTHETIC_FROZEN_FIXTURE",
+      "derivedFrom": "Decision engine 唯一一处已记录在案的归一化垫片(可证明等价)",
+      "expectedOutcome": "ACCEPTED_PROPOSAL",
+      "expectedActionFamily": "RESPOND_TO_USER",
+      "expectedPayloadValid": true,
+      "note": "回归保护:唯一被允许的形态漂移仍能被归一化,而不是被收紧成失败。",
+      "modelOutput": "{\"sourceRefs\":[\"node:33333333-3333-3333-3333-333333333333\"],\"observation\":{\"known\":[\"目标已确认。\"],\"unknowns\":[],\"conflicts\":[],\"risks\":[]},\"action\":{\"actionFamily\":\"RESPOND_TO_USER\",\"payload\":{\"message\":\"已收到。\"}}}"
+    },
+    {
+      "id": "P3B-RP-10",
+      "category": "PROTOCOL",
+      "class": "TWO_DIFFERENT_SOURCE_REF_LISTS",
+      "provenance": "SYNTHETIC_FROZEN_FIXTURE",
+      "derivedFrom": "AmbiguousSourceRefsError 的 fail-closed 契约",
+      "expectedOutcome": "CONTRACT_VIOLATION_AMBIGUOUS_SOURCE_REFS",
+      "expectedActionFamily": null,
+      "expectedPayloadValid": null,
+      "note": "两份*不同*的合法 refs 列表没有定义好的合并语义,必须继续 fail-closed。",
+      "modelOutput": "{\"sourceRefs\":[\"node:33333333-3333-3333-3333-333333333333\"],\"observation\":{\"known\":[\"目标已确认。\"],\"unknowns\":[],\"conflicts\":[],\"risks\":[]},\"action\":{\"actionFamily\":\"RESPOND_TO_USER\",\"payload\":{\"message\":\"已收到。\"},\"sourceRefs\":[]}}"
+    },
+    {
+      "id": "P3B-RP-11",
+      "category": "PROTOCOL",
+      "class": "CONFLICT_NOT_SURFACED",
+      "provenance": "SYNTHETIC_FROZEN_FIXTURE",
+      "derivedFrom": "ConflictSurfacingError 的 fail-closed 契约(预算被限制为 1,因此不做修复重试)",
+      "expectedOutcome": "CONTRACT_VIOLATION_CONFLICT_SURFACING",
+      "expectedActionFamily": null,
+      "expectedPayloadValid": null,
+      "requestOverrides": {
+        "decisionBudget": {"maxModelCalls": 1},
+        "effectiveClaims": [
+          {
+            "kind": "conflict",
+            "text": "完全离线运行与所有门店实时同步互斥。",
+            "status": "unresolved",
+            "confidence": 0.95,
+            "sourceNodeId": "33333333-3333-3333-3333-333333333333",
+            "sourceAnswerId": "99999999-9999-9999-9999-999999999999"
+          }
+        ]
+      },
+      "modelOutput": "{\"observation\":{\"known\":[\"目标已确认。\"],\"unknowns\":[],\"conflicts\":[],\"risks\":[]},\"action\":{\"actionFamily\":\"RESPOND_TO_USER\",\"payload\":{\"message\":\"已收到。\"},\"sourceRefs\":[]}}"
+    }
+  ]
+}
