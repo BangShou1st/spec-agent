@@ -55,6 +55,84 @@ The backend uses the same checked-in source through Gradle composite substitutio
 
 For a new release, update the version in the shared modules and the backend dependency together. Do not overwrite a released version.
 
+## Publishing to a private Maven repository (GitHub Packages)
+
+The library is not a Git repository yet (the upstream working copy lives at
+`E:\project\shared-libs\opencode-zen`). GitHub Packages scopes a package to `<OWNER>/<REPO>`, so
+first turn the library into its own repository and push it; then the package becomes installable
+by coordinate from any project.
+
+### Automatic publishing (recommended, no stored secret)
+
+Add `.github/workflows/publish.yml` to the **library** repository:
+
+```yaml
+name: publish
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - run: ./gradlew publish --no-daemon
+        env:
+          ZEN_MAVEN_REPO_URL: https://maven.pkg.github.com/<OWNER>/<REPO>
+          ZEN_MAVEN_USER: ${{ github.actor }}
+          ZEN_MAVEN_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+`GITHUB_TOKEN` is sufficient inside the library repository's own Actions, so no PAT has to be
+stored. The module build files read exactly these three environment variables.
+
+### Manual publishing from a workstation
+
+Use a classic PAT with `write:packages` (plus `repo` when the repository is private):
+
+```powershell
+$env:ZEN_MAVEN_REPO_URL="https://maven.pkg.github.com/<OWNER>/<REPO>"
+$env:ZEN_MAVEN_USER="<github-user>"
+$env:ZEN_MAVEN_TOKEN="<PAT>"
+cd E:\project\shared-libs\opencode-zen
+.\gradlew.bat publish
+```
+
+### Consuming the published artifact
+
+A consumer project then needs one repository entry and one coordinate:
+
+```kotlin
+repositories {
+    mavenCentral()
+    maven {
+        url = uri("https://maven.pkg.github.com/<OWNER>/<REPO>")
+        credentials {
+            username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
+            password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN")
+        }
+    }
+}
+dependencies { implementation("com.sharedlibs:opencode-zen-spring-boot-starter:1.2.0") }
+```
+
+Keep the credentials in `~/.gradle/gradle.properties` or `~/.m2/settings.xml`; never commit them.
+Each consumer needs its **own** token with `read:packages` — one repository's `GITHUB_TOKEN` is not
+visible to another repository.
+
+### Discipline
+
+* GitHub Packages is immutable per version: bump the version for every change (1.2.0 cannot be
+  re-published);
+* the `-sources.jar` and the starter POM are published too, and the POM already points at
+  `com.sharedlibs:opencode-zen-spring-boot-autoconfigure:<same version>`, so one coordinate pulls the
+  whole chain;
+* do **not** publish to a public repository: the library carries the CLI identity and tool envelope
+  that the free tier requires, which should not be redistributed publicly.
+
 ## Failure handling
 
 The transport does not retry or switch providers automatically. HTTP 429 remains RATE_LIMITED; other HTTP, connection, timeout, empty-content, and malformed-response failures keep their existing categories and diagnostics.
