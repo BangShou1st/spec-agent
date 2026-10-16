@@ -1,9 +1,13 @@
 package com.specagent.eval;
 
-import com.specagent.agent.protocol.ActionFamily;
-import com.specagent.agent.protocol.AgentContracts;
-import com.specagent.agent.protocol.AgentRequestEnvelope;
-import com.specagent.agent.protocol.AgentResponseEnvelope;
+import com.specagent.eval.P3AClaimGrounding.AnswerRow;
+import com.specagent.eval.P3AClaimGrounding.ClaimView;
+import com.specagent.eval.P3AClaimGrounding.NodeRow;
+import com.specagent.eval.P3AClaimGrounding.PatchSource;
+import com.specagent.eval.P3AClaimGrounding.RouteRow;
+import com.specagent.eval.P3AClaimGrounding.SourceCatalog;
+import com.specagent.eval.P3ADecisionScoring.DecisionObservation;
+import com.specagent.eval.P3ADecisionScoring.PayloadValidity;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -34,9 +38,16 @@ import java.util.UUID;
  *
  * 关键纪律:
  *  - B 与 C 分开记分,绝不合成一个"AI 效果分";
+ *  - C 层四个量严格分开:{@link P3ADecisionScoring} 分别报告
+ *    Action acceptable-set accuracy / Payload schema validity /
+ *    Runtime execution success / INFRA;
  *  - 真实模型输出与 deterministic 结果严格区分:本套件不安装任何脚本化 Brain,
  *    {@link LiveExecutionGuard} 会强制校验 bean 身份;
- *  - INFRA(网络/Provider)失败单独报告,**不计为决策错误**;
+ *  - 真正的网络/Provider 失败走 {@link LiveFailureClassifier} 判定为 INFRA,
+ *    **不计为决策错误**;而模型输出契约违约(非 JSON、额外字段、payload 形状)
+ *    属于**模型协议质量**问题,单独分类,绝不合并进 INFRA 从而被掩盖;
+ *  - CONFIRMED claim 的"无依据"判定使用 {@link P3AClaimGrounding}:读取真实
+ *    来源字段(node/answer/project/route)并按一致性校验,不再只看文本是否为空;
  *  - 标签是 AI 编写的候选标签,全部标记 PENDING_HUMAN_REVIEW,绝不声称人工验收。
  *
  * 数据来源:{@code tools/p3a/p3a_scenarios.json}(AI 编写候选场景与候选标签)。
@@ -80,6 +91,8 @@ class EvalLiveP3AProjectAgentSuiteTest extends EvalLiveHarnessBase {
         // 只评测前 8 个场景:真实模型调用有成本,首轮保持小规模、有代表性。
         int limit = Math.min(scenarios.size(), 8);
         List<Map<String, Object>> observations = new ArrayList<>();
+        List<DecisionObservation> decisionObservations = new ArrayList<>();
+        long ungroundedTotal = 0;
 
         for (int index = 0; index < limit; index++) {
             var scenario = scenarios.get(index);
@@ -129,8 +142,12 @@ class EvalLiveP3AProjectAgentSuiteTest extends EvalLiveHarnessBase {
                         definition.variants().get(0), 9000L + index);
             } catch (RuntimeException ex) {
                 record.put("outcome", "INFRA");
+                record.put("infraClass", "TEST_HARNESS_SETUP");
                 record.put("detail", ex.getClass().getSimpleName() + ": " + ex.getMessage());
                 observations.add(record);
+                decisionObservations.add(new DecisionObservation(scenarioId, null, false,
+                        PayloadValidity.NOT_MEASURED, false, true,
+                        "TEST_HARNESS_SETUP", null));
                 continue;
             }
             long latencyMs = (System.nanoTime() - started) / 1_000_000L;
@@ -141,59 +158,89 @@ class EvalLiveP3AProjectAgentSuiteTest extends EvalLiveHarnessBase {
             record.put("providerRetries", observation.providerRetries());
 
             String failure = observation.executionResult();
-            // INFRA classification: transport/provider/brain-contract failures are NOT
-            // decision errors. Match case-insensitively — the real strings are
-            // "AgentBrainUnavailableException", "brain_timeout", "model_provider_failure".
-            String lowered = failure == null ? "" : failure.toLowerCase(Locale.ROOT);
-            boolean infra = lowered.contains("unavailable")
-                    || lowered.contains("timeout")
-                    || lowered.contains("provider_failure")
-                    || lowered.contains("502")
-                    // A brain contract violation means the model emitted an off-contract
-                    // payload; the brain rejected it fail-closed. That is a B-layer protocol
-                    // finding, not a C-layer decision error.
-                    || lowered.contains("model_contract")
-                    || lowered.contains("brain_failure");
+            String actualAction = observation.actualPrimaryAction();
+
+            // 模型协议违约与真正的 INFRA 分开判定:
+            //  - 契约/JSON/字段违约 = 模型输出质量问题(绝不并入 INFRA);
+            //  - 网络/provider/超时 = INFRA(不计为决策错误)。
+            String protocolClass = P3ADecisionScoring.classifyModelProtocolFailure(
+                    failure, traceErrorTypes(observation));
+            boolean modelProtocolFailure = protocolClass != null;
+            boolean infra = !modelProtocolFailure
+                    && LiveFailureClassifier.isInfrastructureFailure(observation);
             if (infra) {
                 record.put("outcome", "INFRA");
-                record.put("infraClass", classifyInfra(lowered));
+                record.put("infraClass", infraClass(observation));
                 record.put("detail", failure);
                 observations.add(record);
+                decisionObservations.add(new DecisionObservation(scenarioId, null, false,
+                        PayloadValidity.NOT_MEASURED, false, true,
+                        infraClass(observation), null));
                 continue;
             }
 
             // ---- B 层:读回持久化的 claims(真实 STATE_UPDATE 产物) ----
+            // 读回**来源字段**(此前被丢弃),用确定性 grounding 校验。
             UUID projectId = scenarioRunner.lastProjectId();
-            List<Map<String, Object>> claimRows = jdbcTemplate.queryForList("""
-                    SELECT claims FROM answer_patches WHERE project_id = ? ORDER BY created_at
+            SourceCatalog catalog = jdbcSourceCatalog();
+            List<Map<String, Object>> patchRows = jdbcTemplate.queryForList("""
+                    SELECT project_id, route_id, source_node_id, source_answer_id, claims
+                    FROM answer_patches WHERE project_id = ? ORDER BY created_at
                     """, projectId);
             List<Map<String, Object>> claims = new ArrayList<>();
-            for (Map<String, Object> row : claimRows) {
+            long ungrounded = 0;
+            for (Map<String, Object> row : patchRows) {
                 Object raw = row.get("claims");
                 if (raw == null) {
                     continue;
                 }
                 var parsed = objectMapper.readTree(String.valueOf(raw));
-                parsed.forEach(claim -> claims.add(Map.of(
-                        "kind", claim.path("kind").asText(),
-                        "status", claim.path("status").asText(),
-                        "text", claim.path("text").asText())));
+                List<ClaimView> patchClaims = new ArrayList<>();
+                parsed.forEach(claim -> {
+                    ClaimView view = new ClaimView(
+                            claim.path("kind").asText(),
+                            claim.path("status").asText(),
+                            claim.path("text").asText(),
+                            uuidOrNull(claim.path("sourceNodeId")),
+                            uuidOrNull(claim.path("sourceAnswerId")));
+                    patchClaims.add(view);
+                    claims.add(Map.of("kind", view.kind(), "status", view.status(),
+                            "text", view.text()));
+                });
+                PatchSource patch = new PatchSource(
+                        asUuid(row.get("project_id")),
+                        asUuid(row.get("route_id")),
+                        asUuid(row.get("source_node_id")),
+                        asUuid(row.get("source_answer_id")));
+                ungrounded += P3AClaimGrounding
+                        .ungroundedConfirmed(patch, patchClaims, catalog).size();
             }
+            ungroundedTotal += ungrounded;
             record.put("claims", claims);
+            record.put("ungroundedConfirmed", ungrounded);
             record.put("bLayer", scoreClaims(objectMapper, scenario, claims));
 
-            // ---- C 层:acceptable family 集合 + payload 校验结果 ----
-            boolean actionAcceptable = acceptable.contains(observation.actualPrimaryAction());
-            record.put("cLayer", Map.of(
-                    "acceptableSetAccuracy", actionAcceptable,
-                    "payloadValid", "completed".equals(observation.executionResult())
-                            || actionAcceptable,
-                    "resolution", observation.executionResult()));
+            // ---- C 层:acceptable family 集合 + payload 协议校验 + 执行成功 ----
+            boolean actionAcceptable = actualAction != null && acceptable.contains(actualAction);
+            boolean executionSuccess = "completed".equals(observation.executionResult());
+            PayloadValidity payloadValidity = P3ADecisionScoring.payloadValidity(
+                    actualAction, protocolClass);
+            var cLayer = new LinkedHashMap<String, Object>();
+            cLayer.put("actionAcceptable", actionAcceptable);
+            cLayer.put("actionMeasured", actualAction != null);
+            cLayer.put("payloadValidity", payloadValidity.name());
+            cLayer.put("executionSuccess", executionSuccess);
+            cLayer.put("protocolFailureClass", protocolClass == null ? "NONE" : protocolClass);
+            record.put("cLayer", cLayer);
             record.put("outcome", "COMPLETED");
             observations.add(record);
+            decisionObservations.add(new DecisionObservation(
+                    scenarioId, actualAction, actionAcceptable, payloadValidity,
+                    executionSuccess, false, null, protocolClass));
             System.out.println("P3-A live " + scenarioId + ": action="
-                    + observation.actualPrimaryAction() + " claims=" + claims.size()
-                    + " acceptable=" + actionAcceptable + " latency=" + latencyMs + "ms");
+                    + actualAction + " claims=" + claims.size()
+                    + " acceptable=" + actionAcceptable + " payload=" + payloadValidity
+                    + " ungrounded=" + ungrounded + " latency=" + latencyMs + "ms");
         }
 
         var completed = observations.stream()
@@ -201,21 +248,18 @@ class EvalLiveP3AProjectAgentSuiteTest extends EvalLiveHarnessBase {
         var infra = observations.stream()
                 .filter(item -> "INFRA".equals(item.get("outcome"))).toList();
 
-        double actionAccuracy = completed.isEmpty() ? 0 : completed.stream()
-                .mapToDouble(item -> Boolean.TRUE.equals(
-                        ((Map<?, ?>) item.get("cLayer")).get("acceptableSetAccuracy")) ? 1 : 0)
-                .average().orElse(0);
         long forbidden = completed.stream()
                 .mapToLong(item -> ((List<?>) ((Map<?, ?>) item.get("bLayer"))
                         .get("forbiddenViolations")).size()).sum();
         long unknownAsserted = completed.stream()
                 .mapToLong(item -> ((List<?>) ((Map<?, ?>) item.get("bLayer"))
                         .get("unknownAssertedConfirmed")).size()).sum();
-        long ungrounded = completed.stream()
-                .mapToLong(item -> ((List<?>) ((Map<?, ?>) item.get("bLayer"))
-                        .get("ungroundedConfirmed")).size()).sum();
         List<Long> latencies = completed.stream()
                 .map(item -> ((Number) item.get("latencyMs")).longValue()).sorted().toList();
+        long executionCompleted = completed.stream()
+                .filter(item -> "completed".equals(item.get("executionResult"))).count();
+
+        var cSummary = P3ADecisionScoring.summarize(decisionObservations);
 
         var report = new LinkedHashMap<String, Object>();
         report.put("recordedAt", Instant.now().toString());
@@ -228,18 +272,40 @@ class EvalLiveP3AProjectAgentSuiteTest extends EvalLiveHarnessBase {
         report.put("corpusFile", "tools/p3a/p3a_scenarios.json");
         report.put("labelProvenance", corpus.path("authorship").asText());
         report.put("humanReviewStatus", corpus.path("humanReviewStatus").asText());
+        report.put("labelReview", "PENDING_HUMAN_REVIEW");
+        report.put("environment", Map.of(
+                "brain", "remote-python-broker",
+                "retrievalEngine", "java-hybrid.v1",
+                "modelSource", "product database opencode_settings",
+                "database", "isolated P3-A evaluation database"));
         report.put("plannedScenarios", limit);
-        report.put("completed", completed.size());
+        report.put("evaluated", completed.size());
+        report.put("executionCompleted", executionCompleted);
         report.put("infraFailed", infra.size());
         report.put("bLayer", Map.of(
                 "claimsProduced", completed.stream()
                         .mapToLong(item -> ((List<?>) item.get("claims")).size()).sum(),
                 "forbiddenOvergeneralizations", forbidden,
                 "unknownAssertedConfirmed", unknownAsserted,
-                "ungroundedConfirmed", ungrounded));
-        report.put("cLayer", Map.of(
-                "acceptableSetAccuracy", round(actionAccuracy),
-                "payloadValidity", round(actionAccuracy)));
+                "ungroundedConfirmed", ungroundedTotal,
+                "groundingMethod", "deterministic source validation "
+                        + "(claim/patch source node+answer, project, route, lifecycle)"));
+        var cLayer = new LinkedHashMap<String, Object>();
+        cLayer.put("actionAcceptableSetAccuracy", cSummary.actionAcceptableSetAccuracy());
+        cLayer.put("actionMeasuredCount", cSummary.actionMeasuredCount());
+        cLayer.put("payloadValidity", cSummary.payloadValidity());
+        cLayer.put("payloadValidityMeasuredCount", cSummary.payloadValidityMeasuredCount());
+        cLayer.put("payloadValidityNotMeasuredCount", cSummary.payloadValidityNotMeasuredCount());
+        cLayer.put("executionSuccessRate", cSummary.executionSuccessRate());
+        cLayer.put("evaluatedCount", cSummary.evaluated());
+        cLayer.put("modelProtocolFailures", cSummary.modelProtocolFailures());
+        cLayer.put("protocolFailureBreakdown", cSummary.protocolFailureBreakdown());
+        cLayer.put("infraFailures", cSummary.infraFailures());
+        cLayer.put("infraClassBreakdown", cSummary.infraClassBreakdown());
+        cLayer.put("note", "action acceptable-set accuracy and payload validity are "
+                + "independent measures with their own measured-sample counts; neither "
+                + "is a single 'overall decision accuracy'");
+        report.put("cLayer", cLayer);
         var latency = new LinkedHashMap<String, Object>();
         latency.put("p50", latencies.isEmpty() ? null : latencies.get(latencies.size() / 2));
         latency.put("p95", latencies.isEmpty() ? null
@@ -249,6 +315,7 @@ class EvalLiveP3AProjectAgentSuiteTest extends EvalLiveHarnessBase {
         report.put("latencyMs", latency);
         report.put("infrastructureFailures", infra.stream()
                 .map(item -> Map.of("scenarioId", item.get("scenarioId"),
+                        "infraClass", String.valueOf(item.get("infraClass")),
                         "detail", String.valueOf(item.get("detail")))).toList());
         report.put("observations", observations);
 
@@ -257,26 +324,118 @@ class EvalLiveP3AProjectAgentSuiteTest extends EvalLiveHarnessBase {
         Files.createDirectories(output.getParent());
         Files.writeString(output, EvalArtifactWriter.toJson(report), StandardCharsets.UTF_8);
         System.out.println("P3-A live B/C written: " + output.toAbsolutePath());
-        System.out.println("completed=" + completed.size() + " infra=" + infra.size()
-                + " acceptableSetAccuracy=" + round(actionAccuracy)
+        System.out.println("evaluated=" + completed.size() + " infra=" + infra.size()
+                + " actionAcc=" + cSummary.actionAcceptableSetAccuracy()
+                + " payloadValidity=" + cSummary.payloadValidity()
+                + " protocolFailures=" + cSummary.modelProtocolFailures()
                 + " forbidden=" + forbidden
                 + " unknownAssertedConfirmed=" + unknownAsserted
-                + " ungroundedConfirmed=" + ungrounded);
+                + " ungroundedConfirmed=" + ungroundedTotal);
 
         // 非阻塞:记录真实行为基线,不放宽任何产品语义。
         // 唯一硬约束是"无依据的 CONFIRMED claim"必须为零——这是产品边界。
-        org.assertj.core.api.Assertions.assertThat(ungrounded)
+        org.assertj.core.api.Assertions.assertThat(ungroundedTotal)
                 .as("no CONFIRMED claim may be persisted without grounding")
                 .isZero();
+    }
+
+    /** 从语义追踪里取失败阶段记录的 error_type,用于区分协议违约与 INFRA。 */
+    private static List<String> traceErrorTypes(ObservationEnvelope observation) {
+        List<String> types = new ArrayList<>();
+        observation.semanticTrace().stages().values().forEach(stage -> {
+            Object value = stage.get("error_type");
+            if (value != null) {
+                types.add(String.valueOf(value));
+            }
+        });
+        return types;
+    }
+
+    /** INFRA 细分类;复用既有分类器,保持与其它评测一致的证据口径。 */
+    private static String infraClass(ObservationEnvelope observation) {
+        var classified = LiveFailureClassifier.classify(observation);
+        return classified == null ? "OTHER" : classified.name();
+    }
+
+    /** 只读来源目录:把 claim/patch 的来源 id 解析为真实存储行。 */
+    private SourceCatalog jdbcSourceCatalog() {
+        return new SourceCatalog() {
+            @Override
+            public AnswerRow findAnswer(UUID id) {
+                if (id == null) {
+                    return null;
+                }
+                List<AnswerRow> rows = jdbcTemplate.query(
+                        "SELECT id, project_id, route_id, node_id FROM answers WHERE id = ?",
+                        (rs, rowNum) -> new AnswerRow(
+                                rs.getObject("id", UUID.class),
+                                rs.getObject("project_id", UUID.class),
+                                rs.getObject("route_id", UUID.class),
+                                rs.getObject("node_id", UUID.class)),
+                        id);
+                return rows.isEmpty() ? null : rows.get(0);
+            }
+
+            @Override
+            public NodeRow findNode(UUID id) {
+                if (id == null) {
+                    return null;
+                }
+                List<NodeRow> rows = jdbcTemplate.query(
+                        "SELECT id, project_id FROM nodes WHERE id = ?",
+                        (rs, rowNum) -> new NodeRow(
+                                rs.getObject("id", UUID.class),
+                                rs.getObject("project_id", UUID.class)),
+                        id);
+                return rows.isEmpty() ? null : rows.get(0);
+            }
+
+            @Override
+            public RouteRow findRoute(UUID id) {
+                if (id == null) {
+                    return null;
+                }
+                List<RouteRow> rows = jdbcTemplate.query(
+                        "SELECT id, project_id, lifecycle_status FROM routes WHERE id = ?",
+                        (rs, rowNum) -> new RouteRow(
+                                rs.getObject("id", UUID.class),
+                                rs.getObject("project_id", UUID.class),
+                                rs.getString("lifecycle_status")),
+                        id);
+                return rows.isEmpty() ? null : rows.get(0);
+            }
+        };
+    }
+
+    private static UUID asUuid(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof UUID id) {
+            return id;
+        }
+        String text = String.valueOf(value);
+        return text.isBlank() ? null : UUID.fromString(text);
+    }
+
+    private static UUID uuidOrNull(com.fasterxml.jackson.databind.JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        String text = node.asText();
+        return text.isBlank() ? null : UUID.fromString(text);
     }
 
     /**
      * B 层评分:确定性语义条件,不做字符串相等。
      *
-     * requiredConcepts 的每个 OR-group 必须被至少一条 claim 命中(接受改写);
-     * forbiddenOvergeneralizations 命中即违规(例如把"所有预约都要审批"这类
-     * 过度概括写进 claim);mustStayUnresolved 的内容若被标成 CONFIRMED,
-     * 说明把"未知"当成了"已确认"。
+     * requiredConcepts 的每个 OR-group 必须被**同一条** claim 命中(接受改写,
+     * 但拒绝把不同 claim 的关键词拼凑成一个概念);forbiddenOvergeneralizations
+     * 命中即违规(例如把"所有预约都要审批"这类过度概括写进 claim);
+     * mustNotSettle 的内容若被标成 CONFIRMED,说明把"未知"当成了"已确认"。
+     *
+     * 无依据的 CONFIRMED 不在这里判定——它由 {@link P3AClaimGrounding} 基于真实
+     * 来源字段做确定性校验,避免只看文本是否为空。
      */
     private static Map<String, Object> scoreClaims(
             com.fasterxml.jackson.databind.ObjectMapper mapper,
@@ -289,14 +448,20 @@ class EvalLiveP3AProjectAgentSuiteTest extends EvalLiveHarnessBase {
         int requiredCount = 0;
         for (var concept : scenario.path("requiredConcepts")) {
             requiredCount++;
-            boolean satisfied = true;
-            for (var group : concept.path("anyOf")) {
-                List<String> alternatives = new ArrayList<>();
-                group.forEach(node -> alternatives.add(node.asText().toLowerCase(Locale.ROOT)));
-                boolean groupHit = texts.stream().anyMatch(text -> alternatives.stream()
-                        .allMatch(text::contains));
-                if (!groupHit) {
-                    satisfied = false;
+            boolean satisfied = false;
+            for (int index = 0; index < texts.size(); index++) {
+                String text = texts.get(index);
+                boolean claimSatisfiesAllGroups = true;
+                for (var group : concept.path("anyOf")) {
+                    List<String> alternatives = new ArrayList<>();
+                    group.forEach(node -> alternatives.add(node.asText().toLowerCase(Locale.ROOT)));
+                    if (alternatives.stream().noneMatch(text::contains)) {
+                        claimSatisfiesAllGroups = false;
+                        break;
+                    }
+                }
+                if (claimSatisfiesAllGroups) {
+                    satisfied = true;
                     break;
                 }
             }
@@ -347,49 +512,17 @@ class EvalLiveP3AProjectAgentSuiteTest extends EvalLiveHarnessBase {
             }
         }
 
-        // "无依据" = CONFIRMED 但没有任何 kind 依据可言(空文本不算)。
-        List<String> ungrounded = claims.stream()
-                .filter(claim -> "CONFIRMED".equals(claim.get("status")))
-                .map(claim -> String.valueOf(claim.get("text")))
-                .filter(text -> text == null || text.isBlank())
-                .toList();
-
         return Map.of(
                 "claimCount", claims.size(),
                 "requiredConcepts", requiredCount,
                 "matchedRequired", requiredCount - missed.size(),
                 "missedRequired", missed,
                 "forbiddenViolations", forbiddenViolations,
-                "unknownAssertedConfirmed", unknownAsserted,
-                "ungroundedConfirmed", ungrounded);
+                "unknownAssertedConfirmed", unknownAsserted);
     }
 
-    /**
-     * 把 INFRA 细分成可行动的类别,便于把"模型服务/网络问题"与"模型输出
-     * 违反契约"分开报告——两者都不是 C 层决策错误,但修复方向完全不同。
-     */
-    private static String classifyInfra(String lowered) {
-        if (lowered.contains("model_contract") || lowered.contains("brain_failure")
-                || lowered.contains("not valid json") || lowered.contains("contract")) {
-            return "BRAIN_CONTRACT_VIOLATION";
-        }
-        if (lowered.contains("timeout")) {
-            return "TIMEOUT";
-        }
-        if (lowered.contains("provider_failure")) {
-            return "PROVIDER_FAILURE";
-        }
-        if (lowered.contains("unavailable")) {
-            return "BRAIN_UNAVAILABLE";
-        }
-        return "OTHER";
-    }
-
-    private static String normalized(String value) {        return value == null ? "" : value.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
-    }
-
-    private static double round(double value) {
-        return Double.parseDouble(String.format(Locale.ROOT, "%.4f", value));
+    private static String normalized(String value) {
+        return value == null ? "" : value.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
     }
 
     private static String gitSha() {

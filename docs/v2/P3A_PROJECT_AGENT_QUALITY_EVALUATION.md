@@ -1,6 +1,22 @@
 # P3-A 项目 Agent 智能质量评测与针对性优化
 
-状态：**已完成基线评测、根因归因、一项有证据支持的通用优化与完整回归**。
+状态：**已完成基线评测、根因归因、一项有证据支持的通用优化与完整回归；
+本轮完成 P3-A 评测代码的三项修复（payload 有效性、Claim 来源校验、Claim Precision）
+与 C 层指标表述修正，并完成 OpenCode Zen Starter 兼容性验收与 V94/V95 迁移验收。**
+
+**本轮（P3-A 收尾）新增结论摘要**：
+
+- **Zen Starter 兼容性**：共享库由 composite build 引用仓库内源码（不依赖机器外部目录），
+  自动装配唯一且可回退（新增 `OpenCodeZenAutoConfigurationTest`）；Chat Completions 线上的
+  路径 / 方法 / 报文 / 身份头 / 凭据规则与重构前**逐字段一致**（仅把内联逻辑提取到共享库）；
+  SSE 解码语义等价（新增共享 `SseFrameDecoder` 6 例）。**发现并修复 1 处 Starter 引入的
+  回归**：`RuntimeSettingsPortTest` 未随运行时凭据委派更新（详见 §6/§10 交付说明）。
+- **P3-A 评测代码修复**：payload validity 与 action accuracy 严格分开
+  （`P3ADecisionScoring`）；CONFIRMED claim 的 grounding 改为读取真实来源字段并校验
+  一致性（`P3AClaimGrounding`）；Python 计分去掉伪 precision、改为 concept coverage 并
+  禁止跨 claim 拼凑（`tools/tests/test_p3a_scoring.py`）。全部以确定性用例锁定。
+- **真实模型验收 BLOCKED**：上游免费档返回 `HTTP 403 FreeTierError`（策略拒绝），
+  且本地缺 broker brain 与隔离评测库；如实记录，不冒充通过（§6.3）。
 
 本轮只处理 **项目 Agent（Workspace / Graph Reasoning Agent）** 的检索证据获取、
 需求理解与下一步决策质量。未改动 Global Assistant，未新增 GA 工具，未做 GA 与项目
@@ -79,16 +95,26 @@ ASCII 标识符 **16/16 → 16/16**（未回退）；资源内容 **3/8 → 7/8*
 运营规则 / 软件；本轮真实模型首轮只跑前 8 个）。判分用**确定性语义条件**
 （概念 OR 组、否定豁免、精确"settling"模式），不做字符串相等。
 
-8 个场景中：**4 个完成、4 个 INFRA**（模型/网络层，另列于 §3）。
+8 个场景中：**4 个真正的 INFRA（网络/provider）、1 个模型输出协议违约（B05）、3 个可计分的决策结果**（B01/B06/B07）。分类依据见 §3。
 
 | 指标 | 结果 | 样本数 | 标签状态 |
 |---|---|---|---|
-| 无依据的 CONFIRMED claim | **0** | 4 完成 | AI 候选标签，PENDING_HUMAN_REVIEW |
+| 无依据的 CONFIRMED claim | **0**（确定性来源校验，见下） | 4 完成 | AI 候选标签，PENDING_HUMAN_REVIEW |
 | 把未决内容标成 CONFIRMED | **0** | 4 完成 | 同上 |
 | 过度概括（含否定豁免判定） | **0** | 4 完成 | 同上 |
 | 产生的 claims 总数 | 9 | 4 完成 | 同上 |
-| Claim Precision / Recall / F1 | NOT MEASURED | — | 需人工标注才能定义分母 |
-| AnswerPatch 协议校验失败率 | 4/8 场景（另有 2 次 JSON 违约） | 8 | 见 §3 |
+| Concept coverage（概念覆盖/recall） | NOT MEASURED（首轮未记该指标） | — | 需返回逐概念命中 |
+| Claim precision | **NOT MEASURED** | — | **没有人工 claim 级标注，分母不可定义，拒绝伪造** |
+| 模型输出协议违约 | 1（B05；另有 3 次 Brain 侧 JSON/字段违约被 Java 边界折叠为 INFRA） | 8 | 见 §3 |
+
+> **来源校验修正（B2）**：此前 live 套件从数据库读 claim 时**丢弃了来源字段**，
+> `ungroundedConfirmed` 仅检查文本是否为空，因此该 0 只是"文本非空 claim 数"，不能证明
+> grounding。本轮改为确定性来源校验：读取真实字段（`Claim.sourceNodeId/sourceAnswerId`
+> 与 patch 的 `source_node_id/source_answer_id`），并要求 Answer/Node 真实存在、
+> 同 project、同 route、节点一致、route 仍为 `open`；缺失或无效来源一律**不记 grounded**。
+> 逻辑由 `backend/src/test/java/com/specagent/eval/P3AClaimGrounding.java` 与
+> `P3AClaimGroundingTest`（正确来源 / 缺失 / 不存在的 Answer / 错项目 / 错路线 /
+> 已失效来源）以确定性用例锁定。
 
 有代表性的正面证据（真实模型输出，逐字）：
 
@@ -105,40 +131,64 @@ ASCII 标识符 **16/16 → 16/16**（未回退）；资源内容 **3/8 → 7/8*
 
 ### C 层：下一步动作决策（真实模型）
 
-以场景声明的 **acceptable family 集合**为 oracle（不是唯一答案），
-并以真实 eligibility mask 为前提。
+以场景声明的 **acceptable family 集合**为 oracle（不是唯一答案）。四个量
+**分开记录**，分母各自显式标注：Action acceptable-set accuracy / Payload schema
+validity / Runtime execution success / INFRA。**它们不是同一个"整体决策准确率"**——
+4 个完成样本不足以支撑任何"当前最大瓶颈"的结论。
 
-| 指标 | 结果 | 样本数 | 标签状态 |
+| 指标 | 结果 | 分母（样本数） | 标签状态 |
 |---|---|---|---|
-| Action acceptable-set accuracy | **0.5000** | 4 完成 | AI 候选标签，PENDING_HUMAN_REVIEW |
-| Payload validity | 0.5000 | 4 完成 | 同上 |
-| Eligibility false negative / false positive | 0 / 0 | 4 完成 | 由 `ACTION_ELIGIBILITY` trace 得出 |
+| Action acceptable-set accuracy | 2/3 = 0.6667 | 3（真实产出动作的样本） | AI 候选标签，PENDING_HUMAN_REVIEW |
+| Payload schema validity | 3/4 = 0.7500 | 4（可测 payload 的样本） | 同上 |
+| Payload NOT_MEASURED | 0 | — | 信息不足时如实标记，绝不伪造通过率 |
+| Runtime execution success | 3/4 = 0.7500 | 4（非 INFRA 样本） | 同上 |
+| 模型输出协议违约（Java 侧可见证据） | 1（见 §3 第 2 行） | 4 | 模型输出质量问题，**非 INFRA** |
+| INFRA（网络 / provider） | 4 | 8 场景 | **不计为决策错误** |
+| 实际执行成功 | 3/8 场景 | 8 | 见 §3 |
 | 重复追问率 | NOT MEASURED | — | 需多轮场景 |
 | 无依据工具调用率 | NOT MEASURED | — | 需能力场景 |
-| 实际执行成功率 | 4/8 场景完成 | 8 | 见 §3 |
 | P50 / P95 端到端延迟 | 44137 / 47241 ms | 4 完成 | — |
+
+> **修正说明（B4 评测代码修复）**：`docs/v2/evidence/P3A_LAYER_BC_LIVE_BASELINE.json`
+> 记录 `cLayer.payloadValidity = 0.5`、`acceptableSetAccuracy = 0.5`，但当时
+> `payloadValidity` 被评测代码直接赋成了 `acceptableSetAccuracy`（缺陷，本轮已修复）。
+> 因此这两个 0.50 **不是两个独立指标的真实结果**，更不能被解释为"项目 Agent 整体决策
+> 准确率"。上表是按**同一轮已记录的逐场景观察**重新分开计算：动作正确性只在真的产出
+> 动作时计分（`2/3`），payload 只在契约校验收到了结果时计分（`3/4`），两者互不借用，
+> 信息不足时记 `NOT_MEASURED`。修正后的计分逻辑由
+> `backend/src/test/java/com/specagent/eval/P3ADecisionScoring.java` 及
+> `P3ADecisionScoringTest` 以确定性用例锁定。
 
 ## 3. 失败类型统计（真实案例与根因）
 
-**先分清类别**：本轮 8 个真实场景里，`INFRA` 4 个、`COMPLETED` 4 个。
-INFRA 一律**不计为决策错误**。
+**先分清类别（B4 修正）**：本轮 8 个真实场景按**代码可验证的证据**分为三类，
+不再把"模型协议违约"合并进一个笼统的 `INFRA` 桶：
 
-> 证据口径说明：Java 边界会把 Brain 层的多种失败折叠成统一的
+| 类别 | 数量 | 说明 |
+|---|---|---|
+| 真正的网络 / provider INFRA | 4 | B02 / B03 / B04 / B08，Java 侧证据为 `AgentBrainUnavailableException`，**不计为决策错误** |
+| 模型输出协议违约（Java 侧可见） | 1 | B05：`AgentContractException: questionText must be a string`；属**模型输出质量**问题 |
+| 合法决策结果（可计分） | 3 | B01（动作不在 acceptable 集合）、B06 / B07（动作在集合内） |
+
+> **证据口径说明**：Java 边界会把 Brain 层的多种失败折叠成统一的
 > `AgentBrainUnavailableException`，因此 `P3A_LAYER_BC_LIVE_BASELINE.json`
-> 里 4 条 INFRA 的 `infraClass` 都记为 `BRAIN_UNAVAILABLE`。下表中更细的
-> 根因（非 JSON、502、读超时、未知字段）取自**同一轮** Brain 服务日志的原始
-> 报错行，不是推测；两者指向同一次运行。
+> 记录 4 条 INFRA 的 `infraClass` 都是 `BRAIN_UNAVAILABLE`。
+> **只有** B05 的失败原因在 Java 侧就带有模型契约标记，因此可被评测代码
+> 确定性地归为"模型协议违约"。下表中更细的根因（非 JSON、502、读超时、未知字段）
+> 取自**同一轮** Brain 服务日志的原始报错行，不是推测；它们属于**模型输出质量**，
+> 但被 Java 边界折叠成了 INFRA——**报告单列出来，不把它们伪装成网络故障，
+> 也不把它们算成决策错误**。
 
 | # | 场景 | 类别 | 真实表现 | 根因 |
 |---|---|---|---|---|
 | 1 | P3A-B01 | C（决策） | 对"把售后维修响应时间从两天缩短到四小时以内"，选 `INVOKE_CAPABILITY`（不在 acceptable 集合） | Claims 提取正确（`CONFIRMED 将售后维修的响应时间从两天缩短到四小时以内`），但把"有信息可查"当成"必须现在调能力"。与既有 R4/Semantic Ranking 记录的 `RUI→IC` 同族：**相关 ≠ 必须** |
-| 2 | P3A-B05 | C（payload） | 动作未产出，run 以 `AgentContractException: questionText must be a string` 失败 | 模型在 `REQUEST_USER_INPUT` 的 `questionText` 位置输出了非字符串；Java 契约 fail-closed 正确拦截，属**结构化 payload 生成**缺陷 |
-| 3 | P3A-B02 | B（协议 / INFRA） | `BrainContractError: model output is not valid JSON` ×1 | 模型单次输出非 JSON；Brain fail-closed，**未污染持久化状态** |
-| 4 | P3A-B03 | B（协议 / INFRA） | `model output is not valid JSON` ×1 | 同上 |
-| 5 | P3A-B08 | B（协议 / INFRA） | `STATE_UPDATE contract: Extra inputs are not permitted`（多出一个 `note` 字段） | 严格契约拒绝未知字段——正确行为；属模型**输出形状**违约，非理解错误 |
+| 2 | P3A-B05 | C（模型协议 / payload） | 动作未产出，run 以 `AgentContractException: questionText must be a string` 失败 | 模型在 `REQUEST_USER_INPUT` 的 `questionText` 位置输出了非字符串；Java 契约 fail-closed 正确拦截，属**结构化 payload 生成**缺陷。**评测代码归为"模型协议违约"，且该样本 action 不可计分、payload 记为 invalid** |
+| 3 | P3A-B02 | B（模型输出质量，Java 侧记为 INFRA） | `BrainContractError: model output is not valid JSON` ×1 | 模型单次输出非 JSON；Brain fail-closed，**未污染持久化状态**。这是**模型输出质量**问题，不是网络故障；Java 边界只能看到 `AgentBrainUnavailableException` |
+| 4 | P3A-B03 | B（模型输出质量，Java 侧记为 INFRA） | `model output is not valid JSON` ×1 | 同上 |
+| 5 | P3A-B08 | B（模型输出质量，Java 侧记为 INFRA） | `STATE_UPDATE contract: Extra inputs are not permitted`（多出一个 `note` 字段） | 严格契约拒绝未知字段——正确行为；属模型**输出形状**违约，非理解错误 |
 | 6 | P3A-B04 | INFRA | `ModelClientError: inference broker returned status 502` | Provider 侧故障 |
 | 7 | P3A-B08 | INFRA | `BrokerTimeoutError: inference broker timeout` | 真实模型延迟超过 broker 读超时（单次 128–208 秒的历史记录已在代码注释中） |
-| 8 | P3A-B02 / B03 / B04 | INFRA | `AgentBrainUnavailableException` | 上述 3、4、5、6、7 折叠到 Java 边界的统一表现 |
+| 8 | P3A-B02 / B03 / B04 / B08 | INFRA（Java 侧） | `AgentBrainUnavailableException` | 上述 3、4、5、6、7 折叠到 Java 边界的统一表现 |
 
 **A 层主导根因（本轮优化对象，证据最强）**：
 
@@ -221,19 +271,71 @@ plainto_tsquery('simple','终止对话后的正文有什么约束？')
 
 ## 6. 可靠性和回归
 
-| 套件 | 命令 | 结果 |
-|---|---|---|
-| 后端确定性全量 | `backend> gradlew.bat testNonLive` | **2025 tests / 2 failed / 34 skipped** |
-| 其中失败 | `GlobalAssistantSliceFStreamTest.threadRunMessageRefreshRecovery`、`GlobalAssistantSseHardeningTest.lastEventIdCursorReplaysOnlyLaterEvents` | **基线 a1c1696 上同样失败**（已 stash 后在干净树复现），与本轮改动无关；属既有 GA SSE 时序不稳定 |
-| P3-A A 层 | `backend> gradlew.bat evalP3ARetrieval` | 5 tests / 0 fail |
-| P3-A B+C 层（真实模型，非阻塞） | `backend> gradlew.bat evalP3ALiveProjectAgent` | 1 test / 0 fail；4 完成 / 4 INFRA |
-| 既有检索关卡 | `backend> gradlew.bat evalRetrievalFast` | BUILD SUCCESSFUL；Recall@K 0.909、MRR 0.95、污染 0 |
-| 既有 Agent 评测 | `backend> gradlew.bat evalBFast` | 14/14 passed，调用预算 0 违规 |
-| Python Brain | `agent-brain> .venv/Scripts/python -m pytest -q` | **239 passed** |
-| 评测工具 | `python -m pytest tools/tests -q` | **108 passed** |
-| 真实 52 条向量评测 | `SPEC_AGENT_RAG_EVALUATION=true` + `SharedRetrievalIntegrationTest` | PASS |
+### 6.1 本轮（P3-A 收尾）实测结果
 
-`LiveExecutionGuardTest` 8 tests / 0 fail（含新增的 routing-gateway 接受与未知网关拒绝）。
+| 套件 | 命令 | 结果（passed / failed / skipped） |
+|---|---|---|
+| 后端确定性全量 | `backend> gradlew.bat testNonLive` | **2054 / 0 / 34**（332 suites，0 errors） |
+| 其中既有 GA SSE | `GlobalAssistantSliceFStreamTest`、`GlobalAssistantSseHardeningTest` | 4 / 0、6 / 0 —— 本轮**均通过**（历史报告中的 2 例失败未复现） |
+| P3-A A 层 | `backend> gradlew.bat evalP3ARetrieval` | 5 / 0 / 0 |
+| 既有 Agent 评测 | `backend> gradlew.bat evalBFast` | 102 / 0 / 0（19 suites） |
+| Zen 共享库 | `shared-libs/opencode-zen> gradlew.bat test` | 17 / 0 / 0（含新增 SSE 6 + 装配 3） |
+| Python Brain | `agent-brain> .venv/Scripts/python -m pytest -q` | 239 passed |
+| 评测工具 | `agent-brain/.venv/Scripts/python -m pytest tools/tests -q` | 116 passed（含新增 P3-A 计分 8） |
+| 前端 Vitest | `frontend> npm run test` | 946 / 0 / 1（116 files passed） |
+| 前端类型检查 | `frontend> npm run typecheck` | PASS |
+| 前端构建 | `frontend> npm run build` | PASS（`dist/` 产出，离线 vendor） |
+| V94/V95 升级（隔离库） | `MigrationV94V95CompatibilityTest` | PASS（详见 §6.2） |
+| P3-A B+C 层（真实模型） | `backend> gradlew.bat evalP3ALiveProjectAgent` | **BLOCKED**，见 §6.3 |
+| GA 真实模型 | 同 Provider 链路 | **BLOCKED**，见 §6.3 |
+
+> 端到端真实模型验收（GA 与项目 Agent）本轮**未能执行**：Provider 侧拒绝 + 本地
+> 前置缺失，二者均非代码缺陷、均如实记为 `BLOCKED`（§6.3），**不以环境失败冒充通过**。
+
+### 6.2 V94 / V95 迁移验收（隔离、非空数据库）
+
+`backend/src/test/java/com/specagent/migration/MigrationV94V95CompatibilityTest.java`
+在**临时一次性库**上执行：新建库 → 迁移到 V93 → 灌入 2002 行存量数据 + 旧非空 Key
+→ 迁移到 head → 校验 → 删库。**未触碰 `spec_agent`（用户库）与 `spec_agent_test`。**
+
+- V93→head 迁移耗时（2002 行）：**196 ms**；中文 `cjk_tsquery` 查询 p50：**1 ms**。
+- 结构：`search_vector` 仍为 `GENERATED ALWAYS ... STORED`；`idx_retrieval_entries_search_vector`
+  为 GIN；`cjk_bigrams` / `cjk_tsquery` 两个函数均存在。
+- 数据完整性：迁移前后 `retrieval_entries` 行数不变、表集合数量不变；逐行比对
+  内容 / `source_ref` / `source_version` / `embedding`（`[0.1,0.2,0.3]`）/ `embedding_status` 全部保留。
+- ASCII 无回归：`cjk_tsquery('status advice REQ-107')::text` 与
+  `plainto_tsquery('simple', …)::text` **完全相等**。
+- 中文召回：`search_vector @@ cjk_tsquery('终止对话后的正文有什么约束？')` 命中 2001 行；
+  关闭 `enable_seqscan` 后 `EXPLAIN` 计划包含 GIN 索引名（索引可用）。
+- V95：`api_key` / `masked_suffix` 均可空；旧非空 Key 迁移后**逐字节保留**；
+  新的无 Key 免费模型配置可写入并读回 NULL；空字符串 Key 不影响读写。
+
+### 6.3 真实模型验收 BLOCKED（区分原因）
+
+1. **服务端拒绝（Provider policy）**：用产品自身的公开免费档凭据 + CLI 身份头
+   直接请求 Zen：`GET /v1/models` 返回 **200**（目录可用，含 `mimo-v2.6-flash-free`），
+   但 `POST /v1/chat/completions` 返回 **HTTP 403 `FreeTierError`**：
+   `"OpenCode's free tier can only be used from within OpenCode."`
+   —— 这是上游对非 OpenCode 客户端使用免费档的**策略拒绝**，不是认证失败、不是模型不存在、
+   不是网络/代理故障、不是 Java 请求错误，也不是 SSE 解析或 Python 结构输出问题。
+   **本轮不修改客户端身份信息、不规避上游限制**（遵守验收边界）。
+2. **本地前置缺失**：broker 模式 `agent-brain` 未在 `:8100` 运行；`8080` / `18084`
+   无监听；**隔离评测库 `spec_agent_p3a` 不存在**（当前仅有 `spec_agent`、`spec_agent_test` 等）。
+   因此 P3-A live 套件与 GA 真实链路均无法启动。
+   **如实记为 BLOCKED，不伪造为通过。**
+
+### 6.4 历史基线（上一轮 P3-A 报告，保留）
+
+| 套件 | 结果 |
+|---|---|
+| 后端确定性全量 | 2025 tests / 2 failed / 34 skipped（两例失败未在本轮复现，见 §6.1） |
+| P3-A A 层 | 5 tests / 0 fail |
+| 既有检索关卡 | `evalRetrievalFast` BUILD SUCCESSFUL；Recall@K 0.909、MRR 0.95、污染 0 |
+| Python Brain | 239 passed |
+| 评测工具 | 108 passed |
+| 真实 52 条向量评测 | `SPEC_AGENT_RAG_EVALUATION=true` + `SharedRetrievalIntegrationTest` PASS |
+
+`LiveExecutionGuardTest` 8 tests / 0 fail（含 routing-gateway 接受与未知网关拒绝）。
 
 **数据库与用户数据**：真实模型评测在**独立数据库** `spec_agent_p3a` 上运行
 （从 dev 库 schema-only 复制 + 只搬 1 行加密凭据与身份行，`projects=0`），
@@ -244,12 +346,15 @@ plainto_tsquery('simple','终止对话后的正文有什么约束？')
 
 **需要下一步产品优化**
 
-1. **C 层决策质量 0.50，是当前最大瓶颈**：主要形态是"把有信息可查当成必须现在调能力"
-   （`INVOKE_CAPABILITY` 出现在 acceptable 集合之外），与既有 R4 记录的
-   `RUI→IC` 同族根因——**语义表示不足**，而非 eligibility 过窄。
-2. **C 层 payload 缺陷**：`REQUEST_USER_INPUT.questionText` 收到非字符串
-   （`questionText must be a string`）。属结构化 payload 生成，修复方向是契约表达与
-   生成约束，不是放宽 Java 校验。
+1. **C 层决策只有 3 个可计分样本，不能据此断言"当前最大瓶颈"**：唯一可复现的形态是
+   B01 把"有信息可查"当成"必须现在调能力"（`INVOKE_CAPABILITY` 不在 acceptable 集合），
+   与既有 R4 记录的 `RUI→IC` 同族根因——**语义表示不足**，而非 eligibility 过窄。
+   但 3 个样本远不足以排序瓶颈；此前"0.50 是当前最大瓶颈"的表述来自**评测代码的
+   指标混算缺陷**（payloadValidity 被错误地赋成了 acceptableSetAccuracy），已在本轮修正。
+2. **模型输出协议违约（payload 形状）**：B05 的 `REQUEST_USER_INPUT.questionText`
+   收到非字符串（`questionText must be a string`）；同一轮 Brain 侧另有 3 次非 JSON /
+   未知字段违约被 Java 边界折叠成 `AgentBrainUnavailableException`。它们的修复方向是
+   契约表达与生成约束，**不是**放宽 Java 校验，也**不应**被当作网络 INFRA 掩盖。
 3. **A 层剩余 0.90**：残留 3/16 中文改写未召回，且 trigram 通道对中文改写
    实测相似度为 0（字节级阈值对中文基本无效）——这是下一个 A 层候选点，
    但不应在缺乏人工标签前继续"堆算法"。
@@ -264,8 +369,9 @@ plainto_tsquery('simple','终止对话后的正文有什么约束？')
    校准集成绩。**
 6. 本轮 B/C 的 16 个场景与候选标签同为 AI 编写、`PENDING_HUMAN_REVIEW`，
    其中 acceptable family 集合尤其需要人工确认。
-7. `P3A_LAYER_BC_LIVE_BASELINE.json` 的 4 个完成样本量太小，
-   acceptable-set accuracy 的置信区间很宽，不应据此下结论。
+7. `P3A_LAYER_BC_LIVE_BASELINE.json` 的非 INFRA 样本只有 4 个（其中仅 3 个可计分），
+   任何 C 层比率（`2/3`、`3/4`）的置信区间都很宽，**不应据此下任何"整体决策准确率"
+   或瓶颈排序的结论**。
 
 **需要外部环境解决**
 
@@ -318,9 +424,12 @@ gradlew.bat evalP3ALiveProjectAgent
   **表现良好**（无依据 CONFIRMED = 0、未决被误标 CONFIRMED = 0、过度概括 = 0）；
   主要 B 层问题是**输出形状/协议违约**（非 JSON、未知字段、非字符串 payload），
   由 Brain 与 Java 契约 fail-closed 正确拦截。
-- **C 层**：acceptable-set accuracy 0.50，是**当前最大质量瓶颈**，
-  形态是"相关被当成必须"，与既有 R4 记录一致；本轮**未**通过放宽 eligibility
-  或 Java 授权来"提高"它。
+- **C 层**：四个量分开记录——Action acceptable-set accuracy `2/3`（3 个可计分样本）、
+  Payload schema validity `3/4`、Runtime execution success `3/4`、INFRA `4`；
+  **不存在一个"整体决策准确率 0.50"**——该数字是评测代码把 payloadValidity 误当作
+  acceptableSetAccuracy 的产物，已修复。唯一可复现的形态是"相关被当成必须"，
+  与既有 R4 记录一致；本轮**未**通过放宽 eligibility 或 Java 授权来"提高"任何指标，
+  也**不**据 3 个样本断言瓶颈。
 - 未达到的参考门槛（补充检索 Recall@5 ≥85%、Claim Precision ≥90%、
   acceptable-set ≥85%）**不宣称达标**：A 层 0.90 缺人工标签、B 层 Precision 无分母、
   C 层样本量与分数都不足。

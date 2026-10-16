@@ -84,60 +84,143 @@ def normalized(text: str) -> str:
     return "".join(str(text).split()).casefold()
 
 
+def _concept_covered_by_single_claim(concept: dict, texts: list) -> list:
+    """Indices of claims that, ALONE, satisfy every OR-group of one concept.
+
+    Anti-stitching rule (P3-A review): a concept's conditions must not be
+    pieced together from unrelated claims. Two claims that each hit a
+    different keyword do NOT jointly satisfy the concept; only a single claim
+    that contains an alternative of EVERY group does.
+    """
+    hits = []
+    for index, text in enumerate(texts):
+        satisfied = True
+        for group in concept.get("anyOf", []):
+            if not any(str(alt).casefold() in text for alt in group):
+                satisfied = False
+                break
+        if satisfied:
+            hits.append(index)
+    return hits
+
+
+def concept_coverage(scenario: dict, claims: list) -> dict:
+    """Concept coverage / recall over the scenario's required concepts.
+
+    Meaning-preserving metric: coverage counts REQUIRED CONCEPTS, not claims,
+    so a single claim matching several concepts is counted once per concept and
+    a concept described by several claims is still one concept. This is a
+    recall-style measure; it is deliberately NOT called "claim precision".
+    """
+    texts = [normalized(claim.get("text", "")) for claim in claims]
+    covered = []
+    missed = []
+    matched_by = {}
+    for concept in scenario.get("requiredConcepts", []):
+        hits = _concept_covered_by_single_claim(concept, texts)
+        if hits:
+            covered.append(concept["id"])
+            matched_by[concept["id"]] = hits
+        else:
+            missed.append(concept["id"])
+    required = scenario.get("requiredConcepts", [])
+    return {
+        "required": len(required),
+        "covered": covered,
+        "missed": missed,
+        "coverage": (len(covered) / len(required)) if required else None,
+        "matchedBy": matched_by,
+    }
+
+
+def distinct_claims_covering_any_concept(scenario: dict, claims: list) -> int:
+    """Count claims that cover at least one concept, counting each claim at most
+    once. This bounds double counting when one claim covers several concepts.
+    """
+    texts = [normalized(claim.get("text", "")) for claim in claims]
+    matched = set()
+    for concept in scenario.get("requiredConcepts", []):
+        matched.update(_concept_covered_by_single_claim(concept, texts))
+    return len(matched)
+
+
 def score_claims(scenario: dict, claims: list) -> dict:
     """B layer: deterministic semantic conditions over the produced claims.
 
-    Matching is intentionally NOT raw string equality. For each required concept
-    we accept any claim whose normalized text contains ALL of a concept's keyword
-    alternatives (OR-groups), so paraphrase survives. We then check the
-    forbidden over-generalizations and the CONFIRMED-without-grounding rule.
+    Matching is intentionally NOT raw string equality: a concept is covered by
+    a claim that contains an alternative of every one of the concept's
+    OR-groups, so paraphrase survives while keyword stitching across unrelated
+    claims is rejected.
+
+    Scoring separation (P3-A review):
+      * `conceptCoverage` is a recall-style concept metric (see above).
+      * Claim precision is NOT reported: computing it needs human claim-level
+        labels (which claims are on-topic). `matchedRequired / claims` only
+        coincidentally looks like precision — one claim can satisfy several
+        concepts and several claims can describe the same concept — so the
+        driver refuses to fabricate it and reports
+        `claimPrecision = NOT_MEASURED` instead.
     """
     texts = [normalized(claim.get("text", "")) for claim in claims]
     statuses = [str(claim.get("status", "")) for claim in claims]
     kinds = [str(claim.get("kind", "")) for claim in claims]
 
-    def concept_present(concept: dict) -> bool:
-        # every OR-group must be satisfied by at least one claim
-        for group in concept["anyOf"]:
-            if not any(all(alt.casefold() in text for alt in group) for text in texts):
-                return False
-        return True
-
-    required = scenario.get("requiredConcepts", [])
-    matched_required = [c for c in required if concept_present(c)]
-    missed_required = [c["id"] for c in required if not concept_present(c)]
+    coverage = concept_coverage(scenario, claims)
 
     forbidden = scenario.get("forbiddenOvergeneralizations", [])
     violations = []
     for bad in forbidden:
-        for text in texts:
-            if all(alt.casefold() in text for alt in bad["allOf"]):
-                violations.append({"id": bad["id"], "claim": text})
-                break
+        # A claim that explicitly revokes the superseded option is the correct
+        # answer, not an over-generalization: the corpus declares `unlessNegated`
+        # for exactly this case (mirrors the Java live-suite oracle).
+        unless_negated = [str(alt).casefold() for alt in bad.get("unlessNegated", [])]
+        for index, text in enumerate(texts):
+            if not all(str(alt).casefold() in text for alt in bad["allOf"]):
+                continue
+            if any(marker in text for marker in unless_negated):
+                continue
+            violations.append({"id": bad["id"], "claim": claims[index].get("text", "")})
+            break
 
-    # no-basis CONFIRMED: a CONFIRMED claim is unsupported if it has no source
-    # refs at all. This is the "don't mark unknown as CONFIRMED" boundary.
+    # no-basis CONFIRMED: a CONFIRMED claim is unsupported unless it carries the
+    # runtime-owned provenance it was persisted with. The persisted claim shape
+    # is {sourceNodeId, sourceAnswerId} (RequirementClaimView / Claim), so the
+    # check must look at those fields — not a non-existent `sourceRefs`.
     ungrounded_confirmed = [
         claims[index].get("text", "")
         for index, status in enumerate(statuses)
-        if status == "CONFIRMED" and not claims[index].get("sourceRefs")
+        if status == "CONFIRMED"
+        and not (claims[index].get("sourceNodeId") and claims[index].get("sourceAnswerId"))
     ]
 
-    # the CRITICAL boundary from the brief: content the user left undecided must
-    # not be asserted as settled fact.
-    unknown_asserted_confirmed = []
-    for marker in scenario.get("mustStayUnresolved", []):
-        for index, text in enumerate(texts):
-            if marker.casefold() in text and statuses[index] == "CONFIRMED":
-                unknown_asserted_confirmed.append(claims[index].get("text", ""))
+    # The CRITICAL boundary from the brief: content the user left undecided must
+    # not be asserted as settled fact. The corpus declares these as
+    # `mustNotSettle:[{id, patterns}]`; each pattern is a precise "settling"
+    # phrase, not a topic keyword. A claim is counted at most once even when it
+    # matches several settling patterns.
+    settle_patterns = [
+        str(marker).casefold()
+        for settled in scenario.get("mustNotSettle", [])
+        for marker in settled.get("patterns", [])
+    ]
+    unknown_asserted_confirmed = [
+        claims[index].get("text", "")
+        for index, status in enumerate(statuses)
+        if status == "CONFIRMED"
+        and any(marker in texts[index] for marker in settle_patterns)
+    ]
 
+    required = scenario.get("requiredConcepts", [])
     return {
         "claimCount": len(claims),
         "requiredConcepts": len(required),
-        "matchedRequired": len(matched_required),
-        "missedRequired": missed_required,
-        "precision": (len(matched_required) / len(claims)) if claims else None,
-        "recall": (len(matched_required) / len(required)) if required else None,
+        "coveredConcepts": coverage["covered"],
+        "missedRequired": coverage["missed"],
+        "conceptCoverage": coverage["coverage"],
+        "claimsCoveringAnyConcept": distinct_claims_covering_any_concept(scenario, claims),
+        # Honest null: a real Claim precision needs human claim-level labels.
+        "claimPrecision": None,
+        "claimPrecisionStatus": "NOT_MEASURED_REQUIRES_HUMAN_CLAIM_LEVEL_LABELS",
         "forbiddenViolations": violations,
         "ungroundedConfirmed": ungrounded_confirmed,
         "unknownAssertedConfirmed": unknown_asserted_confirmed,
@@ -241,19 +324,34 @@ def main() -> int:
             record["claims"] = [
                 {"kind": c.get("kind"), "text": c.get("text"),
                  "status": c.get("status"),
-                 "hasSourceRefs": bool(c.get("sourceRefs"))}
+                 "sourceNodeId": c.get("sourceNodeId"),
+                 "sourceAnswerId": c.get("sourceAnswerId")}
                 for c in claims
             ]
             record["bLayer"] = score_claims(scenario, claims)
 
-            # 4) C layer: acceptable-set accuracy against the declared oracle
+            # 4) C layer: acceptable-set accuracy against the declared oracle.
+            # Kept strictly separate from payload validity: an action in the
+            # acceptable set with an invalid payload is NOT payload-valid, and
+            # an action outside the set with a valid payload is NOT
+            # payload-invalid.
             acceptable = set(scenario["acceptableActions"])
             actual = record["actualPrimaryAction"]
             record["acceptableActions"] = sorted(acceptable)
+            reason = str(record.get("failureReason") or "").casefold()
+            if actual:
+                # A proposal/action was produced, so Java's fail-closed contract
+                # validation accepted the DECISION payload.
+                payload_valid = True
+            elif ("contract" in reason or "schema" in reason
+                  or "not valid json" in reason or "extra inputs" in reason):
+                payload_valid = False
+            else:
+                payload_valid = None  # runtime never reached payload validation
             record["cLayer"] = {
-                "acceptableSetAccuracy": (actual in acceptable) if actual else False,
-                "actionCorrectNotEligible": None,   # filled by the mask probe below
-                "payloadValid": final.get("status") == "completed",
+                "acceptableSetAccuracy": (actual in acceptable) if actual else None,
+                "payloadValid": payload_valid,
+                "executionSuccess": final.get("status") == "completed",
             }
             record["outcome"] = "COMPLETED"
             observations.append(record)
@@ -261,12 +359,12 @@ def main() -> int:
                   f"claims={len(claims)} latency={latency_ms}ms", flush=True)
 
     completed = [o for o in observations if o.get("outcome") == "COMPLETED"]
-    b_recall = [o["bLayer"]["recall"] for o in completed
-                if o["bLayer"]["recall"] is not None]
-    b_precision = [o["bLayer"]["precision"] for o in completed
-                   if o["bLayer"]["precision"] is not None]
-    action_accuracy = [1.0 if o["cLayer"]["acceptableSetAccuracy"] else 0.0
-                       for o in completed]
+    b_coverage = [o["bLayer"]["conceptCoverage"] for o in completed
+                  if o["bLayer"]["conceptCoverage"] is not None]
+    action_measured = [o for o in completed
+                       if o["cLayer"]["acceptableSetAccuracy"] is not None]
+    payload_measured = [o for o in completed
+                        if o["cLayer"]["payloadValid"] is not None]
     latencies = sorted(o["latencyMs"] for o in completed)
 
     def mean(values):
@@ -288,8 +386,9 @@ def main() -> int:
         "completed": len(completed),
         "infraFailed": len(infra_failures),
         "bLayer": {
-            "claimRecall": mean(b_recall),
-            "claimPrecision": mean(b_precision),
+            "conceptCoverage": mean(b_coverage),
+            "claimPrecision": None,
+            "claimPrecisionStatus": "NOT_MEASURED_REQUIRES_HUMAN_CLAIM_LEVEL_LABELS",
             "forbiddenOvergeneralizations": sum(
                 len(o["bLayer"]["forbiddenViolations"]) for o in completed),
             "ungroundedConfirmed": sum(
@@ -298,9 +397,17 @@ def main() -> int:
                 len(o["bLayer"]["unknownAssertedConfirmed"]) for o in completed),
         },
         "cLayer": {
-            "acceptableSetAccuracy": mean(action_accuracy),
+            "acceptableSetAccuracy": mean(
+                [1.0 if o["cLayer"]["acceptableSetAccuracy"] else 0.0
+                 for o in action_measured]),
+            "acceptableSetMeasured": len(action_measured),
+            "acceptableSetNotMeasured": len(completed) - len(action_measured),
             "payloadValidity": mean(
-                [1.0 if o["cLayer"]["payloadValid"] else 0.0 for o in completed]),
+                [1.0 if o["cLayer"]["payloadValid"] else 0.0 for o in payload_measured]),
+            "payloadValidityMeasured": len(payload_measured),
+            "payloadValidityNotMeasured": len(completed) - len(payload_measured),
+            "executionSuccessRate": mean(
+                [1.0 if o["cLayer"]["executionSuccess"] else 0.0 for o in completed]),
         },
         "latencyMs": {
             "p50": latencies[len(latencies) // 2] if latencies else None,
@@ -322,13 +429,17 @@ def main() -> int:
                            encoding="utf-8")
     print(f"\nP3-A B/C baseline written: {output_path}")
     print(f"completed={report['completed']} infra={report['infraFailed']}")
-    print(f"B claimRecall={report['bLayer']['claimRecall']} "
-          f"claimPrecision={report['bLayer']['claimPrecision']}")
+    print(f"B conceptCoverage={report['bLayer']['conceptCoverage']} "
+          f"claimPrecision={report['bLayer']['claimPrecision']} "
+          f"({report['bLayer']['claimPrecisionStatus']})")
     print(f"B forbidden={report['bLayer']['forbiddenOvergeneralizations']} "
           f"ungroundedConfirmed={report['bLayer']['ungroundedConfirmed']} "
           f"unknownAssertedConfirmed={report['bLayer']['unknownAssertedConfirmed']}")
     print(f"C acceptableSetAccuracy={report['cLayer']['acceptableSetAccuracy']} "
-          f"payloadValidity={report['cLayer']['payloadValidity']}")
+          f"(n={report['cLayer']['acceptableSetMeasured']}) "
+          f"payloadValidity={report['cLayer']['payloadValidity']} "
+          f"(n={report['cLayer']['payloadValidityMeasured']}) "
+          f"executionSuccess={report['cLayer']['executionSuccessRate']}")
     print(f"latency p50={report['latencyMs']['p50']} p95={report['latencyMs']['p95']}")
     return 0
 
