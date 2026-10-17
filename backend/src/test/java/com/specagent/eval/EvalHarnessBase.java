@@ -7,6 +7,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -17,6 +19,14 @@ import java.util.UUID;
  *
  * 清理是手动的(不用 {@code @Transactional}),因为运行失败标记在自己
  * 的事务中提交——与既有的全链路集成测试保持一致。
+ *
+ * 清理范围必须覆盖**一个测试方法里跑过的每一个 project**,而不是最后一个:
+ * 语料型用例(一次方法跑几十个场景)会为每个场景建一个新 project,只清最后一个
+ * 会把其余 project 的非终态 {@code CONTINUE_CYCLE} run 留在库里。这些行会被
+ * {@code AgentRunRepository.claimNextContinueRun} 以**全库范围**领到
+ * ({@code ORDER BY created_at LIMIT 1}),从而在同库复跑时把续跑套件
+ * ({@code ContinuationChainIntegrationTest} / {@code AgentRunLoopLinkageTest})
+ * 引到别的 run 上——这与 P3-B 之前记录的那 17 例失败同根。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -32,11 +42,15 @@ public abstract class EvalHarnessBase {
     @Autowired
     protected JdbcTemplate jdbcTemplate;
 
-    private UUID activeProjectId;
+    /** 本测试方法里跑过的所有 project,方法结束统一清理。 */
+    private final List<UUID> touchedProjectIds = new ArrayList<>();
 
     protected ObservationEnvelope runScenario(ScenarioDefinition scenario, VariantSpec variant) {
         ObservationEnvelope observation = scenarioRunner.run(scenario, variant);
-        activeProjectId = scenarioRunner.lastProjectId();
+        UUID projectId = scenarioRunner.lastProjectId();
+        if (projectId != null) {
+            touchedProjectIds.add(projectId);
+        }
         return observation;
     }
 
@@ -62,11 +76,10 @@ public abstract class EvalHarnessBase {
 
     @AfterEach
     void cleanUpEvalProject() {
-        if (activeProjectId == null) {
-            return;
+        for (UUID projectId : touchedProjectIds) {
+            cleanUpProject(projectId);
         }
-        cleanUpProject(activeProjectId);
-        activeProjectId = null;
+        touchedProjectIds.clear();
     }
 
     /** 供行为保持类测试清理中间对比运行。 */

@@ -28,8 +28,13 @@ Agent 的桥接，未每轮强制额外一次模型调用，未改动 Zen 共享
 | 需求状态 | `RequirementStateBuilder` 回放 AnswerPatch（派生物，非事实源） | [RequirementStateBuilder.java](file:///e:/project/spec-agent/backend/src/main/java/com/specagent/workspace/context/RequirementStateBuilder.java) |
 
 **关键配置事实（决定基线含义）**：
-`spec.agent.action-eligibility.mode` 默认 **shadow**（测试档第 62-65 行、生产档默认值同）
-——因此 eligibility 门禁在默认安装下**只记录裁决、不改变行为**；
+`spec.agent.action-eligibility.mode` 在**评测所用的测试档**默认为 **shadow**
+（`backend/src/test/resources/application-test.yml` 第 62–65 行），因此本报告的
+全部数字都在 shadow 下测得——该档位只记录裁决、不改变行为。但**生产/默认安装档
+（`backend/src/main/resources/application.yml` 第 87–88 行）默认已是 `enforced`**：
+即 eligibility 否决在默认安装下**会真正改变行为**。本轮**未改动任何档位的默认值**
+（测试档仍 shadow，生产档仍 enforced），也未把测试档切到 enforced——只有
+`P3BEnforcedCapabilityNecessityTest` 用 `@TestPropertySource` 显式 opt-in。
 `ActionEligibilityEvaluator` 是刻意最小的纯函数，只实现两条件：WAIT 恒以
 `NO_PENDING_DEPENDENCY` 拒绝、`availableCapabilities` 为空时拒绝 IC。
 
@@ -169,9 +174,12 @@ Python 侧 Payload/protocol 回放（`tools/p3b/p3b_decision_replay.py`，11 个
 据此按语料结构**推导**（非实测，明确标注）：全量语料的 10 次持久化能力调用在 enforced
 档位下会降为 **6 次**（C06/C09 的 4 次注定失败的调用被拦，C07 的 2 次参数齐全、门禁本就允许）。
 
-**必须如实说明的一点**：默认档位是 shadow，因此这处修复在**默认安装下只改变门禁裁决**
-（可观测、可审计），**不改变**默认行为；行为层面的收益在 enforced 档位下成立
-（配置项未被本轮改动）。这一点已在报告与测试注释中写明，未用任何数字掩盖。
+**必须如实说明的一点**：**评测所用的测试档**默认是 shadow，因此上表的前后对照里，
+这处修复只改变门禁裁决（可观测、可审计），**不改变该档位下的实际行为**；行为层面的
+收益在 enforced 档位下成立。而**生产/默认安装档的默认值本身就是 `enforced`**
+（`application.yml:88`），所以这处修复在**默认安装下会实际改变行为**（缺参的
+`INVOKE_CAPABILITY` 提案在 policy/executor 之前即被 fail-closed 拒绝）。本轮
+**未改动任何档位默认值**，也未用任何数字掩盖这一点。
 
 ---
 
@@ -182,11 +190,16 @@ Python 侧 Payload/protocol 回放（`tools/p3b/p3b_decision_replay.py`，11 个
 * `tools/tests`：**116 → 133 passed**（新增 10 条 P3-B 协议回放测试 + 7 条语料守卫），
   既有 R4 harness / P3-A 计分测试**全部继续通过**，无一条被删除、跳过或放宽。
 * `evalBFast`：**102 / 0 / 0 → 106 / 0 / 0**（新增的 4 条全部是本轮 P3-B 测试）。
-* Java：`ActionEligibilityCharacterizationTest` 14 → **19 passed**（新增 5 条刻画用例）；
+* Java：`ActionEligibilityCharacterizationTest` 14 → **19 passed**（P3-B 新增 5 条刻画用例），
+  本轮审查再补 3 条正反例（非字符串合法实值 / 显式 null / 可选参数缺失）后为 **22 passed**；
   `P3ADecisionScoringTest` / `P3AClaimGroundingTest` 未改动且通过。
-* `testNonLive`：**2064 tests / 17 failed / 34 skipped**；这 17 例在基线 `c5e695e` 上
-  **同样失败（用例名逐个相同）**，根因是共享隔离测试库残留的非终态续跑行，
-  与本轮改动无关（证据见 §8）。其余 2013 例全部通过。
+* `testNonLive`：在**本轮新建的全新独立库** `spec_agent_p3b_clean_20261017` 上为
+  **2067 tests / 0 failed / 34 skipped**（2033 passed；34 例为既有 skipped；2067 =
+  修复前的 2064 + 本轮新增的 3 条刻画用例）。此前记录的 17 例失败**在干净库中完全消失**，
+  因此被证实为**测试库状态污染**（确切机制见 §8），不是代码回归。注意：**同一个库复跑**
+  会因评估语料的残留再次触发同类失败——本轮已做最小**测试隔离修复**（`EvalHarnessBase`
+  改为清理一个测试方法内跑过的**全部** project）；修复后**同库连续两次** `--rerun`
+  全量运行均全绿（BUILD SUCCESSFUL，0 failed）。
 * 冻结物（`contracts/fixtures/*`、`docs/v2/evidence/*`、语料 JSON）**一律未改写**。
 * `INVOKE_CAPABILITY ↔ REQUEST_USER_INPUT` 的迁移方向：本轮修复**只影响 IC 自身**，
   不可能把错误迁移到 RUI 方向；证据是 `eligibilityFalseNegatives 0/18` 与
@@ -198,34 +211,51 @@ Python 侧 Payload/protocol 回放（`tools/p3b/p3b_decision_replay.py`，11 个
 
 | 套件 | 命令 | 结果 |
 |---|---|---|
-| 后端确定性全量 | `backend> gradlew.bat testNonLive` | **2064 / 17 failed / 34 skipped**，其中 17 例在基线 `c5e695e`（把我的改动 `git stash` 掉后）**完全同样地失败**（同一批用例名），且根因是隔离测试库里残留的非终态续跑行 —— **非本轮回归**，见下方证据 |
+| 后端确定性全量 | `backend> gradlew.bat testNonLive` | 见下方 §8.1：**本轮在全新独立库上为 2067 / 0 failed / 34 skipped**（修复前为 2064 total）；此前记录的 17 例失败被证实为测试库状态污染（机制已定位），非本轮代码回归 |
 | 既有 Agent 评测 | `backend> gradlew.bat evalBFast` | **106 / 0 / 0**（21 suites；基线 102 tests / 19 suites，新增 4 tests / 2 suites，均为 P3-B） |
 | P3-B 决策基线（Java） | `gradlew.bat test --tests com.specagent.eval.P3BDecisionQualityTest` | **1 / 0 / 0** |
 | P3-B 强制档位行为证据 | `--tests com.specagent.eval.P3BEnforcedCapabilityNecessityTest` | **3 / 0 / 0** |
-| eligibility 刻画 | `--tests com.specagent.agent.action.ActionEligibilityCharacterizationTest` | **19 / 0 / 0**（基线 14） |
+| eligibility 刻画 | `--tests com.specagent.agent.action.ActionEligibilityCharacterizationTest` | **22 / 0 / 0**（基线 14；P3-B 19；本轮审查 +3 正反例） |
 | P3-A 计分 | `--tests com.specagent.eval.P3ADecisionScoringTest` | 通过（未改动） |
 | Python Brain | `agent-brain> .venv/Scripts/python -m pytest -q` | **239 passed**（未改动 Python 生产代码） |
 | 评测工具 | `.venv/Scripts/python -m pytest tools/tests -q` | **133 passed**（基线 116；新增 10 回放 + 7 语料守卫） |
 | P3-B 协议回放 | `python tools/p3b/p3b_decision_replay.py` | 11/11 分类符合声明；无契约违约落入 INFRA |
 | 真实模型（项目 Agent / GA） | `evalP3ALiveProjectAgent` | **BLOCKED**（429 配额限流 + 本地 broker 缺失），未伪造为通过 |
 
-**那 17 例既有失败的证据链（不做任何数据库清空）**：
+### 8.1 那 17 例既有失败的证据链（本轮用**全新独立数据库**复核，不做任何清空既有库）
 
-1. 把本轮全部改动 `git stash` 后，在**基线 `c5e695e`** 上单独重跑那两个套件：
-   `ContinuationChainIntegrationTest` + `AgentRunLoopLinkageTest` → **29 tests completed, 17 failed**，
-   用例名与本轮 17 例**逐个相同**。
-2. 根因是**共享隔离测试库 `spec_agent_test` 里残留的非终态续跑行**：
-   `SELECT status, trigger_type, count(*) FROM agent_runs` 显示
-   `created / continue_cycle = 40`、`running / continue_cycle = 15`（共 695 行）。
-   `claimNextContinue()` 因而先领到**别的** run（失败信息即
-   `expected <本用例 run> but was <另一 run>`），续跑子 run 也就不会被创建
-   （`findChildByParentRunId(...).orElseThrow()` → `NoSuchElementException`）。
-3. 因此这 17 例是**环境/测试库卫生问题**，不是本轮代码回归。
-   本轮**未**对该测试库做任何清空或修复（避免破坏引用完整性），如实记录。
-   **用户开发库 `spec_agent` 与本轮任何写入无关。**
+1. 本轮新建**全新且独立的一次性测试库** `spec_agent_p3b_clean_20261017`，与用户开发库
+   `spec_agent`、既有 `spec_agent_test`、`spec_agent_p3a` 明显不同；测试 JVM 通过
+   `SPRING_DATASOURCE_URL` 指向它，并已核实迁移（V95）与全部写入都落在该库。
+   在其上跑完整 `testNonLive`：**2064 tests / 0 failed / 34 skipped** ——
+   **17 例失败在干净库中完全消失**，据此确认为**测试库状态污染**，不是代码回归。
+2. **机制已定位到具体原因**，而不是笼统的"环境问题"：
+   * `AgentRunRepository.claimNextContinueRun` 以**全库范围**领取最老的一条 `created`
+     的 `CONTINUE_CYCLE` run（`ORDER BY created_at LIMIT 1`，**无 project 作用域**）。
+   * 评估套件共享基座 `EvalHarnessBase` 过去只清理**一个测试方法里的最后一个 project**；
+     语料型用例（一次方法跑几十个场景，每个场景一个新 project）会把其余 project 的
+     非终态 `CONTINUE_CYCLE` 行留在库里。
+   * 这些残留行随后被续跑套件（`ContinuationChainIntegrationTest` /
+     `AgentRunLoopLinkageTest`）的 `claimNextContinue()` 领到 → `claimNextContinue()`
+     返回别的 run（失败信息即 `expected <本用例 run> but was <另一 run>`），
+     续跑子 run 不再被创建（`findChildByParentRunId(...).orElseThrow()` →
+     `NoSuchElementException`）。
+3. 复现实验（全部在本轮新建库上逐次 drop/recreate）：
+   * 单独跑这两个续跑套件 → **通过**（BUILD SUCCESSFUL）；
+   * 单独跑 `com.specagent.agent.runtime.*` 整个包 → **通过**；
+   * 单独跑 `com.specagent.eval.*` 后查询该库 → 留下 **12 条 `created`
+     CONTINUE_CYCLE** 残留行；其中**仅** `com.specagent.eval.P3B*`（本轮新增评测）
+     就产生同样的 12 条；
+   * **同一个库复跑** testNonLive → 续跑套件再次失败（本轮观测 14 例）。
+   即：干净库首次运行全绿，**同库复跑**才失败；残留正是评估语料（**包括本轮新增的
+   P3-B 语料**）写下的。
+4. 因此本轮做了一处最小**测试隔离修复**（属允许范围中的"测试数据隔离缺陷"）：
+   `EvalHarnessBase` 改为在测试方法结束时清理该方法内跑过的**全部** project
+   （此前只清最后一个）。这是**纯测试基座清理**：不改任何生产代码、不改任何断言、
+   不删除/跳过任何测试。修复后**同库复跑** `testNonLive` 亦为全绿。
 
-除这 17 例之外，`testNonLive` 的其余 **2013 例全部通过**，包含 P3-A / 路线 / Graph /
-AnswerPatch / 续跑 / 幂等 / lease-epoch-fence 相关套件。
+**用户开发库 `spec_agent` 与本轮任何写入无关**；本轮**未**清空、重建或修改
+`spec_agent`、`spec_agent_test` 或其他既有库（对既有库仅做只读查询）。
 
 **本轮未改动**：Global Assistant、Zen 共享库、私有 Maven 发布、模型协议、前端、数据库迁移。
 
@@ -247,8 +277,10 @@ AnswerPatch / 续跑 / 幂等 / lease-epoch-fence 相关套件。
 
 **遗留风险**
 
-1. **默认 shadow 档位**：修复在默认安装下只改变门禁裁决，不改变行为；生产行为收益需显式
-   切到 `enforced`（**本轮未切**）。
+1. **档位事实（必须按实际值理解）**：评测所用的**测试档**默认 `shadow`（该档位下修复
+   只改变门禁裁决、不改变行为）；而**生产/默认安装档默认已是 `enforced`**
+   （`application.yml:88`），因此该修复的行为收益在**默认安装下即为生效状态**。
+   本轮**未改动任何档位默认值**。
 2. **enforced 档位下否决会 fail-closed 结束本次 run**（而非让模型另选动作），与既有
    `ACTION_INELIGIBLE` 语义一致，但需在产品侧确认这一取舍。
 3. **`WAIT` 表示缺失**是长期已知缺口（C16）：只要 `agent-input.v2` 不承载"待处理依赖"，
@@ -265,10 +297,14 @@ AnswerPatch / 续跑 / 幂等 / lease-epoch-fence 相关套件。
 **Git**
 
 * 基线 `c5e695e`，工作树本轮开始时干净（`git status --short` 为空）。
-* 本轮改动分两个本地提交：**（A）生产修复 + 其单元测试**、
-  **（B）P3-B 评测基线、语料、协议回放与本文档**——诊断数据与业务代码不混为一个提交。
+* 本轮改动分**三个**本地提交：**（A）生产修复 + 其单元测试**、
+  **（B）P3-B 评测基线、语料、协议回放与本文档**、
+  **（C）审查追加的最小修复（测试隔离 + 补正反例 + 本文档校正）**——
+  诊断数据、业务代码与审查修复不混为一个提交。
 * 不 push、不 force push、不重写历史；不提交密钥或用户数据；不修改任何冻结历史证据。
-* 用户数据库未被清空或重建（仅使用隔离测试库 `spec_agent_test`）。
+* 用户开发库 `spec_agent` 未被清空或重建；本轮全部回归只在**本轮新建的隔离库**
+  `spec_agent_p3b_clean_20261017` 上执行（验收后删除该一次性库），对既有
+  `spec_agent_test` 等库仅做只读查询。
 
 ---
 
@@ -287,8 +323,13 @@ AnswerPatch / 续跑 / 幂等 / lease-epoch-fence 相关套件。
 3. **是否影响原有 eligibility、policy、Graph 安全边界？**
    不改 policy、不改执行器、不改图不变量、不放宽任何既有校验；只在 eligibility 校验器
    上**新增**一条 fail-closed 必要条件，且只在描述符自己声明了必填字段时生效。
-   默认 shadow 档位下生产行为完全不变。
+   在评测所用**测试档（默认 shadow）**下行为完全不变；**生产/默认安装档默认是
+   `enforced`**，该新增条件在该档位下会实际生效（缺参调用被 fail-closed 拒绝）——
+   这是有意的确定性收益，不是安全边界放宽。
 4. **是否值得推送到主分支？**
-   值得：改动最小、有界、可复跑、有前后对照、无回归、不增加模型调用、不改变默认行为，
-   并把两处不一致的"必填参数"事实收敛为一处。
-   **建议同时把"是否切到 enforced 档位"作为独立决策**（本轮未做）。
+   值得：改动最小、有界、可复跑、有前后对照、无回归、不增加模型调用，并把两处不一致的
+   "必填参数"事实收敛为一处；**生产/默认安装档本身已是 `enforced`**，因此该收益在默认
+   安装下直接生效（**本轮未改动任何档位默认值**）。
+   **是否需要调整档位默认值应作为独立决策**：本轮未做，且现状（生产 `enforced`、
+   测试 `shadow`）保持不变。若产品希望默认安装回到"只观测不执行"的保守形态，那是
+   另一项独立变更，不应藏在本轮修复里。

@@ -339,6 +339,68 @@ class ActionEligibilityCharacterizationTest {
                 .doesNotThrowAnyException();
     }
 
+    @Test
+    void allowsLegitimateNonStringRequiredArgumentsIncludingZeroAndFalse() throws Exception {
+        // "有实值"不等于"是字符串":数字 0、布尔 false、非空数组、合法对象都是
+        // 合法实值,绝不能被当成"参数缺失"。否则合规调用会被误拒(新的 false negative)。
+        AgentRequestEnvelope request = requestWithCapability(typedRequiredCapability());
+        ActionProposal proposal = proposal(request, "INVOKE_CAPABILITY", Map.of(
+                "capabilityId", "eval.decoy.typed-required",
+                "arguments", Map.of(
+                        "count", 0,
+                        "flag", false,
+                        "items", List.of("a"),
+                        "payload", Map.of("k", "v"))));
+
+        ActionEligibility eligibility = evaluator.evaluate(request);
+        assertThatCode(() -> validator.validateSelection(request, proposal, eligibility))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void allowsMissingOptionalArgumentWhileTheRequiredArgumentIsPresent() throws Exception {
+        AgentRequestEnvelope request = requestWithCapability(typedRequiredCapability());
+        ActionProposal proposal = proposal(request, "INVOKE_CAPABILITY", Map.of(
+                "capabilityId", "eval.decoy.typed-required",
+                "arguments", Map.of(
+                        "count", 1,
+                        "flag", true,
+                        "items", List.of("a"),
+                        "payload", Map.of())));
+
+        ActionEligibility eligibility = evaluator.evaluate(request);
+        assertThatCode(() -> validator.validateSelection(request, proposal, eligibility))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsCapabilityInvocationWhoseRequiredArgumentIsExplicitlyNull() throws Exception {
+        // key 存在但值为 null:与"没有给出"等价,必须 fail-closed。
+        // (null 只能经由可变 map 表达——Map.of 拒绝 null 值。)
+        AgentRequestEnvelope request = requestWithCapability(typedRequiredCapability());
+        Map<String, Object> arguments = new java.util.HashMap<>();
+        arguments.put("count", null);
+        arguments.put("flag", true);
+        arguments.put("items", List.of("a"));
+        arguments.put("payload", Map.of());
+        ActionProposal proposal = proposal(request, "INVOKE_CAPABILITY", Map.of(
+                "capabilityId", "eval.decoy.typed-required",
+                "arguments", arguments));
+
+        assertIneligible(request, proposal, "MISSING_REQUIRED_CAPABILITY_ARGUMENT");
+    }
+
+    private CapabilityDescriptor typedRequiredCapability() {
+        // 紧凑形态里声明了四种类型的必填字段 + 一个可选字段(note)。
+        return new CapabilityDescriptor("eval.decoy.typed-required", "1", "probe",
+                Map.of("count", Map.of("type", "integer", "required", true),
+                        "flag", Map.of("type", "boolean", "required", true),
+                        "items", Map.of("type", "array", "required", true),
+                        "payload", Map.of("type", "object", "required", true),
+                        "note", Map.of("type", "string")),
+                true, "NONE", List.of());
+    }
+
     private CapabilityDescriptor compactRequiredQueryCapability() {
         return new CapabilityDescriptor("memory.search", "1", "search memory",
                 Map.of("query", Map.of("type", "string", "required", true),
