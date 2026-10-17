@@ -1,14 +1,13 @@
 package com.specagent.eval;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -42,16 +41,15 @@ public abstract class EvalHarnessBase {
     @Autowired
     protected JdbcTemplate jdbcTemplate;
 
-    /** 本测试方法里跑过的所有 project,方法结束统一清理。 */
-    private final List<UUID> touchedProjectIds = new ArrayList<>();
+    /** 只登记 ScenarioRunner 本次创建边界实际返回的项目。 */
+    private final EvalProjectCleanup projectCleanup = new EvalProjectCleanup();
+
+    @RegisterExtension
+    protected final EvalCleanupFailureHandler cleanupOnTestFailure =
+            new EvalCleanupFailureHandler(this::cleanupProjectsAfterFailure);
 
     protected ObservationEnvelope runScenario(ScenarioDefinition scenario, VariantSpec variant) {
-        ObservationEnvelope observation = scenarioRunner.run(scenario, variant);
-        UUID projectId = scenarioRunner.lastProjectId();
-        if (projectId != null) {
-            touchedProjectIds.add(projectId);
-        }
-        return observation;
+        return scenarioRunner.run(scenario, variant, projectCleanup::register);
     }
 
     protected void assertPasses(ScenarioDefinition scenario, VariantSpec variant) {
@@ -76,10 +74,11 @@ public abstract class EvalHarnessBase {
 
     @AfterEach
     void cleanUpEvalProject() {
-        for (UUID projectId : touchedProjectIds) {
-            cleanUpProject(projectId);
-        }
-        touchedProjectIds.clear();
+        projectCleanup.cleanupAll(this::cleanUpProject, null);
+    }
+
+    private void cleanupProjectsAfterFailure(Throwable testFailure) {
+        projectCleanup.cleanupAll(this::cleanUpProject, testFailure);
     }
 
     /** 供行为保持类测试清理中间对比运行。 */

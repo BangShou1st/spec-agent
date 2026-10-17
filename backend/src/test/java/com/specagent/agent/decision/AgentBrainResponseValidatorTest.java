@@ -1,12 +1,21 @@
 package com.specagent.agent.decision;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.specagent.agent.action.ActionExecutionContext;
+import com.specagent.agent.action.ActionResult;
+import com.specagent.agent.action.AgentGraphMutationService;
+import com.specagent.agent.action.ProposalActionExecutor;
 import com.specagent.agent.protocol.AgentContracts;
 import com.specagent.agent.protocol.AgentContractException;
 import com.specagent.agent.protocol.AgentInputSnapshot;
+import com.specagent.agent.protocol.ActionProposal;
 import com.specagent.agent.protocol.AgentRequestEnvelope;
 import com.specagent.agent.protocol.AgentResponseEnvelope;
 import com.specagent.agent.protocol.ClaimView;
 import com.specagent.agent.protocol.ObservationView;
+import com.specagent.workspace.node.Node;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -17,8 +26,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * 文件名:AgentBrainResponseValidatorTest.java
@@ -69,6 +86,87 @@ class AgentBrainResponseValidatorTest {
                         AgentResponseEnvelope.class);
         assertThatCode(() -> AgentBrainResponseValidator.validateDecision(request, response))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void missingCreateNodeKindDefaultsToInteractionAtWireAndExecutorBoundaries() throws Exception {
+        JsonNode boundary = boundaryCase("CREATE_NODE_MISSING_KIND_DEFAULTS_TO_INTERACTION");
+        assertThat(boundary.path("wireContract").asText()).isEqualTo("ACCEPTED");
+        assertThat(boundary.path("constraintOwners").size()).isEqualTo(2);
+        assertThat(boundary.path("constraintOwners").get(0).asText()).isEqualTo("WIRE_CONTRACT");
+        assertThat(boundary.path("constraintOwners").get(1).asText()).isEqualTo("EXECUTOR");
+        AgentRequestEnvelope request = request();
+        AgentResponseEnvelope response = withBoundaryPayload(
+                AgentContracts.read(fixture("decision-response-valid.json"),
+                        AgentResponseEnvelope.class), boundary);
+
+        assertThatCode(() -> AgentBrainResponseValidator.validateDecision(request, response))
+                .doesNotThrowAnyException();
+
+        AgentGraphMutationService graphMutations = mock(AgentGraphMutationService.class);
+        UUID projectId = UUID.randomUUID();
+        Node created = new Node(UUID.randomUUID(), projectId, null, null, null,
+                "哪一种情况应优先处理？", "补充未决条件", java.util.List.of(), true,
+                java.time.Instant.now());
+        when(graphMutations.executeNodeCreation(any(UUID.class), isNull(), isNull(),
+                any(AgentGraphMutationService.NodeCreation.class), anyString()))
+                .thenReturn(created);
+        ProposalActionExecutor executor = new ProposalActionExecutor(null, graphMutations);
+        ActionResult result = executor.execute(response.actionProposal(),
+                new ActionExecutionContext(null, projectId, null, null, null, null, null));
+
+        assertThat(result.producedNodeId()).isEqualTo(created.id());
+        org.mockito.ArgumentCaptor<AgentGraphMutationService.NodeCreation> creation =
+                org.mockito.ArgumentCaptor.forClass(AgentGraphMutationService.NodeCreation.class);
+        verify(graphMutations).executeNodeCreation(any(UUID.class), isNull(), isNull(),
+                creation.capture(), anyString());
+        assertThat(creation.getValue())
+                .isInstanceOf(AgentGraphMutationService.InteractionNode.class);
+    }
+
+    @Test
+    void missingRespondMessagePassesWireValidationAndExecutorCompletesWithoutMessage()
+            throws Exception {
+        JsonNode boundary = boundaryCase(
+                "RESPOND_TO_USER_MISSING_MESSAGE_PASSES_THROUGH_EXECUTOR");
+        assertThat(boundary.path("wireContract").asText()).isEqualTo("ACCEPTED");
+        assertThat(boundary.path("constraintOwners").size()).isEqualTo(1);
+        assertThat(boundary.path("constraintOwners").get(0).asText()).isEqualTo("EXECUTOR");
+        AgentRequestEnvelope request = request();
+        AgentResponseEnvelope response = withBoundaryPayload(
+                AgentContracts.read(fixture("decision-response-valid.json"),
+                        AgentResponseEnvelope.class), boundary);
+
+        assertThatCode(() -> AgentBrainResponseValidator.validateDecision(request, response))
+                .doesNotThrowAnyException();
+        ActionResult result = new ProposalActionExecutor(null, null)
+                .execute(response.actionProposal(), null);
+        assertThat(result.actionFamily()).isEqualTo("RESPOND_TO_USER");
+        assertThat(result.message()).isNull();
+    }
+
+    private JsonNode boundaryCase(String id) throws Exception {
+        JsonNode document = new ObjectMapper().readTree(fixture("p3b-java-payload-boundary.json"));
+        for (JsonNode candidate : document.path("cases")) {
+            if (id.equals(candidate.path("id").asText())) {
+                return candidate;
+            }
+        }
+        throw new IllegalArgumentException("Missing shared Java payload fixture: " + id);
+    }
+
+    private AgentResponseEnvelope withBoundaryPayload(AgentResponseEnvelope response,
+                                                       JsonNode boundary) {
+        ActionProposal base = response.actionProposal();
+        Map<String, Object> payload = new ObjectMapper().convertValue(
+                boundary.path("payload"), new TypeReference<>() { });
+        ActionProposal proposal = new ActionProposal(
+                boundary.path("actionFamily").asText(), payload,
+                base.baseContextSnapshotId(), base.baseContextHash(), base.sourceRefs(),
+                base.proposalId(), base.idempotencyKey(), base.anchorRefs());
+        return new AgentResponseEnvelope(response.protocolVersion(), response.runId(),
+                response.stateUpdate(), response.observation(), proposal,
+                response.usage(), response.diagnostics());
     }
 
     @Test

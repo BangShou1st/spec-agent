@@ -47,6 +47,25 @@ public final class P3BDecisionQuality {
         NOT_MEASURED
     }
 
+    /** Evidence-based classification of one failed or successful attempt. */
+    public enum FailureClassification {
+        NONE,
+        PROVIDER_UNAVAILABLE,
+        RATE_LIMITED,
+        TIMEOUT,
+        PROVIDER_ERROR,
+        NON_JSON_MODEL_OUTPUT,
+        MODEL_PROTOCOL_VIOLATION,
+        INVALID_ACTION_PAYLOAD,
+        ELIGIBILITY_VETO,
+        UNKNOWN_FAILURE;
+
+        public boolean infrastructureFailure() {
+            return this == PROVIDER_UNAVAILABLE || this == RATE_LIMITED
+                    || this == TIMEOUT || this == PROVIDER_ERROR;
+        }
+    }
+
     /**
      * 单个场景尝试的 P3-B 观察。
      *
@@ -68,7 +87,7 @@ public final class P3BDecisionQuality {
      * @param repeatedClarificationMissed    门禁没能识别出这次重复追问(分子)
      * @param productionModelCalls           该 run 的真实生产模型调用数
      * @param capabilityCalls                该 run 真实发生的能力调用数
-     * @param infra                          是真正的 transport / provider 故障
+     * @param failureClassification          按类型化事件与 Trace 证据分类的结果
      */
     public record DecisionObservation(String scenarioId,
                                       String variantId,
@@ -88,7 +107,7 @@ public final class P3BDecisionQuality {
                                       boolean repeatedClarificationMissed,
                                       int productionModelCalls,
                                       int capabilityCalls,
-                                      boolean infra) {
+                                      FailureClassification failureClassification) {
 
         public DecisionObservation {
             gateReasonCodes = gateReasonCodes == null ? List.of() : List.copyOf(gateReasonCodes);
@@ -96,6 +115,10 @@ public final class P3BDecisionQuality {
 
         public boolean actionMeasured() {
             return actualAction != null && !actualAction.isBlank();
+        }
+
+        public boolean infra() {
+            return failureClassification.infrastructureFailure();
         }
     }
 
@@ -124,12 +147,16 @@ public final class P3BDecisionQuality {
                           int eligibilityFalseNegativeDenominator,
                           int eligibilityFalsePositives,
                           int eligibilityFalsePositiveDenominator,
+                          int eligibilityUnknownCount,
+                          int eligibilityMeasuredCount,
                           int knownEligibilityGapsObserved,
                           int deterministicSurfaceScored,
                           int semanticOnlyNotScored,
                           Double meanModelCallsPerTask,
                           int totalModelCalls,
                           int totalCapabilityCalls,
+                          int unknownFailureCount,
+                          Map<String, Integer> failureClassificationBreakdown,
                           Map<String, Integer> gateVetoReasonBreakdown,
                           Map<String, Integer> actionDistribution,
                           Map<String, String> perScenarioGateVerdict,
@@ -167,17 +194,90 @@ public final class P3BDecisionQuality {
      * 只有真正的 transport / provider / 超时故障才算 INFRA。门禁否决导致的
      * 失败是<b>决策结果</b>,能力调用失败是<b>行为结果</b>,二者都不是网络故障。
      */
-    public static boolean isInfra(String executionResult) {
-        String result = normalize(executionResult);
-        if (result.contains("actionineligible")) {
+    public static FailureClassification classifyFailure(String executionResult,
+                                                        String modelInferenceFailureCategory,
+                                                        Map<String, Object> eligibilityStage,
+                                                        String failureErrorType,
+                                                        String failureErrorSummary) {
+        FailureClassification provider = providerFailure(modelInferenceFailureCategory);
+        if (provider != null) {
+            return provider;
+        }
+
+        String reason = failureReason(executionResult);
+        if ("brain_timeout".equals(reason) || "brokertimeouterror".equalsIgnoreCase(failureErrorType)) {
+            return FailureClassification.TIMEOUT;
+        }
+        if ("brain_unavailable".equals(reason) || "model_provider_failure".equals(reason)) {
+            return FailureClassification.PROVIDER_UNAVAILABLE;
+        }
+        if ("actionineligibleexception".equalsIgnoreCase(reason)
+                || "actionineligibleexception".equalsIgnoreCase(failureErrorType)
+                || enforcedEligibilityVeto(eligibilityStage)) {
+            return FailureClassification.ELIGIBILITY_VETO;
+        }
+
+        if ("JsonDecodeError".equals(failureErrorType)
+                || "JSONDecodeError".equals(failureErrorType)
+                || "NonJsonBrainOutputError".equals(failureErrorType)
+                || "model output is not valid JSON".equals(failureErrorSummary)) {
+            return FailureClassification.NON_JSON_MODEL_OUTPUT;
+        }
+        if ("InvalidActionPayloadException".equals(failureErrorType)
+                || "ActionPayloadException".equals(failureErrorType)) {
+            return FailureClassification.INVALID_ACTION_PAYLOAD;
+        }
+        if ("BrainContractError".equals(failureErrorType)
+                || "AgentContractException".equals(failureErrorType)
+                || "ModelContractException".equals(failureErrorType)
+                || "model_contract_violation".equals(reason)
+                || "model_ungrounded_reference".equals(reason)) {
+            return FailureClassification.MODEL_PROTOCOL_VIOLATION;
+        }
+
+        if (executionResult == null || executionResult.isBlank()
+                || executionResult.startsWith("failed:")) {
+            return FailureClassification.UNKNOWN_FAILURE;
+        }
+        return switch (executionResult) {
+            case "completed", "policy_denied" -> FailureClassification.NONE;
+            default -> executionResult.startsWith("awaiting_approval:")
+                    ? FailureClassification.NONE : FailureClassification.UNKNOWN_FAILURE;
+        };
+    }
+
+    private static FailureClassification providerFailure(String category) {
+        if (category == null || category.isBlank()) {
+            return null;
+        }
+        return switch (category) {
+            case "RATE_LIMITED" -> FailureClassification.RATE_LIMITED;
+            case "TIMEOUT" -> FailureClassification.TIMEOUT;
+            case "CONNECTION", "SERVER_ERROR" -> FailureClassification.PROVIDER_UNAVAILABLE;
+            case "AUTHENTICATION", "INVALID_MODEL", "PROVIDER_REQUEST_ERROR",
+                 "INVALID_RESPONSE", "EMPTY_CONTENT", "NOT_CONFIGURED" ->
+                    FailureClassification.PROVIDER_ERROR;
+            default -> FailureClassification.UNKNOWN_FAILURE;
+        };
+    }
+
+    private static String failureReason(String executionResult) {
+        if (executionResult == null || !executionResult.startsWith("failed:")) {
+            return "";
+        }
+        String detail = executionResult.substring("failed:".length());
+        int separator = detail.indexOf(':');
+        return (separator < 0 ? detail : detail.substring(0, separator))
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean enforcedEligibilityVeto(Map<String, Object> eligibilityStage) {
+        if (eligibilityStage == null
+                || !"VETO".equals(eligibilityStage.get("post_selection_veto_result"))) {
             return false;
         }
-        return result.contains("agentbrainunavailable")
-                || result.contains("brokertimeout")
-                || result.contains("modelclienterror")
-                || result.contains("transport")
-                || result.contains("status 502")
-                || result.contains("status 500");
+        Object mapping = eligibilityStage.get("action_ineligible_mapping");
+        return mapping instanceof Map<?, ?> map && Boolean.TRUE.equals(map.get("enforced"));
     }
 
     /** 从语义追踪的 {@code ACTION_ELIGIBILITY} 阶段读取门禁裁决。 */
@@ -189,7 +289,11 @@ public final class P3BDecisionQuality {
         if (vetoResult == null) {
             return GateOutcome.UNKNOWN;
         }
-        return "VETO".equals(String.valueOf(vetoResult)) ? GateOutcome.VETOED : GateOutcome.PASSED;
+        return switch (String.valueOf(vetoResult)) {
+            case "PASS" -> GateOutcome.PASSED;
+            case "VETO" -> GateOutcome.VETOED;
+            default -> GateOutcome.UNKNOWN;
+        };
     }
 
     /** 从语义追踪的 {@code ACTION_ELIGIBILITY} 阶段读取门禁原因码。 */
@@ -214,7 +318,10 @@ public final class P3BDecisionQuality {
                                     Map<String, P3BCorpus.P3BOracle> oracles) {
         List<DecisionObservation> evaluated = new ArrayList<>();
         int infraFailures = 0;
+        Map<String, Integer> failureClassificationBreakdown = new LinkedHashMap<>();
         for (DecisionObservation observation : observations) {
+            failureClassificationBreakdown.merge(
+                    observation.failureClassification().name(), 1, Integer::sum);
             if (observation.infra()) {
                 infraFailures++;
             } else {
@@ -274,6 +381,8 @@ public final class P3BDecisionQuality {
         long knownGapsObserved = vetoExpected.stream()
                 .filter(observation -> knownGap(oracles, observation))
                 .count();
+        int eligibilityUnknowns = (int) evaluated.stream()
+                .filter(observation -> observation.gateOutcome() == GateOutcome.UNKNOWN).count();
 
         int deterministicSurface = (int) evaluated.stream()
                 .filter(observation -> expectation(oracles, observation)
@@ -318,11 +427,20 @@ public final class P3BDecisionQuality {
             }
         }
 
+        int protocolFailures = (int) evaluated.stream()
+                .filter(observation -> observation.failureClassification()
+                        == FailureClassification.NON_JSON_MODEL_OUTPUT
+                        || observation.failureClassification()
+                        == FailureClassification.MODEL_PROTOCOL_VIOLATION)
+                .count();
+        int unknownFailures = (int) observations.stream()
+                .filter(observation -> observation.failureClassification()
+                        == FailureClassification.UNKNOWN_FAILURE).count();
+
         return new Summary(
                 evaluated.size(),
                 infraFailures,
-                (int) evaluated.stream().filter(observation -> observation.payloadValidity()
-                        == PayloadValidity.INVALID).count(),
+                protocolFailures,
                 ratio(actionCorrect, actionMeasured.size()),
                 actionMeasured.size(),
                 evaluated.size() - actionMeasured.size(),
@@ -341,12 +459,16 @@ public final class P3BDecisionQuality {
                 passExpected.size(),
                 (int) eligibilityFalsePositives,
                 vetoExpected.size() - (int) knownGapsObserved,
+                eligibilityUnknowns,
+                evaluated.size() - eligibilityUnknowns,
                 (int) knownGapsObserved,
                 deterministicSurface,
                 evaluated.size() - deterministicSurface,
                 evaluated.isEmpty() ? null : round((double) totalCalls / evaluated.size()),
                 totalCalls,
                 totalCapabilityCalls,
+                unknownFailures,
+                failureClassificationBreakdown,
                 vetoReasons,
                 actions,
                 perScenario,

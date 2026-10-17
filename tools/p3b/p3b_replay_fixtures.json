@@ -1,7 +1,7 @@
 {
   "version": "p3b-replay-fixtures.v1",
   "purpose": "确定性回放 P3-B 的 Payload / protocol 故障类:把冻结的模型输出送过真实的 Python DECISION 引擎与 Java fail-closed 契约等价形状检查,判断失败发生在哪一层。",
-  "honesty": "这些 fixture 是 SYNTHETIC_FROZEN_FIXTURE:由 prompt 契约文档与既有真实缺陷记录(P3-A B05 的 'questionText must be a string'、两次非 JSON 输出、一次 'Extra inputs are not permitted')逐字重构而来,不是本轮捕获的真实模型响应。因此它们度量的是**契约边界行为**,不是真实模型决策质量;真实模型成绩本轮为 BLOCKED。",
+  "honesty": "这些 fixture 是 SYNTHETIC_FROZEN_FIXTURE:由 prompt 契约文档与既有真实缺陷记录(P3-A B05 的 'questionText must be a string'、两次非 JSON 输出、一次 'Extra inputs are not permitted')逐字重构而来,不是本轮捕获的真实模型响应。因此它们度量的是**契约边界行为**,不是真实模型决策质量。真实模型链已实际尝试;P3-B live priority suite 记录了 provider AUTHENTICATION 阻断,没有得到可判分的模型输出。",
   "baseRequest": "contracts/fixtures/agent-input-valid.json",
   "fixtures": [
     {

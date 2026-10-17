@@ -36,6 +36,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * 文件名:ScenarioRunner.java
@@ -129,6 +130,12 @@ public class ScenarioRunner {
         return run(scenario, variant, EvaluationProfile.B_FAST);
     }
 
+    /** Variant that registers the project immediately after its creation boundary. */
+    public ObservationEnvelope run(ScenarioDefinition scenario, VariantSpec variant,
+                                   Consumer<UUID> projectCreated) {
+        return run(scenario, variant, EvaluationProfile.B_FAST, variant.seed(), projectCreated);
+    }
+
     /**
      * P2 阶段二——live 行为基线入口。
      *
@@ -147,8 +154,15 @@ public class ScenarioRunner {
      */
     public ObservationEnvelope runLive(ScenarioDefinition scenario, VariantSpec variant,
                                        long repetitionSeed) {
+        return runLive(scenario, variant, repetitionSeed, null);
+    }
+
+    /** Live counterpart that registers the project before graph setup can fail. */
+    public ObservationEnvelope runLive(ScenarioDefinition scenario, VariantSpec variant,
+                                       long repetitionSeed, Consumer<UUID> projectCreated) {
         requireLiveWiring();
-        return run(scenario, variant, EvaluationProfile.LIVE_PROVIDER, repetitionSeed);
+        return run(scenario, variant, EvaluationProfile.LIVE_PROVIDER,
+                repetitionSeed, projectCreated);
     }
 
     /** 在启动 B-live 尝试前校验具体的 Spring bean 身份。 */
@@ -161,28 +175,29 @@ public class ScenarioRunner {
 
     private ObservationEnvelope run(ScenarioDefinition scenario, VariantSpec variant,
                                     EvaluationProfile profile) {
+        return run(scenario, variant, profile, variant.seed(), null);
+    }
+
+    private ObservationEnvelope run(ScenarioDefinition scenario, VariantSpec variant,
+                                    EvaluationProfile profile, long repetitionSeed,
+                                    Consumer<UUID> projectCreated) {
         scenario.validate();
-        BrainScriptInstaller brain = brainScripts.getIfAvailable();
-        if (brain == null) {
+        BrainScriptInstaller brain = profile == EvaluationProfile.LIVE_PROVIDER
+                ? null : brainScripts.getIfAvailable();
+        if (profile != EvaluationProfile.LIVE_PROVIDER && brain == null) {
             throw new IllegalStateException(
                     "ScenarioRunner requires a BrainScriptInstaller (eval tests only)");
         }
         long startNanos = System.nanoTime();
         resetProbeCapabilities();
         installCapabilitySuccessFlags(scenario);
-        brain.resetScripts();
-        brain.installScript(scenario.given().brainScript(),
-                scenario.scenarioId(), variant.seed(), variant.paraphraseIndex());
-        return runAfterSetup(scenario, variant, profile, variant.seed(), brain, startNanos);
-    }
-
-    private ObservationEnvelope run(ScenarioDefinition scenario, VariantSpec variant,
-                                    EvaluationProfile profile, long repetitionSeed) {
-        scenario.validate();
-        long startNanos = System.nanoTime();
-        resetProbeCapabilities();
-        installCapabilitySuccessFlags(scenario);
-        return runAfterSetup(scenario, variant, profile, repetitionSeed, null, startNanos);
+        if (brain != null) {
+            brain.resetScripts();
+            brain.installScript(scenario.given().brainScript(),
+                    scenario.scenarioId(), variant.seed(), variant.paraphraseIndex());
+        }
+        return runAfterSetup(scenario, variant, profile, repetitionSeed, brain,
+                startNanos, projectCreated);
     }
 
     /**
@@ -194,10 +209,17 @@ public class ScenarioRunner {
      */
     private ObservationEnvelope runAfterSetup(ScenarioDefinition scenario, VariantSpec variant,
                                               EvaluationProfile profile, long observationSeed,
-                                              BrainScriptInstaller brain, long startNanos) {
+                                              BrainScriptInstaller brain, long startNanos,
+                                              Consumer<UUID> projectCreated) {
 
+        // lastProjectId is a compatibility read API only; never let an earlier
+        // run's id survive into this scenario's creation path.
+        lastProjectId = null;
         Project project = projectService.createProject(renderTitle(scenario, variant));
         lastProjectId = project.id();
+        if (projectCreated != null) {
+            projectCreated.accept(project.id());
+        }
         Setup setup = buildGraph(scenario, variant, project);
         StateSummary preState = summarize(project.id());
         int preRelations = countRelations(project.id());

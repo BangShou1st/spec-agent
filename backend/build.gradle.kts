@@ -264,6 +264,21 @@ tasks.register<Test>("evalLiveSmoke") {
     }
 }
 
+// Targeted P3-B live decision evidence. Kept separate from evalBFast and the
+// default test task because it requires the external provider and broker.
+tasks.register<Test>("evalLiveP3B") {
+    group = "verification"
+    description = "Records real-model P3-B priority scenarios (requires broker + OpenCode access)."
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching("com.specagent.eval.EvalLiveP3BDecisionQualityTest")
+    }
+    testLogging {
+        events("failed", "skipped")
+        showStandardStreams = true
+    }
+}
+
 // Phase 3B — targeted semantic evidence rerun. This suite is explicitly
 // opt-in, writes to build/eval-live-diagnostic/<run>, and never overwrites the
 // formal build/eval-live baseline.

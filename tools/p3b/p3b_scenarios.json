@@ -6,7 +6,7 @@
   "executableMirror": "backend/src/test/java/com/specagent/eval/P3BCorpus.java",
   "developmentUse": "DEVELOPMENT_CALIBRATION",
   "realModelStatus": "BLOCKED",
-  "realModelStatusReason": "The live provider is quota-limited upstream (HTTP 429 FreeUsageLimitError) and no broker-mode agent-brain is running locally, so no real-model decision could be recorded this round. Every number produced by the executable mirror is a deterministic scripted-brain baseline of RUNTIME GATING QUALITY, not real-model decision quality.",
+  "realModelStatusReason": "Two live trials were run through Java Host -> Python broker -> OpenCode. The first used the prior /inference/v1 path for all four priority scenarios (base and holdout): eight STATE_UPDATE requests returned broker HTTP 502, with AUTHENTICATION observed in persisted provider events and no DECISION outputs. A second trial used the current official /inference/openai/v1 path and stopped after its first C03/base request also returned broker HTTP 502 with provider category AUTHENTICATION; it produced no decision output. Total: nine model requests, zero successful, zero semantic outputs. The latest official-path run measures no action or payload quality; all skipped priority scenarios remain unmeasured. Every number produced by the executable mirror remains a deterministic scripted-brain baseline of RUNTIME GATING QUALITY, not real-model decision quality.",
   "scoringDiscipline": [
     "actionAcceptableSetAccuracy is scored only when an action was actually produced.",
     "payloadValidity is scored only when the Java fail-closed contract validation received a result; otherwise NOT_MEASURED.",

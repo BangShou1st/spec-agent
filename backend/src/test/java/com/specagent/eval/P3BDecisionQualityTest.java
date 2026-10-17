@@ -28,13 +28,59 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 再按 {@link P3BDecisionQuality} 的口径聚合成带显式分母的产物。
  *
  * 诚实性边界:provider 是脚本化大脑,因此这里得到的是 **Runtime 门禁质量**
- * 的 deterministic 基线,**不是**真实模型决策质量;真实模型成绩当前为 BLOCKED。
+ * 的 deterministic 基线,**不是**真实模型决策质量;真实模型结果由独立 live suite 记录。
  * 产物写入 {@code build/eval-p3b}(绝不提交)。
  */
 class P3BDecisionQualityTest extends EvalHarnessBase {
 
     @Autowired
     private ContinuationCoordinator continuationCoordinator;
+
+    @Test
+    void unknownGateValuesRemainUnknown() {
+        assertThat(P3BDecisionQuality.gateOutcome(Map.of(
+                "post_selection_veto_result", "MAYBE")))
+                .isEqualTo(P3BDecisionQuality.GateOutcome.UNKNOWN);
+        assertThat(P3BDecisionQuality.gateOutcome(Map.of(
+                "post_selection_veto_result", "PASS")))
+                .isEqualTo(P3BDecisionQuality.GateOutcome.PASSED);
+        assertThat(P3BDecisionQuality.gateOutcome(Map.of(
+                "post_selection_veto_result", "VETO")))
+                .isEqualTo(P3BDecisionQuality.GateOutcome.VETOED);
+    }
+
+    @Test
+    void failureClassifierUsesTypedCategoriesAndLeavesWeakEvidenceUnknown() {
+        assertThat(classifyFailure("failed:provider", "RATE_LIMITED", null, null, null))
+                .isEqualTo(P3BDecisionQuality.FailureClassification.RATE_LIMITED);
+        assertThat(classifyFailure("failed:provider", "TIMEOUT", null, null, null))
+                .isEqualTo(P3BDecisionQuality.FailureClassification.TIMEOUT);
+        assertThat(classifyFailure("failed:provider", "CONNECTION", null, null, null))
+                .isEqualTo(P3BDecisionQuality.FailureClassification.PROVIDER_UNAVAILABLE);
+        assertThat(classifyFailure("failed:provider", "AUTHENTICATION", null, null, null))
+                .isEqualTo(P3BDecisionQuality.FailureClassification.PROVIDER_ERROR);
+        assertThat(classifyFailure("failed:bad-json", null, null,
+                "JsonDecodeError", "decode failed"))
+                .isEqualTo(P3BDecisionQuality.FailureClassification.NON_JSON_MODEL_OUTPUT);
+        assertThat(classifyFailure("failed:contract", null, null,
+                "BrainContractError", "schema mismatch"))
+                .isEqualTo(P3BDecisionQuality.FailureClassification.MODEL_PROTOCOL_VIOLATION);
+        assertThat(classifyFailure("failed:payload", null, null,
+                "InvalidActionPayloadException", "invalid payload"))
+                .isEqualTo(P3BDecisionQuality.FailureClassification.INVALID_ACTION_PAYLOAD);
+        assertThat(classifyFailure("failed:ActionIneligibleException", null, null, null, null))
+                .isEqualTo(P3BDecisionQuality.FailureClassification.ELIGIBILITY_VETO);
+        assertThat(classifyFailure(
+                "failed:AgentBrainUnavailableException: provider unavailable", null, null, null, null))
+                .isEqualTo(P3BDecisionQuality.FailureClassification.UNKNOWN_FAILURE);
+    }
+
+    private P3BDecisionQuality.FailureClassification classifyFailure(
+            String result, String providerCategory, Map<String, Object> eligibilityStage,
+            String errorType, String errorSummary) {
+        return P3BDecisionQuality.classifyFailure(
+                result, providerCategory, eligibilityStage, errorType, errorSummary);
+    }
 
     @Test
     void runP3bCorpusAndWriteDecisionQualityArtifacts() throws Exception {
@@ -95,6 +141,10 @@ class P3BDecisionQualityTest extends EvalHarnessBase {
         assertThat(summary.eligibilityFalsePositiveDenominator())
                 .as("期望 veto 的场景数(C06/C09/C02/C14/C16 × 2 变体)")
                 .isEqualTo(8);
+        assertThat(summary.eligibilityUnknownCount())
+                .as("unknown gate outcomes remain visible and fail this complete-observation gate")
+                .isZero();
+        assertThat(summary.eligibilityMeasuredCount()).isEqualTo(summary.evaluated());
         assertThat(summary.eligibilityFalseNegatives())
                 .as("修复不得制造新的 false negative:参数齐全的调用(C08/C17)"
                         + "与未声明必填字段的能力都必须保持 eligible")
@@ -152,7 +202,14 @@ class P3BDecisionQualityTest extends EvalHarnessBase {
                 observation.semanticTrace().stages().get("ACTION_ELIGIBILITY");
         String actualAction = observation.actualPrimaryAction();
         String executionResult = observation.executionResult();
-        boolean infra = P3BDecisionQuality.isInfra(executionResult);
+        P3BDecisionQuality.FailureClassification failureClassification =
+                P3BDecisionQuality.classifyFailure(
+                        executionResult,
+                        modelInferenceFailureCategory(observation.attemptId()),
+                        eligibilityStage,
+                        traceError(observation, "error_type"),
+                        traceError(observation, "error_summary"));
+        boolean infra = failureClassification.infrastructureFailure();
 
         boolean forbiddenClarification =
                 scenario.definition().expect().forbiddenActions().contains("REQUEST_USER_INPUT");
@@ -180,11 +237,36 @@ class P3BDecisionQualityTest extends EvalHarnessBase {
                 P3BDecisionQuality.gateReasonCodes(eligibilityStage),
                 P3BDecisionQuality.payloadValidity(actualAction, executionResult),
                 continuationScored, continuationCorrect, actualVerdict,
-                oracle.capabilityNecessityScored() && !infra, capabilityNecessityCorrect,
+                oracle.capabilityNecessityScored()
+                        && (failureClassification == P3BDecisionQuality.FailureClassification.NONE
+                        || failureClassification == P3BDecisionQuality.FailureClassification.ELIGIBILITY_VETO),
+                capabilityNecessityCorrect,
                 forbiddenClarification, unnecessary,
                 repeatedScored, repeatedMissed,
                 observation.productionModelCalls(), persistedCapabilityInvocations(projectId),
-                infra);
+                failureClassification);
+    }
+
+    private String modelInferenceFailureCategory(String runId) {
+        if (runId == null) {
+            return null;
+        }
+        return jdbcTemplate.query(
+                "SELECT payload ->> 'gatewayCategory' FROM agent_run_events "
+                        + "WHERE run_id = ? AND event_type = 'MODEL_INFERENCE_FAILED' "
+                        + "ORDER BY sequence DESC LIMIT 1",
+                resultSet -> resultSet.next() ? resultSet.getString(1) : null,
+                UUID.fromString(runId));
+    }
+
+    private static String traceError(ObservationEnvelope observation, String field) {
+        for (String stageName : List.of("DECISION_OUTPUT", "STATE_UPDATE_OUTPUT")) {
+            Map<String, Object> stage = observation.semanticTrace().stages().get(stageName);
+            if (stage != null && stage.get(field) != null) {
+                return String.valueOf(stage.get(field));
+            }
+        }
+        return null;
     }
 
     /**
@@ -266,7 +348,7 @@ class P3BDecisionQualityTest extends EvalHarnessBase {
         map.put("model", "scripted-brain");
         map.put("evaluation_profile", "B_FAST");
         map.put("honesty", "deterministic scripted-brain baseline of Runtime gating quality; "
-                + "NOT real-model decision quality (live provider BLOCKED)");
+                + "NOT real-model decision quality (see separate live P3-B report)");
         map.put("label_review", "PENDING_HUMAN_REVIEW");
         map.put("evaluated", summary.evaluated());
         map.put("action_acceptable_set_accuracy", summary.actionAcceptableSetAccuracy());
@@ -290,6 +372,8 @@ class P3BDecisionQualityTest extends EvalHarnessBase {
         map.put("eligibility_false_positives", summary.eligibilityFalsePositives());
         map.put("eligibility_false_positive_denominator",
                 summary.eligibilityFalsePositiveDenominator());
+        map.put("eligibility_unknown_count", summary.eligibilityUnknownCount());
+        map.put("eligibility_measured_count", summary.eligibilityMeasuredCount());
         map.put("known_eligibility_gaps_observed", summary.knownEligibilityGapsObserved());
         map.put("deterministic_surface_scored", summary.deterministicSurfaceScored());
         map.put("semantic_only_not_scored", summary.semanticOnlyNotScored());
@@ -298,6 +382,8 @@ class P3BDecisionQualityTest extends EvalHarnessBase {
         map.put("total_capability_calls", summary.totalCapabilityCalls());
         map.put("protocol_failures", summary.protocolFailures());
         map.put("infra_failures", summary.infraFailures());
+        map.put("unknown_failures", summary.unknownFailureCount());
+        map.put("failure_classification_breakdown", summary.failureClassificationBreakdown());
         map.put("gate_veto_reason_breakdown", summary.gateVetoReasonBreakdown());
         map.put("action_distribution", summary.actionDistribution());
         map.put("per_scenario_gate_verdict", summary.perScenarioGateVerdict());
@@ -327,6 +413,10 @@ class P3BDecisionQualityTest extends EvalHarnessBase {
                 .append(" (n=").append(summary.eligibilityFalseNegativeDenominator()).append(")\n");
         text.append("eligibilityFalsePositives=").append(summary.eligibilityFalsePositives())
                 .append(" (n=").append(summary.eligibilityFalsePositiveDenominator()).append(")\n");
+        text.append("eligibilityMeasured=").append(summary.eligibilityMeasuredCount())
+                .append(" eligibilityUnknown=").append(summary.eligibilityUnknownCount()).append('\n');
+        text.append("failureClassifications=").append(summary.failureClassificationBreakdown())
+                .append(" unknownFailures=").append(summary.unknownFailureCount()).append('\n');
         text.append("knownEligibilityGapsObserved=").append(summary.knownEligibilityGapsObserved())
                 .append('\n');
         text.append("meanModelCallsPerTask=").append(summary.meanModelCallsPerTask())

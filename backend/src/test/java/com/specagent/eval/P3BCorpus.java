@@ -21,7 +21,7 @@ import java.util.Set;
  * <ul>
  *   <li>脚本化提案刻意复现**已记录的真实失败形态**(例如"相关被当成必须"的
  *       {@code INVOKE_CAPABILITY});它是 deterministic/scripted 基线,**不是**
- *       真实模型成绩。真实模型成绩在本轮为 BLOCKED。</li>
+ *       真实模型成绩。真实模型成绩由独立 live suite 记录。</li>
  *   <li>{@link #oracleFor(String)} 里 {@code deterministicSurface} 明确标注
  *       该类别在 Runtime 门禁层是否可被判分;语义类判断(prompt 级)不假装可判。</li>
  *   <li>{@code acceptableActions} 刻意收窄(不再像 P3-A 那样对大多数场景同时

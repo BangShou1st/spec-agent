@@ -1,0 +1,26 @@
+{
+  "version": "p3b-java-payload-boundary.v1",
+  "cases": [
+    {
+      "id": "CREATE_NODE_MISSING_KIND_DEFAULTS_TO_INTERACTION",
+      "actionFamily": "CREATE_NODE",
+      "payload": {
+        "questionText": "哪一种情况应优先处理？",
+        "purpose": "补充未决条件",
+        "options": [{ "label": "情况 A" }],
+        "allowFreeAnswer": true
+      },
+      "wireContract": "ACCEPTED",
+      "constraintOwners": ["WIRE_CONTRACT", "EXECUTOR"],
+      "executorDisposition": "CREATE_INTERACTION_NODE"
+    },
+    {
+      "id": "RESPOND_TO_USER_MISSING_MESSAGE_PASSES_THROUGH_EXECUTOR",
+      "actionFamily": "RESPOND_TO_USER",
+      "payload": {},
+      "wireContract": "ACCEPTED",
+      "constraintOwners": ["EXECUTOR"],
+      "executorDisposition": "COMPLETES_WITHOUT_RESPONSE_MESSAGE"
+    }
+  ]
+}

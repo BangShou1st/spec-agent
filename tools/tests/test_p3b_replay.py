@@ -12,6 +12,7 @@
   * 唯一被允许的形态漂移仍可归一化(RP-09),而两份不同 refs 列表仍必须
     继续 fail-closed(RP-10)。
 """
+import json
 import sys
 from pathlib import Path
 
@@ -26,8 +27,11 @@ from p3b.p3b_decision_replay import (  # noqa: E402
     CONTRACT_NON_JSON,
     CONTRACT_SCHEMA,
     CONTRACT_UNGROUNDED,
+    JAVA_BOUNDARY_FIXTURES,
     INFRA,
     classify,
+    executor_disposition,
+    java_boundary_evidence,
     payload_shape_valid,
     run_all,
 )
@@ -70,6 +74,17 @@ def test_contract_violation_taxonomy_is_exhaustive_and_distinct():
     assert observed["UNGROUNDED_SOURCE_REFERENCE"] == CONTRACT_UNGROUNDED
     assert observed["TWO_DIFFERENT_SOURCE_REF_LISTS"] == CONTRACT_AMBIGUOUS
     assert observed["CONFLICT_NOT_SURFACED"] == CONTRACT_CONFLICT
+
+
+def test_brain_contract_failures_do_not_claim_that_java_wire_validation_ran():
+    payload = report()
+    non_json = record(payload, "P3B-RP-05")
+    assert non_json["javaBoundary"]["brain_decision_contract"] == "REJECTED"
+    assert non_json["javaBoundary"]["wire_contract"] == "NOT_REACHED"
+
+    malformed_payload = record(payload, "P3B-RP-02")
+    assert malformed_payload["javaBoundary"]["brain_decision_contract"] == "ACCEPTED_PROPOSAL"
+    assert malformed_payload["javaBoundary"]["wire_contract"] == "REJECTED"
 
 
 def test_provider_failure_is_the_only_path_into_infra():
@@ -115,6 +130,52 @@ def test_missing_required_capability_argument_is_not_a_payload_shape_fault():
     replayed = record(report(), "P3B-RP-04")
     assert replayed["observedOutcome"] == ACCEPTED
     assert replayed["observedPayloadValid"] is True
+    assert replayed["javaBoundary"]["eligibility"] == \
+        "VETO_MISSING_REQUIRED_CAPABILITY_ARGUMENT"
+
+
+def test_shared_java_boundary_counterexamples_match_java_runtime_contract():
+    cases = json.loads(JAVA_BOUNDARY_FIXTURES.read_text(encoding="utf-8"))["cases"]
+    create_without_kind = next(case for case in cases
+                               if case["id"] == "CREATE_NODE_MISSING_KIND_DEFAULTS_TO_INTERACTION")
+    assert create_without_kind["wireContract"] == "ACCEPTED"
+    assert create_without_kind["constraintOwners"] == ["WIRE_CONTRACT", "EXECUTOR"]
+    assert payload_shape_valid(create_without_kind["actionFamily"],
+                               create_without_kind["payload"]) is True
+    assert executor_disposition(create_without_kind["actionFamily"],
+                                create_without_kind["payload"]) == \
+        create_without_kind["executorDisposition"]
+    assert java_boundary_evidence(
+        {}, {"outcome": ACCEPTED,
+             "actionFamily": create_without_kind["actionFamily"],
+             "payload": create_without_kind["payload"]}) == {
+                 "brain_decision_contract": "ACCEPTED_PROPOSAL",
+                 "wire_contract": "ACCEPTED",
+                 "eligibility": "NOT_MEASURED",
+                 "executor": "CREATE_INTERACTION_NODE",
+                 "policy": "NOT_EVALUATED",
+             }
+
+    respond_without_message = next(case for case in cases
+                                   if case["id"] ==
+                                   "RESPOND_TO_USER_MISSING_MESSAGE_PASSES_THROUGH_EXECUTOR")
+    assert respond_without_message["wireContract"] == "ACCEPTED"
+    assert respond_without_message["constraintOwners"] == ["EXECUTOR"]
+    assert payload_shape_valid(respond_without_message["actionFamily"],
+                               respond_without_message["payload"]) is True
+    assert executor_disposition(respond_without_message["actionFamily"],
+                                respond_without_message["payload"]) == \
+        respond_without_message["executorDisposition"]
+    assert java_boundary_evidence(
+        {}, {"outcome": ACCEPTED,
+             "actionFamily": respond_without_message["actionFamily"],
+             "payload": respond_without_message["payload"]}) == {
+                 "brain_decision_contract": "ACCEPTED_PROPOSAL",
+                 "wire_contract": "ACCEPTED",
+                 "eligibility": "NOT_MEASURED",
+                 "executor": "COMPLETES_WITHOUT_RESPONSE_MESSAGE",
+                 "policy": "NOT_EVALUATED",
+             }
 
 
 def test_documented_normalization_shim_still_relocates_equivalent_refs():

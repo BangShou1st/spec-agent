@@ -17,7 +17,7 @@
 
 诚实性:fixture 是 ``SYNTHETIC_FROZEN_FIXTURE``,由 prompt 契约文档与既有真实
 缺陷记录逐字重构而来,**不是**本轮捕获的真实模型响应。因此这里度量的是
-**契约边界行为**,不是真实模型决策质量。真实模型成绩本轮 BLOCKED。
+**契约边界行为**,不是真实模型决策质量。真实模型证据由独立 live suite 记录。
 
 本工具只读、离线:不写隐藏状态,不访问网络,不改动任何生产路径。
 """
@@ -51,6 +51,7 @@ from spec_agent_brain.model_client.base import (  # noqa: E402
 
 BASE_REQUEST = REPO_ROOT / "contracts" / "fixtures" / "agent-input-valid.json"
 FIXTURES = Path(__file__).resolve().parent / "p3b_replay_fixtures.json"
+JAVA_BOUNDARY_FIXTURES = REPO_ROOT / "contracts" / "fixtures" / "p3b-java-payload-boundary.json"
 
 ACCEPTED = "ACCEPTED_PROPOSAL"
 CONTRACT_NON_JSON = "CONTRACT_VIOLATION_NON_JSON"
@@ -151,7 +152,12 @@ def payload_shape_valid(action_family: str | None, payload: dict | None) -> bool
                 and isinstance(payload.get("options"), list)
                 and isinstance(payload.get("allowFreeAnswer"), bool))
     if action_family == "CREATE_NODE":
-        if payload.get("kind") == "INTERACTION":
+        # Java AgentBrainResponseValidator and ProposalActionExecutor both use
+        # INTERACTION when kind is absent/null.
+        kind = payload.get("kind")
+        if kind is None:
+            kind = "INTERACTION"
+        if kind == "INTERACTION":
             return payload_shape_valid("REQUEST_USER_INPUT", payload)
         return isinstance(payload.get("content"), dict) and is_non_blank_string(
             (payload.get("content") or {}).get("text"))
@@ -160,8 +166,115 @@ def payload_shape_valid(action_family: str | None, payload: dict | None) -> bool
         return (is_non_blank_string(payload.get("capabilityId"))
                 and (arguments is None or isinstance(arguments, dict)))
     if action_family == "RESPOND_TO_USER":
-        return is_non_blank_string(payload.get("message"))
+        # The Java wire validator imposes no message shape here. The executor
+        # returns a null message for a missing/non-string value; it does not
+        # reject the action. Model the layer boundary rather than inventing a
+        # stricter Python-only contract.
+        return True
     return None
+
+
+def executor_disposition(action_family: str | None, payload: dict | None) -> str:
+    """Mirror the Java executor's observable disposition for relevant families."""
+    if action_family is None:
+        return "NOT_REACHED"
+    payload = payload or {}
+    if action_family == "CREATE_NODE":
+        kind = payload.get("kind")
+        return ("CREATE_INTERACTION_NODE"
+                if kind is None or kind == "INTERACTION"
+                else "CREATE_WORKSPACE_NODE")
+    if action_family == "RESPOND_TO_USER":
+        return ("EMITS_RESPONSE_MESSAGE" if isinstance(payload.get("message"), str)
+                else "COMPLETES_WITHOUT_RESPONSE_MESSAGE")
+    return "NOT_MODELED"
+
+
+def declared_required_fields(input_schema: dict) -> list[str]:
+    """Mirror ActionEligibilityValidator's two supported descriptor shapes."""
+    required: list[str] = []
+    properties = input_schema.get("properties")
+    if isinstance(properties, dict):
+        names = input_schema.get("required")
+        if isinstance(names, list):
+            required.extend(str(name) for name in names if name is not None)
+        for name, definition in properties.items():
+            if (isinstance(definition, dict) and is_required_flag(definition.get("required"))
+                    and str(name) not in required):
+                required.append(str(name))
+        return required
+    for name, definition in input_schema.items():
+        if isinstance(definition, dict) and is_required_flag(definition.get("required")):
+            required.append(str(name))
+    return required
+
+
+def is_required_flag(value) -> bool:  # noqa: ANN001 - schema value
+    return value is True or (isinstance(value, str) and value.lower() == "true")
+
+
+def eligibility_disposition(fixture: dict, action_family: str | None,
+                            payload: dict | None) -> str:
+    """Report the specific descriptor-based eligibility rule this replay can assess."""
+    if action_family != "INVOKE_CAPABILITY":
+        return "NOT_MEASURED"
+    overrides = fixture.get("requestOverrides") or {}
+    capabilities = overrides.get("availableCapabilities")
+    if not isinstance(capabilities, list):
+        return "NOT_MEASURED"
+    payload = payload or {}
+    descriptor = next((item for item in capabilities
+                       if isinstance(item, dict)
+                       and item.get("id") == payload.get("capabilityId")), None)
+    if descriptor is None:
+        return "VETO_CAPABILITY_NOT_VISIBLE"
+    schema = descriptor.get("inputSchema")
+    if not isinstance(schema, dict):
+        return "NOT_MEASURED"
+    arguments = payload.get("arguments")
+    arguments = arguments if isinstance(arguments, dict) else {}
+    for name in declared_required_fields(schema):
+        value = arguments.get(name)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return "VETO_MISSING_REQUIRED_CAPABILITY_ARGUMENT"
+    return "NOT_VETOED_BY_REQUIRED_ARGUMENT_RULE"
+
+
+def java_boundary_evidence(fixture: dict, replayed: dict) -> dict:
+    """Report the Brain and Java layers reached; policy is outside replay scope."""
+    family = replayed["actionFamily"]
+    payload = replayed["payload"]
+    if replayed["outcome"] != ACCEPTED:
+        return {
+            "brain_decision_contract": "NOT_REACHED" if replayed["outcome"] == INFRA
+            else "REJECTED",
+            "wire_contract": "NOT_REACHED",
+            "eligibility": "NOT_REACHED",
+            "executor": "NOT_REACHED",
+            "policy": "NOT_EVALUATED",
+        }
+
+    shape_valid = payload_shape_valid(family, payload)
+    eligibility = eligibility_disposition(fixture, family, payload)
+    if shape_valid is False:
+        return {
+            "brain_decision_contract": "ACCEPTED_PROPOSAL",
+            "wire_contract": "REJECTED",
+            "eligibility": "NOT_REACHED",
+            "executor": "NOT_REACHED",
+            "policy": "NOT_EVALUATED",
+        }
+    if eligibility.startswith("VETO_"):
+        executor = "NOT_REACHED_BY_VETO"
+    else:
+        executor = executor_disposition(family, payload)
+    return {
+        "brain_decision_contract": "ACCEPTED_PROPOSAL",
+        "wire_contract": "ACCEPTED" if shape_valid is True else "NOT_MEASURED",
+        "eligibility": eligibility,
+        "executor": executor,
+        "policy": "NOT_EVALUATED",
+    }
 
 
 def is_non_blank_string(value) -> bool:  # noqa: ANN001 - wire value
@@ -188,6 +301,7 @@ def score(fixture: dict, replayed: dict) -> dict:
         "expectedPayloadValid": fixture.get("expectedPayloadValid"),
         "observedPayloadValid": payload_valid,
         "payloadMatched": payload_valid == fixture.get("expectedPayloadValid"),
+        "javaBoundary": java_boundary_evidence(fixture, replayed),
         "modelCalls": replayed["modelCalls"],
     }
 
@@ -198,11 +312,12 @@ def run_all() -> dict:
     for fixture in corpus["fixtures"]:
         records.append(score(fixture, classify(fixture)))
     return {
-        "schemaVersion": "p3b-decision-replay.v1",
+        "schemaVersion": "p3b-decision-replay.v2",
         "suite": "p3b-decision-protocol-replay",
         "honesty": corpus["honesty"],
         "boundary": "real Python DECISION engine + Java fail-closed contract shapes; "
-                    "no network, no provider call",
+                    "no network, no provider call; wire/eligibility/executor/policy layers "
+                    "are reported separately",
         "fixtureCount": len(records),
         "outcomeMatched": sum(1 for r in records if r["outcomeMatched"]),
         "actionMatched": sum(1 for r in records if r["actionMatched"]),

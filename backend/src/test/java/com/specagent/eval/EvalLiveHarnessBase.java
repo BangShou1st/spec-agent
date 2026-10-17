@@ -6,6 +6,7 @@ import com.specagent.model.contract.RuntimeOpenCodeSettings;
 import com.specagent.model.provider.OpenCodeZenTransport;
 import com.specagent.modelsettings.OpenCodeSettingsService;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -55,7 +56,11 @@ public abstract class EvalLiveHarnessBase {
     @Autowired
     protected OpenCodeZenTransport openCodeZenTransport;
 
-    private final List<UUID> liveProjectIds = new ArrayList<>();
+    private final EvalProjectCleanup liveProjectCleanup = new EvalProjectCleanup();
+
+    @RegisterExtension
+    protected final EvalCleanupFailureHandler cleanupOnTestFailure =
+            new EvalCleanupFailureHandler(this::cleanupProjectsAfterFailure);
 
     /**
      * 把一个场景变体经 live 大脑运行 N 次并返回全部观测。各次重复只在记录的
@@ -73,9 +78,9 @@ public abstract class EvalLiveHarnessBase {
         for (int repetition = 0; repetition < repetitions; repetition++) {
             long repetitionSeed = variant.seed() * 1000L + repetition;
             ObservationEnvelope observation =
-                    scenarioRunner.runLive(scenario, variant, repetitionSeed);
+                    scenarioRunner.runLive(scenario, variant, repetitionSeed,
+                            liveProjectCleanup::register);
             observation = observation.withRepetition(repetition);
-            liveProjectIds.add(scenarioRunner.lastProjectId());
             observations.add(observation);
         }
         return observations;
@@ -182,35 +187,40 @@ public abstract class EvalLiveHarnessBase {
 
     @AfterEach
     void cleanUpLiveProjects() {
-        for (UUID projectId : liveProjectIds) {
-            jdbcTemplate.update(
-                    "DELETE FROM agent_run_events WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)",
-                    projectId);
-            jdbcTemplate.update(
-                    "DELETE FROM agent_run_continuation_checks WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)",
-                    projectId);
-            jdbcTemplate.update("DELETE FROM agent_runs WHERE project_id = ?", projectId);
-            jdbcTemplate.update(
-                    "DELETE FROM agent_input_projections WHERE snapshot_id IN (SELECT id FROM context_snapshots WHERE project_id = ?)",
-                    projectId);
-            jdbcTemplate.update("DELETE FROM context_snapshots WHERE project_id = ?", projectId);
-            jdbcTemplate.update("DELETE FROM agent_proposals WHERE project_id = ?", projectId);
-            jdbcTemplate.update("DELETE FROM capability_invocations WHERE project_id = ?", projectId);
-            jdbcTemplate.update(
-                    "DELETE FROM route_inherited_answers WHERE branch_route_id IN (SELECT id FROM routes WHERE project_id = ?)",
-                    projectId);
-            jdbcTemplate.update(
-                    "DELETE FROM route_inherited_answers WHERE answer_id IN (SELECT id FROM answers WHERE project_id = ?)",
-                    projectId);
-            jdbcTemplate.update("DELETE FROM answer_patches WHERE project_id = ?", projectId);
-            jdbcTemplate.update("DELETE FROM answers WHERE project_id = ?", projectId);
-            jdbcTemplate.update("DELETE FROM node_relations WHERE project_id = ?", projectId);
-            jdbcTemplate.update("DELETE FROM graph_operations WHERE project_id = ?", projectId);
-            jdbcTemplate.update("DELETE FROM spec_snapshots WHERE project_id = ?", projectId);
-            jdbcTemplate.update("DELETE FROM routes WHERE project_id = ?", projectId);
-            jdbcTemplate.update("DELETE FROM nodes WHERE project_id = ?", projectId);
-            jdbcTemplate.update("DELETE FROM projects WHERE id = ?", projectId);
-        }
-        liveProjectIds.clear();
+        liveProjectCleanup.cleanupAll(this::cleanUpLiveProject, null);
+    }
+
+    private void cleanupProjectsAfterFailure(Throwable testFailure) {
+        liveProjectCleanup.cleanupAll(this::cleanUpLiveProject, testFailure);
+    }
+
+    private void cleanUpLiveProject(UUID projectId) {
+        jdbcTemplate.update(
+                "DELETE FROM agent_run_events WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)",
+                projectId);
+        jdbcTemplate.update(
+                "DELETE FROM agent_run_continuation_checks WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)",
+                projectId);
+        jdbcTemplate.update("DELETE FROM agent_runs WHERE project_id = ?", projectId);
+        jdbcTemplate.update(
+                "DELETE FROM agent_input_projections WHERE snapshot_id IN (SELECT id FROM context_snapshots WHERE project_id = ?)",
+                projectId);
+        jdbcTemplate.update("DELETE FROM context_snapshots WHERE project_id = ?", projectId);
+        jdbcTemplate.update("DELETE FROM agent_proposals WHERE project_id = ?", projectId);
+        jdbcTemplate.update("DELETE FROM capability_invocations WHERE project_id = ?", projectId);
+        jdbcTemplate.update(
+                "DELETE FROM route_inherited_answers WHERE branch_route_id IN (SELECT id FROM routes WHERE project_id = ?)",
+                projectId);
+        jdbcTemplate.update(
+                "DELETE FROM route_inherited_answers WHERE answer_id IN (SELECT id FROM answers WHERE project_id = ?)",
+                projectId);
+        jdbcTemplate.update("DELETE FROM answer_patches WHERE project_id = ?", projectId);
+        jdbcTemplate.update("DELETE FROM answers WHERE project_id = ?", projectId);
+        jdbcTemplate.update("DELETE FROM node_relations WHERE project_id = ?", projectId);
+        jdbcTemplate.update("DELETE FROM graph_operations WHERE project_id = ?", projectId);
+        jdbcTemplate.update("DELETE FROM spec_snapshots WHERE project_id = ?", projectId);
+        jdbcTemplate.update("DELETE FROM routes WHERE project_id = ?", projectId);
+        jdbcTemplate.update("DELETE FROM nodes WHERE project_id = ?", projectId);
+        jdbcTemplate.update("DELETE FROM projects WHERE id = ?", projectId);
     }
 }

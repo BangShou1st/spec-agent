@@ -1,7 +1,8 @@
 # P3-B 项目 Agent 需求澄清与决策质量优化
 
-状态：**已完成 P3-B 决策基线、四类故障归因、一项有证据支持的通用最小修复与完整回归；
-真实模型成绩为 BLOCKED。**
+状态：**P3-B 四项审查问题已修复；Python / Java 回放及同一隔离库连续两次全量回归通过。
+真实模型语义成绩仍为 BLOCKED：官方路径上的首个请求以 AUTHENTICATION / HTTP 502 失败，
+没有产生可评分决策。最终运行数据见 §11。**
 
 本轮只处理 **项目 Agent（Workspace / Graph Reasoning Agent）** 的三类核心判断：
 何时追问、何时调用工具、何时结束或回应。未新增第二套 Planner、未引入多 Agent 辩论、
@@ -17,7 +18,7 @@ Agent 的桥接，未每轮强制额外一次模型调用，未改动 Zen 共享
 |---|---|---|
 | 上下文装配 | `ContextBuilder` → `ContextSnapshot` → `AgentInputSnapshotBuilder` | [AgentInputSnapshotBuilder.java](file:///e:/project/spec-agent/backend/src/main/java/com/specagent/agent/snapshot/AgentInputSnapshotBuilder.java) |
 | 决策输入 | `AgentInputSnapshot`：lineage / effectiveClaims / availableCapabilities / capabilityResults / retrievedContext / allowedSourceRefs | [inputs.py](file:///e:/project/spec-agent/agent-brain/src/spec_agent_brain/contracts/inputs.py)、`prompts/decision.py::render_user_prompt` |
-| 动作资格（掩码） | `ActionEligibilityGate.prepareDecisionRequest` → `ActionEligibilityEvaluator.evaluate`（默认 `shadow`） | [ActionEligibilityGate.java:62-71](file:///e:/project/spec-agent/backend/src/main/java/com/specagent/agent/action/ActionEligibilityGate.java#L62-L71)、[ActionEligibilityEvaluator.java:40-72](file:///e:/project/spec-agent/backend/src/main/java/com/specagent/agent/action/ActionEligibilityEvaluator.java#L40-L72) |
+| 动作资格（掩码） | `ActionEligibilityGate.prepareDecisionRequest` → `ActionEligibilityEvaluator.evaluate`（测试配置默认为 `shadow`；正常安装默认为 `enforced`） | [ActionEligibilityGate.java:62-71](file:///e:/project/spec-agent/backend/src/main/java/com/specagent/agent/action/ActionEligibilityGate.java#L62-L71)、[ActionEligibilityEvaluator.java:40-72](file:///e:/project/spec-agent/backend/src/main/java/com/specagent/agent/action/ActionEligibilityEvaluator.java#L40-L72) |
 | 决策调用 | Python `handle_decision`（1 次模型调用完成 reflection + planning，含一次有界冲突修复） | [decision/engine.py:82-154](file:///e:/project/spec-agent/agent-brain/src/spec_agent_brain/decision/engine.py#L82-L154) |
 | 决策提示词 | 27 条 positive-evidence 规则（RUI / CREATE_NODE / IC / WAIT / RTU 的独立资格门槛） | [prompts/decision.py:15-56](file:///e:/project/spec-agent/agent-brain/src/spec_agent_brain/prompts/decision.py#L15-L56) |
 | 响应校验 | `AgentBrainResponseValidator`（refs / 预算 / eligibility basis / 冲突暴露 / **按族 payload 形状**） | [AgentBrainResponseValidator.java:123-393](file:///e:/project/spec-agent/backend/src/main/java/com/specagent/agent/decision/AgentBrainResponseValidator.java#L123-L393) |
@@ -59,9 +60,10 @@ Agent 的桥接，未每轮强制额外一次模型调用，未改动 Zen 共享
     `ScriptedBrain` 只在**结构化大脑输出边界**替身，图/快照/eligibility/policy/executor/
     续跑裁决全部是生产实现。
   * Python 侧：`agent-brain/.venv`，离线回放真实 `handle_decision`，无网络、无 provider 调用。
-  * **真实模型**：`BLOCKED`（上游免费档配额限流 HTTP 429 `FreeUsageLimitError`，
-    且本地无 broker 模式 agent-brain 运行）。因此所有数字都是
-    **Runtime 门禁质量的 deterministic 基线，不是真实模型决策质量**；不宣称真实模型决策质量提高。
+  * **真实模型**：此前运行记录过免费档 HTTP 429；本轮已启动 Java Host → Python broker →
+    OpenCode 的真实链路，并按官方路径发送请求，但首个请求以 AUTHENTICATION / HTTP 502 失败。
+    没有生成可评分决策，因此所有语料数字仍是**Runtime 门禁质量的 deterministic 基线**，
+    不是真实模型决策质量；不宣称真实模型决策质量提高。当前运行证据见 §11。
 
 ---
 
@@ -209,6 +211,8 @@ Python 侧 Payload/protocol 回放（`tools/p3b/p3b_decision_replay.py`，11 个
 
 ## 8. Java / Python / 离线 / 真实模型测试结果
 
+本节保留早期基线与隔离排查的历史记录；2026-10-17 本轮最终的测试次数及 live 请求数据以 §11 为准。
+
 | 套件 | 命令 | 结果 |
 |---|---|---|
 | 后端确定性全量 | `backend> gradlew.bat testNonLive` | 见下方 §8.1：**本轮在全新独立库上为 2067 / 0 failed / 34 skipped**（修复前为 2064 total）；此前记录的 17 例失败被证实为测试库状态污染（机制已定位），非本轮代码回归 |
@@ -292,9 +296,12 @@ Python 侧 Payload/protocol 回放（`tools/p3b/p3b_decision_replay.py`，11 个
    `questionText` 写成对象），但"payload 违约 vs 网络故障"的分辨能力仍有限。
 6. **样本量与标签**：18 场景 × 2 变体，全部 `PENDING_HUMAN_REVIEW`；
    任何比率都不得被描述为"整体 Agent 正确率"。
-7. **真实模型 BLOCKED**：不宣称真实模型决策质量提高。
+7. **真实模型语义成绩仍 BLOCKED**：本轮已实际尝试 broker 链路；提供方认证失败后停止，
+   没有真实模型输出，详见 §11。
 
 **Git**
+
+以下是本文早期快照中的状态，不代表本轮最终交付；本轮分支、提交与远端状态以 §11 及交付消息为准。
 
 * 基线 `c5e695e`，工作树本轮开始时干净（`git status --short` 为空）。
 * 本轮改动分**三个**本地提交：**（A）生产修复 + 其单元测试**、
@@ -314,7 +321,7 @@ Python 侧 Payload/protocol 回放（`tools/p3b/p3b_decision_replay.py`，11 个
    在**可确定性证伪的范围内**是：唯一可复现的门禁级根因（IC 声明必填参数缺失仍被放行）
    已关闭，eligibility false positive **4/8 → 0/8**，且没有产生任何反向 false negative。
    语义层（改写重复追问、相关≠必须）**未被提高**，本轮如实记为未解决。
-   真实模型决策质量**无法判定**（BLOCKED）。
+   真实模型决策质量**无法判定**（BLOCKED；本轮官方端点请求被 AUTHENTICATION / HTTP 502 阻断，详见 §11）。
 2. **是否减少不必要的追问和工具调用？**
    减少了**可确定性判定的那一部分不必要的工具调用**（4 次注定失败的 `memory.search`
    调用不再 eligible；enforced 档位下按语料结构推导为 10 → 6 次持久化调用，实测部分是
@@ -333,3 +340,63 @@ Python 侧 Payload/protocol 回放（`tools/p3b/p3b_decision_replay.py`，11 个
    **是否需要调整档位默认值应作为独立决策**：本轮未做，且现状（生产 `enforced`、
    测试 `shadow`）保持不变。若产品希望默认安装回到"只观测不执行"的保守形态，那是
    另一项独立变更，不应藏在本轮修复里。
+
+---
+
+## 11. 2026-10-17 最终审查修复、真实模型试验与回归
+
+本节是本轮最终记录，更新并补充本文件早期的模型状态、测试计数和 Git 状态。
+
+### 四项审查问题
+
+1. **GateOutcome UNKNOWN**：只有显式 PASS/VETO 才分别进入通过/拒绝；缺失或未知事件记为 UNKNOWN，并单独展示未知数及已测数，不缩小完整分母。
+2. **INFRA 分类过宽**：改用类型化 gateway category、trace error type 和 gate 结果区分提供方/认证/限流/超时、非 JSON、协议违约、无效 payload、eligibility veto 与 UNKNOWN_FAILURE；不再用 `AgentBrainUnavailableException` 字符串直接推断 INFRA，也未改 Java Host 生产异常分类。
+3. **异常路径项目清理**：ScenarioRunner 在创建项目后、搭图前立即回调登记 project ID；每个 ID 独立尝试清理，部分清理失败继续处理其余项目；清理异常保留并作为 suppressed 附加到原始测试异常。清理目标只来自当前评测回调。
+4. **Python / Java 回放边界**：共享 fixture 明确约束所有者和所在层。CREATE_NODE 缺省 kind 在 Java wire validator 按 INTERACTION 形状校验，并由 executor 默认创建 Interaction；RESPOND_TO_USER 缺少 message 在 wire 层可通过、executor 返回 null message。Python 回放分别模拟 wire、eligibility、executor 和 policy，不放宽 Java 契约。
+
+对应测试包括 GateOutcome/失败分类单测、cleanup 多项目部分失败与 suppressed 异常及重复运行测试、ScenarioRunner 创建后搭图失败回调测试，以及真实 Java validator / executor 对共享跨语言 fixture 的断言。
+
+### `dsv4.1free` 实际验收
+
+OpenCode 官方 [Models 文档](https://opencode.ai/v2/docs/console/models/)列出 `DeepSeek V4.1 Flash Free`，模型 ID 为 `deepseek-v4.1-flash-free`，使用 OpenAI-compatible Chat Completions 路径；本地项目目录也将该 ID 标记为 chat-executable 和 free。项目的 Zen 元数据源本轮不可达，因此本地 `protocolOf()` 返回 UNKNOWN；不能把本地元数据查询描述为成功验证。
+
+本轮新增的 P3-B live suite 使用文档所列官方路径 `https://opencode.ai/inference/openai/v1`，启动了真实 Java Host → Python broker → OpenCode 链路，并在首个提供方故障后停止：
+
+| 项目 | 实测结果 |
+|---|---|
+| 模型 / 模式 | `deepseek-v4.1-flash-free` / broker |
+| 官方路径尝试 | 1 次 `STATE_UPDATE` 推理请求；broker 返回 HTTP 502，类型化类别为 `AUTHENTICATION` |
+| 决策输出 | 0 次 DECISION；没有 action、payload 或语义结果 |
+| 场景 | P3B-C03 / base，耗时 5.734 秒（运行器计时），5.840 秒（报告测时） |
+| 可评分指标 | action accuracy、payload validity、C03 重复追问、C07 capability 必要性和语义错误均未测，分母为 0；eligibility UNKNOWN=1、measured=0 |
+| 停止原因 | `PROVIDER_ERROR`；按预设停止规则不继续发送请求 |
+
+单次运行的机器可读记录（包含请求数、场景时间、typed failure 与全部分母）在 [p3b_live_priority_20261017.json](../../tools/p3b/p3b_live_priority_20261017.json)。
+
+此前对旧路径 `https://opencode.ai/inference/v1` 的优先场景试跑已发送 8 次 `STATE_UPDATE` 请求，8 次均由 broker 返回 HTTP 502；观察到的持久化提供方类别为 `AUTHENTICATION`，没有任何 DECISION 请求或语义输出。合并两次试验共发出 9 次模型请求，0 次成功。最新官方路径只完成 C03/base；C03/holdout、C07、C13、C15 在官方路径下均未测，不能把未执行的场景记为通过或失败。
+
+Ollama 未用于推理或 embedding；这些场景不需要向量检索。本轮没有修改 DECISION Prompt、模型调用预算、冻结 oracle 或 `backend/src/main` 生产代码。分支原有提交 `5a1f4f9` 包含 required-capability-argument 的生产资格校验修复；本轮追加的四项审查修复都位于评测、测试、文档与回放工具。
+
+### 回归结果
+
+需要数据库的后端评测与集成回归使用新建隔离库 `spec_agent_p3b_20261017`；既有用户库未清空、未重建。
+
+| 测试 | 结果 |
+|---|---|
+| 资格校验定向组（Characterization / Gate / Evaluator / P3BDecisionQuality / EnforcedCapabilityNecessity） | 36 tests，0 failed / 0 errors / 0 skipped |
+| 新增 ScenarioRunner 项目创建后异常回调测试 | 1 passed |
+| Java validator / executor 跨语言边界测试（最终断言复跑） | 13 tests，0 failed / 0 errors / 0 skipped |
+| `evalBFast` | 111 tests，0 failed / 0 errors / 0 skipped |
+| Python Brain 全量 | 239 passed；1 条 Starlette/AnyIO deprecation warning |
+| `tools/tests` | 135 passed |
+| P3-B replay | 11/11 fixture outcome 与 action 匹配，0 payload mismatches |
+| `testNonLive` 第一次实际运行 | 2074 tests，0 failed / 0 errors / 34 skipped |
+| 同一隔离库 `testNonLive --rerun-tasks` 第二次实际运行 | 2074 tests，0 failed / 0 errors / 34 skipped，用时 8 分 24 秒 |
+
+第二次实际运行后的只读查询显示 `agent_runs` 中 `CONTINUE_CYCLE` 残留为 0；Gradle `UP-TO-DATE` 的尝试未计作一次运行。测试档 eligibility 仍为 shadow，正常安装默认 enforced 未更改；模型调用次数没有因这四项审查修复而增加。
+
+### 签收范围与 Git
+
+四项评测/测试缺陷均已关闭，代码层回归通过。由于候选标签仍待人工审核，且真实模型试验被认证错误阻断，**可以签收四项工程修复与确定性基线；不能签收真实模型语义质量达标**。目前没有已知测试失败作为合并阻塞；真实模型认证和标签人工审核仍是语义验收的未决项。
+
+本轮交付分支、提交、远端状态及审查链接以最终交付消息中核对的 Git 状态为准。
