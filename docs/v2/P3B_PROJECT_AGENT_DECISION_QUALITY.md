@@ -358,9 +358,9 @@ Python 侧 Payload/protocol 回放（`tools/p3b/p3b_decision_replay.py`，11 个
 
 ### `dsv4.1free` 实际验收
 
-OpenCode 官方 [Models 文档](https://opencode.ai/v2/docs/console/models/)列出 `DeepSeek V4.1 Flash Free`，模型 ID 为 `deepseek-v4.1-flash-free`，使用 OpenAI-compatible Chat Completions 路径；本地项目目录也将该 ID 标记为 chat-executable 和 free。项目的 Zen 元数据源本轮不可达，因此本地 `protocolOf()` 返回 UNKNOWN；不能把本地元数据查询描述为成功验证。
+OpenCode 官方 [Models 文档](https://opencode.ai/v2/docs/console/models/)列出 `DeepSeek V4.1 Flash Free`，模型 ID 为 `deepseek-v4.1-flash-free`，并列出 OpenAI-compatible Chat Completions endpoint；文档当前说明该免费档为限时免费，Console 使用需登录并取得 API key。本地项目目录也将该 ID 标记为 chat-executable 和 free。项目的 Zen 元数据源本轮不可达，因此本地 `protocolOf()` 返回 UNKNOWN；不能把本地元数据查询描述为成功验证。
 
-本轮新增的 P3-B live suite 使用文档所列官方路径 `https://opencode.ai/inference/openai/v1`，启动了真实 Java Host → Python broker → OpenCode 链路，并在首个提供方故障后停止：
+本轮新增的 P3-B live suite 使用文档所列官方路径 `https://opencode.ai/inference/openai/v1`，启动了真实 Java Host → Python broker → OpenCode 链路，并在首个提供方故障后停止。试验进程未配置 `SPEC_AGENT_EVAL_OPENCODE_KEY`；收到的类型化错误为 AUTHENTICATION，因而当前访问凭据是验收阻塞项，没有重试或绕过：
 
 | 项目 | 实测结果 |
 |---|---|
