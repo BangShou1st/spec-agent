@@ -70,8 +70,7 @@ public class KiloSettingsService implements KiloRuntimeSettingsPort {
         CandidateModels models = discover();
         if (hasKey(apiKey)) {
             String probeModel = models.recommendedProbeModel();
-            requireCredentialFor(probeModel, apiKey.trim(), models.freeModels());
-            validateCredential(credentialFor(probeModel, apiKey.trim(), models.freeModels()), probeModel);
+            validateCredential(credentialForModel(probeModel, apiKey.trim()), probeModel);
         }
         return models;
     }
@@ -85,8 +84,7 @@ public class KiloSettingsService implements KiloRuntimeSettingsPort {
                 : (existing != null && hasKey(existing.apiKey()) ? existing.apiKey() : null);
         CandidateModels models = discover();
         requireAvailable(models, model);
-        requireCredentialFor(model, key, models.freeModels());
-        validateCredential(credentialFor(model, key, models.freeModels()), model);
+        validateCredential(credentialForModel(model, key), model);
 
         Instant now = Instant.now();
         repository.upsert(new KiloSettings(key, suffix(key), model,
@@ -103,8 +101,7 @@ public class KiloSettingsService implements KiloRuntimeSettingsPort {
         String model = requireModel(selectedModel);
         CandidateModels models = discover();
         requireAvailable(models, model);
-        requireCredentialFor(model, current.apiKey(), models.freeModels());
-        validateCredential(credentialFor(model, current.apiKey(), models.freeModels()), model);
+        validateCredential(credentialForModel(model, current.apiKey()), model);
 
         repository.upsert(new KiloSettings(current.apiKey(), current.maskedSuffix(), model,
                 current.createdAt(), Instant.now()));
@@ -117,8 +114,7 @@ public class KiloSettingsService implements KiloRuntimeSettingsPort {
         CandidateModels models = discover();
         String model = current.selectedModel();
         requireAvailable(models, model);
-        requireCredentialFor(model, current.apiKey(), models.freeModels());
-        validateCredential(credentialFor(model, current.apiKey(), models.freeModels()), model);
+        validateCredential(credentialForModel(model, current.apiKey()), model);
         return status();
     }
 
@@ -137,8 +133,27 @@ public class KiloSettingsService implements KiloRuntimeSettingsPort {
         if (settings.selectedModel() == null || settings.selectedModel().isBlank()) {
             throw ModelProviderException.notConfigured(CONTEXT, "Kilo Gateway settings are not configured");
         }
-        return new RuntimeKiloSettings(settings.apiKey(), settings.selectedModel(),
-                "database:kilo_settings");
+        return new RuntimeKiloSettings(
+                credentialForModel(settings.selectedModel(), settings.apiKey()),
+                settings.selectedModel(), "database:kilo_settings");
+    }
+
+    /**
+     * 本次调用实际应使用的凭据——Kilo 凭据边界的<b>唯一判定点</b>。
+     *
+     * <p>免费档(按既有可信规则 {@link FreeModelPolicy#isFreeModelId} 判定)恒为匿名:
+     * 即便之前保存过付费密钥,免费模型的请求也绝不携带它。付费档必须显式提供密钥,
+     * 否则失败关闭。Project Agent 推理与 GA 目标解析都只经由这一个方法取得凭据,
+     * 因此不存在第二套模型分类或第二处凭据判定。
+     */
+    public String credentialForModel(String model, String apiKey) {
+        if (FreeModelPolicy.isFreeModelId(model)) {
+            return null;
+        }
+        if (!hasKey(apiKey)) {
+            throw ModelProviderException.notConfigured(CONTEXT, "Paid Kilo models require an API key");
+        }
+        return apiKey;
     }
 
     /** 一次上游列举同时派生可执行目录与免费子集,不再重复拉取 /models。 */
@@ -213,21 +228,6 @@ public class KiloSettingsService implements KiloRuntimeSettingsPort {
         if (!models.allModels().contains(model)) {
             throw ModelProviderException.invalidModel(CONTEXT,
                     "Selected Kilo model is not currently available", null);
-        }
-    }
-
-    /**
-     * 与 OpenCode Zen 相同的凭据策略:免费档绝不接收用户密钥,一律匿名调用;
-     * 付费模型才使用已提供/已保存的密钥。
-     */
-    private static String credentialFor(String model, String apiKey, List<String> freeModels) {
-        return freeModels.contains(model) ? null : apiKey;
-    }
-
-    private static void requireCredentialFor(String model, String apiKey, List<String> freeModels) {
-        if (!freeModels.contains(model) && !hasKey(apiKey)) {
-            throw ModelProviderException.notConfigured(CONTEXT,
-                    "Paid Kilo models require an API key");
         }
     }
 

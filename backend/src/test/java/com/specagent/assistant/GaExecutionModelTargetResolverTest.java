@@ -11,6 +11,7 @@ import com.specagent.assistant.runtime.GaExecutionMode;
 import com.specagent.assistant.runtime.GaExecutionModelTargetResolver;
 import com.specagent.model.contract.GaModelTarget;
 import com.specagent.model.contract.ModelProvider;
+import com.specagent.model.provider.ModelProviderException;
 import com.specagent.model.provider.OpenCodeModelCatalog;
 import com.specagent.modelsettings.CustomProviderSettings;
 import com.specagent.modelsettings.CustomProviderSettingsService;
@@ -108,6 +109,8 @@ class GaExecutionModelTargetResolverTest {
         Instant updated = Instant.parse("2026-10-18T09:38:58Z");
         when(providers.activeProvider()).thenReturn(ModelProvider.KILO);
         when(kiloSettings.stored()).thenReturn(Optional.of(kilo(null, "poolside/laguna-s-2.1:free", updated)));
+        // 唯一边界判定:免费档恒匿名,即使曾保存过付费密钥。
+        when(kiloSettings.credentialForModel("poolside/laguna-s-2.1:free", null)).thenReturn(null);
         when(qualification.kiloQualified("poolside/laguna-s-2.1:free")).thenReturn(true);
 
         var resolution = ready(resolver().resolveActive());
@@ -118,6 +121,49 @@ class GaExecutionModelTargetResolverTest {
         // 免费模型匿名执行:没有凭据绝不等于失败。
         assertThat(resolution.target().hasCredential()).isFalse();
         assertThat(resolution.mode()).isEqualTo(GaExecutionMode.NATIVE_TOOLS);
+    }
+
+    @Test
+    void freeKiloModelStaysAnonymousEvenWithAStoredPaidKey() {
+        hostSecret("secret");
+        Instant updated = Instant.parse("2026-10-18T09:38:58Z");
+        when(providers.activeProvider()).thenReturn(ModelProvider.KILO);
+        when(kiloSettings.stored()).thenReturn(Optional.of(kilo("paid-key", "poolside/laguna-s-2.1:free", updated)));
+        // 边界把付费密钥解析为匿名:GA 目标绝不携带它。
+        when(kiloSettings.credentialForModel("poolside/laguna-s-2.1:free", "paid-key")).thenReturn(null);
+        when(qualification.kiloQualified("poolside/laguna-s-2.1:free")).thenReturn(true);
+
+        var resolution = ready(resolver().resolveActive());
+
+        assertThat(resolution.target().hasCredential()).isFalse();
+        assertThat(resolution.target().credential()).isNull();
+    }
+
+    @Test
+    void paidKiloModelResolvesWithItsResolvedCredential() {
+        hostSecret("secret");
+        Instant updated = Instant.parse("2026-10-18T09:38:58Z");
+        when(providers.activeProvider()).thenReturn(ModelProvider.KILO);
+        when(kiloSettings.stored()).thenReturn(Optional.of(kilo("paid-key", "cohere/north-mini-code", updated)));
+        when(kiloSettings.credentialForModel("cohere/north-mini-code", "paid-key")).thenReturn("paid-key");
+        when(qualification.kiloQualified("cohere/north-mini-code")).thenReturn(true);
+
+        var resolution = ready(resolver().resolveActive());
+
+        assertThat(resolution.target().credential()).isEqualTo("paid-key");
+    }
+
+    @Test
+    void paidKiloModelWithoutACredentialIsNotConfigured() {
+        hostSecret("secret");
+        when(providers.activeProvider()).thenReturn(ModelProvider.KILO);
+        when(kiloSettings.stored()).thenReturn(Optional.of(kilo(null, "cohere/north-mini-code", Instant.now())));
+        when(kiloSettings.credentialForModel("cohere/north-mini-code", null))
+                .thenThrow(ModelProviderException.notConfigured("kilo", "Paid Kilo models require an API key"));
+
+        // 付费模型缺少密钥时在准备阶段失败关闭,绝不把空凭据带进传输层。
+        assertThat(unavailableCode(resolver().resolveActive()))
+                .isEqualTo(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED);
     }
 
     @Test

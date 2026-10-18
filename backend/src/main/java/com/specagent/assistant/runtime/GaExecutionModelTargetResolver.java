@@ -183,6 +183,10 @@ public class GaExecutionModelTargetResolver {
      * {@link GaExecutionMode#TEXT_CHAT}。原生工具调用资格只决定是否升级为
      * {@link GaExecutionMode#NATIVE_TOOLS}——绝不按 {@code :free} 后缀推断,也绝不
      * 因为未登记而拒绝普通聊天。
+     *
+     * <p>凭据取自 {@link KiloSettingsService#credentialForModel} 这一唯一边界:免费模型
+     * 即使曾保存过付费密钥也一律匿名执行,付费模型缺少密钥则在此失败关闭(而不是把密钥
+     * 或空凭据带进传输层)。
      */
     private Resolution resolveKilo(boolean applyPreparationGate) {
         var stored = kiloSettings.stored().orElse(null);
@@ -191,11 +195,18 @@ public class GaExecutionModelTargetResolver {
                     "Kilo Gateway settings are not configured");
         }
         String model = stored.selectedModel();
+        String credential;
+        try {
+            credential = kiloSettings.credentialForModel(model, stored.apiKey());
+        } catch (RuntimeException missingCredential) {
+            return unavailable(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED,
+                    "The Kilo credential is not available for the selected model");
+        }
         // 资格登记只使用能力信息:未登记的模型仍然可以聊天,只是不启用原生工具。
         GaExecutionMode mode = qualification.kiloQualified(model)
                 ? GaExecutionMode.NATIVE_TOOLS : GaExecutionMode.TEXT_CHAT;
         return new Ready(new GaModelTarget(ModelProvider.KILO.name(), model,
-                "kilo-settings:" + stored.updatedAt(), stored.apiKey()), mode);
+                "kilo-settings:" + stored.updatedAt(), credential), mode);
     }
 
     /**

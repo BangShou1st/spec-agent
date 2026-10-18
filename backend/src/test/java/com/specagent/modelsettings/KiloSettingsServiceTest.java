@@ -146,14 +146,49 @@ class KiloSettingsServiceTest {
     }
 
     @Test
-    void requireRuntimeSettingsReturnsTheStoredPairWithoutLeakingTheKey() {
+    void freeModelRuntimeSettingsAreAnonymousEvenWhenAPaidKeyIsStored() {
         when(repository.find()).thenReturn(Optional.of(stored("super-secret-key", "1234", "a:free")));
 
         RuntimeKiloSettings runtime = service().requireRuntimeSettings();
 
-        assertThat(runtime.apiKey()).isEqualTo("super-secret-key");
+        // 免费档恒为匿名:已存付费密钥绝不被交给推理侧。
+        assertThat(runtime.apiKey()).isNull();
         assertThat(runtime.selectedModel()).isEqualTo("a:free");
         assertThat(runtime.toString()).doesNotContain("super-secret-key");
+    }
+
+    @Test
+    void paidModelRuntimeSettingsUseTheStoredCredentialWithoutLeakingIt() {
+        when(repository.find()).thenReturn(Optional.of(stored("super-secret-key", "1234", "b-paid")));
+
+        RuntimeKiloSettings runtime = service().requireRuntimeSettings();
+
+        assertThat(runtime.apiKey()).isEqualTo("super-secret-key");
+        assertThat(runtime.selectedModel()).isEqualTo("b-paid");
+        assertThat(runtime.toString()).doesNotContain("super-secret-key");
+    }
+
+    @Test
+    void paidModelWithoutAStoredKeyFailsClosedAsNotConfigured() {
+        when(repository.find()).thenReturn(Optional.of(stored(null, null, "b-paid")));
+
+        assertThatThrownBy(() -> service().requireRuntimeSettings())
+                .isInstanceOf(ModelProviderException.class)
+                .extracting(error -> ((ModelProviderException) error).gatewayCategory())
+                .isEqualTo(ModelGatewayErrorCategory.NOT_CONFIGURED);
+    }
+
+    @Test
+    void credentialForModelKeepsTheFreeTierAnonymousAndFailsClosedForUnkeyedPaidModels() {
+        KiloSettingsService service = service();
+
+        assertThat(service.credentialForModel("a:free", "stored-key")).isNull();
+        assertThat(service.credentialForModel("kilo-auto/free", "stored-key")).isNull();
+        assertThat(service.credentialForModel("b-paid", "stored-key")).isEqualTo("stored-key");
+        assertThatThrownBy(() -> service.credentialForModel("b-paid", null))
+                .isInstanceOf(ModelProviderException.class)
+                .extracting(error -> ((ModelProviderException) error).gatewayCategory())
+                .isEqualTo(ModelGatewayErrorCategory.NOT_CONFIGURED);
     }
 
     @Test
