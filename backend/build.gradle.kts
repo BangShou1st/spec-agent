@@ -292,7 +292,7 @@ tasks.register<Test>("evalLiveSmoke") {
 // default test task because it requires the external provider and broker.
 tasks.register<Test>("evalLiveP3B") {
     group = "verification"
-    description = "Records real-model P3-B priority scenarios (requires broker + OpenCode access)."
+    description = "Records real-model P3-B priority scenarios (requires broker + the active provider, e.g. Kilo; isolated DB via SPEC_AGENT_EVAL_DB_URL)."
     useJUnitPlatform()
     filter {
         includeTestsMatching("com.specagent.eval.EvalLiveP3BDecisionQualityTest")

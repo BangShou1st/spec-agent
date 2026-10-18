@@ -2,10 +2,13 @@ package com.specagent.eval;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.agent.trace.SemanticTrace;
-import com.specagent.model.provider.OpenCodeModelCatalog;
+import com.specagent.model.contract.ModelProvider;
+import com.sharedlibs.kilogateway.FreeModelPolicy;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,7 +21,32 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Runs priority P3-B cases through the real Host -> Brain broker -> OpenCode chain. */
+/**
+ * 文件名:EvalLiveP3BDecisionQualityTest.java
+ *
+ * 真实模型 P3-B 决策质量证据(P3-B live)。
+ *
+ * 链路:Java Host → Python Project Agent Brain → Java Internal Model Broker →
+ * <b>当前全局激活的提供商</b>(本轮为 Kilo Gateway)。绝不改成直连模型的测试替身,
+ * 也绝不为省事换成脚本化 Brain。
+ *
+ * 数值口径:
+ * <ul>
+ *   <li>模型选择准确率以<b>原始模型选择</b>(DECISION_OUTPUT / ACTION_ELIGIBILITY.selected_action)
+ *       为依据,绝不只统计通过 Java 门禁的动作;</li>
+ *   <li>门禁准确率与执行成功率<b>各自独立统计</b>,每个比率都带显式分母;</li>
+ *   <li>不可观测的字段记 {@code NOT_MEASURED},绝不按正确或错误填充;</li>
+ *   <li>同一 Run 同时存在失败与成功请求时,按请求证据与最终执行证据分别归因,
+ *       不因第一个失败类别就把整个 Run 判为基础设施失败。</li>
+ * </ul>
+ *
+ * 请求纪律:初次评测严格限制请求总量;遇 429 / 认证错误 / 持续提供商故障立即停止,
+ * 不自动重试、不自动换模型。使用<b>隔离数据库</b>,绝不改动用户开发库的激活模型设置。
+ *
+ * <p>模型设置取自<b>隔离数据库</b>的当前全局激活提供商(test 前显式置为 Kilo);
+ * 不再使用 OpenCode Zen 专属的外置环境配置。{@code model.inference=opencode} 只是
+ * 打开权威路由网关({@code RoutingModelInferenceGateway})的主开关,与具体提供商无关。
+ */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
         properties = {
@@ -27,81 +55,145 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "spec.agent.brain.base-url=${SPEC_AGENT_EVAL_BRAIN_BASE_URL:http://localhost:8100}",
                 "spec.agent.brain.internal-secret=${SPEC_AGENT_BRAIN_INTERNAL_SECRET:dev-internal-secret}",
                 "spec.agent.model.inference=opencode",
-                "spec.agent.model.runtime-settings-source=external-environment",
-                "spec.agent.model.external.api-key=${SPEC_AGENT_EVAL_OPENCODE_KEY:}",
-                "spec.agent.model.external.selected-model=${SPEC_AGENT_EVAL_OPENCODE_MODEL:}",
-                "spec.agent.model.opencode.base-url=https://opencode.ai/inference/openai/v1",
                 "spec.agent.semantic-trace.enabled=true"
         })
 class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
 
-    private static final String EXPECTED_MODEL = "deepseek-v4.1-flash-free";
-    private static final Set<String> PRIORITY_IDS = Set.of(
-            "P3B-C03", "P3B-C07", "P3B-C13", "P3B-C15");
+    /** 明确的 Kilo 模型 ID;不用 kilo-auto/free 等动态路由模型做固定质量比较。 */
+    private static final String KILO_MODEL = System.getenv().getOrDefault(
+            "SPEC_AGENT_EVAL_KILO_MODEL", "poolside/laguna-s-2.1:free");
+
+    /** 首次评测的请求总量上限(含 STATE_UPDATE + DECISION)。 */
+    private static final int MAX_TOTAL_REQUESTS = 40;
+
+    private static final java.util.UUID LOCAL_ORG =
+            java.util.UUID.fromString("00000000-0000-4000-8000-000000000001");
+
+    /** 优先场景:C03 改写重复追问 / C07 相关但不必要 / C13 作废来源 / C15 无依据断言。 */
+    private static final List<String> PRIORITY_IDS =
+            List.of("P3B-C03", "P3B-C07", "P3B-C13", "P3B-C15");
+    /** 必要的工具调用:验证 C08(参数齐全必须被允许)与 C09(缺必填参数必须 fail-closed)。 */
+    private static final List<String> GUARD_IDS = List.of("P3B-C08", "P3B-C09");
+
+    /**
+     * 本次实际运行的场景 id 列表,按声明顺序执行(不受语料 C01..C18 顺序影响)。
+     * 可用 {@code SPEC_AGENT_EVAL_P3B_SCENARIOS} 覆盖(逗号分隔),便于在受限请求预算下
+     * 分批覆盖优先场景;默认=优先场景 + 守卫场景。
+     */
+    private static final List<String> SCENARIO_IDS = resolveScenarioIds();
+
+    private static List<String> resolveScenarioIds() {
+        String raw = System.getenv().getOrDefault("SPEC_AGENT_EVAL_P3B_SCENARIOS", "");
+        if (raw != null && !raw.isBlank()) {
+            List<String> ids = new ArrayList<>();
+            for (String token : raw.split(",")) {
+                String id = token.trim();
+                if (!id.isEmpty()) {
+                    ids.add(id);
+                }
+            }
+            return List.copyOf(ids);
+        }
+        List<String> ids = new ArrayList<>(PRIORITY_IDS);
+        ids.addAll(GUARD_IDS);
+        return List.copyOf(ids);
+    }
+
     private static final String BRAIN_HEALTH = System.getenv().getOrDefault(
             "SPEC_AGENT_EVAL_BRAIN_BASE_URL", "http://localhost:8100") + "/health";
 
     @Autowired
-    private OpenCodeModelCatalog modelCatalog;
-
-    @Autowired
     private ObjectMapper mapper;
+
+    @org.springframework.beans.factory.annotation.Value(
+            "${spec.agent.action-eligibility.mode:unknown}")
+    private String actionEligibilityMode;
+
+    @DynamicPropertySource
+    static void isolatedDatabase(DynamicPropertyRegistry registry) {
+        String url = System.getenv().getOrDefault(
+                "SPEC_AGENT_EVAL_DB_URL",
+                "jdbc:postgresql://localhost:5434/spec_agent_p3b_live_20261018");
+        registry.add("spring.datasource.url", () -> url);
+    }
 
     @Test
     void priorityScenariosRecordRealModelDecisionEvidence() throws Exception {
-        LiveChainEvidence before = requireLiveBrain(BRAIN_HEALTH);
-        assertThat(before.selectedModel()).isEqualTo(EXPECTED_MODEL);
-        assertThat(modelCatalog.chatExecutable(EXPECTED_MODEL)).isTrue();
-        assertThat(modelCatalog.isFreeModel(EXPECTED_MODEL)).isTrue();
+        seedKiloActivation();
+        LiveChainEvidence before = requireLiveProvider(BRAIN_HEALTH);
+        assertThat(before.provider()).isEqualTo(ModelProvider.KILO.name());
+        assertThat(before.selectedModel()).isEqualTo(KILO_MODEL);
+        assertThat(FreeModelPolicy.isFreeModelId(KILO_MODEL))
+                .as("fixed quality comparison uses an explicitly named free model")
+                .isTrue();
 
         List<Map<String, Object>> attemptReports = new ArrayList<>();
         List<P3BDecisionQuality.DecisionObservation> qualityObservations = new ArrayList<>();
         Map<String, P3BCorpus.P3BOracle> oracles = new LinkedHashMap<>();
+        Map<String, P3BCorpus.P3BScenario> byId = new LinkedHashMap<>();
+        for (P3BCorpus.P3BScenario scenario : P3BCorpus.all()) {
+            byId.put(scenario.scenarioId(), scenario);
+        }
         boolean rateLimited = false;
         boolean stoppedAfterProviderFailure = false;
         boolean stoppedAfterUnclassifiedFailure = false;
+        boolean stoppedOnRequestBudget = false;
+        int totalRequests = 0;
         outer:
-        for (P3BCorpus.P3BScenario scenario : P3BCorpus.all()) {
-            if (!PRIORITY_IDS.contains(scenario.scenarioId())) {
-                continue;
+        for (String scenarioId : SCENARIO_IDS) {
+            P3BCorpus.P3BScenario scenario = byId.get(scenarioId);
+            if (scenario == null) {
+                throw new IllegalArgumentException("Unknown P3-B scenario: " + scenarioId);
             }
             oracles.put(scenario.scenarioId(), scenario.oracle());
             for (VariantSpec variant : scenario.definition().variants()) {
+                if (totalRequests >= MAX_TOTAL_REQUESTS) {
+                    stoppedOnRequestBudget = true;
+                    break outer;
+                }
                 long startedAt = System.nanoTime();
                 ObservationEnvelope observation = runLiveScenario(
                         scenario.definition(), variant, 1).get(0);
                 long measuredDurationMs = (System.nanoTime() - startedAt) / 1_000_000;
                 UUID projectId = scenarioRunner.lastProjectId();
-                // Agent run events are keyed by the observation's attempt id.
-                // runId is an optional reporting field and can be null here.
                 ModelRequestEvidence requestEvidence = modelRequestEvidence(observation.attemptId());
+                totalRequests += requestEvidence.requestCount();
                 int capabilityCalls = persistedCapabilityInvocations(projectId);
-                P3BDecisionQuality.FailureClassification failure =
-                        P3BDecisionQuality.classifyFailure(
-                                observation.executionResult(),
-                                requestEvidence.failureCategories().stream().findFirst().orElse(null),
-                                stage(observation.semanticTrace(), "ACTION_ELIGIBILITY"),
-                                traceError(observation.semanticTrace(), "error_type"),
-                                traceError(observation.semanticTrace(), "error_summary"));
+
                 Map<String, Object> eligibility = stage(
                         observation.semanticTrace(), "ACTION_ELIGIBILITY");
-                String actualAction = observation.actualPrimaryAction();
-                boolean actionAcceptable = actualAction != null && scenario.definition().expect()
-                        .acceptablePrimaryActions().contains(actualAction);
+                String modelSelected = modelSelectedAction(observation.semanticTrace());
+                String acceptedAction = observation.actualPrimaryAction();
+                String executionResult = observation.executionResult();
+                String executedAction = P3BDecisionQuality.executedAction(
+                        acceptedAction, executionResult);
+
+                P3BDecisionQuality.FailureClassification failure =
+                        attributeFailure(scenario, acceptedAction, executionResult,
+                                requestEvidence, eligibility, observation.semanticTrace());
+
+                boolean modelSelectionMeasured = modelSelected != null && !modelSelected.isBlank();
+                boolean modelSelectionAcceptable = modelSelectionMeasured
+                        && scenario.definition().expect().acceptablePrimaryActions()
+                        .contains(modelSelected);
+                boolean actionAcceptable = acceptedAction != null
+                        && scenario.definition().expect().acceptablePrimaryActions()
+                        .contains(acceptedAction);
                 boolean unnecessaryClarification = "P3B-C03".equals(scenario.scenarioId())
-                        && "REQUEST_USER_INPUT".equals(actualAction);
+                        && "REQUEST_USER_INPUT".equals(acceptedAction);
                 boolean unnecessaryCapability = "P3B-C07".equals(scenario.scenarioId())
-                        && ("INVOKE_CAPABILITY".equals(actualAction) || capabilityCalls > 0);
-                boolean semanticErrorSignal = actualAction != null && (!actionAcceptable
-                        || unnecessaryClarification || unnecessaryCapability);
+                        && ("INVOKE_CAPABILITY".equals(acceptedAction) || capabilityCalls > 0);
+                boolean semanticErrorSignal = acceptedAction != null
+                        && (!actionAcceptable || unnecessaryClarification || unnecessaryCapability);
 
                 qualityObservations.add(new P3BDecisionQuality.DecisionObservation(
-                        scenario.scenarioId(), variant.variantId(), actualAction,
+                        scenario.scenarioId(), variant.variantId(),
+                        modelSelected, modelSelectionAcceptable,
+                        acceptedAction, executedAction, executionResult,
                         actionAcceptable,
                         P3BDecisionQuality.gateOutcome(eligibility),
                         P3BDecisionQuality.gateReasonCodes(eligibility),
-                        P3BDecisionQuality.payloadValidity(actualAction,
-                                observation.executionResult()),
+                        P3BDecisionQuality.payloadValidity(acceptedAction, executionResult),
                         false, false, null,
                         scenario.oracle().capabilityNecessityScored()
                                 && failure == P3BDecisionQuality.FailureClassification.NONE,
@@ -116,37 +208,41 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                 attempt.put("scenario_id", scenario.scenarioId());
                 attempt.put("variant_id", variant.variantId());
                 attempt.put("attempt_id", observation.attemptId());
-                attempt.put("run_id", observation.attemptId());
                 attempt.put("reported_run_id", observation.runId());
-                attempt.put("action", actualAction);
-                attempt.put("action_measured", actualAction != null && !actualAction.isBlank());
-                attempt.put("acceptable_action", actionAcceptable);
-                attempt.put("payload_validity", P3BDecisionQuality.payloadValidity(
-                        actualAction, observation.executionResult()).name());
-                attempt.put("eligibility_veto", P3BDecisionQuality.gateOutcome(eligibility).name());
+                attempt.put("model_selected_action", modelSelected);
+                attempt.put("model_selection_measured", modelSelectionMeasured);
+                attempt.put("model_selection_acceptable", modelSelectionAcceptable);
+                attempt.put("eligibility_outcome",
+                        P3BDecisionQuality.gateOutcome(eligibility).name());
                 attempt.put("eligibility_reason_codes",
                         P3BDecisionQuality.gateReasonCodes(eligibility));
-                attempt.put("execution_result", observation.executionResult());
+                attempt.put("accepted_action", acceptedAction);
+                attempt.put("executed_action", executedAction);
+                attempt.put("action_acceptable", actionAcceptable);
+                attempt.put("action_measured", acceptedAction != null
+                        && !acceptedAction.isBlank());
+                attempt.put("payload_validity", P3BDecisionQuality.payloadValidity(
+                        acceptedAction, executionResult).name());
+                attempt.put("execution_result", executionResult);
                 attempt.put("failure_classification", failure.name());
                 attempt.put("model_request_count", requestEvidence.requestCount());
                 attempt.put("successful_model_requests", requestEvidence.successCount());
                 attempt.put("failed_model_requests", requestEvidence.failedCount());
                 attempt.put("provider_failure_categories", requestEvidence.failureCategories());
+                attempt.put("attribution_basis", attributionBasis(
+                        acceptedAction, requestEvidence, failure));
                 attempt.put("capability_calls", capabilityCalls);
                 attempt.put("repeated_clarification", unnecessaryClarification);
                 attempt.put("unnecessary_capability_call", unnecessaryCapability);
-                attempt.put("action_acceptable_set_error_signal",
-                        actualAction != null && !actionAcceptable);
                 attempt.put("unresolved_semantic_error_signal", semanticErrorSignal);
                 attempt.put("manual_semantic_review_required",
-                        actualAction != null
-                                && Set.of("P3B-C13", "P3B-C15").contains(scenario.scenarioId()));
+                        Set.of("P3B-C03", "P3B-C13", "P3B-C15").contains(scenario.scenarioId()));
+                attempt.put("decision_output", stage(
+                        observation.semanticTrace(), "DECISION_OUTPUT").get("normalized_output"));
                 attempt.put("duration_ms", observation.latencyMs() == null
                         ? measuredDurationMs : observation.latencyMs());
                 attempt.put("measured_duration_ms", measuredDurationMs);
                 attempt.put("stage_latency_ms", observation.stageLatencyMs());
-                attempt.put("decision_output", stage(
-                        observation.semanticTrace(), "DECISION_OUTPUT").get("normalized_output"));
                 attemptReports.add(attempt);
 
                 if (failure == P3BDecisionQuality.FailureClassification.RATE_LIMITED) {
@@ -157,8 +253,9 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                     stoppedAfterProviderFailure = true;
                     break outer;
                 }
-                if (requestEvidence.failedCount() > 0
-                        || failure == P3BDecisionQuality.FailureClassification.UNKNOWN_FAILURE) {
+                if (acceptedAction == null
+                        && (requestEvidence.failedCount() > 0 || failure
+                        == P3BDecisionQuality.FailureClassification.UNKNOWN_FAILURE)) {
                     stoppedAfterUnclassifiedFailure = true;
                     break outer;
                 }
@@ -171,34 +268,43 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         Map<String, Object> report = new LinkedHashMap<>();
         report.put("schema_version", "p3b-live-priority.v1");
         report.put("suite", "EvalLiveP3BDecisionQualityTest");
+        report.put("provider", before.provider());
         report.put("model_id", before.selectedModel());
-        report.put("model_protocol", modelCatalog.protocolOf(before.selectedModel()).name());
-        report.put("model_chat_catalog_qualified",
-                modelCatalog.chatExecutable(before.selectedModel()));
-        report.put("model_listed_as_free", modelCatalog.isFreeModel(before.selectedModel()));
+        report.put("model_listed_as_free",
+                FreeModelPolicy.isFreeModelId(before.selectedModel()));
         report.put("endpoint", before.endpoint());
+        report.put("credential_source", before.credentialSource());
         report.put("brain_model_mode", before.pythonBefore().modelMode());
-        report.put("scenario_count", PRIORITY_IDS.size());
+        report.put("action_eligibility_mode", actionEligibilityMode());
+        report.put("scenario_count", SCENARIO_IDS.size());
+        report.put("scenario_ids", SCENARIO_IDS);
         report.put("attempt_count", attemptReports.size());
-        report.put("attempts_are_independent_scenarios", false);
+        report.put("expected_attempt_count", SCENARIO_IDS.size() * 2);
         report.put("labels", "AI candidate labels; pending human review");
         report.put("stopped_after_rate_limit", rateLimited);
         report.put("stopped_after_provider_failure", stoppedAfterProviderFailure);
         report.put("stopped_after_unclassified_failure", stoppedAfterUnclassifiedFailure);
-        report.put("total_model_requests", attemptReports.stream()
-                .mapToInt(attempt -> ((Number) attempt.get("model_request_count")).intValue()).sum());
+        report.put("stopped_on_request_budget", stoppedOnRequestBudget);
+        report.put("total_model_requests", totalRequests);
+        // 三组独立指标,每组都带显式分母。
+        report.put("model_selection_accuracy", summary.modelSelectionAccuracy());
+        report.put("model_selection_measured_count", summary.modelSelectionMeasuredCount());
+        report.put("model_selection_not_measured_count", summary.modelSelectionNotMeasuredCount());
+        report.put("gate_accuracy", summary.gateAccuracy());
+        report.put("gate_measured_count", summary.gateMeasuredCount());
+        report.put("execution_success_rate", summary.executionSuccessRate());
+        report.put("execution_measured_count", summary.executionMeasuredCount());
+        // 保留既有 action acceptable-set 口径(以被接受动作为依据)。
         report.put("action_acceptable_set_accuracy", summary.actionAcceptableSetAccuracy());
-        report.put("action_measured_count", summary.actionMeasuredCount());
         report.put("action_acceptable_set_denominator", summary.actionMeasuredCount());
+        report.put("action_measured_count", summary.actionMeasuredCount());
         report.put("repeated_clarification_count", count(attemptReports, "repeated_clarification"));
-        report.put("repeated_clarification_measured_count", attemptReports.stream()
-                .filter(attempt -> "P3B-C03".equals(attempt.get("scenario_id")))
-                .filter(attempt -> Boolean.TRUE.equals(attempt.get("action_measured"))).count());
+        report.put("repeated_clarification_measured_count", measuredCount(
+                attemptReports, "P3B-C03"));
         report.put("unnecessary_capability_call_count",
                 count(attemptReports, "unnecessary_capability_call"));
-        report.put("unnecessary_capability_call_measured_count", attemptReports.stream()
-                .filter(attempt -> "P3B-C07".equals(attempt.get("scenario_id")))
-                .filter(attempt -> Boolean.TRUE.equals(attempt.get("action_measured"))).count());
+        report.put("unnecessary_capability_call_measured_count", measuredCount(
+                attemptReports, "P3B-C07"));
         report.put("capability_call_count", summary.totalCapabilityCalls());
         report.put("payload_validity", summary.payloadValidity());
         report.put("payload_validity_measured", summary.payloadValidityMeasuredCount());
@@ -207,9 +313,9 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                         attempt.get("payload_validity"))).count());
         report.put("eligibility_veto_count",
                 attemptReports.stream().filter(attempt -> "VETOED".equals(
-                        attempt.get("eligibility_veto"))).count());
+                        attempt.get("eligibility_outcome"))).count());
         long eligibilityUnknownCount = attemptReports.stream()
-                .filter(attempt -> "UNKNOWN".equals(attempt.get("eligibility_veto"))).count();
+                .filter(attempt -> "UNKNOWN".equals(attempt.get("eligibility_outcome"))).count();
         report.put("eligibility_unknown_count", eligibilityUnknownCount);
         report.put("eligibility_measured_count", attemptReports.size() - eligibilityUnknownCount);
         report.put("unresolved_semantic_error_signal_count",
@@ -235,11 +341,77 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         Files.createDirectories(output.getParent());
         mapper.writerWithDefaultPrettyPrinter().writeValue(output.toFile(), report);
         System.out.println("P3-B live priority report: " + output.toAbsolutePath());
-        System.out.println("P3-B live model=" + before.selectedModel()
+        System.out.println("P3-B live provider=" + before.provider()
+                + " model=" + before.selectedModel()
                 + " attempts=" + attemptReports.size()
-                + " requests=" + report.get("total_model_requests")
-                + " action_accuracy=" + summary.actionAcceptableSetAccuracy()
+                + " requests=" + totalRequests
+                + " modelSelectionAccuracy=" + summary.modelSelectionAccuracy()
+                + " gateAccuracy=" + summary.gateAccuracy()
+                + " executionSuccess=" + summary.executionSuccessRate()
                 + " failures=" + summary.failureClassificationBreakdown());
+    }
+
+    /**
+     * 隔离库准备:激活 Kilo 并把固定模型写入 kilo_settings。绝不触碰用户开发库。
+     */
+    private void seedKiloActivation() {
+        jdbcTemplate.update("DELETE FROM kilo_settings");
+        jdbcTemplate.update("DELETE FROM model_provider_settings");
+        jdbcTemplate.update(
+                "INSERT INTO model_provider_settings "
+                        + "(singleton_id, active_provider, updated_at, active_provider_id, org_id) "
+                        + "VALUES (1, 'KILO', CURRENT_TIMESTAMP, NULL, ?)",
+                LOCAL_ORG);
+        jdbcTemplate.update(
+                "INSERT INTO kilo_settings "
+                        + "(org_id, singleton_id, api_key, masked_suffix, selected_model) "
+                        + "VALUES (?, 1, NULL, NULL, ?)",
+                LOCAL_ORG, KILO_MODEL);
+    }
+
+    private String actionEligibilityMode() {
+        return actionEligibilityMode;
+    }
+
+    /**
+     * 归因:先看最终执行证据。只要本次尝试产出了被 Java 接受的动作,就不是基础设施
+     * 失败——即使中途有失败的推理请求(如一次重试后成功),也按决策结果归因。只有
+     * 完全没有动作产出时,才用类型化的 provider 类别、trace 错误与门禁裁决分类。
+     */
+    private P3BDecisionQuality.FailureClassification attributeFailure(
+            P3BCorpus.P3BScenario scenario, String acceptedAction, String executionResult,
+            ModelRequestEvidence requestEvidence, Map<String, Object> eligibilityStage,
+            SemanticTrace trace) {
+        P3BDecisionQuality.FailureClassification candidate =
+                P3BDecisionQuality.classifyFailure(
+                        executionResult,
+                        requestEvidence.failureCategories().stream().findFirst().orElse(null),
+                        eligibilityStage,
+                        traceError(trace, "error_type"),
+                        traceError(trace, "error_summary"));
+        if (acceptedAction != null && !acceptedAction.isBlank() && candidate.infrastructureFailure()) {
+            // 同一 Run 里既有失败请求又有成功的最终执行:不得整体判为基础设施失败。
+            return P3BDecisionQuality.FailureClassification.NONE;
+        }
+        return candidate;
+    }
+
+    private static String attributionBasis(String acceptedAction,
+                                           ModelRequestEvidence requestEvidence,
+                                           P3BDecisionQuality.FailureClassification failure) {
+        if (acceptedAction != null && !acceptedAction.isBlank()) {
+            return requestEvidence.failedCount() > 0
+                    ? "final_execution_with_prior_failed_requests"
+                    : "final_execution";
+        }
+        return "request_evidence:" + failure.name();
+    }
+
+    private static int measuredCount(List<Map<String, Object>> attempts, String scenarioId) {
+        return (int) attempts.stream()
+                .filter(attempt -> scenarioId.equals(attempt.get("scenario_id")))
+                .filter(attempt -> Boolean.TRUE.equals(attempt.get("action_measured")))
+                .count();
     }
 
     private ModelRequestEvidence modelRequestEvidence(String runId) {
@@ -271,6 +443,9 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
     }
 
     private int persistedCapabilityInvocations(UUID projectId) {
+        if (projectId == null) {
+            return 0;
+        }
         Integer count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM capability_invocations WHERE project_id = ?",
                 Integer.class, projectId);
@@ -293,6 +468,17 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
             }
         }
         return null;
+    }
+
+    /** 模型原始选择:优先 DECISION_OUTPUT 的 normalized_output.actionFamily,回退门禁 selected_action。 */
+    private static String modelSelectedAction(SemanticTrace trace) {
+        Map<String, Object> decision = stage(trace, "DECISION_OUTPUT");
+        Object normalized = decision.get("normalized_output");
+        if (normalized instanceof Map<?, ?> proposal && proposal.get("actionFamily") != null) {
+            return String.valueOf(proposal.get("actionFamily"));
+        }
+        Object selected = stage(trace, "ACTION_ELIGIBILITY").get("selected_action");
+        return selected == null ? null : String.valueOf(selected);
     }
 
     private record ModelRequestEvidence(int requestCount, int successCount, int failedCount,

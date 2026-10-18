@@ -71,7 +71,11 @@ public final class P3BDecisionQuality {
      *
      * @param scenarioId                     场景 id
      * @param variantId                      变体 id(base / holdout)
-     * @param actualAction                   被接受并记为主动作的动作族;{@code null} 表示未产出
+     * @param modelSelectedAction            模型<b>原始</b>选中的动作族(来自 DECISION_OUTPUT /
+     *                                       ACTION_ELIGIBILITY.selected_action);{@code null} 表示不可观测
+     * @param actualAction                   被 Java 运行时接受并记为主动作的动作族;{@code null} 表示未产出
+     * @param executedAction                 <b>真正执行</b>的动作族(接受且执行证据显示已执行);
+     *                                       {@code null} 表示未观测到执行
      * @param actionAcceptable               实际动作是否落在该场景的 acceptable 集合
      * @param gateOutcome                    门禁裁决
      * @param gateReasonCodes                门禁原因码
@@ -91,7 +95,11 @@ public final class P3BDecisionQuality {
      */
     public record DecisionObservation(String scenarioId,
                                       String variantId,
+                                      String modelSelectedAction,
+                                      boolean modelSelectionAcceptable,
                                       String actualAction,
+                                      String executedAction,
+                                      String executionResult,
                                       boolean actionAcceptable,
                                       GateOutcome gateOutcome,
                                       List<String> gateReasonCodes,
@@ -117,9 +125,42 @@ public final class P3BDecisionQuality {
             return actualAction != null && !actualAction.isBlank();
         }
 
+        /** 模型原始选择是否可观测。不可观测一律记 NOT_MEASURED,绝不按正确或错误填充。 */
+        public boolean modelSelectionMeasured() {
+            return modelSelectedAction != null && !modelSelectedAction.isBlank();
+        }
+
+        /** 执行证据是否可观测(存在被 Java 运行时接受的动作)。 */
+        public boolean executionMeasured() {
+            return actionMeasured();
+        }
+
         public boolean infra() {
             return failureClassification.infrastructureFailure();
         }
+    }
+
+    /**
+     * 真正执行的动作族:只有被接受且执行结果不是失败时才记为已执行;
+     * 门禁否决/基础设施失败留 {@code null}(记 NOT_MEASURED,不按正确或错误填充)。
+     */
+    public static String executedAction(String acceptedAction, String executionResult) {
+        if (acceptedAction == null || acceptedAction.isBlank()) {
+            return null;
+        }
+        return executionSucceeded(executionResult) ? acceptedAction : null;
+    }
+
+    /** 执行结果是否代表"真正跑到了终态/待审批",而非失败。 */
+    public static boolean executionSucceeded(String executionResult) {
+        if (executionResult == null || executionResult.isBlank()
+                || executionResult.startsWith("failed:")) {
+            return false;
+        }
+        return switch (executionResult) {
+            case "completed", "policy_denied" -> true;
+            default -> executionResult.startsWith("awaiting_approval:");
+        };
     }
 
     /**
@@ -132,6 +173,13 @@ public final class P3BDecisionQuality {
                           Double actionAcceptableSetAccuracy,
                           int actionMeasuredCount,
                           int actionNotMeasuredCount,
+                          Double modelSelectionAccuracy,
+                          int modelSelectionMeasuredCount,
+                          int modelSelectionNotMeasuredCount,
+                          Double gateAccuracy,
+                          int gateMeasuredCount,
+                          Double executionSuccessRate,
+                          int executionMeasuredCount,
                           Double unnecessaryClarificationRate,
                           int unnecessaryClarificationDenominator,
                           Double repeatedClarificationMissRate,
@@ -362,6 +410,32 @@ public final class P3BDecisionQuality {
                 .filter(observation -> observation.payloadValidity() == PayloadValidity.VALID)
                 .count();
 
+        // 模型选择准确率以**原始模型选择**为依据,绝不只统计通过 Java 门禁的动作。
+        List<DecisionObservation> modelSelectionMeasured = evaluated.stream()
+                .filter(DecisionObservation::modelSelectionMeasured)
+                .toList();
+        long modelSelectionCorrect = modelSelectionMeasured.stream()
+                .filter(DecisionObservation::modelSelectionAcceptable)
+                .count();
+
+        // 门禁准确率与执行成功率独立统计,各自带显式分母。
+        List<DecisionObservation> gateMeasured = evaluated.stream()
+                .filter(observation -> expectation(oracles, observation)
+                        != P3BCorpus.GateExpectation.NO_DETERMINISTIC_SURFACE)
+                .filter(observation -> observation.gateOutcome() != GateOutcome.UNKNOWN)
+                .toList();
+        long gateCorrect = gateMeasured.stream()
+                .filter(observation -> observation.gateOutcome()
+                        == expectedOutcome(expectation(oracles, observation)))
+                .count();
+        List<DecisionObservation> executionMeasured = evaluated.stream()
+                .filter(DecisionObservation::executionMeasured)
+                .toList();
+        long executionCorrect = executionMeasured.stream()
+                .filter(observation -> observation.executedAction() != null
+                        && !observation.executedAction().isBlank())
+                .count();
+
         List<DecisionObservation> passExpected = evaluated.stream()
                 .filter(observation -> expectation(oracles, observation)
                         == P3BCorpus.GateExpectation.PASS)
@@ -444,6 +518,13 @@ public final class P3BDecisionQuality {
                 ratio(actionCorrect, actionMeasured.size()),
                 actionMeasured.size(),
                 evaluated.size() - actionMeasured.size(),
+                ratio(modelSelectionCorrect, modelSelectionMeasured.size()),
+                modelSelectionMeasured.size(),
+                evaluated.size() - modelSelectionMeasured.size(),
+                ratio(gateCorrect, gateMeasured.size()),
+                gateMeasured.size(),
+                ratio(executionCorrect, executionMeasured.size()),
+                executionMeasured.size(),
                 ratio(unnecessaryClarification, clarificationDenominator),
                 clarificationDenominator,
                 ratio(repeatedMissed, repeatedDenominator),

@@ -228,8 +228,16 @@ class P3BDecisionQualityTest extends EvalHarnessBase {
         boolean continuationScored = expectedVerdict != null && observation.attemptId() != null;
         boolean continuationCorrect = continuationScored && continuationHolds(expectedVerdict, actualVerdict);
 
+        String selectedAction = modelSelectedAction(observation);
+        boolean selectedAcceptable = selectedAction != null
+                && scenario.definition().expect().acceptablePrimaryActions().contains(selectedAction);
+
         return new P3BDecisionQuality.DecisionObservation(
-                scenario.scenarioId(), variant.variantId(), actualAction,
+                scenario.scenarioId(), variant.variantId(),
+                selectedAction, selectedAcceptable,
+                actualAction,
+                P3BDecisionQuality.executedAction(actualAction, executionResult),
+                executionResult,
                 actualAction != null
                         && scenario.definition().expect().acceptablePrimaryActions()
                         .contains(actualAction),
@@ -245,6 +253,26 @@ class P3BDecisionQualityTest extends EvalHarnessBase {
                 repeatedScored, repeatedMissed,
                 observation.productionModelCalls(), persistedCapabilityInvocations(projectId),
                 failureClassification);
+    }
+
+    /**
+     * 模型**原始**选择的动作族:优先取 DECISION_OUTPUT 的 normalized_output.actionFamily,
+     * 回退到 ACTION_ELIGIBILITY.selected_action。二者都是"模型真正选了什么"的运行时证据,
+     * 与被 Java 门禁接受的动作分开记录。
+     */
+    private static String modelSelectedAction(ObservationEnvelope observation) {
+        Map<String, Object> decision = observation.semanticTrace().stages().get("DECISION_OUTPUT");
+        if (decision != null) {
+            Object normalized = decision.get("normalized_output");
+            if (normalized instanceof Map<?, ?> proposal && proposal.get("actionFamily") != null) {
+                return String.valueOf(proposal.get("actionFamily"));
+            }
+        }
+        Map<String, Object> eligibility = observation.semanticTrace().stages().get("ACTION_ELIGIBILITY");
+        if (eligibility != null && eligibility.get("selected_action") != null) {
+            return String.valueOf(eligibility.get("selected_action"));
+        }
+        return null;
     }
 
     private String modelInferenceFailureCategory(String runId) {
@@ -354,6 +382,13 @@ class P3BDecisionQualityTest extends EvalHarnessBase {
         map.put("action_acceptable_set_accuracy", summary.actionAcceptableSetAccuracy());
         map.put("action_measured", summary.actionMeasuredCount());
         map.put("action_not_measured", summary.actionNotMeasuredCount());
+        map.put("model_selection_accuracy", summary.modelSelectionAccuracy());
+        map.put("model_selection_measured", summary.modelSelectionMeasuredCount());
+        map.put("model_selection_not_measured", summary.modelSelectionNotMeasuredCount());
+        map.put("gate_accuracy", summary.gateAccuracy());
+        map.put("gate_measured", summary.gateMeasuredCount());
+        map.put("execution_success_rate", summary.executionSuccessRate());
+        map.put("execution_measured", summary.executionMeasuredCount());
         map.put("unnecessary_clarification_rate", summary.unnecessaryClarificationRate());
         map.put("unnecessary_clarification_denominator",
                 summary.unnecessaryClarificationDenominator());
