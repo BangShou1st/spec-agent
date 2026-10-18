@@ -393,10 +393,11 @@ reuse the frozen OpenCode transport:
 - Routing happens only in `RoutingModelInferenceGateway`; the Runtime Kernel does
   not know this provider. `kilo.gateway.*` only supplies library defaults (model
   id, base URL, proxy, timeouts, `free-only=false`).
-- Global Assistant coverage: resolved. The OpenCode-Zen-only limitation this
-  bullet used to describe is removed by §18 — GA now resolves and freezes a
-  provider-neutral model target and routes native tool calling per provider.
-  Kilo models must be individually qualified (§18.1) before GA will use them.
+- Global Assistant coverage: resolved. GA is provider-neutral (§18/§19): it
+  resolves and freezes one model target and one capability mode per run, and
+  routes native tool calling per provider. Kilo models must be individually
+  qualified (§18.1) before GA will use them for native tools; an unqualified
+  Kilo model still chats through the text-only capability mode (§19).
 - Free-model output quality varies: request handling is verified, but only some
   free models satisfy the strict DECISION contract. Live evidence:
   `poolside/laguna-s-2.1:free` produced non-conforming output (run failed
@@ -420,12 +421,18 @@ model settings -> GaExecutionModelTargetResolver -> ga_executions binding
   **frozen** binding. Switching provider or model mid-run cannot retarget a run;
   a settings-revision drift fails closed with `GA_MODEL_BINDING_MISMATCH`.
 - `GaNativeInferenceGateway` routes by the frozen provider. OpenCode Zen keeps
-  its verified native SSE transport; Kilo Gateway uses
-  `KiloGaNativeTransport`; providers without a registered native transport
-  (OpenRouter, Custom) fail closed with `UNSUPPORTED_AGENT_MODEL`.
-- "Not configured" and "not qualified for native GA tool calling" are distinct:
-  the former is `GA_MODEL_NOT_CONFIGURED`, the latter
-  `GA_MODEL_PROTOCOL_UNSUPPORTED`. The old code used the first to hide the second.
+  its verified native SSE transport; Kilo Gateway uses `KiloGaNativeTransport`;
+  OpenRouter and Custom (Chat Completions) use
+  `ChatCompletionsGaTextTransport` for the text-only capability mode. A request
+  that carries tools through a text-only provider fails closed with
+  `UNSUPPORTED_AGENT_MODEL`.
+- "Not configured" and "protocol unsupported" are distinct:
+  `GA_MODEL_NOT_CONFIGURED` means the active provider's settings are missing or
+  not validated; `GA_MODEL_PROTOCOL_UNSUPPORTED` means the selected model cannot
+  serve GA's Chat Completions message protocol at all (an OpenCode Zen model not
+  proven to be Chat Completions, or a Custom provider whose explicit format is
+  not Chat Completions). "Not qualified for native GA tool calling" is no longer
+  a rejection: it only selects the capability mode (§19).
 - Qualification is per model and explicitly registered in
   `spec.global-assistant.ga-native.kilo-qualified-models`. It is never inferred
   from a `:free` suffix or from "it is a chat model".
@@ -468,3 +475,51 @@ Failure classification (no provider body, credentials or prompts are recorded):
 Streaming aggregation is enforced, not inferred: check 3 recorded
 `streamCandidateTextFragments = 0`, i.e. a tool-carrying response released no
 executable text before the complete tool call was validated.
+
+## 19. One global selected model, two GA capability modes
+
+The product rule is now explicit: **there is exactly one authoritative source of
+model selection — the Provider and Model the user activated in model settings.
+Whatever the user selects, both the Project Agent and the Global Assistant use
+it.** The Global Assistant no longer keeps a second model-selection allow-list.
+
+Selection and capability are separated:
+
+- **Selection** is the user's decision.
+- **Capability usage** is decided by the real protocol and the verified model
+  ability. It never decides whether ordinary chat is allowed.
+
+A GA run is frozen into exactly one capability mode, stored with the run
+binding, and it cannot change mid-run:
+
+| Mode | When | Behaviour |
+| --- | --- | --- |
+| `TEXT_CHAT` | The selected model is not qualified for native tool calling (e.g. an unqualified Kilo model), or the provider has only a text-only GA transport (OpenRouter, Custom Chat Completions). | Sends no `tools`, no `tool_choice=required`; executable tool calls are refused; no fabricated tool results; no multi-turn loss. Answers general questions and explains host-validated context, and says clearly when it cannot access workspace data. |
+| `NATIVE_TOOLS` | The model has recorded native tool-calling qualification (OpenCode Zen metadata-verified Chat Completions, Kilo models registered in `kilo-qualified-models`). | Sends the authorized `tools`, supports `tool_calls` and assistant/tool history, keeps the Tool Catalog, Policy, budgets and safety fences. |
+
+Implementation notes:
+
+- `assistant.runtime.GaExecutionMode` is decided once in
+  `GaExecutionModelTargetResolver` and frozen into `ga_executions`: `TEXT_CHAT`
+  freezes an empty `allowed_tools`, `NATIVE_TOOLS` freezes the full catalog. The
+  broker rejects any request whose `tools` differ from the frozen binding, so a
+  text-only run can never be silently upgraded, and a native run can never be
+  downgraded.
+- No implicit retry or downgrade: a run never sends a native-tool request and
+  then silently re-sends a text request. A rejected capability mode returns its
+  typed error for later handling instead of switching inside the run.
+- The Python engine (`global_assistant/agent.py`) builds a text-only agent for
+  an empty catalog: no tools, no `HostTools` execution ability, and a system
+  prompt that never implies workspace tools exist. `model_adapter.py` never
+  sends `tool_choice` other than `none` when no tools are bound, and it drops
+  historical tool roles/calls rather than forwarding them to a model without a
+  tool protocol — it never fabricates a tool result.
+- `ChatCompletionsGaTextTransport` carries OpenRouter and Custom text chat only.
+  It reuses the existing `GaChatCompletionsAdapter`, `ProviderHttpSupport`
+  (bounded body, timeout, no redirect, redacted error classification) and
+  `ProviderUrlSecurity` (the Custom SSRF/safe-origin checks are not relaxed).
+  It is not a second model client.
+- Provider, model id, capability mode, approved catalog and call budgets are all
+  bound for the lifetime of a run; a mid-run provider/model switch cannot
+  retarget it and a settings-revision drift fails closed with
+  `GA_MODEL_BINDING_MISMATCH`.
