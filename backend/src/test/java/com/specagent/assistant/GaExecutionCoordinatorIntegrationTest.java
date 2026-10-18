@@ -437,7 +437,7 @@ class GaExecutionCoordinatorIntegrationTest {
         assertNull(jdbc.queryForObject("SELECT completed_checkpoint_id FROM ga_checkpoint_heads WHERE thread_id=?",String.class,thread));
         assertEquals(0,jdbc.queryForObject("SELECT tool_calls FROM ga_executions WHERE run_id=?",Integer.class,run.id()));
         int count=publicEvents.size();
-        completion.failed(run.id(),"test-model"); coordinator.executeRun(thread,run.id(),"验证流中"+fault,null);
+        completion.failed(run.id()); coordinator.executeRun(thread,run.id(),"验证流中"+fault,null);
         assertEquals(count,events.findByRun(run.id()).size());
     }
     @Test void userInputAndModelFailureMapToExistingProductTerminals() throws Exception {
@@ -456,6 +456,76 @@ class GaExecutionCoordinatorIntegrationTest {
         assertEquals(1,events.findByRun(failed.id()).stream().filter(e->e.type().equals("RUN_FAILED")).count());
         assertEquals(checkpoint,jdbc.queryForObject("SELECT completed_checkpoint_id FROM ga_checkpoint_heads WHERE thread_id=?",String.class,thread));
         assertEquals(0,jdbc.queryForObject("SELECT tool_calls FROM ga_executions WHERE run_id=?",Integer.class,failed.id()));
+    }
+    @Test void successfulRunAttributesTheAssistantMessageToTheFrozenProviderAndModel() throws Exception {
+        startPython();
+        var run=application.createRun(thread,"归属验证",null);
+        awaitTerminal(run.id());
+        assertEquals(GlobalAssistantRunStatus.COMPLETED,runs.findById(run.id()).orElseThrow().status(),failure(run.id()));
+        var message=conversations.listMessages(thread).getLast();
+        assertEquals(GlobalAssistantMessage.Role.ASSISTANT,message.role());
+        assertEquals("OpenCode Zen",message.providerLabel());
+        assertEquals("test-model",message.modelId());
+    }
+    @Test void userInputRequiredAttributesTheClarificationToTheFrozenProviderAndModel() throws Exception {
+        startPython();
+        when(transport.completeNativeGa(any(),any(),any(),any(),any(),any())).thenReturn(new GaModelContract.Response(
+                GaModelContract.VERSION,"",List.of(new GaModelContract.ToolCall("question-c1","user-input_request",
+                Map.of("question","请选择目标项目"))),"tool_calls",new GaModelContract.Usage(3,2)));
+        var run=application.createRun(thread,"帮我打开项目",null);
+        awaitTerminal(run.id());
+        assertEquals(GlobalAssistantRunStatus.COMPLETED,runs.findById(run.id()).orElseThrow().status(),failure(run.id()));
+        var message=conversations.listMessages(thread).getLast();
+        assertEquals("OpenCode Zen",message.providerLabel());
+        assertEquals("test-model",message.modelId());
+    }
+    @Test void failedRunKeepsTheFrozenAttributionEvenAfterTheSettingsChange() {
+        var run=create("失败归属");
+        preparation.prepare(thread,run.id(),"失败归属",null);
+        // 用户在本 Run 开始后切换模型设置:失败消息的归属绝不能被改写。
+        Instant revision=Instant.now().plusSeconds(60);
+        when(settings.find()).thenReturn(Optional.of(new OpenCodeSettings("changed-key","work","other-model",revision,revision)));
+        completion.failed(run.id());
+        var message=conversations.listMessages(thread).getLast();
+        assertEquals("OpenCode Zen",message.providerLabel());
+        assertEquals("test-model",message.modelId());
+        assertEquals(GlobalAssistantRunStatus.FAILED,runs.findById(run.id()).orElseThrow().status());
+    }
+    @Test void preparationTimeFailureWithoutABindingDoesNotFabricateAttribution() {
+        var run=create("无绑定失败");
+        completion.failed(run.id());
+        var message=conversations.listMessages(thread).getLast();
+        assertNull(message.providerLabel());
+        assertNull(message.modelId());
+        assertEquals(GlobalAssistantRunStatus.FAILED,runs.findById(run.id()).orElseThrow().status());
+    }
+    @Test void aSecondFailureNotificationDoesNotAppendAnotherMessage() {
+        var run=create("重复终态");
+        preparation.prepare(thread,run.id(),"重复终态",null);
+        completion.failed(run.id());
+        int count=conversations.listMessages(thread).size();
+        completion.failed(run.id());
+        assertEquals(count,conversations.listMessages(thread).size());
+        assertEquals(1,events.findByRun(run.id()).stream().filter(e->e.type().equals("RUN_FAILED")).count());
+    }
+    @Test void anActiveRunCannotBeReInitializedSoTheFrozenBindingStaysImmutable() {
+        var run=create("冻结绑定不可改写");
+        var prepared=preparation.prepare(thread,run.id(),"冻结绑定不可改写",null);
+        assertEquals(GlobalAssistantRunStatus.RUNNING,runs.findById(run.id()).orElseThrow().status());
+        String provider=jdbc.queryForObject("SELECT provider FROM ga_executions WHERE run_id=?",String.class,run.id());
+        String model=jdbc.queryForObject("SELECT model FROM ga_executions WHERE run_id=?",String.class,run.id());
+        UUID bindingId=jdbc.queryForObject("SELECT model_binding_id FROM ga_executions WHERE run_id=?",UUID.class,run.id());
+        long epoch=prepared.scope().epoch();
+        // 冲突分支(ON CONFLICT DO UPDATE)只可能被重新初始化触达;已提交执行的 Run 处于
+        // RUNNING,因此任何"再绑定"都在状态围栏处失败,绝不可能覆盖已冻结的快照。
+        assertThrows(IllegalStateException.class,()->executions.initialize(
+                new GaExecutionStore.Scope(run.id(),epoch,UUID.randomUUID()),
+                new GaExecutionStore.Binding(thread,UUID.randomUUID(),"OPENROUTER","rebind-attempt","rebind-revision",
+                        Instant.now().plusSeconds(120),List.of())));
+        assertEquals(provider,jdbc.queryForObject("SELECT provider FROM ga_executions WHERE run_id=?",String.class,run.id()));
+        assertEquals(model,jdbc.queryForObject("SELECT model FROM ga_executions WHERE run_id=?",String.class,run.id()));
+        assertEquals(bindingId,jdbc.queryForObject("SELECT model_binding_id FROM ga_executions WHERE run_id=?",UUID.class,run.id()));
+        assertEquals(epoch,jdbc.queryForObject("SELECT execution_epoch FROM ga_executions WHERE run_id=?",Long.class,run.id()));
     }
     @Test void toolFailureIsRecordedAsObservationWithoutExposingProtocolAsAnswer() throws Exception {
         startPython();

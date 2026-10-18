@@ -47,14 +47,14 @@ public class GaExecutionCoordinator {
             // 协议版本不兼容是部署错误(design §8):两端版本不同步,如实暴露
             // 类型化错误码,绝不默认放行,也绝不伪装成不可用。
             log.warn("GA protocol mismatch run={} detail={}", run, ex.getMessage());
-            completion.failed(run,prepared==null?null:prepared.model(),state,
+            completion.failed(run,state,
                     com.specagent.assistant.GlobalAssistantErrorCode.GA_PROTOCOL_MISMATCH);
         } catch(Exception ex) {
             log.warn("GA coordination failed run={} category={}",run,ex.getClass().getSimpleName());
             boolean unavailable=false;
             for(Throwable cause=ex;cause!=null;cause=cause.getCause())
                 if(cause instanceof java.net.ConnectException || cause instanceof HttpConnectTimeoutException) unavailable=true;
-            completion.failed(run,prepared==null?null:prepared.model(),state,unavailable?"GA_PYTHON_UNAVAILABLE":"GA_EXECUTION_FAILED");
+            completion.failed(run,state,unavailable?"GA_PYTHON_UNAVAILABLE":"GA_EXECUTION_FAILED");
         }
     }
 

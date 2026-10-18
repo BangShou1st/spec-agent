@@ -221,21 +221,24 @@ public class GaExecutionCompletion {
         if(!node.isObject() || !actual.equals(fields)) throw new IllegalArgumentException("GA event fields");
     }
     @Transactional
-    public void failed(UUID runId,String model) {
-        failed(runId,model,null);
+    public void failed(UUID runId) {
+        failed(runId,(StreamState)null);
     }
     @Transactional
-    public void failed(UUID runId,String model,StreamState state) {
-        failed(runId,model,state,"GA_EXECUTION_FAILED");
+    public void failed(UUID runId,StreamState state) {
+        failed(runId,state,"GA_EXECUTION_FAILED");
     }
     @Transactional
-    public void failed(UUID runId,String model,StreamState state,String code) {
+    public void failed(UUID runId,StreamState state,String code) {
         var run=runs.lockById(runId);
         if(!run.status().isActive()) return;
         if(state!=null) state.publisher.discard();
         if(run.cancelRequestedAt()!=null) lifecycle.cancelAndTerminalize(runId);
-        else lifecycle.failWithAssistant(run.threadId(),runId,"GA_PYTHON_UNAVAILABLE".equals(code)?"全局助手 Python 服务不可用，请检查启动状态。":"这一步未能完成，请稍后重试。",code,
-                    "Execution unavailable or interrupted",frozenProviderLabel(runId),model);
+        else {
+            var frozen=frozenAttribution(runId);
+            lifecycle.failWithAssistant(run.threadId(),runId,"GA_PYTHON_UNAVAILABLE".equals(code)?"全局助手 Python 服务不可用，请检查启动状态。":"这一步未能完成，请稍后重试。",code,
+                    "Execution unavailable or interrupted",frozen.providerLabel(),frozen.model());
+        }
     }
 
     /**
@@ -252,9 +255,18 @@ public class GaExecutionCompletion {
         }
     }
 
-    /** 仅用于尚未持有绑定的失败路径:按 run 读取已落库的冻结提供商,没有则返回 null。 */
-    private String frozenProviderLabel(UUID runId) {
-        var rows = jdbc.queryForList("SELECT provider FROM ga_executions WHERE run_id=?", String.class, runId);
-        return rows.isEmpty() ? null : providerLabel(rows.getFirst());
+    /** 仅用于尚未持有绑定的失败路径的冻结归属:Provider 与 Model 必须取自同一行。 */
+    private record FrozenAttribution(String providerLabel, String model) {}
+
+    /**
+     * 从 {@code ga_executions} 的<b>同一行</b>读取冻结的 Provider 与 Model。
+     * 已有冻结绑定时两者都来自它;确实还没有绑定时两者皆为 null——绝不伪造模型归属,
+     * 也绝不读取当前激活模型冒充失败 Run 的模型。未知提供商编码按原文返回。
+     */
+    private FrozenAttribution frozenAttribution(UUID runId) {
+        var rows = jdbc.query("SELECT provider, model FROM ga_executions WHERE run_id=?",
+                (rs, index) -> new FrozenAttribution(providerLabel(rs.getString("provider")), rs.getString("model")),
+                runId);
+        return rows.isEmpty() ? new FrozenAttribution(null, null) : rows.getFirst();
     }
 }
