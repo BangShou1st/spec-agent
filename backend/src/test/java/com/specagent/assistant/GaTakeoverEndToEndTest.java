@@ -215,15 +215,20 @@ class GaTakeoverEndToEndTest {
                 .isGreaterThan(claimA.token().epoch());
 
         // 生产路径:接管执行从 GaExecutionStore.initialize 按新代次/新租约开始。
+        UUID originalBinding = jdbc.queryForObject(
+                "SELECT model_binding_id FROM ga_executions WHERE run_id = :run",
+                Map.of("run", fixture.runId()), UUID.class);
+        // 接管绑定<b>故意</b>使用不同的提供商与模型:冻结快照绝不能被"再绑定"改写。
         executions.initialize(new GaExecutionStore.Scope(fixture.runId(), claimB.token().epoch(),
                         claimB.token().leaseId()),
                 new GaExecutionStore.Binding(fixture.threadId(), UUID.randomUUID(),
-                        "OPENCODE_ZEN", "takeover-safe-model", "test-revision",
+                        "OPENROUTER", "rebind-attempt", "test-revision",
                         Instant.now().plusSeconds(120), List.of()));
 
         // ── 核心断言:预算与账本一致(design §7)──
         Map<String, Object> binding = jdbc.queryForMap("""
-                SELECT execution_epoch, lease_id, executor_claimed, model_calls, tool_calls
+                SELECT execution_epoch, lease_id, executor_claimed, model_calls, tool_calls,
+                       provider, model, model_binding_id
                 FROM ga_executions WHERE run_id = :run
                 """, Map.of("run", fixture.runId()));
         assertThat(((Number) binding.get("execution_epoch")).longValue())
@@ -247,6 +252,15 @@ class GaTakeoverEndToEndTest {
                 Map.of("run", fixture.runId()), Integer.class))
                 .as("the receipted ledger row must survive untouched")
                 .isEqualTo(1);
+        assertThat(binding.get("provider"))
+                .as("the frozen provider must never be rebound on takeover")
+                .isEqualTo("OPENCODE_ZEN");
+        assertThat(binding.get("model"))
+                .as("the frozen model must never be rebound on takeover")
+                .isEqualTo("takeover-safe-model");
+        assertThat(binding.get("model_binding_id"))
+                .as("the frozen binding identity must survive takeover")
+                .isEqualTo(originalBinding);
     }
 
     @Test
