@@ -436,6 +436,22 @@ model settings -> GaExecutionModelTargetResolver -> ga_executions binding
 - Qualification is per model and explicitly registered in
   `spec.global-assistant.ga-native.kilo-qualified-models`. It is never inferred
   from a `:free` suffix or from "it is a chat model".
+- Why a curated list is still required (reviewed 2026-10-18): the live Kilo
+  `/models` payload does advertise `supported_parameters`, and 331 of 402 models
+  listed `tools`. That flag only means the provider accepts a `tools` parameter —
+  it is **not** evidence that the model executes GA's strict native contract (one
+  validated call, aggregated streaming arguments, a tool-result follow-up that
+  honours `tool_choice=none`, and a tools-free SUMMARY). Every candidate that
+  failed GA native qualification declares `tools` upstream
+  (`dots-studio/dots-3-note-preview:free`,
+  `nvidia/nemotron-3-ultra-550b-a55b:free`, `xingchen-agi/xing4.0-29b-a4b:free`,
+  `thinkingmachines/inkling-small:free`, `nvidia/nemotron-3.5-lightning:free`,
+  `kilo-auto/free`). Treating that flag as qualification would announce tool
+  support the provider never proved (§19 rule 4). There is no reliable per-model
+  tool-calling metadata upstream, so the explicitly verified list remains the
+  authority; an unregistered model still chats in `TEXT_CHAT`. Removing the list
+  would require either declaring unverified models tool-capable or issuing live
+  probes (extra paid/quota model calls) — both forbidden by §19 rule 4 and 6.
 
 ### 18.1 Live qualification evidence (recorded 2026-10-18T09:34:48Z)
 
