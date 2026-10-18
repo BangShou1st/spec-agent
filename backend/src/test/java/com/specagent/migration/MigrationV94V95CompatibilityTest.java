@@ -85,9 +85,10 @@ class MigrationV94V95CompatibilityTest {
 
             long entriesBefore = count(tempUrl, user, password,
                     "SELECT count(*) FROM retrieval_entries");
-            long tablesBefore = count(tempUrl, user, password, """
-                    SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'
-                    """);
+            // 升级前的表集合。断言用"不丢失任何既有表"(集合包含)而不是"表数不变":
+            // V94/V95 之后仍会叠加新增表的迁移(如 V96 的 Kilo 配置表),固定表数断言
+            // 会随每次新增迁移变得过时而误报,但"不得删表/改名丢数据"的约束必须保留。
+            java.util.Set<String> tablesBefore = tables(tempUrl, user, password);
             assertThat(entriesBefore).isEqualTo(ENTRY_COUNT + 2);
 
             assertThat(queryString(tempUrl, user, password,
@@ -125,9 +126,11 @@ class MigrationV94V95CompatibilityTest {
             // ---- V94:数据完整性 ----
             assertThat(count(tempUrl, user, password,
                     "SELECT count(*) FROM retrieval_entries")).isEqualTo(entriesBefore);
-            assertThat(count(tempUrl, user, password, """
-                    SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'
-                    """)).isEqualTo(tablesBefore);
+            // 叠加迁移只允许"新增表",绝不允许删表或改名导致既有数据丢失。
+            java.util.Set<String> tablesAfter = tables(tempUrl, user, password);
+            assertThat(tablesAfter).containsAll(tablesBefore);
+            // V96 引入的 Kilo 配置表随 head 迁移叠加出现,且不影响 V94/V95 的语义。
+            assertThat(tablesAfter).contains("kilo_settings");
             assertThat(queryString(tempUrl, user, password,
                     "SELECT content FROM retrieval_entries WHERE id = '" + readyEntryId + "'"))
                     .isEqualTo("用户取消后不得继续追加回答正文。规则编号 REQ-107。");
@@ -319,6 +322,22 @@ class MigrationV94V95CompatibilityTest {
              ResultSet rows = statement.executeQuery(sql)) {
             rows.next();
             return rows.getLong(1);
+        }
+    }
+
+    /** public schema 下的表名集合;用于表达"迁移不得丢表"而不是脆弱的固定表数。 */
+    private static java.util.Set<String> tables(String url, String user, String password)
+            throws Exception {
+        try (Connection connection = DriverManager.getConnection(url, user, password);
+             Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("""
+                     SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'
+                     """)) {
+            java.util.Set<String> names = new java.util.TreeSet<>();
+            while (rows.next()) {
+                names.add(rows.getString(1));
+            }
+            return names;
         }
     }
 
