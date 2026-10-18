@@ -31,11 +31,16 @@ public class GaExecutionPreparation {
         this.context=context; this.catalogs=catalogs; this.modelTargets=modelTargets; this.jdbc=jdbc;
     }
     /**
-     * 解析并冻结模型目标,保留既有失败语义:协议/资格不支持("未取得 GA 原生工具调用资格")
-     * 按控制面语义终态化且不写助手正文;而"未配置"仍以异常形式失败,交由协调器的统一失败
-     * 路径处理(与该门的既有行为一致,不改变对外的事件与消息形状)。
+     * 解析并冻结模型目标与执行能力模式,保留既有失败语义:协议不支持(例如 Custom
+     * 不是 Chat Completions、Zen 模型未被元数据确认为 Chat)按控制面语义终态化且不写
+     * 助手正文;而"未配置"仍以异常形式失败,交由协调器的统一失败路径处理(与该门的
+     * 既有行为一致,不改变对外的事件与消息形状)。
+     *
+     * <p>这里刻意不再把"未取得 GA 原生工具调用资格"当成准入条件:{@link GaExecutionMode#TEXT_CHAT}
+     * 使用用户选中的同一个模型正常聊天,只有具备可信资格时才升级为
+     * {@link GaExecutionMode#NATIVE_TOOLS}。
      */
-    private GaModelTarget requireModelTarget(UUID runId) {
+    private GaExecutionModelTargetResolver.Ready requireModelTarget(UUID runId) {
         var resolution = modelTargets.resolveActive();
         if (resolution instanceof GaExecutionModelTargetResolver.Unavailable unavailable) {
             if (com.specagent.assistant.GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED
@@ -45,7 +50,7 @@ public class GaExecutionPreparation {
             }
             throw new IllegalStateException(unavailable.errorCode());
         }
-        return ((GaExecutionModelTargetResolver.Ready) resolution).target();
+        return (GaExecutionModelTargetResolver.Ready) resolution;
     }
 
     @Transactional
@@ -91,14 +96,16 @@ public class GaExecutionPreparation {
                     "Conversation depends on project sources that are no longer authorized");
             return null;
         }
-        // 提供商无关的模型目标解析(设置侧):解析当前激活提供商的可信目标,并把
-        // "未配置"与"尚未取得 GA 原生工具调用资格"区分为两类类型化失败——后者不再被
-        // GA_MODEL_NOT_CONFIGURED 掩盖。门禁只读缓存事实,绝不在持有 Run 锁的本事务内
-        // 发起网络请求(需要网络的预热由 GaExecutionCoordinator 在进入本方法之前完成)。
-        // 拒绝发生在信封创建与预算认领之前:run 按控制面语义终态化、公开发布失败事件,
-        // 不写助手正文、不消耗预算、不创建租约、不派发 Python 执行信封。
-        GaModelTarget target = requireModelTarget(runId);
-        if (target == null) return null;
+        // 提供商无关的模型目标解析(设置侧):解析当前激活提供商的可信目标与能力模式,并把
+        // "未配置"与"协议不支持"区分为两类类型化失败——后者不再被 GA_MODEL_NOT_CONFIGURED
+        // 掩盖。"未取得原生工具调用资格"不再是准入条件:它只决定能力模式是 TEXT_CHAT 还是
+        // NATIVE_TOOLS。门禁只读缓存/设置事实,绝不在持有 Run 锁的本事务内发起模型网络请求
+        // (需要网络的预热由 GaExecutionCoordinator 在进入本方法之前完成)。拒绝发生在信封创建
+        // 与预算认领之前:run 按控制面语义终态化、公开发布失败事件,不写助手正文、不消耗预算、
+        // 不创建租约、不派发 Python 执行信封。
+        var ready = requireModelTarget(runId);
+        if (ready == null) return null;
+        GaModelTarget target = ready.target();
         var messages=conversations.listMessages(thread);
         var current=messages.stream().filter(m -> m.role()==GlobalAssistantMessage.Role.USER && runId.equals(m.runId())).toList();
         if (current.size()!=1 || !current.getFirst().content().equals(text)) throw new IllegalArgumentException("GA current message mismatch");
@@ -120,7 +127,12 @@ public class GaExecutionPreparation {
         var projected=context.project(ui);
         UUID selected=projected.selectedEntity()!=null && "PROJECT".equals(projected.selectedEntity().type())
                 ? UUID.fromString(projected.selectedEntity().id()) : null;
-        var catalog=catalogs.current();
+        // 能力模式按已冻结的目标决定:只有 NATIVE_TOOLS 才冻结完整工具目录。TEXT_CHAT
+        // 使用空投影——绝不向模型派发 tools,也绝不注入无法使用的 HostTools 执行能力,
+        // 但冻结的空 allowed_tools 同时保证该模式在执行期间无法被扩大或被偷换成原生工具。
+        var catalog = ready.mode() == GaExecutionMode.NATIVE_TOOLS
+                ? catalogs.current()
+                : catalogs.snapshot(java.util.List.of());
         var scope=new GaExecutionStore.Scope(runId,executionEpoch,UUID.randomUUID());
         UUID binding=UUID.randomUUID();
         var envelope=Maps.of("protocolVersion","ga-execution.v1","engineVersion","langchain-ga.v1",

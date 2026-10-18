@@ -218,6 +218,24 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
     }
 
     /**
+     * 只读投影:未配置时返回 {@code null} 而不是抛异常,供 GA 目标解析产出类型化的
+     * "未配置"结果(它必须区分未配置与协议不支持,不能靠捕获异常来分类)。
+     */
+    public CustomProviderSettings requireStoredOrNull() {
+        return repository.find().orElse(null);
+    }
+
+    /** 已存配置是否通过激活验证门禁;以布尔形式暴露,便于解析器不靠异常控制流判定。 */
+    public boolean activatable() {
+        try {
+            requireActivatable();
+            return true;
+        } catch (RuntimeException notActivatable) {
+            return false;
+        }
+    }
+
+    /**
      * 推理端口投影:先取已存配置,再走激活资格检查,失败即拒绝(fail closed)——
      * 等价于网关历史上每次请求执行的 requireStored + requireActivatable 序列。
      */
