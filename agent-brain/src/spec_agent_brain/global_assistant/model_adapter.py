@@ -136,27 +136,43 @@ class BrokerChatModel(BaseChatModel):
         if stop or set(kwargs) - {"tools", "tool_choice"}:
             raise ValueError("unsupported model generation options")
         self.guard()
+        tools = kwargs.get("tools", [])
+        # TEXT_CHAT 硬性规则:模型未绑定任何工具时绝不发送 auto/required 工具选择,
+        # 因此即便模型输出伪工具调用,也永远不会被当成可执行调用。
+        tool_choice = "none" if not tools else kwargs.get("tool_choice", "none")
+        text_only = not tools
         wire = []
         for message in messages:
             if not isinstance(message.content, str):
                 raise ValueError("only text GA messages are supported")
-            if isinstance(message, AIMessage):
+            if isinstance(message, ToolMessage):
+                # 纯文本模式绝不把 tool 角色强行发给不支持该协议的上游,也绝不伪造结果:
+                # 历史工具结果直接略过,但保留其中的助手正文。
+                if text_only:
+                    continue
+                wire.append(Message(role="tool", content=message.content, toolCallId=message.tool_call_id))
+            elif isinstance(message, AIMessage):
                 if message.invalid_tool_calls:
                     raise ValueError("invalid historical tool calls")
+                if text_only and message.tool_calls:
+                    # 只保留该助手回合的可见正文;绝不把历史工具调用重新当成可执行调用发出。
+                    if not message.content.strip():
+                        continue
+                    wire.append(Message(role="assistant", content=message.content))
+                    continue
                 wire.append(Message(role="assistant", content=message.content,
                                     toolCalls=[ToolCall(id=c["id"], name=c["name"], arguments=c["args"])
                                                for c in message.tool_calls]))
-            elif isinstance(message, ToolMessage):
-                wire.append(Message(role="tool", content=message.content, toolCallId=message.tool_call_id))
             elif isinstance(message, (SystemMessage, HumanMessage)):
                 wire.append(Message(role="system" if isinstance(message, SystemMessage) else "user",
                                     content=message.content))
             else:
                 raise ValueError("unsupported GA message role")
-        tools = kwargs.get("tools", [])
+        if not wire:
+            raise ValueError("empty GA message list")
         request = ModelRequest(protocolVersion="ga-model-inference.v1", **self.scope.model_dump(by_alias=True),
                                callId=uuid4(), callType=self.call_type, modelBindingId=self.model_binding_id,
-                               messages=wire, tools=tools, toolChoice=kwargs.get("tool_choice", "none"),
+                               messages=wire, tools=tools, toolChoice=tool_choice,
                                maxOutputTokens=self.max_output_tokens,
                                stream=self.stream_sink is not None and self.call_type == "AGENT")
         response = self.broker.stream(request, self.stream_sink) if request.stream else self.broker.complete(request)

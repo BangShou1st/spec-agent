@@ -21,15 +21,16 @@ import org.junit.jupiter.api.Test;
 /**
  * 文件名:RoutingGaNativeInferenceGatewayTest.java
  *
- * 测试目标:GA 原生执行按<b>冻结目标里的提供商</b>路由——Zen 走经审计的原生传输、
- * Kilo 走新的 Kilo 原生传输,而没有原生传输的提供商(OpenRouter / Custom / 未知编码)
- * 一律失败关闭,绝不退回文本模拟或悄悄换提供商。
+ * 测试目标:GA 原生执行按<b>冻结目标里的提供商</b>路由——Zen 与 Kilo 走各自经审计的
+ * 原生传输(同时承载 TEXT_CHAT / NATIVE_TOOLS),OpenRouter 与 Custom 走纯文本
+ * Chat Completions 传输,而未知编码一律失败关闭,绝不退回文本模拟或悄悄换提供商。
  */
 class RoutingGaNativeInferenceGatewayTest {
 
     private final OpenCodeZenTransport zen = mock(OpenCodeZenTransport.class);
     private final KiloGaNativeTransport kilo = mock(KiloGaNativeTransport.class);
-    private final RoutingGaNativeInferenceGateway gateway = new RoutingGaNativeInferenceGateway(zen, kilo);
+    private final ChatCompletionsGaTextTransport textChat = mock(ChatCompletionsGaTextTransport.class);
+    private final RoutingGaNativeInferenceGateway gateway = new RoutingGaNativeInferenceGateway(zen, kilo, textChat);
 
     private static GaModelContract.Request request() {
         return new GaModelContract.Request(GaModelContract.VERSION, UUID.randomUUID(), 1, UUID.randomUUID(),
@@ -88,15 +89,27 @@ class RoutingGaNativeInferenceGatewayTest {
     }
 
     @Test
-    void providersWithoutANativeTransportFailClosed() {
-        for (String provider : List.of("OPENROUTER", "CUSTOM", "NOT_A_PROVIDER")) {
-            assertThatThrownBy(() -> gateway.complete(target(provider, "any-model"), UUID.randomUUID(),
-                    request(), Duration.ofSeconds(30), () -> true))
-                    .as(provider)
-                    .isInstanceOf(UnsupportedOperationException.class)
-                    .hasMessage("UNSUPPORTED_AGENT_MODEL");
-        }
+    void openRouterAndCustomUseTheTextOnlyChatCompletionsTransport() {
+        when(textChat.complete(any(), any(), any(), any())).thenReturn(response());
+        when(textChat.stream(any(), any(), any(), any(), any())).thenReturn(response());
+
+        gateway.complete(target("OPENROUTER", "openrouter/auto"), UUID.randomUUID(), request(),
+                Duration.ofSeconds(30), () -> true);
+        gateway.stream(target("CUSTOM", "local-llama"), UUID.randomUUID(), request(),
+                Duration.ofSeconds(30), () -> true, text -> true);
+
+        verify(textChat).complete(any(), any(), any(), any());
+        verify(textChat).stream(any(), any(), any(), any(), any());
         verifyNoInteractions(zen, kilo);
+    }
+
+    @Test
+    void unknownProviderCodeFailsClosed() {
+        assertThatThrownBy(() -> gateway.complete(target("NOT_A_PROVIDER", "any-model"), UUID.randomUUID(),
+                request(), Duration.ofSeconds(30), () -> true))
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessage("UNSUPPORTED_AGENT_MODEL");
+        verifyNoInteractions(zen, kilo, textChat);
     }
 
     @Test
