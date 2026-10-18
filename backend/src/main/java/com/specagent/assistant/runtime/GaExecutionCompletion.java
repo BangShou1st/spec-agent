@@ -128,7 +128,7 @@ public class GaExecutionCompletion {
         if("FAILED".equals(kind)) {
             if(state!=null) state.publisher.discard();
             lifecycle.failWithAssistant(run.threadId(),run.id(),"这一步未能完成，请检查后重试。",
-                    terminal.path("payload").path("errorCode").textValue(),"Framework execution failed", "OpenCode Zen",binding.model());
+                    terminal.path("payload").path("errorCode").textValue(),"Framework execution failed", providerLabel(binding.provider()),binding.model());
             return;
         }
         var checkpoints=jdbc.queryForList("SELECT checkpoint_id FROM ga_checkpoints WHERE thread_id=? ORDER BY checkpoint_id DESC LIMIT 1",
@@ -144,8 +144,8 @@ public class GaExecutionCompletion {
             var stream=new AnswerStreamPublisher(events,run.id(),System.nanoTime());
             stream.nextGeneration(); stream.accept(text); stream.finish();
         }
-        if("USER_INPUT_REQUIRED".equals(kind)) lifecycle.completeForClarification(run.threadId(),run.id(),text,"OpenCode Zen",binding.model());
-        else lifecycle.completeWithAssistant(run.threadId(),run.id(),text,"OpenCode Zen",binding.model());
+        if("USER_INPUT_REQUIRED".equals(kind)) lifecycle.completeForClarification(run.threadId(),run.id(),text,providerLabel(binding.provider()),binding.model());
+        else lifecycle.completeWithAssistant(run.threadId(),run.id(),text,providerLabel(binding.provider()),binding.model());
         UUID boundary=jdbc.queryForObject("SELECT id FROM global_assistant_messages WHERE thread_id=? ORDER BY sequence DESC LIMIT 1",UUID.class,run.threadId());
         jdbc.update("UPDATE ga_checkpoint_heads SET completed_checkpoint_id=?,public_history_boundary=? WHERE thread_id=?",
                 checkpoints.getFirst(),boundary,run.threadId());
@@ -235,6 +235,26 @@ public class GaExecutionCompletion {
         if(state!=null) state.publisher.discard();
         if(run.cancelRequestedAt()!=null) lifecycle.cancelAndTerminalize(runId);
         else lifecycle.failWithAssistant(run.threadId(),runId,"GA_PYTHON_UNAVAILABLE".equals(code)?"全局助手 Python 服务不可用，请检查启动状态。":"这一步未能完成，请稍后重试。",code,
-                "Execution unavailable or interrupted","OpenCode Zen",model);
+                    "Execution unavailable or interrupted",frozenProviderLabel(runId),model);
+    }
+
+    /**
+     * 消息归属标签取自<b>已冻结绑定</b>的提供商,绝不读取当前激活提供商:用户在本 Run
+     * 开始后切换提供商/模型,绝不能改写这次运行的归属(旧 Run 不得漂移)。未知编码按原文
+     * 返回,不做任何替换。
+     */
+    private static String providerLabel(String providerCode) {
+        if (providerCode == null || providerCode.isBlank()) return null;
+        try {
+            return com.specagent.model.contract.ModelProvider.fromCode(providerCode).defaultDisplayName();
+        } catch (IllegalArgumentException unknownProvider) {
+            return providerCode;
+        }
+    }
+
+    /** 仅用于尚未持有绑定的失败路径:按 run 读取已落库的冻结提供商,没有则返回 null。 */
+    private String frozenProviderLabel(UUID runId) {
+        var rows = jdbc.queryForList("SELECT provider FROM ga_executions WHERE run_id=?", String.class, runId);
+        return rows.isEmpty() ? null : providerLabel(rows.getFirst());
     }
 }
