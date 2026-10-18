@@ -1,0 +1,53 @@
+{
+  "recordedAt" : "2026-10-18T09:34:48.979052500Z",
+  "provider" : "KILO",
+  "baseUrl" : "https://ai-gateway.kilo.ai/api/v1",
+  "credential" : "anonymous",
+  "retries" : 0,
+  "models" : [ {
+    "model" : "xingchen-agi/xing4.0-29b-a4b:free",
+    "plainChat" : "PASS",
+    "status" : "FAIL",
+    "failureType" : "IllegalArgumentException",
+    "providerCalls" : 2
+  }, {
+    "model" : "dots-studio/dots-3-note-preview:free",
+    "plainChat" : "PASS",
+    "status" : "FAIL",
+    "failureType" : "IllegalArgumentException",
+    "providerCalls" : 2
+  }, {
+    "model" : "cohere/north-mini-code:free",
+    "plainChat" : "PASS",
+    "nativeToolCall" : "PASS",
+    "streamToolCall" : "PASS",
+    "streamCandidateTextFragments" : 0,
+    "toolResultFollowup" : "PASS",
+    "summary" : "PASS",
+    "status" : "QUALIFIED",
+    "providerCalls" : 5
+  }, {
+    "model" : "nvidia/nemotron-3.5-lightning:free",
+    "status" : "FAIL",
+    "failureType" : "ModelProviderException",
+    "providerCalls" : 1
+  }, {
+    "model" : "poolside/laguna-s-2.1:free",
+    "plainChat" : "PASS",
+    "nativeToolCall" : "PASS",
+    "streamToolCall" : "PASS",
+    "streamCandidateTextFragments" : 0,
+    "toolResultFollowup" : "PASS",
+    "summary" : "PASS",
+    "status" : "QUALIFIED",
+    "providerCalls" : 5
+  }, {
+    "model" : "kilo-auto/free",
+    "plainChat" : "PASS",
+    "status" : "FAIL",
+    "failureType" : "ModelProviderException",
+    "providerCalls" : 2
+  } ],
+  "qualifiedCount" : 2,
+  "attemptedCount" : 6
+}

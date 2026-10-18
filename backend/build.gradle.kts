@@ -223,6 +223,21 @@ tasks.register<JavaExec>("qualifyGaNative") {
     mainClass.set("com.specagent.eval.GaNativeQualification")
 }
 
+// Kilo Gateway per-model GA native tool-calling qualification (live, opt-in, no retry).
+// Only models that pass all five checks may be registered in
+// spec.global-assistant.ga-native.kilo-qualified-models (see docs/MODEL_GATEWAY.md §18).
+tasks.register<JavaExec>("qualifyGaNativeKilo") {
+    group = "verification"
+    description = "Qualifies Kilo Gateway models for native GA tool calling (live; requires network)."
+    classpath = eval.runtimeClasspath
+    mainClass.set("com.specagent.eval.KiloGaNativeQualification")
+    // -PkiloModels=a:free,b:free selects the candidates (defaults to the curated set).
+    val kiloModels = providers.gradleProperty("kiloModels")
+    doFirst {
+        kiloModels.orNull?.takeIf { it.isNotBlank() }?.let { systemProperty("kilo.qualification.models", it) }
+    }
+}
+
 // OpenCode Zen upstream request-contract gate: the shared-library request must be accepted
 // upstream (HTTP 200 or 429). Any other status — notably 403 FreeTierError — means the request
 // construction is wrong, not that the provider is refusing the product. Opt-in: it dials the
