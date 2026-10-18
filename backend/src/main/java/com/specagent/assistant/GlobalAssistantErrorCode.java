@@ -46,4 +46,10 @@ public final class GlobalAssistantErrorCode {
      * 异协议或无法确认的模型发到该端点。
      */
     public static final String GA_MODEL_PROTOCOL_UNSUPPORTED = "GA_MODEL_PROTOCOL_UNSUPPORTED";
+    /**
+     * 激活提供商的设置缺失或不可用(尚未配置模型/凭据)。刻意与
+     * {@link #GA_MODEL_PROTOCOL_UNSUPPORTED} 区分:后者表示"该提供商或模型尚未取得
+     * GA 原生工具调用资格",不得再用本码掩盖。
+     */
+    public static final String GA_MODEL_NOT_CONFIGURED = "GA_MODEL_NOT_CONFIGURED";
 }

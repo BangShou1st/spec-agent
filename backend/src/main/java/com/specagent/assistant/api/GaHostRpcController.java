@@ -73,8 +73,9 @@ public class GaHostRpcController {
     private static ResponseEntity<?> error(int status, String code) { return ResponseEntity.status(status).body(Map.of("errorCode", code)); }
     private static String safeCode(IllegalStateException ex) {
         return java.util.Set.of("GA_EXECUTION_FENCE", "GA_MODEL_BINDING_MISMATCH", "GA_MODEL_CATALOG_MISMATCH",
-                "GA_MODEL_NOT_CONFIGURED", "GA_CALL_IN_PROGRESS_OR_UNKNOWN", "GA_CALL_ID_CONFLICT",
-                "GA_BUDGET_EXHAUSTED", "GA_CHECKPOINT_CAS_CONFLICT", "GA_CALL_NOT_RESERVED").contains(ex.getMessage())
+                "GA_MODEL_NOT_CONFIGURED", "GA_MODEL_PROTOCOL_UNSUPPORTED", "GA_CALL_IN_PROGRESS_OR_UNKNOWN",
+                "GA_CALL_ID_CONFLICT", "GA_BUDGET_EXHAUSTED", "GA_CHECKPOINT_CAS_CONFLICT",
+                "GA_CALL_NOT_RESERVED").contains(ex.getMessage())
                 ? ex.getMessage() : "GA_HOST_STATE_ERROR";
     }
 }

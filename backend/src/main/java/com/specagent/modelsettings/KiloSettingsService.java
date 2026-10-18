@@ -122,6 +122,14 @@ public class KiloSettingsService implements KiloRuntimeSettingsPort {
         return status();
     }
 
+    /**
+     * 已存配置的只读投影,供 GA 目标解析读取模型与设置修订号(配置变更即漂移)。
+     * 密钥只留在后端,绝不出服务层。
+     */
+    public java.util.Optional<KiloSettings> stored() {
+        return repository.find();
+    }
+
     /** 唯一会把完整密钥交给推理侧的服务方法。 */
     @Override
     public RuntimeKiloSettings requireRuntimeSettings() {

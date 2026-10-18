@@ -1,14 +1,10 @@
 package com.specagent.assistant.runtime;
 
-import com.specagent.assistant.config.GaBrainSettings;
-
 import com.specagent.assistant.conversation.*;
 import com.specagent.assistant.tool.GaCatalogProjection;
 import com.specagent.common.Hashes;
 import com.specagent.common.Maps;
-import com.specagent.model.contract.ModelProvider;
-import com.specagent.model.provider.OpenCodeModelCatalog;
-import com.specagent.modelsettings.*;
+import com.specagent.model.contract.GaModelTarget;
 import java.time.Instant;
 import java.util.*;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -25,20 +21,33 @@ public class GaExecutionPreparation {
     private final GlobalAssistantRunLifecycleService lifecycle;
     private final GaHostContext context;
     private final GaCatalogProjection catalogs;
-    private final OpenCodeSettingsRepository settings;
-    private final ModelProviderSettingsService providers;
-    private final GaBrainSettings properties;
+    private final GaExecutionModelTargetResolver modelTargets;
     private final JdbcTemplate jdbc;
-    private final OpenCodeModelCatalog modelProtocols;
     public GaExecutionPreparation(GaExecutionStore executions, GlobalAssistantRunRepository runs,
             GlobalAssistantConversationService conversations, GlobalAssistantRunLifecycleService lifecycle,
-            GaHostContext context, GaCatalogProjection catalogs, OpenCodeSettingsRepository settings,
-            ModelProviderSettingsService providers, GaBrainSettings properties, JdbcTemplate jdbc,
-            OpenCodeModelCatalog modelProtocols) {
+            GaHostContext context, GaCatalogProjection catalogs,
+            GaExecutionModelTargetResolver modelTargets, JdbcTemplate jdbc) {
         this.executions=executions; this.runs=runs; this.conversations=conversations; this.lifecycle=lifecycle;
-        this.context=context; this.catalogs=catalogs; this.settings=settings; this.providers=providers;
-        this.properties=properties; this.jdbc=jdbc; this.modelProtocols=modelProtocols;
+        this.context=context; this.catalogs=catalogs; this.modelTargets=modelTargets; this.jdbc=jdbc;
     }
+    /**
+     * 解析并冻结模型目标,保留既有失败语义:协议/资格不支持("未取得 GA 原生工具调用资格")
+     * 按控制面语义终态化且不写助手正文;而"未配置"仍以异常形式失败,交由协调器的统一失败
+     * 路径处理(与该门的既有行为一致,不改变对外的事件与消息形状)。
+     */
+    private GaModelTarget requireModelTarget(UUID runId) {
+        var resolution = modelTargets.resolveActive();
+        if (resolution instanceof GaExecutionModelTargetResolver.Unavailable unavailable) {
+            if (com.specagent.assistant.GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED
+                    .equals(unavailable.errorCode())) {
+                lifecycle.failWithoutContent(runId, unavailable.errorCode(), unavailable.reason());
+                return null;
+            }
+            throw new IllegalStateException(unavailable.errorCode());
+        }
+        return ((GaExecutionModelTargetResolver.Ready) resolution).target();
+    }
+
     @Transactional
     public Prepared prepare(UUID thread, UUID runId, String text, GaHostContext.UiRequest ui) {
         // 执行代次来自当前任务的显式 token(design §7):首次认领为 1,接管后为
@@ -71,9 +80,6 @@ public class GaExecutionPreparation {
         if (run.status()!=GlobalAssistantRunStatus.CREATED) throw new GlobalAssistantRunClaimedException(run.status());
         if (!run.threadId().equals(thread)) throw new IllegalArgumentException("GA thread mismatch");
         if (run.cancelRequestedAt()!=null) { lifecycle.cancelAndTerminalize(runId); return null; }
-        if (properties.getInternalSecret().isBlank() || providers.activeProvider()!=ModelProvider.OPENCODE_ZEN)
-            throw new IllegalStateException("GA_MODEL_NOT_CONFIGURED");
-        var model=settings.find().orElseThrow(() -> new IllegalStateException("GA_MODEL_NOT_CONFIGURED"));
         // 来源依赖判定:派生记忆依赖的项目已撤权或无法确认时,历史不得进入执行信封
         // (第二阶段 §6.5"不得只过滤下一次检索却继续把旧摘要送模型")。此时按控制面
         // 终态化失败关闭:不带内容、不写助手消息——撤权会话的正文一个字节都不外发,
@@ -85,20 +91,14 @@ public class GaExecutionPreparation {
                     "Conversation depends on project sources that are no longer authorized");
             return null;
         }
-        // 协议门禁(失败关闭):宿主只实现 /chat/completions 调用链,只有经可信元数据
-        // 确认协议为 Chat Completions 的模型才允许进入执行信封。升级前保存的
-        // Responses / Anthropic / OTHER / UNKNOWN 模型(以及元数据不可用而无法确认的
-        // 模型)在此被拒绝,不再被误发到 /chat/completions。
-        // 判定只读已缓存的可信元数据(绝不触发网络刷新),因此不会在本事务持有 Run 锁
-        // 期间发起网络请求——缓存由 GaExecutionCoordinator 在进入本方法之前预热。
+        // 提供商无关的模型目标解析(设置侧):解析当前激活提供商的可信目标,并把
+        // "未配置"与"尚未取得 GA 原生工具调用资格"区分为两类类型化失败——后者不再被
+        // GA_MODEL_NOT_CONFIGURED 掩盖。门禁只读缓存事实,绝不在持有 Run 锁的本事务内
+        // 发起网络请求(需要网络的预热由 GaExecutionCoordinator 在进入本方法之前完成)。
         // 拒绝发生在信封创建与预算认领之前:run 按控制面语义终态化、公开发布失败事件,
         // 不写助手正文、不消耗预算、不创建租约、不派发 Python 执行信封。
-        if (!modelProtocols.verifiedChatExecutable(model.selectedModel())) {
-            lifecycle.failWithoutContent(runId,
-                    com.specagent.assistant.GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED,
-                    "The selected OpenCode model is not a metadata-verified Chat Completions model");
-            return null;
-        }
+        GaModelTarget target = requireModelTarget(runId);
+        if (target == null) return null;
         var messages=conversations.listMessages(thread);
         var current=messages.stream().filter(m -> m.role()==GlobalAssistantMessage.Role.USER && runId.equals(m.runId())).toList();
         if (current.size()!=1 || !current.getFirst().content().equals(text)) throw new IllegalArgumentException("GA current message mismatch");
@@ -132,10 +132,10 @@ public class GaExecutionPreparation {
                 "budget",Map.of("maxModelCalls",6,"maxToolCalls",5,"maxDurationSeconds",180));
         String body=catalogs.canonical(envelope);
         if(body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>262144) throw new IllegalStateException("GA_EXECUTION_LIMIT");
-        executions.initialize(scope,new GaExecutionStore.Binding(thread,binding,"OPENCODE_ZEN",model.selectedModel(),
-                "opencode-settings:"+model.updatedAt(),Instant.now().plusSeconds(180),catalog.tools()),catalog.descriptors());
+        executions.initialize(scope,new GaExecutionStore.Binding(thread,binding,target.provider(),target.model(),
+                target.settingsRevision(),Instant.now().plusSeconds(180),catalog.tools()),catalog.descriptors());
         jdbc.update("UPDATE ga_executions SET execution_request=?,execution_request_hash=? WHERE run_id=?",body,Hashes.sha256Hex(body),runId);
         lifecycle.claimAndStart(runId);
-        return new Prepared(scope,body,model.selectedModel());
+        return new Prepared(scope,body,target.model());
     }
 }

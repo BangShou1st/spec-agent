@@ -393,13 +393,78 @@ reuse the frozen OpenCode transport:
 - Routing happens only in `RoutingModelInferenceGateway`; the Runtime Kernel does
   not know this provider. `kilo.gateway.*` only supplies library defaults (model
   id, base URL, proxy, timeouts, `free-only=false`).
-- Known limitation (owner review pending): the Global Assistant project path is
-  NOT covered. `GaExecutionPreparation` requires `activeProvider == OPENCODE_ZEN`
-  and the GA native tool-call transport is OpenCode-only (§16), so a GA run under
-  this provider fails closed before any model call. The Project Agent path is
-  verified end to end; GA remains OpenCode Zen only, as it already was for
-  OpenRouter and Custom.
+- Global Assistant coverage: resolved. The OpenCode-Zen-only limitation this
+  bullet used to describe is removed by §18 — GA now resolves and freezes a
+  provider-neutral model target and routes native tool calling per provider.
+  Kilo models must be individually qualified (§18.1) before GA will use them.
 - Free-model output quality varies: request handling is verified, but only some
   free models satisfy the strict DECISION contract. Live evidence:
   `poolside/laguna-s-2.1:free` produced non-conforming output (run failed
   validation); `nvidia/nemotron-3-super-120b-a12b:free` completed a real run.
+
+## 18. Provider-aware GA execution and per-model native-tool qualification
+
+The Global Assistant is no longer bound to OpenCode Zen. GA resolves one
+provider-neutral model target and freezes it for the whole run:
+
+```text
+model settings -> GaExecutionModelTargetResolver -> ga_executions binding
+               -> GaNativeInferenceGateway (provider routing) -> provider native transport
+```
+
+- `GaModelTarget(provider, model, settingsRevision, credential)` — one frozen,
+  provider-agnostic target. The credential never enters the execution table,
+  the wire contract or diagnostics.
+- `GaExecutionModelTargetResolver` resolves the target at preparation time from
+  the **active** provider and re-resolves it at inference time from the
+  **frozen** binding. Switching provider or model mid-run cannot retarget a run;
+  a settings-revision drift fails closed with `GA_MODEL_BINDING_MISMATCH`.
+- `GaNativeInferenceGateway` routes by the frozen provider. OpenCode Zen keeps
+  its verified native SSE transport; Kilo Gateway uses
+  `KiloGaNativeTransport`; providers without a registered native transport
+  (OpenRouter, Custom) fail closed with `UNSUPPORTED_AGENT_MODEL`.
+- "Not configured" and "not qualified for native GA tool calling" are distinct:
+  the former is `GA_MODEL_NOT_CONFIGURED`, the latter
+  `GA_MODEL_PROTOCOL_UNSUPPORTED`. The old code used the first to hide the second.
+- Qualification is per model and explicitly registered in
+  `spec.global-assistant.ga-native.kilo-qualified-models`. It is never inferred
+  from a `:free` suffix or from "it is a chat model".
+
+### 18.1 Live qualification evidence (recorded 2026-10-18T09:34:48Z)
+
+Command: `backend> gradlew.bat qualifyGaNativeKilo` (live, no retry, no model
+substitution, anonymous free-tier credential).
+Per model: (1) plain non-stream chat, (2) non-stream native tool call,
+(3) streaming tool-call argument aggregation, (4) tool-result follow-up,
+(5) tools-free SUMMARY request. Artifact:
+`docs/v2/evidence/KILO_GA_NATIVE_QUALIFICATION.json`.
+
+| Model | 1 plain | 2 tool call | 3 stream tool | 4 follow-up | 5 summary | Verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| `poolside/laguna-s-2.1:free` | PASS | PASS | PASS | PASS | PASS | QUALIFIED |
+| `cohere/north-mini-code:free` | PASS | PASS | PASS | PASS | PASS | QUALIFIED |
+| `nvidia/nemotron-3-super-120b-a12b:free` | PASS | PASS | PASS | PASS | FAIL | not qualified |
+| `nvidia/nemotron-3-ultra-550b-a55b:free` | PASS | FAIL | — | — | — | not qualified |
+| `xingchen-agi/xing4.0-29b-a4b:free` | PASS | FAIL | — | — | — | not qualified |
+| `dots-studio/dots-3-note-preview:free` | PASS | FAIL | — | — | — | not qualified |
+| `thinkingmachines/inkling-small:free` | FAIL | — | — | — | — | not qualified |
+| `nvidia/nemotron-3.5-lightning:free` | FAIL | — | — | — | — | not qualified |
+| `kilo-auto/free` | PASS | FAIL | — | — | — | not qualified |
+
+Failure classification (no provider body, credentials or prompts are recorded):
+
+- `nvidia/nemotron-3-super-120b-a12b:free` — the tools-free SUMMARY call
+  streamed many empty-content frames and then a terminal frame with no content
+  and no tool call; the audited decoder failed closed
+  (`GA_NATIVE_STREAM_COMPLETED_RESPONSE`) rather than accepting an empty
+  response. **Model behaviour**, not a code defect.
+- `...-ultra-550b-a55b:free`, `xing4.0-29b-a4b:free`,
+  `dots-3-note-preview:free` — the returned native tool call did not satisfy the
+  strict response contract (tool identity/argument object). **Model behaviour**.
+- `inkling-small:free`, `nemotron-3.5-lightning:free`, `kilo-auto/free` —
+  provider-side error on the request (typed `ModelProviderException`).
+  **Provider/model availability**, not host code.
+
+Streaming aggregation is enforced, not inferred: check 3 recorded
+`streamCandidateTextFragments = 0`, i.e. a tool-carrying response released no
+executable text before the complete tool call was validated.

@@ -20,22 +20,23 @@ public class GaExecutionCoordinator {
     private final GaExecutionCompletion completion;
     private final GaExecutionStore executions;
     private final GaBrainSettings properties;
-    private final com.specagent.model.provider.OpenCodeModelCatalog modelProtocols;
+    private final GaExecutionModelTargetResolver modelTargets;
     public GaExecutionCoordinator(GaExecutionPreparation preparation,GaExecutionCompletion completion,
             GaExecutionStore executions,GaBrainSettings properties,
-            com.specagent.model.provider.OpenCodeModelCatalog modelProtocols) {
+            GaExecutionModelTargetResolver modelTargets) {
         this.preparation=preparation; this.completion=completion; this.executions=executions; this.properties=properties;
-        this.modelProtocols=modelProtocols;
+        this.modelTargets=modelTargets;
     }
     public void executeRun(UUID thread,UUID run,String text,GaHostContext.UiRequest ui) {
         GaExecutionPreparation.Prepared prepared=null;
         GaExecutionCompletion.StreamState state=null;
         try {
-            // 协议门禁依赖可信模型元数据。这里(执行准备事务与 Run 锁之外)先预热
-            // 元数据缓存,使 GaExecutionPreparation 内的门禁能纯内存判定——绝不在
-            // 持有 Run 锁的准备工作事务内引入网络请求。刷新按 TTL 单飞与节流,
-            // 失败不抛出(视图标记为不可用,交由门禁失败关闭)。
-            modelProtocols.warmMetadata();
+            // 资格预热按<b>当前激活提供商</b>进行,且刻意放在执行准备事务与 Run 锁之外:
+            // 需要网络的资格信息(目前仅 OpenCode Zen 的模型元数据)在此刷新,使
+            // GaExecutionPreparation 内的门禁能纯内存判定——绝不在持有 Run 锁的准备工作
+            // 事务内引入网络请求。Kilo Gateway 的资格来自显式登记(无网络),其余未注册
+            // 原生传输的提供商在准备阶段按类型化错误失败关闭,绝不默认放行、绝不回退 Zen。
+            modelTargets.warmActiveProvider();
             prepared=preparation.prepare(thread,run,text,ui);
             if(prepared==null) return;
             state=completion.newStream(run);

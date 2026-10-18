@@ -77,6 +77,17 @@ spec:
     tavily-api-key: ${SPEC_AGENT_TAVILY_API_KEY:}
     retrieval-enabled: ${SPEC_AGENT_GA_RETRIEVAL_ENABLED:true}
     engine: ${SPEC_AGENT_GLOBAL_ASSISTANT_ENGINE:langchain-ga.v1}
+    # GA 原生工具调用的逐模型资格登记。刻意显式:提供商已接入 != Chat 可用 !=
+    # 支持原生 Tool Calling != GA 实际执行已验证。OpenCode Zen 沿用既有规则
+    # (可信元数据确认 Chat Completions);Kilo Gateway 只承认这里显式登记的模型,
+    # 绝不按 :free 后缀或"是个 Chat 模型"推断。资格证据见 docs/MODEL_GATEWAY.md §18。
+    ga-native:
+      # 只有这里登记的 Kilo 模型才可进入 GA 原生工具调用。登记依据是
+      # `gradlew.bat qualifyGaNativeKilo` 的 5 项真实资格检查(见
+      # docs/MODEL_GATEWAY.md §18 与 docs/v2/evidence/KILO_GA_NATIVE_QUALIFICATION.json)。
+      kilo-qualified-models:
+        - poolside/laguna-s-2.1:free
+        - cohere/north-mini-code:free
   agent:
     security:
       # 第二阶段：身份模式。默认 LOCAL —— 单机回环绑定 + 显式本地 user/org。

@@ -2,6 +2,7 @@ package com.specagent.assistant.runtime;
 
 import com.specagent.common.Maps;
 import com.specagent.model.contract.GaModelContract;
+import com.specagent.model.contract.ModelProvider;
 import com.specagent.assistant.tool.GaCatalogProjection;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
@@ -70,7 +71,7 @@ public class GaExecutionStore {
             throw new IllegalArgumentException("GA model and capability projections differ");
         if (scope.runId() == null || scope.epoch() < 1 || scope.leaseId() == null
                 || binding.threadId() == null || binding.modelBindingId() == null
-                || !"OPENCODE_ZEN".equals(binding.provider()) || binding.model() == null || binding.model().isBlank()
+                || !registeredProvider(binding.provider()) || binding.model() == null || binding.model().isBlank()
                 || binding.settingsRevision() == null || binding.settingsRevision().isBlank()
                 || binding.allowedTools().size() > 12
                 || binding.deadline() == null || !binding.deadline().isAfter(Instant.now())
@@ -103,6 +104,26 @@ public class GaExecutionStore {
                   executor_claimed = FALSE
                 """, params);
         jdbc.update("INSERT INTO ga_checkpoint_heads(thread_id) VALUES (:thread) ON CONFLICT DO NOTHING", params);
+    }
+
+    /**
+     * 绑定里的提供商必须是已注册的 {@link ModelProvider}:未知编码一律拒绝,不再硬编码
+     * 只有 OpenCode Zen 合法。
+     *
+     * <p>这里刻意只校验"是否已注册",不在此处判定 GA 原生工具调用资格——资格判定由设置侧的
+     * {@code GaExecutionModelTargetResolver} 失败关闭,而传输层对没有原生实现的提供商同样
+     * 失败关闭。两层都不允许伪造绑定,也不允许把"未取得资格"当成"可以执行"。
+     */
+    private static boolean registeredProvider(String provider) {
+        if (provider == null || provider.isBlank()) {
+            return false;
+        }
+        try {
+            ModelProvider.fromCode(provider);
+            return true;
+        } catch (IllegalArgumentException unknownProvider) {
+            return false;
+        }
     }
 
     @Transactional
