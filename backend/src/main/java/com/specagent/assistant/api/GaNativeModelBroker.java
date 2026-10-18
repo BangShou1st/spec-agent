@@ -1,15 +1,13 @@
 package com.specagent.assistant.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.specagent.assistant.runtime.GaExecutionModelTargetResolver;
 import com.specagent.assistant.runtime.GaExecutionStore;
 import com.specagent.common.Hashes;
-import com.specagent.model.contract.ActiveProviderPort;
+import com.specagent.model.contract.FragmentListener;
 import com.specagent.model.contract.GaModelContract;
-import com.specagent.model.contract.ModelProvider;
-import com.specagent.model.provider.OpenCodeZenSessionIds;
-import com.specagent.model.provider.OpenCodeZenTransport;
-import com.specagent.modelsettings.OpenCodeSettingsRepository;
-import com.specagent.modelsettings.OpenCodeSettingsService;
+import com.specagent.model.contract.GaModelTarget;
+import com.specagent.model.contract.GaNativeInferenceGateway;
 import java.time.Duration;
 import java.time.Instant;
 import org.springframework.stereotype.Service;
@@ -17,19 +15,16 @@ import org.springframework.stereotype.Service;
 /** Run-bound native broker orchestration; no Agent loop, credential forwarding or retries. */
 @Service
 public class GaNativeModelBroker {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GaNativeModelBroker.class);
     public record Result(int status, Object body) {}
     private final GaExecutionStore executions;
-    private final ActiveProviderPort providers;
-    private final OpenCodeSettingsRepository settings;
-    private final OpenCodeSettingsService openCodeSettings;
-    private final OpenCodeZenTransport transport;
+    private final GaExecutionModelTargetResolver modelTargets;
+    private final GaNativeInferenceGateway nativeGateway;
     private final ObjectMapper mapper = new ObjectMapper()
             .enable(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
-    public GaNativeModelBroker(GaExecutionStore executions, ActiveProviderPort providers,
-            OpenCodeSettingsRepository settings, OpenCodeSettingsService openCodeSettings,
-            OpenCodeZenTransport transport) {
-        this.executions = executions; this.providers = providers; this.settings = settings;
-        this.openCodeSettings = openCodeSettings; this.transport = transport;
+    public GaNativeModelBroker(GaExecutionStore executions, GaExecutionModelTargetResolver modelTargets,
+            GaNativeInferenceGateway nativeGateway) {
+        this.executions = executions; this.modelTargets = modelTargets; this.nativeGateway = nativeGateway;
     }
 
     private com.specagent.runtime.execution.ExecutionHeartbeatRegistry heartbeatRegistry;
@@ -153,18 +148,18 @@ public class GaNativeModelBroker {
         }
     }
     private GaModelContract.Response inferForActor(GaModelContract.Request request,
-            com.specagent.model.contract.FragmentListener listener, GaExecutionStore.Scope scope) {
+            FragmentListener listener, GaExecutionStore.Scope scope) {
         var binding = executions.authorize(scope);
         if (!binding.modelBindingId().equals(request.modelBindingId())) throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
         if ((!"SUMMARY".equals(request.callType()) && !binding.allowedTools().equals(request.tools()))
                 || ("SUMMARY".equals(request.callType()) && !request.tools().isEmpty()))
             throw new IllegalStateException("GA_MODEL_CATALOG_MISMATCH");
-        // Resolve one immutable host settings snapshot. A changed target/revision fails; never substitute.
-        if (providers.activeProvider() != ModelProvider.OPENCODE_ZEN) throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
-        var target = settings.find().orElseThrow(() -> new IllegalStateException("GA_MODEL_NOT_CONFIGURED"));
-        if (!binding.model().equals(target.selectedModel())
-                || !binding.settingsRevision().equals("opencode-settings:" + target.updatedAt()))
-            throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+        // 以<b>冻结绑定</b>为准解析可执行目标:提供商与模型都取绑定里的值,运行中用户切换
+        // 提供商/模型不会改变本 Run;设置修订号一旦漂移即 GA_MODEL_BINDING_MISMATCH。凭据
+        // 只在这一层解析,绝不写入执行表或诊断。尚无 GA 原生资格的提供商在此返回类型化错误,
+        // 绝不替换成另一个提供商。
+        GaModelTarget target = modelTargets.requireFrozen(binding.provider(), binding.model(),
+                binding.settingsRevision());
         String requestHash = Hashes.sha256Hex(json(request));
         var reservation = executions.reserve(scope, request.callId(), "MODEL", requestHash);
         if (!reservation.fresh()) {
@@ -179,12 +174,11 @@ public class GaNativeModelBroker {
             // "本实例心跳已判失权"两类即时信号。
             java.util.function.BooleanSupplier active =
                     () -> executions.active(scope) && !ownershipLost(scope);
-            String credential = openCodeSettings.credentialForModelCached(binding.model(), target.apiKey());
+            // 提供商无关的原生执行入口:由冻结目标里的提供商路由到对应原生传输。会话亲和性
+            // 以 thread 绑定(传输层按提供商自行映射);失权时片段直接被拒,绝不放行。
             var response = listener == null
-                    ? transport.completeNativeGa(credential, OpenCodeZenSessionIds.forConversation(binding.threadId()),
-                        request, binding.model(), remaining, active)
-                    : transport.streamNativeGa(credential, OpenCodeZenSessionIds.forConversation(binding.threadId()),
-                        request, binding.model(), remaining, active,
+                    ? nativeGateway.complete(target, binding.threadId(), request, remaining, active)
+                    : nativeGateway.stream(target, binding.threadId(), request, remaining, active,
                         text -> active.getAsBoolean() && listener.onFragment(text));
             new com.specagent.model.provider.GaChatCompletionsAdapter().validateResponse(request,response);
             if(response.toolCalls().size()>1) {
@@ -220,7 +214,15 @@ public class GaNativeModelBroker {
             var result = infer(request, text -> { emit.accept("TEXT_DELTA",java.util.Map.of("text",text)); return true; });
             emit.accept("COMPLETED",result); // Ledger commit precedes release of executable calls.
         } catch (java.io.UncheckedIOException disconnected) { throw disconnected.getCause(); }
-        catch (RuntimeException failure) { emit.accept("FAILED",java.util.Map.of("errorCode","GA_MODEL_STREAM_FAILED")); }
+        catch (RuntimeException failure) {
+            // 只记录异常类型(绝不含消息、提供商报文、提示词或凭据),便于诊断;
+            // 行线只回传白名单内的类型化错误码。
+            Throwable root = failure;
+            while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+            log.warn("GA native stream failed run={} category={} root={} code={}", request.runId(),
+                    failure.getClass().getSimpleName(), root.getClass().getSimpleName(), typedCode(failure));
+            emit.accept("FAILED", java.util.Map.of("errorCode", typedCode(failure)));
+        }
     }
     public Result invoke(String body) {
         try {
@@ -234,13 +236,44 @@ public class GaNativeModelBroker {
         catch (IllegalArgumentException ex) { return failure(400, "GA_MODEL_PROTOCOL_ERROR"); }
         catch (IllegalStateException ex) {
             String code = java.util.Set.of("GA_EXECUTION_FENCE", "GA_MODEL_BINDING_MISMATCH", "GA_MODEL_CATALOG_MISMATCH",
-                    "GA_MODEL_NOT_CONFIGURED", "GA_CALL_IN_PROGRESS_OR_UNKNOWN", "GA_CALL_ID_CONFLICT",
-                    "GA_BUDGET_EXHAUSTED", "GA_CALL_NOT_RESERVED").contains(ex.getMessage())
+                    "GA_MODEL_NOT_CONFIGURED", "GA_MODEL_PROTOCOL_UNSUPPORTED", "GA_CALL_IN_PROGRESS_OR_UNKNOWN",
+                    "GA_CALL_ID_CONFLICT", "GA_BUDGET_EXHAUSTED", "GA_CALL_NOT_RESERVED").contains(ex.getMessage())
                     ? ex.getMessage() : "GA_HOST_STATE_ERROR";
             return failure(409, code);
         }
     }
     private Result failure(int status, String code) { return new Result(status, java.util.Map.of("errorCode", code)); }
+
+    /**
+     * 把一次原生模型失败的异常映射成<b>白名单内的类型化错误码</b>。与 {@link #invoke} 使用
+     * 同一套分类:提供商错误按类别映射,控制面状态按已登记码返回,其余一律
+     * {@code GA_HOST_STATE_ERROR}——绝不放行异常原文。
+     */
+    private static String typedCode(RuntimeException failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof com.specagent.model.contract.ModelGatewayException gateway) {
+                return "GA_MODEL_" + gateway.gatewayCategory().name();
+            }
+            if (cause instanceof com.specagent.model.contract.StreamCancelledException) {
+                return "GA_EXECUTION_FENCE";
+            }
+            if (cause instanceof UnsupportedOperationException) {
+                return "UNSUPPORTED_AGENT_MODEL";
+            }
+            if (cause instanceof IllegalArgumentException) {
+                return "GA_MODEL_PROTOCOL_ERROR";
+            }
+            if (cause instanceof IllegalStateException state
+                    && java.util.Set.of("GA_EXECUTION_FENCE", "GA_MODEL_BINDING_MISMATCH",
+                        "GA_MODEL_CATALOG_MISMATCH", "GA_MODEL_NOT_CONFIGURED",
+                        "GA_MODEL_PROTOCOL_UNSUPPORTED", "GA_CALL_IN_PROGRESS_OR_UNKNOWN",
+                        "GA_CALL_ID_CONFLICT", "GA_BUDGET_EXHAUSTED",
+                        "GA_CALL_NOT_RESERVED").contains(state.getMessage())) {
+                return state.getMessage();
+            }
+        }
+        return "GA_HOST_STATE_ERROR";
+    }
     private String json(Object value) {
         try { return mapper.writeValueAsString(value); }
         catch (Exception ex) { throw new IllegalArgumentException("Invalid GA model payload"); }
