@@ -55,9 +55,23 @@ public class KiloInferenceGateway implements ModelInferenceGateway {
     @Override
     public ModelInferenceResponse complete(ModelInferenceRequest request) {
         RuntimeKiloSettings runtime = settings.requireRuntimeSettings();
-        ObjectNode body = buildBody(request, runtime.selectedModel(), false);
+        return doComplete(request, runtime.selectedModel(), runtime.apiKey());
+    }
+
+    /**
+     * 用调用方已解析的<b>冻结目标模型</b>发起请求(路由网关专用)。凭据仍从运行时
+     * 设置读取,但模型 id 只使用传入值——本网关在此次请求内绝不重新读取所选模型,
+     * 因此设置页在请求构造期间发生的模型切换不会让本 Run 改送到新模型。
+     */
+    public ModelInferenceResponse complete(ModelInferenceRequest request, String selectedModel) {
+        RuntimeKiloSettings runtime = settings.requireRuntimeSettings();
+        return doComplete(request, selectedModel, runtime.apiKey());
+    }
+
+    private ModelInferenceResponse doComplete(ModelInferenceRequest request, String model, String apiKey) {
+        ObjectNode body = buildBody(request, model, false);
         try {
-            return toResponse(client(runtime.apiKey()).chat(body));
+            return toResponse(client(apiKey).chat(body));
         } catch (KiloGatewayException error) {
             throw translate(error);
         }
@@ -66,13 +80,25 @@ public class KiloInferenceGateway implements ModelInferenceGateway {
     @Override
     public ModelInferenceResponse completeStreaming(ModelInferenceRequest request, FragmentListener listener) {
         RuntimeKiloSettings runtime = settings.requireRuntimeSettings();
-        ObjectNode body = buildBody(request, runtime.selectedModel(), true);
+        return doCompleteStreaming(request, listener, runtime.selectedModel(), runtime.apiKey());
+    }
+
+    /** 流式版本的冻结目标重载;语义与 {@link #complete(ModelInferenceRequest, String)} 相同。 */
+    public ModelInferenceResponse completeStreaming(ModelInferenceRequest request,
+                                                    FragmentListener listener, String selectedModel) {
+        RuntimeKiloSettings runtime = settings.requireRuntimeSettings();
+        return doCompleteStreaming(request, listener, selectedModel, runtime.apiKey());
+    }
+
+    private ModelInferenceResponse doCompleteStreaming(ModelInferenceRequest request,
+                                                       FragmentListener listener, String model, String apiKey) {
+        ObjectNode body = buildBody(request, model, true);
         StringBuilder aggregated = new StringBuilder();
         AtomicReference<String> finishReason = new AtomicReference<>();
         AtomicReference<Integer> promptTokens = new AtomicReference<>();
         AtomicReference<Integer> completionTokens = new AtomicReference<>();
         try {
-            client(runtime.apiKey()).streamChat(body, chunk -> {
+            client(apiKey).streamChat(body, chunk -> {
                 JsonNode choice = chunk.path("choices").path(0);
                 String delta = choice.path("delta").path("content").asText("");
                 if (!delta.isEmpty()) {

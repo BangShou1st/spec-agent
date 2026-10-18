@@ -22,19 +22,24 @@ import java.util.UUID;
  *
  * 用途:权威的 {@link ModelInferenceGateway} 入口,也是唯一发生"按激活提供商
  * 路由"的地方。这里不做请求构建、不做 SSE 解析、不做降级(fallback)、不重试、
- * 没有任何 Agent 逻辑——只做:查激活提供商 -> 查注册表 -> 委派。
+ * 没有任何 Agent 逻辑——只做:解析本 Run 的目标 -> 查注册表 -> 委派。
  *
- * <p><b>Run 级模型冻结</b>:{@code Project Agent} 回答周期由同一次 Run 内的
- * STATE_UPDATE 与 DECISION 两次推理组成。路由网关在同一个 {@code runId} 的
- * <b>第一次</b>推理时冻结(提供商, 模型)对,之后该 run 的每次推理都必须与冻结对
- * 一致;运行中一旦有人在设置页切换提供商或模型,即失败关闭
+ * <p><b>Run 级模型冻结(Check-then-Act 窗口已关闭)</b>:{@code Project Agent}
+ * 回答周期由同一次 Run 内的 STATE_UPDATE 与 DECISION 两次推理组成。路由网关在同一个
+ * {@code runId} 的<b>第一次</b>推理时冻结(提供商, 模型)对,之后该 run 的每次推理都必须与
+ * 冻结对一致;运行中一旦有人在设置页切换提供商或模型,即失败关闭
  * ({@code MODEL_BINDING_MISMATCH}),<b>绝不自动换模型、绝不自动重试、绝不重定向</b>。
- * 这与 GA 已冻结绑定的语义一致,但使用独立的最薄实现:只读取既有设置事实,
- * 不新增任何模型选择系统,也不改变 GA 的冻结机制。
  *
- * <p>冻结表按进程内 LRU 有界保存,是"同一进程内同一个 Run 不得混用模型"的
- * <b>最薄</b>保障;本轮评估的全部场景都在单一执行器进程内完成,因此足够。
- * 若将来支持多实例执行同一 Run,应改为把冻结对持久化到 run 记录(本轮不做,如实记录)。
+ * <p><b>不用第二次读取消除漂移</b>:目标只在这里解析一次。路由由<b>冻结目标</b>的
+ * 提供商决定(不再另行读取当前激活提供商),并且把<b>冻结模型</b>显式下传给具体网关,
+ * 由它按该模型构造实际 HTTP 请求——具体网关绝不在此次请求内重新读取模型设置。
+ * 因此在"冻结检查"与"网关构造请求"之间发生的设置变更既不会被静默采用,也不会
+ * 让本 Run 被改送到新模型;已冻结的运行在目标变得不可解析时同样失败关闭。
+ *
+ * <p>冻结表按进程内 LRU(<b>访问序</b>)有界保存,是"同一进程内同一个 Run 不得混用模型"的
+ * <b>最薄</b>保障:刚刚被推理访问过的运行留在表尾,被淘汰的是最久未使用的运行。本轮评估的
+ * 全部场景都在单一执行器进程内完成,因此足够。它<b>不能</b>跨进程重启或多实例:那时冻结对会
+ * 丢失,需要把绑定持久化到 run 记录(<b>本轮不做</b>,在最终报告中如实记录为已知限制)。
  */
 @Component
 @Primary
@@ -51,8 +56,13 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
     private final KiloInferenceGateway kilo;
     private final CustomInferenceGateway custom;
 
+    /**
+     * 访问序 LRU:最近被推理访问过的运行留在表尾,因此容量触顶时被淘汰的是
+     * 最久未被访问的运行,而不是正在执行的运行。所有复合读写都在同一监视器内完成,
+     * 保证"读冻结 + 首次写入"是原子的。
+     */
     private final Map<UUID, ActiveModelTargetPort.Target> frozenRunTargets =
-            Collections.synchronizedMap(new LinkedHashMap<>() {
+            Collections.synchronizedMap(new LinkedHashMap<>(16, 0.75f, true) {
                 @Override
                 protected boolean removeEldestEntry(
                         Map.Entry<UUID, ActiveModelTargetPort.Target> eldest) {
@@ -76,18 +86,41 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
 
     @Override
     public ModelInferenceResponse complete(ModelInferenceRequest request) {
-        return delegate(request).complete(request);
+        ActiveModelTargetPort.Target binding = resolveBoundTarget(request.runId());
+        if (binding == null) {
+            // 目标不可解析且本 Run 尚无冻结:交由具体网关按自身类型化错误失败关闭。
+            return legacyComplete(request);
+        }
+        String model = binding.model();
+        return switch (ModelProvider.fromCode(binding.provider())) {
+            case OPENCODE_ZEN -> openCode.complete(request, model);
+            case OPENROUTER -> openRouter.complete(request, model);
+            case KILO -> kilo.complete(request, model);
+            case CUSTOM -> custom.complete(request, model);
+        };
     }
 
     @Override
     public ModelInferenceResponse completeStreaming(ModelInferenceRequest request, FragmentListener listener) {
-        return delegate(request).completeStreaming(request, listener);
+        ActiveModelTargetPort.Target binding = resolveBoundTarget(request.runId());
+        if (binding == null) {
+            return legacyCompleteStreaming(request, listener);
+        }
+        String model = binding.model();
+        return switch (ModelProvider.fromCode(binding.provider())) {
+            case OPENCODE_ZEN -> openCode.completeStreaming(request, listener, model);
+            case OPENROUTER -> openRouter.completeStreaming(request, listener, model);
+            case KILO -> kilo.completeStreaming(request, listener, model);
+            case CUSTOM -> custom.completeStreaming(request, listener, model);
+        };
     }
 
-    private ModelInferenceGateway delegate(ModelInferenceRequest request) {
-        freezeOrFailClosed(request.runId());
-        ModelProvider active = providerSettings.activeProvider();
-        return switch (active) {
+    /**
+     * 目标不可解析的历史路径:仍按当前激活提供商路由,由具体网关按其自身类型化错误
+     * 失败关闭。该路径只在"本 Run 尚无冻结"时可达;已冻结的 Run 绝不走到这里。
+     */
+    private ModelInferenceGateway legacyDelegate() {
+        return switch (providerSettings.activeProvider()) {
             case OPENCODE_ZEN -> openCode;
             case OPENROUTER -> openRouter;
             case KILO -> kilo;
@@ -95,30 +128,56 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
         };
     }
 
+    private ModelInferenceResponse legacyComplete(ModelInferenceRequest request) {
+        return legacyDelegate().complete(request);
+    }
+
+    private ModelInferenceResponse legacyCompleteStreaming(ModelInferenceRequest request,
+                                                           FragmentListener listener) {
+        return legacyDelegate().completeStreaming(request, listener);
+    }
+
     /**
-     * Run 级冻结:首次推理记录(提供商, 模型);此后每次比对,漂移即失败关闭。
-     * 目标不可解析(提供商未配置)时不冻结也不拦截——由具体网关按其自身类型化
-     * 错误失败关闭,绝不因此改变控制流。
+     * 解析本 Run 的(提供商, 模型)绑定:首次调用冻结,之后比对;漂移即失败关闭。
+     *
+     * <ul>
+     *   <li>{@code runId == null} → 无 Run 身份,不冻结也不拦截,按当前目标路由(可能为 null);</li>
+     *   <li>已冻结且当前目标与冻结不一致,或当前目标已不可解析 → {@code MODEL_BINDING_MISMATCH}
+     *       (绝不静默改送新模型,也不因目标解析失败而跳过冻结);</li>
+     *   <li>尚未冻结且目标可解析 → 冻结并返回该目标;</li>
+     *   <li>尚未冻结且目标不可解析 → 返回 null,由具体网关失败关闭。</li>
+     * </ul>
      */
-    private void freezeOrFailClosed(UUID runId) {
+    private ActiveModelTargetPort.Target resolveBoundTarget(UUID runId) {
+        ActiveModelTargetPort.Target current = currentTargetOrNull();
         if (runId == null) {
-            return;
+            return current;
         }
-        ActiveModelTargetPort.Target target;
+        synchronized (frozenRunTargets) {
+            ActiveModelTargetPort.Target frozen = frozenRunTargets.get(runId);
+            if (frozen == null) {
+                if (current == null) {
+                    return null;
+                }
+                frozenRunTargets.put(runId, current);
+                return current;
+            }
+            if (current == null || !frozen.equals(current)) {
+                throw ModelProviderException.providerRequestError("routing",
+                        "MODEL_BINDING_MISMATCH: run " + runId + " is frozen to " + frozen
+                                + " but the active provider/model is now " + current
+                                + "; refusing to retarget the run", null);
+            }
+            return frozen;
+        }
+    }
+
+    /** 当前激活提供商与其选中模型的只读投影;不可解析时返回 null。 */
+    private ActiveModelTargetPort.Target currentTargetOrNull() {
         try {
-            target = modelTargets.activeTarget().orElse(null);
+            return modelTargets.activeTarget().orElse(null);
         } catch (RuntimeException unresolved) {
-            return;
-        }
-        if (target == null) {
-            return;
-        }
-        ActiveModelTargetPort.Target prior = frozenRunTargets.putIfAbsent(runId, target);
-        if (prior != null && !prior.equals(target)) {
-            throw ModelProviderException.providerRequestError("routing",
-                    "MODEL_BINDING_MISMATCH: run " + runId + " is frozen to " + prior
-                            + " but the active provider/model is now " + target
-                            + "; refusing to retarget the run", null);
+            return null;
         }
     }
 }

@@ -141,18 +141,24 @@ public final class P3BDecisionQuality {
     }
 
     /**
-     * 真正执行的动作族:只有被接受且执行结果不是失败时才记为已执行;
-     * 门禁否决/基础设施失败留 {@code null}(记 NOT_MEASURED,不按正确或错误填充)。
+     * <b>真正执行</b>的动作族(语义已收窄):只有动作成功完成({@code completed})才算
+     * 已执行。{@code policy_denied} 与 {@code awaiting_approval} <b>不再</b>算作执行成功——
+     * 被策略否决的动作从未执行,等待审批的动作也从未执行工具或修改。其余情形留
+     * {@code null}(记 NOT_MEASURED,不按正确或错误填充)。
      */
     public static String executedAction(String acceptedAction, String executionResult) {
         if (acceptedAction == null || acceptedAction.isBlank()) {
             return null;
         }
-        return executionSucceeded(executionResult) ? acceptedAction : null;
+        return actionCompleted(executionResult) ? acceptedAction : null;
     }
 
-    /** 执行结果是否代表"真正跑到了终态/待审批",而非失败。 */
-    public static boolean executionSucceeded(String executionResult) {
+    /**
+     * Run 是否到达<b>正常终态</b>({@code completed} / {@code policy_denied} /
+     * {@code awaiting_approval})。这只是"运行本身正常收束"这一条事实,<b>不</b>表示
+     * 动作被执行:被否决与被审批中的动作都还没有执行。
+     */
+    public static boolean runNormalTerminal(String executionResult) {
         if (executionResult == null || executionResult.isBlank()
                 || executionResult.startsWith("failed:")) {
             return false;
@@ -161,6 +167,33 @@ public final class P3BDecisionQuality {
             case "completed", "policy_denied" -> true;
             default -> executionResult.startsWith("awaiting_approval:");
         };
+    }
+
+    /**
+     * 动作是否真的<b>提交执行</b>(进入执行/审批通道):{@code completed} 或
+     * {@code awaiting_approval}。{@code policy_denied} 表示动作在策略边界就被否决、
+     * 从未提交,因此为 {@code false}。
+     */
+    public static boolean actionSubmitted(String executionResult) {
+        if (executionResult == null || executionResult.isBlank()
+                || executionResult.startsWith("failed:")) {
+            return false;
+        }
+        return switch (executionResult) {
+            case "completed" -> true;
+            default -> executionResult.startsWith("awaiting_approval:");
+        };
+    }
+
+    /** 动作是否<b>成功完成</b>:只有 {@code completed}。 */
+    public static boolean actionCompleted(String executionResult) {
+        return "completed".equals(executionResult);
+    }
+
+    /** Run 终态是否可判(存在可解释的终态取值);失败与正常终态都算可判。 */
+    public static boolean runOutcomeMeasurable(String executionResult) {
+        return executionResult != null && !executionResult.isBlank()
+                && !"unknown".equals(executionResult);
     }
 
     /**
@@ -178,8 +211,15 @@ public final class P3BDecisionQuality {
                           int modelSelectionNotMeasuredCount,
                           Double gateAccuracy,
                           int gateMeasuredCount,
-                          Double executionSuccessRate,
-                          int executionMeasuredCount,
+                          /** 正常终态率:completed/policy_denied/awaiting_approval 占可判终态的比例。 */
+                          Double runNormalTerminalRate,
+                          int runNormalTerminalMeasuredCount,
+                          /** 动作提交率:动作真正进入执行/审批通道的比例(分母=有被接受动作的尝试)。 */
+                          Double actionSubmittedRate,
+                          int actionSubmittedMeasuredCount,
+                          /** 动作完成率:动作成功完成(completed)的比例(分母同上)。 */
+                          Double actionCompletedRate,
+                          int actionCompletedMeasuredCount,
                           Double unnecessaryClarificationRate,
                           int unnecessaryClarificationDenominator,
                           Double repeatedClarificationMissRate,
@@ -428,12 +468,23 @@ public final class P3BDecisionQuality {
                 .filter(observation -> observation.gateOutcome()
                         == expectedOutcome(expectation(oracles, observation)))
                 .count();
-        List<DecisionObservation> executionMeasured = evaluated.stream()
+        // 三组互不混同的执行指标。运行终态与动作执行分开统计:
+        // "正常终态"只说明 Run 正常收束,"提交/完成"才说明动作真的跑了。
+        List<DecisionObservation> terminalMeasured = evaluated.stream()
+                .filter(observation -> runOutcomeMeasurable(observation.executionResult()))
+                .toList();
+        long normalTerminal = terminalMeasured.stream()
+                .filter(observation -> runNormalTerminal(observation.executionResult()))
+                .count();
+        // 只有在 Java 运行时确实接受了一个动作时,才谈得上"是否提交执行/是否完成"。
+        List<DecisionObservation> actionExecMeasured = evaluated.stream()
                 .filter(DecisionObservation::executionMeasured)
                 .toList();
-        long executionCorrect = executionMeasured.stream()
-                .filter(observation -> observation.executedAction() != null
-                        && !observation.executedAction().isBlank())
+        long actionSubmitted = actionExecMeasured.stream()
+                .filter(observation -> actionSubmitted(observation.executionResult()))
+                .count();
+        long actionCompleted = actionExecMeasured.stream()
+                .filter(observation -> actionCompleted(observation.executionResult()))
                 .count();
 
         List<DecisionObservation> passExpected = evaluated.stream()
@@ -523,8 +574,12 @@ public final class P3BDecisionQuality {
                 evaluated.size() - modelSelectionMeasured.size(),
                 ratio(gateCorrect, gateMeasured.size()),
                 gateMeasured.size(),
-                ratio(executionCorrect, executionMeasured.size()),
-                executionMeasured.size(),
+                ratio(normalTerminal, terminalMeasured.size()),
+                terminalMeasured.size(),
+                ratio(actionSubmitted, actionExecMeasured.size()),
+                actionExecMeasured.size(),
+                ratio(actionCompleted, actionExecMeasured.size()),
+                actionExecMeasured.size(),
                 ratio(unnecessaryClarification, clarificationDenominator),
                 clarificationDenominator,
                 ratio(repeatedMissed, repeatedDenominator),

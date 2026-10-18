@@ -259,4 +259,71 @@ class RemotePythonDecisionEngineFailClosedTest {
         assertThat(failureCodeOf("{\"detail\":\"brain_failure:BrokerTimeoutError\"}", 502))
                 .isEqualTo(BrainFailureCode.BRAIN_TIMEOUT);
     }
+
+    // -- 端到端:HTTP 502 detail -> 类型化失败码 -> RUN_FAILED reason -> 评测分类 ----
+
+    /**
+     * 完整跨边界链路:Python Brain 的 502 detail 被解析成 {@link BrainFailureCode},
+     * 运行时把它归一成 {@code RUN_FAILED} 的稳定机器码,评测再按该机器码分类。
+     * 这是"C08/C15 的 Brain 失败应被正确归因"所需的唯一一条链路——
+     * <b>不对任何 502 做整体猜测</b>:只有 Brain 明确声明的类型才有明确分类,
+     * 其余一律维持 provider/unavailable 或 unknown。
+     */
+    @Test
+    void typedBrainFailureSurvivesTheBoundaryAndClassifiesInEval() {
+        // 大脑输出契约违规 -> 模型协议违规。
+        assertThat(evalClassification("brain_failure:DecisionBrainContractError"))
+                .isEqualTo(com.specagent.eval.P3BDecisionQuality
+                        .FailureClassification.MODEL_PROTOCOL_VIOLATION);
+        assertThat(evalClassification("brain_failure:AmbiguousSourceRefsError"))
+                .isEqualTo(com.specagent.eval.P3BDecisionQuality
+                        .FailureClassification.MODEL_PROTOCOL_VIOLATION);
+        // 无依据引用 -> 同样是模型协议违规(来源被拦截)。
+        assertThat(evalClassification("brain_failure:UngroundedReferenceError"))
+                .isEqualTo(com.specagent.eval.P3BDecisionQuality
+                        .FailureClassification.MODEL_PROTOCOL_VIOLATION);
+        // 大脑内部的模型调用失败 -> 提供商分类。
+        assertThat(evalClassification("brain_failure:ModelClientError"))
+                .isEqualTo(com.specagent.eval.P3BDecisionQuality
+                        .FailureClassification.PROVIDER_UNAVAILABLE);
+        // 传输超时 -> 超时分类,绝不与"Brain 宕机"混同。
+        assertThat(evalClassification("brain_failure:BrokerTimeoutError"))
+                .isEqualTo(com.specagent.eval.P3BDecisionQuality
+                        .FailureClassification.TIMEOUT);
+    }
+
+    /** 无法说明成因的 502 绝不冒充模型协议错误:只落到 provider 分类。 */
+    @Test
+    void anUnattributed502IsNeverReportedAsAModelContractViolation() {
+        assertThat(evalClassification(null))
+                .isEqualTo(com.specagent.eval.P3BDecisionQuality
+                        .FailureClassification.PROVIDER_UNAVAILABLE);
+        assertThat(evalClassification("provider unavailable"))
+                .isEqualTo(com.specagent.eval.P3BDecisionQuality
+                        .FailureClassification.PROVIDER_UNAVAILABLE);
+    }
+
+    /**
+     * 未知的 Brain 错误类型退化为不透明的 {@code brain_unavailable} 失败码(引擎绝不
+     * 臆造成因),评测据此把它当作 provider 侧的不可达/未归类失败——这类失败
+     * <b>不计入</b>任何质量比率的分母。真正"完全没有失败证据"的情形才是
+     * {@code UNKNOWN_FAILURE}(见评测侧用例)。
+     */
+    @Test
+    void anUnknownBrainErrorTypeDegradesToAnOpaqueProviderFailure() {
+        assertThat(evalClassification("brain_failure:SomeBrandNewError"))
+                .isEqualTo(com.specagent.eval.P3BDecisionQuality
+                        .FailureClassification.PROVIDER_UNAVAILABLE);
+    }
+
+    private static com.specagent.eval.P3BDecisionQuality.FailureClassification evalClassification(
+            String detail) {
+        String body = detail == null ? "{}" : "{\"detail\":\"" + detail + "\"}";
+        AgentBrainUnavailableException failure = new AgentBrainUnavailableException(
+                "Agent brain call failed: /v1/decisions", null,
+                RemotePythonDecisionEngine.classifyBrainFailureDetail(body));
+        String reason = com.specagent.agent.runtime.RunFailureReasons.reasonCode(failure);
+        return com.specagent.eval.P3BDecisionQuality.classifyFailure(
+                "failed:" + reason, null, null, null, null);
+    }
 }

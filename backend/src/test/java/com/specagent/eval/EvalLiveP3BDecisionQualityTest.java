@@ -109,6 +109,10 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
             "${spec.agent.action-eligibility.mode:unknown}")
     private String actionEligibilityMode;
 
+    /** 数据源配置里声明的库名;用于与服务器端真实库身份比对(见 EvalLiveIsolatedDatabase)。 */
+    @org.springframework.beans.factory.annotation.Value("${spring.datasource.url:}")
+    private String datasourceUrl;
+
     @DynamicPropertySource
     static void isolatedDatabase(DynamicPropertyRegistry registry) {
         String url = System.getenv().getOrDefault(
@@ -119,7 +123,7 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
 
     @Test
     void priorityScenariosRecordRealModelDecisionEvidence() throws Exception {
-        seedKiloActivation();
+        String evalDatabase = seedKiloActivation();
         LiveChainEvidence before = requireLiveProvider(BRAIN_HEALTH);
         assertThat(before.provider()).isEqualTo(ModelProvider.KILO.name());
         assertThat(before.selectedModel()).isEqualTo(KILO_MODEL);
@@ -266,8 +270,15 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                 qualityObservations, oracles);
         LiveBrainHealth after = readLiveBrainHealth(BRAIN_HEALTH);
         Map<String, Object> report = new LinkedHashMap<>();
-        report.put("schema_version", "p3b-live-priority.v1");
+        report.put("schema_version", "p3b-live-priority.v2");
+        report.put("schema_migration",
+                "v1 execution_success_rate 把 Run 正常终态(policy_denied/awaiting_approval)与"
+                        + "动作实际执行混为一谈;v2 拆分为 run_normal_terminal_rate /"
+                        + " action_submitted_rate / action_completed_rate,并保留 execution_success_rate"
+                        + " 作为 action_completed_rate 的兼容别名(v1 的分母等于 action_measured_count)。"
+                        + "v1 的 executed_action 也据此收窄:只有 completed 才记为已执行。");
         report.put("suite", "EvalLiveP3BDecisionQualityTest");
+        report.put("eval_database", evalDatabase);
         report.put("provider", before.provider());
         report.put("model_id", before.selectedModel());
         report.put("model_listed_as_free",
@@ -292,8 +303,16 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         report.put("model_selection_not_measured_count", summary.modelSelectionNotMeasuredCount());
         report.put("gate_accuracy", summary.gateAccuracy());
         report.put("gate_measured_count", summary.gateMeasuredCount());
-        report.put("execution_success_rate", summary.executionSuccessRate());
-        report.put("execution_measured_count", summary.executionMeasuredCount());
+        // 三组独立指标:Run 终态 / 动作提交 / 动作完成,各自带显式分母。
+        report.put("run_normal_terminal_rate", summary.runNormalTerminalRate());
+        report.put("run_normal_terminal_measured_count", summary.runNormalTerminalMeasuredCount());
+        report.put("action_submitted_rate", summary.actionSubmittedRate());
+        report.put("action_submitted_measured_count", summary.actionSubmittedMeasuredCount());
+        report.put("action_completed_rate", summary.actionCompletedRate());
+        report.put("action_completed_measured_count", summary.actionCompletedMeasuredCount());
+        // v1 兼容别名(= 动作完成率及其分母);见 schema_migration。
+        report.put("execution_success_rate", summary.actionCompletedRate());
+        report.put("execution_measured_count", summary.actionCompletedMeasuredCount());
         // 保留既有 action acceptable-set 口径(以被接受动作为依据)。
         report.put("action_acceptable_set_accuracy", summary.actionAcceptableSetAccuracy());
         report.put("action_acceptable_set_denominator", summary.actionMeasuredCount());
@@ -347,26 +366,25 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                 + " requests=" + totalRequests
                 + " modelSelectionAccuracy=" + summary.modelSelectionAccuracy()
                 + " gateAccuracy=" + summary.gateAccuracy()
-                + " executionSuccess=" + summary.executionSuccessRate()
+                + " runNormalTerminal=" + summary.runNormalTerminalRate()
+                + " actionSubmitted=" + summary.actionSubmittedRate()
+                + " actionCompleted=" + summary.actionCompletedRate()
                 + " failures=" + summary.failureClassificationBreakdown());
     }
 
     /**
-     * 隔离库准备:激活 Kilo 并把固定模型写入 kilo_settings。绝不触碰用户开发库。
+     * 隔离库准备:先核实真实库身份,再激活 Kilo 并把固定模型写入 kilo_settings。
+     * 任何 DELETE / INSERT 都在身份校验<b>之后</b>才发生——非独立 P3-B live 评测库
+     * 一律失败关闭,一行数据也不改(见 {@link EvalLiveIsolatedDatabase})。
+     *
+     * @return 已核实的真实库名(写入报告留证)
      */
-    private void seedKiloActivation() {
-        jdbcTemplate.update("DELETE FROM kilo_settings");
-        jdbcTemplate.update("DELETE FROM model_provider_settings");
-        jdbcTemplate.update(
-                "INSERT INTO model_provider_settings "
-                        + "(singleton_id, active_provider, updated_at, active_provider_id, org_id) "
-                        + "VALUES (1, 'KILO', CURRENT_TIMESTAMP, NULL, ?)",
+    private String seedKiloActivation() {
+        return EvalLiveIsolatedDatabase.seedKiloActivation(
+                jdbcTemplate,
+                EvalLiveIsolatedDatabase.databaseNameFromUrl(datasourceUrl),
+                KILO_MODEL,
                 LOCAL_ORG);
-        jdbcTemplate.update(
-                "INSERT INTO kilo_settings "
-                        + "(org_id, singleton_id, api_key, masked_suffix, selected_model) "
-                        + "VALUES (?, 1, NULL, NULL, ?)",
-                LOCAL_ORG, KILO_MODEL);
     }
 
     private String actionEligibilityMode() {

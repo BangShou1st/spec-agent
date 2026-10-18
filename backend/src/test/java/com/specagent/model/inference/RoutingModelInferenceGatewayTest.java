@@ -25,22 +25,31 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 /**
  * 文件名:RoutingModelInferenceGatewayTest.java
  *
- * 测试目标:验证基于 {@link ActiveProviderPort} 的活跃 Provider 路由语义:
- * 每个请求恰好分发给一个委托网关(OpenCode / OpenRouter / Custom),流式调用遵循相同路由;
- * 委托失败时异常直接向上传播,不做跨 Provider 回退、也不重试。
+ * 测试目标:验证权威路由网关的两条语义:
+ * <ol>
+ *   <li><b>目标不可解析的历史路径</b>:按 {@link ActiveProviderPort} 委派给恰好一个
+ *       委托网关,委托失败直接向上传播,不做跨 Provider 回退、也不重试。</li>
+ *   <li><b>Run 级模型冻结</b>:目标只解析一次;路由由冻结目标的提供商决定,
+ *       并且<b>冻结模型被显式下传给具体网关</b>(具体网关按该模型构造请求),
+ *       因此"冻结检查"与"网关构造请求"之间发生的设置切换既不会被静默采用,
+ *       也不会把本 Run 改送到新模型——漂移一律 {@code MODEL_BINDING_MISMATCH} 失败关闭。</li>
+ * </ol>
  */
 @ExtendWith(MockitoExtension.class)
 class RoutingModelInferenceGatewayTest {
@@ -70,6 +79,13 @@ class RoutingModelInferenceGatewayTest {
         return new ModelInferenceRequest(UUID.randomUUID(), "DECISION",
                 List.of(new ModelInferenceMessage("user", "{}")), null);
     }
+
+    private static ModelInferenceRequest request(UUID runId, String callType) {
+        return new ModelInferenceRequest(runId, callType,
+                List.of(new ModelInferenceMessage("user", "{}")), null);
+    }
+
+    // -- 目标不可解析时的历史路由(无 Run 身份)-------------------------------
 
     @Test
     void openCodeZenRoutesOnlyToTheOpenCodeDelegate() {
@@ -142,45 +158,13 @@ class RoutingModelInferenceGatewayTest {
         verifyNoInteractions(openRouter, kilo, custom);
     }
 
-    // -- Run 级模型冻结 -------------------------------------------------------------
-
     /**
-     * 确定性证明:同一个 Run 在 STATE_UPDATE 后、DECISION 前被切换提供商/模型时,
-     * 第二次推理以 MODEL_BINDING_MISMATCH 失败关闭——绝不重定向到新提供商,也不重试。
+     * 目标可解析且带 Run 身份时,路由由<b>冻结目标</b>决定,并且把冻结模型显式传给
+     * 具体网关——路由网关不再另行读取当前激活提供商,也不让网关自行读取模型设置。
      */
     @Test
-    void sameRunFailsClosedWhenProviderAndModelDriftBetweenCalls() {
+    void frozenTargetDrivesProviderAndModelWithoutASecondRead() {
         UUID runId = UUID.randomUUID();
-        ModelInferenceRequest stateUpdate = request(runId, "STATE_UPDATE");
-        ModelInferenceRequest decision = request(runId, "DECISION");
-        java.util.concurrent.atomic.AtomicReference<ModelProvider> provider =
-                new java.util.concurrent.atomic.AtomicReference<>(ModelProvider.OPENCODE_ZEN);
-        java.util.concurrent.atomic.AtomicReference<ActiveModelTargetPort.Target> target =
-                new java.util.concurrent.atomic.AtomicReference<>(
-                        new ActiveModelTargetPort.Target("OPENCODE_ZEN", "model-a"));
-        when(activeProvider.activeProvider()).thenAnswer(invocation -> provider.get());
-        when(activeModelTarget.activeTarget()).thenAnswer(
-                invocation -> Optional.of(target.get()));
-
-        gateway.complete(stateUpdate);
-
-        // 运行中切换提供商与模型(DECISION 之前)。
-        provider.set(ModelProvider.KILO);
-        target.set(new ActiveModelTargetPort.Target("KILO", "model-b"));
-
-        assertThatThrownBy(() -> gateway.complete(decision))
-                .isInstanceOf(ModelProviderException.class)
-                .hasMessageContaining("MODEL_BINDING_MISMATCH");
-
-        verify(openCode, times(1)).complete(stateUpdate);
-        verifyNoInteractions(kilo, openRouter, custom);
-    }
-
-    /** 同一 Run 目标稳定时,两次推理都正常路由,冻结不误伤合法调用。 */
-    @Test
-    void sameRunWithStableTargetKeepsRoutingBothCalls() {
-        UUID runId = UUID.randomUUID();
-        when(activeProvider.activeProvider()).thenReturn(ModelProvider.KILO);
         when(activeModelTarget.activeTarget()).thenReturn(Optional.of(
                 new ActiveModelTargetPort.Target("KILO", "poolside/laguna-s-2.1:free")));
         ModelInferenceRequest stateUpdate = request(runId, "STATE_UPDATE");
@@ -189,30 +173,127 @@ class RoutingModelInferenceGatewayTest {
         gateway.complete(stateUpdate);
         gateway.complete(decision);
 
-        verify(kilo, times(2)).complete(any());
-        verifyNoInteractions(openCode, openRouter, custom);
+        verify(kilo).complete(stateUpdate, "poolside/laguna-s-2.1:free");
+        verify(kilo).complete(decision, "poolside/laguna-s-2.1:free");
+        // 冻结目标已经携带提供商,因此不再读取激活提供商端口。
+        verifyNoInteractions(activeProvider, openCode, openRouter, custom);
+    }
+
+    /**
+     * 确定性证明:在同一个 Run 的两次推理之间切换提供商/模型时,第二次推理
+     * 以 {@code MODEL_BINDING_MISMATCH} 失败关闭,绝不重定向、不重试,
+     * 网关也绝不会被要求用新模型发请求。
+     */
+    @Test
+    void sameRunFailsClosedWhenProviderAndModelDriftBetweenCalls() {
+        UUID runId = UUID.randomUUID();
+        ModelInferenceRequest stateUpdate = request(runId, "STATE_UPDATE");
+        ModelInferenceRequest decision = request(runId, "DECISION");
+        AtomicReference<ActiveModelTargetPort.Target> target = new AtomicReference<>(
+                new ActiveModelTargetPort.Target("OPENCODE_ZEN", "model-a"));
+        when(activeModelTarget.activeTarget()).thenAnswer(invocation -> Optional.of(target.get()));
+
+        gateway.complete(stateUpdate);
+
+        // 运行中把提供商与模型一起切换(DECISION 之前)。
+        target.set(new ActiveModelTargetPort.Target("KILO", "model-b"));
+
+        assertThatThrownBy(() -> gateway.complete(decision))
+                .isInstanceOf(ModelProviderException.class)
+                .hasMessageContaining("MODEL_BINDING_MISMATCH");
+
+        verify(openCode).complete(stateUpdate, "model-a");
+        verifyNoMoreInteractions(openCode);
+        verifyNoInteractions(kilo, openRouter, custom);
+    }
+
+    /**
+     * 同一提供商内只切换模型:同样失败关闭,且冻结模型之外的模型绝不会被发出去。
+     */
+    @Test
+    void sameRunFailsClosedWhenOnlyTheModelDrifts() {
+        UUID runId = UUID.randomUUID();
+        AtomicReference<ActiveModelTargetPort.Target> target = new AtomicReference<>(
+                new ActiveModelTargetPort.Target("KILO", "model-a"));
+        when(activeModelTarget.activeTarget()).thenAnswer(invocation -> Optional.of(target.get()));
+
+        gateway.complete(request(runId, "STATE_UPDATE"));
+        target.set(new ActiveModelTargetPort.Target("KILO", "model-b"));
+
+        assertThatThrownBy(() -> gateway.complete(request(runId, "DECISION")))
+                .isInstanceOf(ModelProviderException.class)
+                .hasMessageContaining("MODEL_BINDING_MISMATCH");
+
+        verify(kilo).complete(any(ModelInferenceRequest.class), eq("model-a"));
+        verifyNoMoreInteractions(kilo);
+    }
+
+    /**
+     * 已冻结的 Run 若目标变得不可解析(提供商被切换成未配置),同样失败关闭——
+     * 绝不因"读不出目标"而跳过冻结校验。
+     */
+    @Test
+    void frozenRunFailsClosedWhenTheTargetBecomesUnresolvable() {
+        UUID runId = UUID.randomUUID();
+        when(activeModelTarget.activeTarget())
+                .thenReturn(Optional.of(new ActiveModelTargetPort.Target("KILO", "model-a")))
+                .thenThrow(new IllegalStateException("provider is not configured"));
+
+        gateway.complete(request(runId, "STATE_UPDATE"));
+
+        assertThatThrownBy(() -> gateway.complete(request(runId, "DECISION")))
+                .isInstanceOf(ModelProviderException.class)
+                .hasMessageContaining("MODEL_BINDING_MISMATCH");
+
+        verify(kilo).complete(any(ModelInferenceRequest.class), eq("model-a"));
+        verifyNoInteractions(activeProvider, openCode, openRouter, custom);
     }
 
     /** 冻结按 Run 隔离:不同 Run 各自独立,互不影响。 */
     @Test
     void freezeIsPerRunAndDoesNotLeakAcrossRuns() {
-        when(activeProvider.activeProvider()).thenReturn(ModelProvider.OPENCODE_ZEN);
-        when(activeModelTarget.activeTarget()).thenReturn(Optional.of(
-                new ActiveModelTargetPort.Target("OPENCODE_ZEN", "model-a")));
-        gateway.complete(request(UUID.randomUUID(), "STATE_UPDATE"));
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        when(activeModelTarget.activeTarget())
+                .thenReturn(Optional.of(new ActiveModelTargetPort.Target("OPENCODE_ZEN", "model-a")))
+                .thenReturn(Optional.of(new ActiveModelTargetPort.Target("OPENROUTER", "model-c")));
 
-        // 另一个 Run 使用不同的提供商/模型:互不干扰。
-        when(activeProvider.activeProvider()).thenReturn(ModelProvider.OPENROUTER);
-        when(activeModelTarget.activeTarget()).thenReturn(Optional.of(
-                new ActiveModelTargetPort.Target("OPENROUTER", "model-c")));
-        gateway.complete(request(UUID.randomUUID(), "DECISION"));
+        gateway.complete(request(first, "STATE_UPDATE"));
+        gateway.complete(request(second, "DECISION"));
 
-        verify(openCode, times(1)).complete(any());
-        verify(openRouter, times(1)).complete(any());
+        verify(openCode).complete(any(ModelInferenceRequest.class), eq("model-a"));
+        verify(openRouter).complete(any(ModelInferenceRequest.class), eq("model-c"));
+        verifyNoInteractions(activeProvider, kilo, custom);
     }
 
-    private static ModelInferenceRequest request(UUID runId, String callType) {
-        return new ModelInferenceRequest(runId, callType,
-                List.of(new ModelInferenceMessage("user", "{}")), null);
+    /** 流式调用遵循同一冻结目标,并且同样把冻结模型下传给具体网关。 */
+    @Test
+    void streamingUsesTheFrozenTargetModel() {
+        UUID runId = UUID.randomUUID();
+        when(activeModelTarget.activeTarget()).thenReturn(Optional.of(
+                new ActiveModelTargetPort.Target("OPENROUTER", "model-a")));
+        FragmentListener listener = mock(FragmentListener.class);
+        ModelInferenceRequest request = request(runId, "DECISION");
+
+        gateway.completeStreaming(request, listener);
+
+        verify(openRouter).completeStreaming(request, listener, "model-a");
+        verifyNoInteractions(openCode, kilo, custom);
+    }
+
+    /** 新 Run 可以使用用户新选择的模型:冻结只约束同一个 Run。 */
+    @Test
+    void newRunMayUseTheNewlySelectedModel() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        when(activeModelTarget.activeTarget())
+                .thenReturn(Optional.of(new ActiveModelTargetPort.Target("KILO", "model-a")))
+                .thenReturn(Optional.of(new ActiveModelTargetPort.Target("KILO", "model-b")));
+
+        gateway.complete(request(first, "STATE_UPDATE"));
+        gateway.complete(request(second, "STATE_UPDATE"));
+
+        verify(kilo).complete(any(ModelInferenceRequest.class), eq("model-a"));
+        verify(kilo).complete(any(ModelInferenceRequest.class), eq("model-b"));
     }
 }

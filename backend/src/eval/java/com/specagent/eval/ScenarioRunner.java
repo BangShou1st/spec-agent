@@ -682,16 +682,37 @@ public class ScenarioRunner {
         return null;
     }
 
-    private static String executionResult(List<AttemptContext.AgentRunEventView> events,
-                                          List<AgentProposal> proposals,
-                                          String failureDetail) {
-        if (failureDetail != null) {
-            return "failed:" + failureDetail;
-        }
+    /**
+     * 运行终态与失败归因的<b>唯一</b>取值口径。
+     *
+     * <p>顺序很关键:持久化的 {@code RUN_FAILED} 的 {@code reason} 是运行时写下的
+     * <b>类型化机器码</b>(如 {@code model_contract_violation} / {@code model_provider_failure}
+     * / {@code brain_timeout});调用方捕获到的异常文案只是它的泛化投影。因此这里
+     * <b>先</b>读 {@code RUN_FAILED.reason},仅在确实没有失败事件时才回退到
+     * {@code failureDetail}——否则类型化原因会被泛化文案遮蔽,让评测无法区分
+     * "模型输出违反契约"和"完全未知的基础设施故障"。机器码之后仍会把调用方
+     * 观察到的细节原样保留,使既有"失败细节"断言继续成立。
+     */
+    public static String executionResult(List<AttemptContext.AgentRunEventView> events,
+                                         List<AgentProposal> proposals,
+                                         String failureDetail) {
+        String runFailedReason = null;
         for (var event : events) {
             if ("RUN_FAILED".equals(event.eventType())) {
-                return "failed:" + event.payload().getOrDefault("reason", "unknown");
+                runFailedReason = String.valueOf(
+                        event.payload().getOrDefault("reason", "unknown"));
+                break;
             }
+        }
+        if (runFailedReason != null) {
+            // 类型化机器码在前(归因依据),调用方观察到的补充细节保留在后(诊断依据)。
+            // 两者都不含 prompt / 私人内容 / 密钥。
+            String base = "failed:" + runFailedReason;
+            return failureDetail == null || failureDetail.isBlank()
+                    || base.contains(failureDetail) ? base : base + ": " + failureDetail;
+        }
+        if (failureDetail != null) {
+            return "failed:" + failureDetail;
         }
         for (var event : events) {
             if ("AWAITING_APPROVAL".equals(event.eventType())) {
