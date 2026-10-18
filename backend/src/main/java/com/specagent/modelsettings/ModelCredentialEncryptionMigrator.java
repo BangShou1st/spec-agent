@@ -35,6 +35,7 @@ public class ModelCredentialEncryptionMigrator implements ApplicationRunner {
             new String[] {"model_providers", "id"},
             new String[] {"opencode_settings", "singleton_id"},
             new String[] {"openrouter_settings", "singleton_id"},
+            new String[] {"kilo_settings", "singleton_id"},
             new String[] {"custom_provider_settings", "singleton_id"},
             new String[] {"search_settings", "singleton_id"},
             new String[] {"embedding_service_settings", "singleton_id"},
@@ -112,8 +113,8 @@ public class ModelCredentialEncryptionMigrator implements ApplicationRunner {
 
     private static boolean organizationScoped(String table) {
         return java.util.Set.of("model_providers", "opencode_settings", "openrouter_settings",
-                "custom_provider_settings", "search_settings", "embedding_service_settings",
-                "embedding_service_revisions").contains(table);
+                "kilo_settings", "custom_provider_settings", "search_settings",
+                "embedding_service_settings", "embedding_service_revisions").contains(table);
     }
 
     private record Row(Object pk, String value, java.util.UUID org) {

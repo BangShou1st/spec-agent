@@ -43,7 +43,7 @@ class ExplicitOwnershipConstraintIntegrationTest {
     }
 
     @Test void credentialConfigurationNeverDefaultsToLegacyOrganization() {
-        for(String table:List.of("model_providers","model_provider_settings","opencode_settings","openrouter_settings","custom_provider_settings","search_settings")) {
+        for(String table:List.of("model_providers","model_provider_settings","opencode_settings","openrouter_settings","kilo_settings","custom_provider_settings","search_settings")) {
             assertThat(jdbc.queryForObject("SELECT column_default IS NULL FROM information_schema.columns WHERE table_schema='public' AND table_name=? AND column_name='org_id'",Boolean.class,table))
                     .as("%s must require explicit organization",table).isTrue();
         }

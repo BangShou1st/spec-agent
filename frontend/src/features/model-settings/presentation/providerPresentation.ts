@@ -51,6 +51,8 @@ export function providerDisplayName(provider: ModelProvider): string {
       return 'OpenCode Zen'
     case 'OPENROUTER':
       return 'OpenRouter'
+    case 'KILO':
+      return 'Kilo Gateway'
     case 'CUSTOM':
       return 'Custom'
   }

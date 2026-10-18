@@ -13,6 +13,7 @@ import { providerDisplayName } from '@/features/model-settings/presentation/prov
 import type { ModelProvider } from '@/features/model-settings/api/modelProviders'
 import OpenCodeProviderSettings from './OpenCodeProviderSettings.vue'
 import OpenRouterProviderSettings from './OpenRouterProviderSettings.vue'
+import KiloProviderSettings from './KiloProviderSettings.vue'
 import CustomProviderSettings from './CustomProviderSettings.vue'
 import CustomProviderDialog from './CustomProviderDialog.vue'
 
@@ -30,6 +31,7 @@ const custom = useCustomProviderStore()
 const presetTabs: Array<{ value: ModelProvider; label: string }> = [
   { value: 'OPENCODE_ZEN', label: 'OpenCode Zen' },
   { value: 'OPENROUTER', label: 'OpenRouter' },
+  { value: 'KILO', label: 'Kilo Gateway' },
 ]
 
 const activeLabel = computed(() => providerDisplayName(providers.activeProvider))
@@ -149,6 +151,9 @@ onMounted(() => {
     </div>
     <div v-else-if="providers.viewing === 'OPENROUTER'" role="tabpanel">
       <OpenRouterProviderSettings />
+    </div>
+    <div v-else-if="providers.viewing === 'KILO'" role="tabpanel">
+      <KiloProviderSettings />
     </div>
 
     <CustomProviderDialog :open="dialogOpen" :mode="dialogMode" @close="closeDialog" />

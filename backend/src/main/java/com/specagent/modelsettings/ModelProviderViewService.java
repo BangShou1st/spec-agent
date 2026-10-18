@@ -2,6 +2,7 @@ package com.specagent.modelsettings;
 
 import com.specagent.model.contract.ModelProvider;
 import com.specagent.modelsettings.CustomProviderSettingsService;
+import com.specagent.modelsettings.KiloSettingsService;
 import com.specagent.modelsettings.OpenCodeSettingsService;
 import com.specagent.modelsettings.OpenRouterSettingsService;
 import java.util.ArrayList;
@@ -22,15 +23,17 @@ public class ModelProviderViewService {
     private final ModelProviderSettingsService active;
     private final OpenCodeSettingsService openCode;
     private final OpenRouterSettingsService openRouter;
+    private final KiloSettingsService kilo;
     private final CustomProviderSettingsService custom;
 
     public ModelProviderViewService(ModelProvidersService providers, ModelProviderSettingsService active,
                                     OpenCodeSettingsService openCode, OpenRouterSettingsService openRouter,
-                                    CustomProviderSettingsService custom) {
+                                    KiloSettingsService kilo, CustomProviderSettingsService custom) {
         this.providers = providers;
         this.active = active;
         this.openCode = openCode;
         this.openRouter = openRouter;
+        this.kilo = kilo;
         this.custom = custom;
     }
 
@@ -53,6 +56,7 @@ public class ModelProviderViewService {
         List<ProviderView> views = new ArrayList<>();
         views.add(presetView(ModelProvider.OPENCODE_ZEN));
         views.add(presetView(ModelProvider.OPENROUTER));
+        views.add(presetView(ModelProvider.KILO));
         for (ModelProviderRecord record : providers.list()) {
             views.add(rowView(record));
         }
@@ -83,6 +87,12 @@ public class ModelProviderViewService {
         // 预设行不落在 model_providers 表里,状态直接从各自的设置服务读取
         if (preset == ModelProvider.OPENCODE_ZEN) {
             var status = openCode.status();
+            return presetStatusView(preset, status.configured(), status.maskedKey(),
+                    status.selectedModel(), 0L, false);
+        }
+        if (preset == ModelProvider.KILO) {
+            // Kilo 与 OpenCode Zen 一样在保存时即证明可达,因此没有独立的验证修订号。
+            var status = kilo.status();
             return presetStatusView(preset, status.configured(), status.maskedKey(),
                     status.selectedModel(), 0L, false);
         }

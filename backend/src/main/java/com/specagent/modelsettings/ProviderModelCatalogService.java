@@ -30,13 +30,15 @@ import org.springframework.stereotype.Service;
 public class ProviderModelCatalogService {
 
     private final OpenCodeModelCatalog openCodeCatalog;
+    private final KiloSettingsService kiloSettings;
     private final ObjectMapper mapper;
     private final ProtocolAdapterRegistry registry;
     private final HttpClient client;
 
-    public ProviderModelCatalogService(OpenCodeModelCatalog openCodeCatalog, ObjectMapper mapper,
-                                       ProtocolAdapterRegistry registry) {
+    public ProviderModelCatalogService(OpenCodeModelCatalog openCodeCatalog, KiloSettingsService kiloSettings,
+                                       ObjectMapper mapper, ProtocolAdapterRegistry registry) {
         this.openCodeCatalog = openCodeCatalog;
+        this.kiloSettings = kiloSettings;
         this.mapper = mapper;
         this.registry = registry;
         this.client = ProviderHttpSupport.newClient(Duration.ofSeconds(10));
@@ -59,6 +61,7 @@ public class ProviderModelCatalogService {
         return switch (com.specagent.model.contract.ModelProvider.fromCode(presetCode)) {
             case OPENCODE_ZEN -> discoverOpenCode(apiKey);
             case OPENROUTER -> discoverOpenRouter(apiKey);
+            case KILO -> discoverKilo();
             case CUSTOM -> discoverCustom(draftApiFormat, draftBaseUrl, apiKey, stored);
         };
     }
@@ -68,6 +71,7 @@ public class ProviderModelCatalogService {
         return switch (record.preset()) {
             case OPENCODE_ZEN -> discoverOpenCode(record.apiKey());
             case OPENROUTER -> discoverOpenRouter(record.apiKey());
+            case KILO -> discoverKilo();
             case CUSTOM -> discoverCustom(record.apiFormat(), record.baseUrl(), null, record);
         };
     }
@@ -82,6 +86,15 @@ public class ProviderModelCatalogService {
         }
         List<String> free = openCodeCatalog.listFreeModels(apiKey);
         return new Discovery(all, free, false, null);
+    }
+
+    /**
+     * Kilo Gateway 的目录由 Starter 客户端直接提供(固定 Chat Completions 协议),
+     * 因此发现逻辑收口在 {@link KiloSettingsService} 中,这里只做投影。
+     */
+    private Discovery discoverKilo() {
+        KiloSettingsService.CandidateModels models = kiloSettings.listModels();
+        return new Discovery(models.allModels(), models.freeModels(), false, null);
     }
 
     private Discovery discoverOpenRouter(String apiKey) {

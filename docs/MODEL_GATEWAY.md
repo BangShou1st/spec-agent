@@ -369,3 +369,37 @@ colliding with those transport declarations are rejected. This preserves the
 existing free-tier request requirements without granting shell/file access.
 The existing Project completion payload and parser remain unchanged. Adding
 this transport alone does not qualify a model or enable product execution.
+
+## 17. Kilo Gateway provider (third provider)
+
+Kilo Gateway is the third named provider preset (`ModelProvider.KILO`), alongside
+OpenCode Zen and OpenRouter. It is deliberately OpenAI-compatible, so it does not
+reuse the frozen OpenCode transport:
+
+- Transport is the published shared library `kilo-gateway-spring-boot-starter`
+  (`KiloGatewayClient`), resolved from JitPack
+  (`com.github.BangShou1st.kilo-gateway:...:v0.2.1`). Provider-specific HTTP
+  details therefore stay inside the library, behind the provider adapter.
+- Fixed base URL `https://ai-gateway.kilo.ai/api/v1`, fixed Chat Completions
+  protocol, and a live model catalog. Free models are anonymously usable;
+  paid models require a key. The key is stored per organization in the
+  `kilo_settings` aggregate (encrypted at rest) and is never returned to the
+  browser or written to traces.
+- The preset shape matches OpenCode Zen: not user-named, no format selector, no
+  editable base URL, key optional, built-in catalog.
+- The key is never sent to the free tier: free-model probes and calls are always
+  anonymous (`null` credential). No fallback models are configured, so there is
+  no implicit provider fallback; every failure is fail-closed.
+- Routing happens only in `RoutingModelInferenceGateway`; the Runtime Kernel does
+  not know this provider. `kilo.gateway.*` only supplies library defaults (model
+  id, base URL, proxy, timeouts, `free-only=false`).
+- Known limitation (owner review pending): the Global Assistant project path is
+  NOT covered. `GaExecutionPreparation` requires `activeProvider == OPENCODE_ZEN`
+  and the GA native tool-call transport is OpenCode-only (§16), so a GA run under
+  this provider fails closed before any model call. The Project Agent path is
+  verified end to end; GA remains OpenCode Zen only, as it already was for
+  OpenRouter and Custom.
+- Free-model output quality varies: request handling is verified, but only some
+  free models satisfy the strict DECISION contract. Live evidence:
+  `poolside/laguna-s-2.1:free` produced non-conforming output (run failed
+  validation); `nvidia/nemotron-3-super-120b-a12b:free` completed a real run.

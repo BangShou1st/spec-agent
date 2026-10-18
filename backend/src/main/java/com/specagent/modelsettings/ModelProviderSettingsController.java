@@ -1,6 +1,7 @@
 package com.specagent.modelsettings;
 
 import com.specagent.modelsettings.CustomProviderSettingsService;
+import com.specagent.modelsettings.KiloSettingsService;
 import com.specagent.modelsettings.OpenRouterSettingsService;
 import com.specagent.modelsettings.OpenCodeSettingsService;
 import com.specagent.modelsettings.ModelProviderSettingsService;
@@ -22,20 +23,23 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/settings/providers")
 public class ModelProviderSettingsController {
 
-    private static final Set<String> ALLOWED = Set.of("OPENCODE_ZEN", "OPENROUTER", "CUSTOM");
+    private static final Set<String> ALLOWED = Set.of("OPENCODE_ZEN", "OPENROUTER", "KILO", "CUSTOM");
 
     private final ModelProviderSettingsService providerSettings;
     private final OpenCodeSettingsService openCode;
     private final OpenRouterSettingsService openRouter;
+    private final KiloSettingsService kilo;
     private final CustomProviderSettingsService custom;
 
     public ModelProviderSettingsController(ModelProviderSettingsService providerSettings,
                                            OpenCodeSettingsService openCode,
                                            OpenRouterSettingsService openRouter,
+                                           KiloSettingsService kilo,
                                            CustomProviderSettingsService custom) {
         this.providerSettings = providerSettings;
         this.openCode = openCode;
         this.openRouter = openRouter;
+        this.kilo = kilo;
         this.custom = custom;
     }
 
@@ -62,6 +66,7 @@ public class ModelProviderSettingsController {
         switch (target) {
             case "OPENCODE_ZEN" -> openCode.requireRuntimeSettings();
             case "OPENROUTER" -> openRouter.requireActivatable();
+            case "KILO" -> kilo.requireRuntimeSettings();
             case "CUSTOM" -> custom.requireActivatable();
             default -> throw new IllegalArgumentException("Unknown provider");
         }

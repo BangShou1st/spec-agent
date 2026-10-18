@@ -5,7 +5,7 @@
 
 import { apiClient } from '@/shared/http/client'
 
-export type ModelProvider = 'OPENCODE_ZEN' | 'OPENROUTER' | 'CUSTOM'
+export type ModelProvider = 'OPENCODE_ZEN' | 'OPENROUTER' | 'KILO' | 'CUSTOM'
 export type CustomApiFormat = 'CHAT_COMPLETIONS' | 'RESPONSES' | 'ANTHROPIC_MESSAGES'
 
 export interface ActiveProviderResponse {

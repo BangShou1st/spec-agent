@@ -3,6 +3,7 @@ package com.specagent.assistant.model;
 import com.specagent.model.contract.ModelProvider;
 import com.specagent.modelsettings.OpenRouterSettingsService;
 import com.specagent.modelsettings.OpenCodeSettingsService;
+import com.specagent.modelsettings.KiloSettingsService;
 import com.specagent.modelsettings.ModelProviderRecord;
 import com.specagent.modelsettings.ModelProviderSettingsService;
 import com.specagent.modelsettings.ModelProvidersService;
@@ -32,15 +33,18 @@ public class GlobalAssistantModelTargetResolver {
     private final ModelProvidersService providers;
     private final OpenCodeSettingsService openCodeSettings;
     private final OpenRouterSettingsService openRouterSettings;
+    private final KiloSettingsService kiloSettings;
 
     public GlobalAssistantModelTargetResolver(ModelProviderSettingsService providerSettings,
             ModelProvidersService providers,
             OpenCodeSettingsService openCodeSettings,
-            OpenRouterSettingsService openRouterSettings) {
+            OpenRouterSettingsService openRouterSettings,
+            KiloSettingsService kiloSettings) {
         this.providerSettings = providerSettings;
         this.providers = providers;
         this.openCodeSettings = openCodeSettings;
         this.openRouterSettings = openRouterSettings;
+        this.kiloSettings = kiloSettings;
     }
 
     /** 调用时解析当前激活目标;绝不抛异常。 */
@@ -52,6 +56,8 @@ public class GlobalAssistantModelTargetResolver {
                         trimToNull(openCodeSettings.requireRuntimeSettings().selectedModel()));
                 case OPENROUTER -> new ModelTarget(active.defaultDisplayName(),
                         trimToNull(openRouterSettings.status(true).selectedModel()));
+                case KILO -> new ModelTarget(active.defaultDisplayName(),
+                        trimToNull(kiloSettings.status().selectedModel()));
                 case CUSTOM -> customTarget(active);
             };
         } catch (RuntimeException ex) {

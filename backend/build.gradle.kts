@@ -11,6 +11,12 @@ java.targetCompatibility = JavaVersion.VERSION_21
 
 repositories {
     mavenCentral()
+    // Kilo Gateway 共享库通过 JitPack 公开发布（多模块坐标：com.github.User.Repo:Module:Tag）。
+    // 消费端无需 Token；本地联调可用 KILO_GATEWAY_LOCAL 指向源码检出目录做 composite build 覆盖。
+    maven {
+        name = "jitpack"
+        url = uri("https://jitpack.io")
+    }
     // 私有生态仓库（GitHub Packages / Nexus）。地址与凭据来自环境或
     // ~/.gradle/gradle.properties（zenRepoUrl / zenRepoUser / zenRepoToken），绝不写进仓库。
     val zenRepoUrl = providers.gradleProperty("zenRepoUrl").orNull
@@ -46,6 +52,9 @@ dependencies {
 
 dependencies {
     implementation("com.sharedlibs:opencode-zen-spring-boot-starter:1.2.0")
+    // Kilo Gateway（第三个模型供应商）客户端 Starter。提供 KiloGatewayClient，
+    // 直连 https://ai-gateway.kilo.ai/api/v1，免费模型匿名可用。
+    implementation("com.github.BangShou1st.kilo-gateway:kilo-gateway-spring-boot-starter:v0.2.1")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-data-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-validation")

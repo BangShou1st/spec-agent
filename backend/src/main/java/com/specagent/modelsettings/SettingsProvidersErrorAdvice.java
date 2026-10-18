@@ -20,7 +20,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
         ModelProvidersController.class,
         ModelProviderSettingsController.class,
         CustomProviderSettingsController.class,
-        OpenRouterSettingsController.class})
+        OpenRouterSettingsController.class,
+        KiloSettingsController.class})
 public class SettingsProvidersErrorAdvice {
 
     @ExceptionHandler(IllegalArgumentException.class)

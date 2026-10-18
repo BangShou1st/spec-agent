@@ -5,6 +5,7 @@ import com.specagent.model.contract.ModelInferenceMessage;
 import com.specagent.model.contract.ActiveProviderPort;
 import com.specagent.model.contract.ModelInferenceRequest;
 import com.specagent.model.provider.CustomInferenceGateway;
+import com.specagent.model.provider.KiloInferenceGateway;
 import com.specagent.model.provider.OpenCodeModelInferenceGateway;
 import com.specagent.model.provider.OpenRouterInferenceGateway;
 import com.specagent.model.provider.RoutingModelInferenceGateway;
@@ -48,13 +49,15 @@ class RoutingModelInferenceGatewayTest {
     @Mock
     private OpenRouterInferenceGateway openRouter;
     @Mock
+    private KiloInferenceGateway kilo;
+    @Mock
     private CustomInferenceGateway custom;
 
     private RoutingModelInferenceGateway gateway;
 
     @BeforeEach
     void setUp() {
-        gateway = new RoutingModelInferenceGateway(activeProvider, openCode, openRouter, custom);
+        gateway = new RoutingModelInferenceGateway(activeProvider, openCode, openRouter, kilo, custom);
     }
 
     private static ModelInferenceRequest request() {
@@ -70,7 +73,7 @@ class RoutingModelInferenceGatewayTest {
         gateway.complete(request);
 
         verify(openCode).complete(request);
-        verifyNoInteractions(openRouter, custom);
+        verifyNoInteractions(openRouter, kilo, custom);
     }
 
     @Test
@@ -81,7 +84,18 @@ class RoutingModelInferenceGatewayTest {
         gateway.complete(request);
 
         verify(openRouter).complete(request);
-        verifyNoInteractions(openCode, custom);
+        verifyNoInteractions(openCode, kilo, custom);
+    }
+
+    @Test
+    void kiloRoutesOnlyToTheKiloDelegate() {
+        when(activeProvider.activeProvider()).thenReturn(ModelProvider.KILO);
+        ModelInferenceRequest request = request();
+
+        gateway.complete(request);
+
+        verify(kilo).complete(request);
+        verifyNoInteractions(openCode, openRouter, custom);
     }
 
     @Test
@@ -92,7 +106,7 @@ class RoutingModelInferenceGatewayTest {
         gateway.complete(request);
 
         verify(custom).complete(request);
-        verifyNoInteractions(openCode, openRouter);
+        verifyNoInteractions(openCode, openRouter, kilo);
     }
 
     @Test
@@ -104,7 +118,7 @@ class RoutingModelInferenceGatewayTest {
         gateway.completeStreaming(request, listener);
 
         verify(openRouter).completeStreaming(request, listener);
-        verifyNoInteractions(openCode, custom);
+        verifyNoInteractions(openCode, kilo, custom);
     }
 
     @Test
@@ -119,6 +133,6 @@ class RoutingModelInferenceGatewayTest {
 
         verify(activeProvider, times(1)).activeProvider();
         verify(openCode, times(1)).complete(request);
-        verifyNoInteractions(openRouter, custom);
+        verifyNoInteractions(openRouter, kilo, custom);
     }
 }

@@ -65,6 +65,23 @@ export interface OpenCodeModelChangeRequest {
   selectedModel: string
 }
 
+/** Kilo Gateway 设置状态;与 OpenCode Zen 相同的安全形状。 */
+export interface KiloSettingsStatus {
+  configured: boolean
+  maskedKey: string | null
+  selectedModel: string | null
+}
+
+/** Kilo Gateway 模型发现响应:全部可用模型与其中的免费子集。 */
+export interface KiloProbeResponse {
+  allModels?: string[]
+  freeModels: string[]
+}
+
+export interface KiloModelChangeRequest {
+  selectedModel: string
+}
+
 export interface RouteResponse {
   id: string
   projectId: string

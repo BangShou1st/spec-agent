@@ -27,15 +27,18 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
     private final ActiveProviderPort providerSettings;
     private final OpenCodeModelInferenceGateway openCode;
     private final OpenRouterInferenceGateway openRouter;
+    private final KiloInferenceGateway kilo;
     private final CustomInferenceGateway custom;
 
     public RoutingModelInferenceGateway(ActiveProviderPort providerSettings,
                                         OpenCodeModelInferenceGateway openCode,
                                         OpenRouterInferenceGateway openRouter,
+                                        KiloInferenceGateway kilo,
                                         CustomInferenceGateway custom) {
         this.providerSettings = providerSettings;
         this.openCode = openCode;
         this.openRouter = openRouter;
+        this.kilo = kilo;
         this.custom = custom;
     }
 
@@ -54,6 +57,7 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
         return switch (active) {
             case OPENCODE_ZEN -> openCode;
             case OPENROUTER -> openRouter;
+            case KILO -> kilo;
             case CUSTOM -> custom;
         };
     }
