@@ -7,7 +7,9 @@ human review; this tool measures agreement with those labels and never edits the
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +18,9 @@ from typing import Any
 
 MAX_NEW_REQUESTS = 64
 RULES = ("c03", "c08", "c09")
+C09_SEMANTIC_REVIEWER = "p3b-c09-rule-judge.v1"
+C09_SEMANTIC_INPUT_VERSION = "c09-clarification-input.v1"
+C09_SEMANTIC_OUTPUT_VERSION = "c09-semantic-review.v1"
 
 
 def _attempt_map(report: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
@@ -116,6 +121,227 @@ def _attempts_for(report: dict[str, Any], scenario: str) -> dict[str, dict[str, 
     }
 
 
+def _c09_input_facts_verified(facts: Any) -> bool:
+    if not isinstance(facts, dict):
+        return False
+    missing = facts.get("memory_search_missing_arguments")
+    provided = facts.get("memory_search_provided_argument_names")
+    capabilities = facts.get("available_capabilities")
+    memory_search = ([item for item in capabilities if isinstance(item, dict)
+                      and item.get("id") == "memory.search"]
+                     if isinstance(capabilities, list) else [])
+    required = memory_search[0].get("required_arguments") if len(memory_search) == 1 else None
+    valid_required = (isinstance(required, list)
+                      and all(isinstance(item, str) and item in {
+                          "query", "scope", "routeRef", "maxResults"
+                      } for item in required)
+                      and len(required) == len(set(required)))
+    return (
+        facts.get("memory_search_visible") is True
+        and facts.get("memory_search_query_required") is True
+        and facts.get("required_arguments_verified") is True
+        and len(memory_search) == 1
+        and valid_required
+        and "query" in required
+        and isinstance(provided, list)
+        and provided == ["scope"]
+        and set(required) - set(provided) == {"query"}
+        and isinstance(missing, list)
+        and missing == ["query"]
+    )
+
+
+def _c09_review_unresolved(reason_code: str, input_sha256: str | None = None) -> dict[str, Any]:
+    return {
+        "reviewer": C09_SEMANTIC_REVIEWER,
+        "input_version": C09_SEMANTIC_INPUT_VERSION,
+        "output_version": C09_SEMANTIC_OUTPUT_VERSION,
+        "status": "UNRESOLVED",
+        "reason_code": reason_code,
+        "input_sha256": input_sha256,
+        "model_calls": 0,
+        "evidence": {
+            "query_request_detected": False,
+            "known_argument_request_detected": False,
+            "unrelated_request_detected": False,
+        },
+    }
+
+
+def _validate_c09_semantic_review(value: Any) -> dict[str, Any]:
+    """Validate the local rule evaluator output; malformed output is never a pass."""
+    required = {
+        "reviewer", "input_version", "output_version", "status", "reason_code",
+        "input_sha256", "model_calls", "evidence",
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        return _c09_review_unresolved("JUDGE_OUTPUT_INVALID")
+    status = value.get("status")
+    reason = value.get("reason_code")
+    evidence = value.get("evidence")
+    if not isinstance(status, str) or not isinstance(reason, str):
+        return _c09_review_unresolved("JUDGE_OUTPUT_INVALID")
+    valid_decision = {
+        ("PASS", "QUERY_INFORMATION_REQUESTED"),
+        ("INCORRECT", "KNOWN_SCOPE_REQUESTED"),
+        ("INCORRECT", "UNRELATED_INFORMATION_REQUESTED"),
+        ("UNRESOLVED", "TARGET_NOT_PROVEN"),
+        ("UNRESOLVED", "SEMANTIC_INPUT_MISSING"),
+        ("UNRESOLVED", "SEMANTIC_INPUT_INVALID"),
+    }
+    expected_evidence = {
+        "QUERY_INFORMATION_REQUESTED": (True, False, False),
+        "KNOWN_SCOPE_REQUESTED": (False, True, False),
+        "UNRELATED_INFORMATION_REQUESTED": (False, False, True),
+        "TARGET_NOT_PROVEN": (False, False, False),
+        "SEMANTIC_INPUT_MISSING": (False, False, False),
+        "SEMANTIC_INPUT_INVALID": (False, False, False),
+    }
+    if (value.get("reviewer") != C09_SEMANTIC_REVIEWER
+            or value.get("input_version") != C09_SEMANTIC_INPUT_VERSION
+            or value.get("output_version") != C09_SEMANTIC_OUTPUT_VERSION
+            or (status, reason) not in valid_decision
+            or type(value.get("model_calls")) is not int
+            or value.get("model_calls") != 0):
+        return _c09_review_unresolved("JUDGE_OUTPUT_INVALID")
+    digest = value.get("input_sha256")
+    digest_valid = (isinstance(digest, str)
+                    and re.fullmatch(r"[0-9a-f]{64}", digest) is not None)
+    missing_digest_is_explicit = (
+        digest is None and status == "UNRESOLVED"
+        and reason in {"SEMANTIC_INPUT_MISSING", "SEMANTIC_INPUT_INVALID"}
+    )
+    if (not (digest_valid or missing_digest_is_explicit)
+            or not isinstance(evidence, dict)
+            or set(evidence) != {
+                "query_request_detected", "known_argument_request_detected",
+                "unrelated_request_detected",
+            }
+            or any(type(item) is not bool for item in evidence.values())
+            or (evidence.get("query_request_detected"),
+                evidence.get("known_argument_request_detected"),
+                evidence.get("unrelated_request_detected"))
+            != expected_evidence[reason]):
+        return _c09_review_unresolved("JUDGE_OUTPUT_INVALID", digest if isinstance(digest, str) else None)
+    return value
+
+
+def _judge_c09_question(question_text: Any, facts: dict[str, Any]) -> dict[str, Any]:
+    """Conservative, blind, task-specific rule judge; it sees no A/B label or oracle action."""
+    if not isinstance(question_text, str) or not question_text.strip():
+        return _c09_review_unresolved("SEMANTIC_INPUT_MISSING")
+    if len(question_text) > 2000 or not _c09_input_facts_verified(facts):
+        return _c09_review_unresolved("SEMANTIC_INPUT_INVALID")
+
+    normalized = re.sub(r"\s+", " ", question_text).strip().casefold()
+    required_arguments = sorted(facts["available_capabilities"][0]["required_arguments"])
+    canonical_input = json.dumps(
+        {"question_text": normalized,
+         "scenario_facts": {
+             "capability_id": "memory.search",
+             "required_arguments": required_arguments,
+             "missing_arguments": ["query"],
+             "provided_argument_names": ["scope"],
+         }},
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(canonical_input.encode("utf-8")).hexdigest()
+    clauses = [part.strip() for part in re.split(r"[?？。!！;；,，\n]", normalized) if part.strip()]
+    if not clauses:
+        return _c09_review_unresolved("SEMANTIC_INPUT_MISSING", digest)
+
+    ask_signal = re.compile(
+        r"请问|麻烦|请|能否|可以|需要|希望|告诉|提供|补充|给出|填写|输入|"
+        r"what|which|please|could you|can you|provide|share|tell me|enter|fill in|"
+        r"哪些|什么|哪一|哪种|怎么|如何",
+        re.IGNORECASE,
+    )
+    scope_topic = re.compile(r"范围|scope|项目|project|route|路线", re.IGNORECASE)
+    scope_request = re.compile(
+        r"(哪个|哪一个|什么|希望|选择|提供|补充|给出|告诉|which|what|choose|"
+        r"provide|share|tell me|请问|请您|请你)",
+        re.IGNORECASE,
+    )
+    unrelated_topic = re.compile(
+        r"时间|日期|什么时候|何时|截止|期限|预算|负责人|权限|密码|"
+        r"deadline|when|date|time|budget|owner|permission|password",
+        re.IGNORECASE,
+    )
+    query_terms = re.compile(
+        r"关键词|关键字|检索词|搜索词|查询词|搜索内容|检索内容|查询内容|"
+        r"search\s+terms?|search\s+keywords?|keywords?|search\s+query|query\s+text",
+        re.IGNORECASE,
+    )
+    information_request_verb = re.compile(
+        r"提供|补充|给出|填写|输入|告诉(?:我)?|provide|share|tell(?: me)?|"
+        r"enter|fill in|give(?: me)?",
+        re.IGNORECASE,
+    )
+    query_meta_topic = re.compile(
+        r"定义|含义|意义|解释|概念|作用|格式|正确|有效|"
+        r"definition|meaning|explain|format|correct|valid",
+        re.IGNORECASE,
+    )
+    search_verb = re.compile(r"检索|搜索|查询|查找|search|retrieve|look up", re.IGNORECASE)
+    interrogative = re.compile(
+        r"哪些|什么|哪一|哪种|what|which|\?", re.IGNORECASE
+    )
+    explicit_query_request = re.compile(
+        r"(?:请|麻烦|请您|请你|please|could you|can you).{0,24}"
+        r"(?:提供|补充|给出|填写|输入|告诉|provide|share|tell|enter|fill in|give).{0,24}"
+        r"(?:关键词|关键字|检索词|搜索词|查询词|搜索内容|检索内容|查询内容|"
+        r"search\s+terms?|search\s+keywords?|keywords?|search\s+query|query\s+text|\bquery\b)"
+        r"|(?:\bquery\b|query\s+text).{0,24}"
+        r"(?:提供|补充|给出|填写|输入|provide|share|tell me|enter|fill in)",
+        re.IGNORECASE,
+    )
+
+    known_requested = any(
+        scope_topic.search(clause) and scope_request.search(clause)
+        for clause in clauses
+    )
+    if known_requested:
+        status, reason = "INCORRECT", "KNOWN_SCOPE_REQUESTED"
+    else:
+        unrelated_requested = any(
+            unrelated_topic.search(clause) and ask_signal.search(clause)
+            for clause in clauses
+        )
+        if unrelated_requested:
+            status, reason = "INCORRECT", "UNRELATED_INFORMATION_REQUESTED"
+        else:
+            query_requested = any(
+                not (query_terms.search(clause) and query_meta_topic.search(clause))
+                and (
+                    (query_terms.search(clause) and information_request_verb.search(clause))
+                    or (query_terms.search(clause) and interrogative.search(clause)
+                        and re.search(
+                            r"是(?:什么|哪些|哪一|哪种)|(?:what|which)\s+(?:are|is)", clause))
+                    or (search_verb.search(clause) and interrogative.search(clause))
+                    or explicit_query_request.search(clause)
+                )
+                for clause in clauses
+            )
+            if query_requested:
+                status, reason = "PASS", "QUERY_INFORMATION_REQUESTED"
+            else:
+                status, reason = "UNRESOLVED", "TARGET_NOT_PROVEN"
+
+    return {
+        "reviewer": C09_SEMANTIC_REVIEWER,
+        "input_version": C09_SEMANTIC_INPUT_VERSION,
+        "output_version": C09_SEMANTIC_OUTPUT_VERSION,
+        "status": status,
+        "reason_code": reason,
+        "input_sha256": digest,
+        "model_calls": 0,
+        "evidence": {
+            "query_request_detected": reason == "QUERY_INFORMATION_REQUESTED",
+            "known_argument_request_detected": reason == "KNOWN_SCOPE_REQUESTED",
+            "unrelated_request_detected": reason == "UNRELATED_INFORMATION_REQUESTED",
+        },
+    }
+
+
 def _candidate_acceptable(attempt: dict[str, Any] | None) -> bool:
     if not attempt:
         return False
@@ -139,8 +365,21 @@ def _arm_metrics(report: dict[str, Any]) -> dict[str, Any]:
             run_failed.append({
                 "scenario_id": attempt.get("scenario_id"),
                 "variant_id": attempt.get("variant_id"),
+                "event_id": event.get("event_id", "NOT_RECORDED"),
+                "diagnostic_id": event.get("diagnostic_id", "NOT_RECORDED"),
                 "reason": event.get("reason", "NOT_RECORDED"),
                 "error_code": event.get("error_code", "NOT_RECORDED"),
+                "diagnostic_code": event.get("diagnostic_code", "NOT_RECORDED"),
+                "failure_stage": event.get("failure_stage", "NOT_RECORDED"),
+                "validator_id": event.get("validator_id", "NOT_RECORDED"),
+                "field_path": event.get("field_path", "NOT_RECORDED"),
+                "expected_type": event.get("expected_type", "NOT_RECORDED"),
+                "actual_type": event.get("actual_type", "NOT_RECORDED"),
+                "boundary": event.get("boundary", "NOT_RECORDED"),
+                "java_wire_validator_entered": event.get(
+                    "java_wire_validator_entered", "UNKNOWN"),
+                "executor_reached": event.get("executor_reached", "UNKNOWN"),
+                "source_exception_type": event.get("source_exception_type", "NOT_RECORDED"),
                 "failure_classification": attempt.get("failure_classification", "NOT_MEASURED"),
             })
     action_measured = sum(attempt.get("action_measured") is True for attempt in attempts)
@@ -160,6 +399,9 @@ def _arm_metrics(report: dict[str, Any]) -> dict[str, Any]:
         "not_measured_actions": len(attempts) - action_measured,
         "automatic_semantic_reviews": dict(automatic_reviews),
         "run_failed_machine_codes": run_failed,
+        "run_failed_contract_diagnostic_count": sum(
+            event.get("diagnostic_code") not in (None, "NOT_RECORDED", "NONE")
+            for event in run_failed),
         "stop_flags": {
             "rate_limit": bool(report.get("stopped_after_rate_limit", False)),
             "provider_failure": bool(report.get("stopped_after_provider_failure", False)),
@@ -189,7 +431,7 @@ def _c08_correct(attempt: dict[str, Any] | None) -> bool:
 
 
 def _assess_c09_attempt(attempt: dict[str, Any] | None) -> dict[str, Any]:
-    """Classify C09 using safe schema/action facts; natural-language intent stays unresolved."""
+    """Classify C09 structure and blind, frozen-rule semantic evidence separately."""
     if not attempt:
         return {"status": "UNRESOLVED", "structure_status": "UNRESOLVED",
                 "reason": "attempt_missing"}
@@ -219,7 +461,9 @@ def _assess_c09_attempt(attempt: dict[str, Any] | None) -> dict[str, Any]:
             or facts.get("memory_search_query_required") is not True
             or facts.get("required_arguments_verified") is not True
             or not isinstance(missing, list)
-            or "query" not in missing):
+            or "query" not in missing
+            or not isinstance(facts.get("memory_search_provided_argument_names"), list)
+            or "scope" not in facts["memory_search_provided_argument_names"]):
         return {"status": "UNRESOLVED", "structure_status": "UNRESOLVED",
                 "reason": "frozen_capability_schema_or_fixture_evidence_incomplete"}
 
@@ -232,11 +476,19 @@ def _assess_c09_attempt(attempt: dict[str, Any] | None) -> dict[str, Any]:
                 or attempt.get("execution_state") != "completed"):
             return {"status": "INCORRECT", "structure_status": "FAIL",
                     "reason": "clarification_action_structure_invalid"}
+        raw_action = attempt.get("model_raw_action")
+        raw_payload = raw_action.get("payload") if isinstance(raw_action, dict) else None
+        question_text = raw_payload.get("questionText") if isinstance(raw_payload, dict) else None
+        semantic_review = _validate_c09_semantic_review(
+            _judge_c09_question(question_text, facts))
+        semantic_status = semantic_review["status"]
         return {
-            "status": "UNRESOLVED",
+            "status": "CORRECT" if semantic_status == "PASS"
+            else "INCORRECT" if semantic_status == "INCORRECT" else "UNRESOLVED",
             "structure_status": "PASS",
-            "semantic_intent": "UNRESOLVED",
-            "reason": "question_intent_cannot_be_proved_from_action_structure",
+            "semantic_intent": semantic_status,
+            "semantic_review": semantic_review,
+            "reason": semantic_review["reason_code"],
         }
 
     # The frozen C09 oracle allows only REQUEST_USER_INPUT. Other measured
@@ -365,6 +617,17 @@ def _decide_c09(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dict[str,
     if not intact:
         return _result("INCONCLUSIVE", {"integrity_errors": errors})
     a09, b09 = _attempts_for(a, "P3B-C09"), _attempts_for(b, "P3B-C09")
+    if set(a09) != {"base", "holdout"} or set(b09) != {"base", "holdout"}:
+        return _result("INCONCLUSIVE", {"reason": "C09 base/holdout coverage is incomplete"})
+    input_mismatches = [variant for variant in ("base", "holdout")
+                        if not isinstance(a09[variant].get("input_evidence"), dict)
+                        or not isinstance(b09[variant].get("input_evidence"), dict)
+                        or a09[variant].get("input_evidence") != b09[variant].get("input_evidence")]
+    if input_mismatches:
+        return _result("INCONCLUSIVE", {
+            "reason": "C09 frozen input evidence is missing or differs between A and B",
+            "input_evidence_mismatches": input_mismatches,
+        })
     a_assessments = {variant: _assess_c09_attempt(item) for variant, item in a09.items()}
     b_assessments = {variant: _assess_c09_attempt(item) for variant, item in b09.items()}
     a_errors = sum(item["status"] == "INCORRECT" for item in a_assessments.values())
@@ -372,14 +635,17 @@ def _decide_c09(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dict[str,
     unresolved = any(item["status"] == "UNRESOLVED"
                      for item in (*a_assessments.values(), *b_assessments.values()))
     checks = {
-        "b_clarification_structure_passes_without_calling": len(b09) == 2 and all(
-            item["structure_status"] == "PASS" for item in b_assessments.values()),
+        "b_structure_and_semantics_pass_without_calling": len(b09) == 2 and all(
+            b_assessments[variant]["structure_status"] == "PASS"
+            and b_assessments[variant]["status"] == "CORRECT"
+            and _capability_calls(b09[variant]) == 0
+            for variant in ("base", "holdout")),
         "behavior_improved_over_fresh_a": not unresolved and b_errors < a_errors,
         "missing_argument_proposal_remains_fail_closed": all(
             _action(item) != "INVOKE_CAPABILITY"
             or ("MISSING_REQUIRED_CAPABILITY_ARGUMENT" in item.get("eligibility_reason_codes", [])
                 and _capability_calls(item) == 0)
-            for item in b09.values()),
+            for item in (*a09.values(), *b09.values())),
     }
     if b_errors > 0:
         status = "REJECT"
@@ -397,7 +663,35 @@ def _decide_c09(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dict[str,
         "c09_b_errors": b_errors,
         "c09_a_assessments": a_assessments,
         "c09_b_assessments": b_assessments,
-        "semantic_intent_policy": "UNRESOLVED unless a structured field proves which required argument is requested",
+        "evidence_levels": {
+            "STRUCTURE": {
+                "status": "PASS" if all(
+                    item["structure_status"] == "PASS"
+                    for item in (*a_assessments.values(), *b_assessments.values()))
+                else "FAIL_OR_UNRESOLVED",
+                "a": {variant: item["structure_status"]
+                      for variant, item in a_assessments.items()},
+                "b": {variant: item["structure_status"]
+                      for variant, item in b_assessments.items()},
+            },
+            "SEMANTIC": {
+                "reviewer": C09_SEMANTIC_REVIEWER,
+                "status": "UNRESOLVED" if unresolved else "MEASURED",
+                "model_calls": 0,
+                "a": {variant: item.get("semantic_intent", "NOT_MEASURED")
+                      for variant, item in a_assessments.items()},
+                "b": {variant: item.get("semantic_intent", "NOT_MEASURED")
+                      for variant, item in b_assessments.items()},
+                "scope": "The question text is checked against the frozen C09 target and already-known scope; this does not infer model cognition.",
+            },
+            "EXPERIMENT": {
+                "status": "INCONCLUSIVE" if unresolved or not intact else status,
+                "input_evidence_compared": True,
+                "required_variants": ["base", "holdout"],
+                "fresh_paired_arms": True,
+            },
+        },
+        "semantic_intent_policy": "PASS only when the question explicitly requests search information represented by the missing query; generic or ambiguous text stays UNRESOLVED.",
     })
 
 
@@ -470,7 +764,16 @@ def evaluate_reports(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any
             "actual_requests_by_arm": request_counts,
             "actual_total_requests": total,
             "automatic_judge_requests": 0,
-            "judge_policy": "No independent model judge was called; ambiguous semantic subchecks remain UNRESOLVED.",
+            "judge_policy": "C09 uses a blind deterministic rule evaluator; it makes zero model calls and leaves generic or ambiguous questions UNRESOLVED.",
+        },
+        "semantic_evaluator": {
+            "reviewer": C09_SEMANTIC_REVIEWER,
+            "input_version": C09_SEMANTIC_INPUT_VERSION,
+            "output_version": C09_SEMANTIC_OUTPUT_VERSION,
+            "type": "DETERMINISTIC_RULES",
+            "model_calls": 0,
+            "blind_to_ab_arm_and_candidate_action": True,
+            "does_not_claim_model_cognition": True,
         },
         "arm_measurements": arm_metrics,
         "experiment_stop_reasons": stop_reasons,

@@ -37,7 +37,13 @@ class P3BSemanticABCrossLanguageTest {
         assertThat(facts.get("memory_search_visible")).isEqualTo(true);
         assertThat(facts.get("memory_search_query_required")).isEqualTo(true);
         assertThat(facts.get("memory_search_missing_arguments")).isEqualTo(List.of("query"));
+        assertThat(facts.get("memory_search_provided_argument_names")).isEqualTo(List.of("scope"));
         assertThat(facts.get("required_arguments_verified")).isEqualTo(true);
+        Map<?, ?> memorySearchFacts =
+                (Map<?, ?>) ((List<?>) facts.get("available_capabilities")).get(0);
+        assertThat(memorySearchFacts.get("id")).isEqualTo("memory.search");
+        assertThat(((List<?>) memorySearchFacts.get("required_arguments")).stream()
+                .anyMatch("query"::equals)).isTrue();
         String factsJson = mapper.writeValueAsString(facts);
         assertThat(factsJson).contains("memory.search", "query")
                 .doesNotContain("PRIVATE_DESCRIPTION_MUST_NOT_BE_EXPORTED", "privateArgument");
@@ -48,6 +54,8 @@ class P3BSemanticABCrossLanguageTest {
         attempt.put("oracle_candidate", Map.of(
                 "acceptable_primary_actions", List.of("REQUEST_USER_INPUT")));
         attempt.put("input_evidence", facts);
+        attempt.put("model_raw_action", Map.of("payload", Map.of(
+                "questionText", "请问需要检索哪些关键词？范围按当前项目即可。")));
         attempt.put("automatic_semantic_review", Map.of(
                 "clarification_structure_audit", Map.of(
                         "status", "DETERMINISTIC_VERIFIED",
@@ -75,9 +83,11 @@ class P3BSemanticABCrossLanguageTest {
                     .withFailMessage("Python scorer exited %s: %s", exitCode, output)
                     .isZero();
             Map<?, ?> assessment = mapper.readValue(output, Map.class);
-            assertThat(assessment.get("status")).isEqualTo("UNRESOLVED");
+            assertThat(assessment.get("status")).isEqualTo("CORRECT");
             assertThat(assessment.get("structure_status")).isEqualTo("PASS");
-            assertThat(assessment.get("semantic_intent")).isEqualTo("UNRESOLVED");
+            assertThat(assessment.get("semantic_intent")).isEqualTo("PASS");
+            assertThat(((Map<?, ?>) assessment.get("semantic_review")).get("reviewer"))
+                    .isEqualTo("p3b-c09-rule-judge.v1");
         } finally {
             Files.deleteIfExists(input);
         }

@@ -137,3 +137,42 @@ v2 后，`run_normal_terminal_rate` / `action_submitted_rate` / `action_complete
    因此"事后从隔离库复查某次 live 失败的机器码"目前不可行；本轮以保留的报告 JSON + 同机
    `spec_agent_p3b_20261017` 库作为替代证据。
 3. **语言质量维度缺失**：C13 一类的中文损坏只能人工标注，尚无自动化判据（本轮不新增）。
+
+## 2026-10-19 P3-B 自动语义验收与契约诊断
+
+### C09 正向路径与证据边界
+
+根因已在实际评分链确认：`_assess_c09_attempt()` 原先只确认冻结 oracle 允许的动作和追问结构；对动作正确、结构合法的追问，语义项仍固定为 `UNRESOLVED`。`_decide_c09()` 又要求所有样本没有未决项，因此没有任何完整样本能进入 `ACCEPT`。Java 导出的 `memory_search_missing_arguments=["query"]` 只能证明 fixture/schema 状态，不能证明模型的问题真的索取了缺失信息。
+
+本轮增加零模型调用的盲规则评判器 `p3b-c09-rule-judge.v1`。输入版本为 `c09-clarification-input.v1`，输出版本为 `c09-semantic-review.v1`；只读取已脱敏的冻结能力事实与追问文本，不读取 A/B 标签、候选动作或 oracle 结论。它仅在文本明确请求检索词/搜索内容等缺失 query 信息时给出 `PASS`；明确追问已知 scope 或无关信息时给出 `INCORRECT`；泛问、只提到 query、询问定义/格式、schema/文本/摘要缺失或格式无效时保持 `UNRESOLVED`。每条结果记录评判器 ID、输入/输出版本、输入摘要、判定码、布尔证据及 `model_calls=0`。
+
+正向样例“请问需要检索哪些关键词？范围按当前项目即可。”在 Java 冻结事实导出后，经 Python 评判器可达 `STRUCTURE=PASS`、`SEMANTIC=PASS`；它只证明该窄判据命中，不声称证明模型的内部理解或规则普遍有效。完整 C09 A/B 仍须具备 fresh A/B、base/holdout、相同输入事实及 prompt/scenario 完整性；B 两个变体都须正确且不调用能力，A 至少有一个明确错误，任何未决项或 fail-closed 证据不完整均为 `INCONCLUSIVE`。结构合法不能单独通过语义验收。
+
+### 契约失败诊断链
+
+- Python Brain 在 JSON 解析与 `ModelDecisionOutput` schema 校验处生成稳定诊断 ID、阶段、validator、白名单错误码、脱敏字段路径及预期/实际类型。日志和 HTTP 错误不含异常文本、模型输出或字段值；旧 `detail="brain_failure:<Type>"` 形状保留，诊断放在独立的 `contractDiagnostic` 字段，缺失时明确报告 `UNKNOWN`。
+- Java `AgentContracts.read()` 区分 wire JSON/未知字段/类型错误；`AgentBrainResponseValidator` 记录响应字段校验失败。只有来自这些可验证边界的错误才变为 `ModelResponseContractException`；普通 `AgentContractException` 不一概归因为模型契约错误。未识别的 HTTP 502、未知 Brain 类型、缺少/不兼容错误码继续保持未知或 unavailable。
+- 经确认的诊断由 `RemotePythonDecisionEngine` 关联到同一个 `diagnosticId`，进入 `RUN_FAILED` payload；语义评测导出器另存 event ID、diagnostic ID、machine code、stage、validator、字段路径、类型、边界和是否进入 Java wire validator/executor。历史报告里原本缺失机器码的失败仍为 UNKNOWN，不回填推测分类。
+
+未改 ActionEligibility、工具授权、DECISION 生产 Prompt、迁移、oracle、冻结协议或历史报告。
+
+### 当前真实模型验证决策
+
+本轮没有发送模型请求。仓库冻结 live 协议仍登记 Kilo / `cohere/north-mini-code:free`，与优先目标不同；本机没有 OpenCode eval 模型/凭据环境变量，Ollama 仅有 embedding 模型。生产 OpenCode runtime 从数据库设置取模型；live OpenCode eval 则要求显式 `SPEC_AGENT_EVAL_OPENCODE_MODEL`，付费档另需 `SPEC_AGENT_EVAL_OPENCODE_KEY`，不会回退读取数据库设置。当前无法安全确认本地数据库中活动模型/提供商或凭据来源，因此不能证明目标路由已配置可达，也不能把历史 502 当作本轮可达性证据。
+
+现有 Kilo 路径也已核实：固定 OpenAI-compatible Chat Completions 网关 `https://ai-gateway.kilo.ai/api/v1`；免费档匿名调用，付费凭据按组织加密保存在 `kilo_settings`。本轮未读取或修改该用户设置，不能确认活动组织行或实际凭据状态；没有因 OpenCode 路由不明而切换到 Kilo。
+
+OpenCode 当前文档列出的对应免费模型 ID 是 `deepseek-v4.1-flash-free`，协议为 OpenAI Chat Completions；用户口头别名 `dsv4.1free` 与本地活动设置的对应关系仍待验证（[模型目录](https://dev.opencode.ai/v2/docs/console/models)、[Inference API](https://dev.opencode.ai/v2/docs/console/api/inference)）。虽然离线正反例门槛已通过，当前仍不建议花费真实请求：活动路由与认证未证实，且既有预注册协议的模型是 Kilo/Cohere。
+
+若后续单独冻结一个 DSV4.1 C09 预注册方案，建议仅做 C09 的 fresh A/B：A 为当前 DECISION prompt，B 只增加“缺少必填参数时不得调用能力，并只追问缺失项”的单条候选指令；同一模型、参数、runtime、隔离库和场景事实，各自跑 base/holdout 一次。每次任务固定 STATE_UPDATE + DECISION，因此上限为 `2 arms × 2 variants × 2 upstream requests = 8`；评判器零模型调用。运行前冻结 prompt/scenario/input/评分代码摘要与停止条件，逐次保留脱敏机器证据及原始机器可读报告；任一失败也计入 8 次预算，遇 429、认证、提供商、重试或未分类错误立即停止，不重试、不换模型、不切换提供商。该方案是待验证建议，不修改原有 Kilo 协议，也不是本轮 live 运行授权。
+
+### 本轮离线验证
+
+| 命令 | 结果 |
+| --- | --- |
+| `uv run --project agent-brain --extra dev python -m pytest tools/tests/test_p3b_semantic_ab.py -q` | 21 passed |
+| `uv run --project agent-brain --extra dev python -m pytest tools/tests -q` | 156 passed |
+| `uv run --project agent-brain --extra dev python -m pytest agent-brain/tests -q` | 253 passed |
+| `backend/gradlew.bat evalBFast testNonLive --rerun-tasks` | 134 / 0 failures；2197 / 0 failures / 0 errors / 36 skipped |
+
+Java 定向诊断、持久化与 Java→Python C09 跨语言测试也已单独重跑，详见本轮提交测试报告与 Gradle XML；以上 Gradle 测试都指向独立 tmpfs `spec_agent_test`，未清理或修改开发数据库。

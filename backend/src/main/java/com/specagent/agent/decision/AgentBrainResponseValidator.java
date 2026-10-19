@@ -66,7 +66,9 @@ public final class AgentBrainResponseValidator {
                                         AgentArtifactResponse response) {
         if (!request.runId().equals(response.runId())) {
             throw new AgentContractException(
-                    "Response runId does not match the request: " + response.runId());
+                    "Response runId does not match the request",
+                    "JAVA_RESPONSE_CONTRACT_INVALID", "runId", "uuid", "uuid",
+                    "AgentBrainResponseValidator");
         }
         if (response.usage() != null && request.decisionBudget() != null) {
             int calls = response.usage().modelCalls();
@@ -170,7 +172,9 @@ public final class AgentBrainResponseValidator {
                                        AgentResponseEnvelope response) {
         if (!request.runId().equals(response.runId())) {
             throw new AgentContractException(
-                    "Response runId does not match the request: " + response.runId());
+                    "Response runId does not match the request",
+                    "JAVA_RESPONSE_CONTRACT_INVALID", "runId", "uuid", "uuid",
+                    "AgentBrainResponseValidator");
         }
         if (response.usage() != null && request.decisionBudget() != null) {
             int calls = response.usage().modelCalls();
@@ -422,7 +426,11 @@ public final class AgentBrainResponseValidator {
 
     private static void requireNonBlank(String name, String value) {
         if (value == null || value.isBlank()) {
-            throw new AgentContractException(name + " must be a non-blank string");
+            throw new AgentContractException(name + " must be a non-blank string",
+                    "JAVA_RESPONSE_CONTRACT_INVALID",
+                    "actionProposal.payload." + name,
+                    "string", value == null ? "null" : "string",
+                    "AgentBrainResponseValidator");
         }
     }
 
@@ -430,6 +438,20 @@ public final class AgentBrainResponseValidator {
         if (value instanceof String text) {
             return text;
         }
-        throw new AgentContractException(name + " must be a string");
+        throw new AgentContractException(name + " must be a string",
+                "JAVA_RESPONSE_CONTRACT_INVALID",
+                "actionProposal.payload." + name,
+                "string", safeRuntimeType(value), "AgentBrainResponseValidator");
+    }
+
+    private static String safeRuntimeType(Object value) {
+        if (value == null) return "null";
+        if (value instanceof Boolean) return "boolean";
+        if (value instanceof String) return "string";
+        if (value instanceof Integer || value instanceof Long) return "integer";
+        if (value instanceof Number) return "number";
+        if (value instanceof Map<?, ?>) return "object";
+        if (value instanceof List<?>) return "array";
+        return "unknown";
     }
 }

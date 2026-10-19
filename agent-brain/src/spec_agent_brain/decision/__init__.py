@@ -8,6 +8,7 @@ from .engine import (
     ActionIneligibleBrainError,
     AmbiguousSourceRefsError,
     BrainContractError,
+    ModelOutputContractError,
     UngroundedReferenceError,
     handle_decision,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "ActionIneligibleBrainError",
     "AmbiguousSourceRefsError",
     "BrainContractError",
+    "ModelOutputContractError",
     "UngroundedReferenceError",
     "handle_decision",
 ]

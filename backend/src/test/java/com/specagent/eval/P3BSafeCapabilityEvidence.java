@@ -20,6 +20,7 @@ final class P3BSafeCapabilityEvidence {
         boolean visible = !memorySearch.isEmpty();
         SchemaFacts schema = schemaFacts(asMap(memorySearch.get("inputSchema")));
         List<String> fixtureMissing = fixtureMissingArguments(scenario, schema);
+        List<String> fixtureProvided = fixtureProvidedArgumentNames(scenario);
         List<Map<String, Object>> safeCapabilities = visible
                 ? List.of(Map.of("id", MEMORY_SEARCH_ID,
                         "required_arguments", schema.verified() ? schema.requiredArguments() : List.of()))
@@ -31,6 +32,7 @@ final class P3BSafeCapabilityEvidence {
                 "memory_search_query_required", schema.verified()
                         && schema.requiredArguments().contains("query"),
                 "memory_search_missing_arguments", fixtureMissing,
+                "memory_search_provided_argument_names", fixtureProvided,
                 "required_arguments_verified", schema.verified());
     }
 
@@ -80,6 +82,21 @@ final class P3BSafeCapabilityEvidence {
             return List.of();
         }
         return missingArguments(schema.requiredArguments(), asMap(payload.get("arguments")));
+    }
+
+    private static List<String> fixtureProvidedArgumentNames(P3BCorpus.P3BScenario scenario) {
+        if (scenario == null) return List.of();
+        BrainDecision decision = scenario.definition().given().brainScript().decision();
+        Map<String, Object> payload = decision.payload();
+        if (!"INVOKE_CAPABILITY".equals(decision.actionFamily())
+                || !MEMORY_SEARCH_ID.equals(payload.get("capabilityId"))) {
+            return List.of();
+        }
+        return asMap(payload.get("arguments")).keySet().stream()
+                .filter(name -> SAFE_ARGUMENT_NAMES.contains(String.valueOf(name)))
+                .map(String::valueOf)
+                .sorted()
+                .toList();
     }
 
     private static List<String> missingArguments(List<String> required,

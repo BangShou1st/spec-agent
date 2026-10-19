@@ -540,12 +540,41 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
             return Map.of("present", false, "reason", "NOT_MEASURED", "error_code", "NOT_MEASURED");
         }
         List<Map<String, Object>> rows = jdbcTemplate.query(
-                "SELECT payload ->> 'reason' AS reason, payload ->> 'errorCode' AS error_code "
+                "SELECT id AS event_id, payload ->> 'reason' AS reason, "
+                        + "payload ->> 'errorCode' AS error_code, "
+                        + "payload #>> '{contractDiagnostic,diagnosticId}' AS diagnostic_id, "
+                        + "payload #>> '{contractDiagnostic,stage}' AS failure_stage, "
+                        + "payload #>> '{contractDiagnostic,validatorId}' AS validator_id, "
+                        + "payload #>> '{contractDiagnostic,machineCode}' AS diagnostic_code, "
+                        + "payload #>> '{contractDiagnostic,fieldPath}' AS field_path, "
+                        + "payload #>> '{contractDiagnostic,expectedType}' AS expected_type, "
+                        + "payload #>> '{contractDiagnostic,actualType}' AS actual_type, "
+                        + "payload #>> '{contractDiagnostic,boundary}' AS boundary, "
+                        + "payload #>> '{contractDiagnostic,javaWireValidatorEntered}' AS java_wire_validator_entered, "
+                        + "payload #>> '{contractDiagnostic,executorReached}' AS executor_reached, "
+                        + "payload #>> '{contractDiagnostic,sourceExceptionType}' AS source_exception_type "
                         + "FROM agent_run_events WHERE run_id = ? AND event_type = 'RUN_FAILED' "
                         + "ORDER BY sequence",
-                (resultSet, rowNum) -> Map.of(
-                        "reason", safeMachineCode(resultSet.getString("reason")),
-                        "error_code", safeMachineCode(resultSet.getString("error_code"))),
+                (resultSet, rowNum) -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("event_id", resultSet.getObject("event_id").toString());
+                    row.put("reason", safeMachineCode(resultSet.getString("reason")));
+                    row.put("error_code", safeMachineCode(resultSet.getString("error_code")));
+                    row.put("diagnostic_id", safeUuid(resultSet.getString("diagnostic_id")));
+                    row.put("failure_stage", safeMachineCode(resultSet.getString("failure_stage")));
+                    row.put("validator_id", safeMachineCode(resultSet.getString("validator_id")));
+                    row.put("diagnostic_code", safeMachineCode(resultSet.getString("diagnostic_code")));
+                    row.put("field_path", safeDiagnosticPath(resultSet.getString("field_path")));
+                    row.put("expected_type", safeDiagnosticToken(resultSet.getString("expected_type")));
+                    row.put("actual_type", safeDiagnosticToken(resultSet.getString("actual_type")));
+                    row.put("boundary", safeMachineCode(resultSet.getString("boundary")));
+                    row.put("java_wire_validator_entered",
+                            safeBoolean(resultSet.getString("java_wire_validator_entered")));
+                    row.put("executor_reached", safeBoolean(resultSet.getString("executor_reached")));
+                    row.put("source_exception_type",
+                            safeMachineCode(resultSet.getString("source_exception_type")));
+                    return row;
+                },
                 UUID.fromString(runId));
         if (rows.isEmpty()) {
             return Map.of("present", false, "reason", "NONE", "error_code", "NONE");
@@ -558,6 +587,30 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
             return "NOT_RECORDED";
         }
         return value.matches("[A-Za-z0-9_]{1,80}") ? value : "UNCLASSIFIED_REDACTED";
+    }
+
+    private static String safeUuid(String value) {
+        if (value == null || value.isBlank()) return "NOT_RECORDED";
+        try {
+            return UUID.fromString(value).toString();
+        } catch (IllegalArgumentException ignored) {
+            return "UNCLASSIFIED_REDACTED";
+        }
+    }
+
+    private static String safeDiagnosticPath(String value) {
+        if (value == null || value.isBlank()) return "NOT_RECORDED";
+        return value.matches("[A-Za-z_][A-Za-z0-9_]{0,63}(?:\\.[A-Za-z_][A-Za-z0-9_]{0,63}|\\[[0-9]{1,5}]){0,15}")
+                ? value : "UNCLASSIFIED_REDACTED";
+    }
+
+    private static String safeDiagnosticToken(String value) {
+        if (value == null || value.isBlank()) return "NOT_RECORDED";
+        return value.matches("[A-Za-z0-9 _-]{1,80}") ? value : "UNCLASSIFIED_REDACTED";
+    }
+
+    private static String safeBoolean(String value) {
+        return "true".equals(value) || "false".equals(value) ? value : "UNKNOWN";
     }
 
     /** 只留下结构证据摘要;不把完整事实、answer 正文或私人工作区内容写进报告。 */
