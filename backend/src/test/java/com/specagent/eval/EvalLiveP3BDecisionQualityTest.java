@@ -163,6 +163,9 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
 
     @Test
     void priorityScenariosRecordRealModelDecisionEvidence() throws Exception {
+        // 冻结规则:已停止的尝试不得重跑。在任何新请求(以及任何写入)之前,先检查
+        // 同一报告路径上是否已经记录了停止条件;有则失败关闭,而不是再发一次请求。
+        LiveAbAttemptStopGuard.requireNoPriorStop(reportPath(), mapper);
         EvalLiveIsolatedDatabase.DatabaseIdentity databaseIdentity =
                 EvalLiveIsolatedDatabase.readIdentity(jdbcTemplate);
         EvalLiveIsolatedDatabase.requireIsolatedLiveEvalDatabase(

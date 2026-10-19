@@ -1,6 +1,6 @@
 {
   "schema_version": "p3b-semantic-ab-c09-local.v1",
-  "created_at_utc": "2026-10-19T15:24:04.504083+00:00",
+  "created_at_utc": "2026-10-19T16:32:23.581487+00:00",
   "scope": "C09-only local A/B; reuses the frozen C09 rule judge and _pair_integrity gate",
   "pre_registered_protocol": "tools/p3b/p3b_ab_protocol_20261019.json",
   "experiment_status": "INCOMPLETE",
@@ -9,7 +9,7 @@
   "provider": "CUSTOM",
   "model": "qwen3.5:4b",
   "request_budget": {
-    "maximum_new_upstream_model_requests": 64,
+    "maximum_new_upstream_model_requests": 8,
     "actual_requests_by_arm": {
       "c09_a": 4,
       "c09_b": 1

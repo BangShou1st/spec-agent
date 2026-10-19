@@ -51,7 +51,8 @@ def _capability_calls(attempt: dict[str, Any] | None) -> int:
         return 0
 
 
-def _reliable_report(report: dict[str, Any] | None) -> bool:
+def _reliable_report(report: dict[str, Any] | None,
+                     max_requests: int = MAX_NEW_REQUESTS) -> bool:
     if not report or report.get("report_status") != "COMPLETE":
         return False
     if report.get("provider") != EXPECTED_PROVIDER or report.get("model_id") != EXPECTED_MODEL:
@@ -62,7 +63,7 @@ def _reliable_report(report: dict[str, Any] | None) -> bool:
         return False
     if report.get("stopped_on_request_budget"):
         return False
-    if int(report.get("total_model_requests", MAX_NEW_REQUESTS + 1)) > MAX_NEW_REQUESTS:
+    if int(report.get("total_model_requests", max_requests + 1)) > max_requests:
         return False
     for attempt in report.get("attempts", []):
         if attempt.get("provider_retries", 0) or attempt.get("judge_model_calls", 0):
@@ -75,9 +76,10 @@ def _reliable_report(report: dict[str, Any] | None) -> bool:
 
 
 def _pair_integrity(a: dict[str, Any] | None, b: dict[str, Any] | None,
-                    expected_scenarios: set[str]) -> tuple[bool, list[str]]:
+                    expected_scenarios: set[str],
+                    max_requests: int = MAX_NEW_REQUESTS) -> tuple[bool, list[str]]:
     errors: list[str] = []
-    if not _reliable_report(a) or not _reliable_report(b):
+    if not _reliable_report(a, max_requests) or not _reliable_report(b, max_requests):
         errors.append("one or both arms are incomplete or contain failed/retried requests")
     if a.get("model_id") != b.get("model_id") or a.get("provider") != b.get("provider"):
         errors.append("provider or model differs between arms")
@@ -533,10 +535,12 @@ def _result(status: str, evidence: dict[str, Any]) -> dict[str, Any]:
     return {"status": status, "evidence": evidence}
 
 
-def _decide_c03(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dict[str, Any]:
+def _decide_c03(a: dict[str, Any] | None, b: dict[str, Any] | None,
+                max_requests: int = MAX_NEW_REQUESTS) -> dict[str, Any]:
     if not a or not b:
         return _result("INCONCLUSIVE", {"reason": "A/B arm missing"})
-    intact, errors = _pair_integrity(a, b, {"P3B-C03", "P3B-C01", "P3B-C02", "P3B-C07"})
+    intact, errors = _pair_integrity(a, b, {"P3B-C03", "P3B-C01", "P3B-C02", "P3B-C07"},
+                                    max_requests)
     if not intact:
         a03_holdout = _attempts_for(a, "P3B-C03").get("holdout")
         b03_holdout = _attempts_for(b, "P3B-C03").get("holdout")
@@ -604,10 +608,11 @@ def _decide_c03(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dict[str,
     })
 
 
-def _decide_c08(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dict[str, Any]:
+def _decide_c08(a: dict[str, Any] | None, b: dict[str, Any] | None,
+                max_requests: int = MAX_NEW_REQUESTS) -> dict[str, Any]:
     if not a or not b:
         return _result("INCONCLUSIVE", {"reason": "A/B arm missing"})
-    intact, errors = _pair_integrity(a, b, {"P3B-C08", "P3B-C07"})
+    intact, errors = _pair_integrity(a, b, {"P3B-C08", "P3B-C07"}, max_requests)
     if not intact:
         return _result("INCONCLUSIVE", {"integrity_errors": errors})
     a08, b08 = _attempts_for(a, "P3B-C08"), _attempts_for(b, "P3B-C08")
@@ -635,10 +640,11 @@ def _decide_c08(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dict[str,
     })
 
 
-def _decide_c09(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dict[str, Any]:
+def _decide_c09(a: dict[str, Any] | None, b: dict[str, Any] | None,
+                max_requests: int = MAX_NEW_REQUESTS) -> dict[str, Any]:
     if not a or not b:
         return _result("INCONCLUSIVE", {"reason": "A/B arm missing"})
-    intact, errors = _pair_integrity(a, b, {"P3B-C09"})
+    intact, errors = _pair_integrity(a, b, {"P3B-C09"}, max_requests)
     if not intact:
         return _result("INCONCLUSIVE", {"integrity_errors": errors})
     a09, b09 = _attempts_for(a, "P3B-C09"), _attempts_for(b, "P3B-C09")
@@ -813,15 +819,22 @@ def evaluate_reports(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any
     }
 
 
-def evaluate_c09_only(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dict[str, Any]:
+def evaluate_c09_only(a: dict[str, Any] | None, b: dict[str, Any] | None,
+                      max_requests: int = MAX_NEW_REQUESTS) -> dict[str, Any]:
     """Evaluate only the frozen C09 A/B pair (local, small-budget experiment).
 
     Reuses ``_decide_c09`` (and through it the ``_pair_integrity`` gate and the
     ``p3b-c09-rule-judge.v1`` deterministic judge) unchanged. It narrows the
     experiment scope to the C09 rule; it never relaxes an integrity or scoring
     check and never mutates the frozen oracle.
+
+    ``max_requests`` is the request budget this evaluation is bound by. It MUST
+    match the frozen local protocol (for the local Ollama C09 protocol that is
+    8, not the global 64), and it is used BOTH for the reported budget and for
+    the arm-reliability cap, so a lower declared budget tightens rather than
+    loosens the integrity gate.
     """
-    decision = _decide_c09(a, b)
+    decision = _decide_c09(a, b, max_requests)
     rule_errors: list[str] = []
     for arm_name, expected_rules, arm in (("c09_a", "none", a), ("c09_b", "c09", b)):
         if arm is None:
@@ -838,10 +851,10 @@ def evaluate_c09_only(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dic
                       for name, report in (("c09_a", a), ("c09_b", b)) if report}
     total = sum(request_counts.values())
     experiment_status = "COMPLETE" if decision["status"] in {"ACCEPT", "REJECT"} else "INCOMPLETE"
-    if total > MAX_NEW_REQUESTS:
+    if total > max_requests:
         experiment_status = "BUDGET_EXCEEDED"
         decision = _result("INCONCLUSIVE", {
-            "reason": f"actual request count {total} exceeds frozen limit {MAX_NEW_REQUESTS}"})
+            "reason": f"actual request count {total} exceeds the declared limit {max_requests}"})
     arm_metrics = {name: _arm_metrics(report)
                    for name, report in (("c09_a", a), ("c09_b", b)) if report}
     stop_reasons = sorted({
@@ -864,7 +877,7 @@ def evaluate_c09_only(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dic
         "provider": EXPECTED_PROVIDER,
         "model": EXPECTED_MODEL,
         "request_budget": {
-            "maximum_new_upstream_model_requests": MAX_NEW_REQUESTS,
+            "maximum_new_upstream_model_requests": max_requests,
             "actual_requests_by_arm": request_counts,
             "actual_total_requests": total,
             "automatic_judge_requests": 0,
@@ -905,13 +918,17 @@ def main() -> int:
     parser.add_argument("--expected-model", default="cohere/north-mini-code:free")
     parser.add_argument("--c09-only", action="store_true",
                         help="Evaluate only the C09 A/B pair (local small-budget experiment).")
+    parser.add_argument("--max-new-requests", type=int, default=MAX_NEW_REQUESTS,
+                        help="Request budget the C09-only evaluation is bound by; it must match"
+                             " the frozen local protocol (local Ollama C09 uses 8, not 64).")
     args = parser.parse_args()
     EXPECTED_PROVIDER = args.expected_provider
     EXPECTED_MODEL = args.expected_model
     reports = {name: _load(getattr(args, name)) for name in
                ("c03_a", "c03_b", "c08_a", "c08_b", "c09_a", "c09_b")}
     if args.c09_only:
-        report = evaluate_c09_only(reports["c09_a"], reports["c09_b"])
+        report = evaluate_c09_only(reports["c09_a"], reports["c09_b"],
+                                   max_requests=args.max_new_requests)
     else:
         report = evaluate_reports(reports)
     output = Path(args.output)

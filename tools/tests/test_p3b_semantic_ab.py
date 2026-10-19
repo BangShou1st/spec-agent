@@ -10,6 +10,7 @@ from p3b.p3b_semantic_ab import (
     _judge_c09_question,
     _no_unneeded_tool,
     _validate_c09_semantic_review,
+    evaluate_c09_only,
 )
 
 
@@ -441,3 +442,38 @@ def test_incomplete_c08_and_missing_c09_arms_stay_inconclusive():
     incomplete = {"report_status": "INCOMPLETE", "stopped_after_provider_failure": True}
     assert _decide_c08({}, incomplete)["status"] == "INCONCLUSIVE"
     assert _decide_c09(None, None)["status"] == "INCONCLUSIVE"
+
+
+def _single_variant_report(requests_per_variant):
+    """One C09 base attempt whose arm advertises a chosen request count."""
+    attempt = _c09_attempt()
+    report = _c09_report([attempt])
+    report["total_model_requests"] = requests_per_variant
+    return report
+
+
+def test_c09_only_declares_the_local_budget_not_the_global_cap():
+    # The frozen local Ollama C09 protocol budgets 8 requests; the evaluator
+    # previously reported the global 64, which contradicted the protocol.
+    a = _single_variant_report(4)
+    b = _single_variant_report(4)
+    report = evaluate_c09_only(a, b, max_requests=8)
+    assert report["request_budget"]["maximum_new_upstream_model_requests"] == 8
+    assert report["request_budget"]["actual_total_requests"] == 8
+
+    # An arm beyond the declared local budget fails closed.
+    over = evaluate_c09_only(a, _single_variant_report(5), max_requests=8)
+    assert over["experiment_status"] == "BUDGET_EXCEEDED"
+    assert over["rule_decisions"]["c09"]["status"] == "INCONCLUSIVE"
+
+    # The default preserves the historical global cap.
+    assert (evaluate_c09_only(a, b)["request_budget"]
+            ["maximum_new_upstream_model_requests"]) == 64
+
+
+def test_c09_only_lower_budget_tightens_the_arm_reliability_cap():
+    # 5 requests is trustworthy under the global 64 cap but NOT under a local 8.
+    a = _single_variant_report(5)
+    b = _single_variant_report(5)
+    assert evaluate_c09_only(a, b, max_requests=8)["experiment_status"] == "BUDGET_EXCEEDED"
+    assert evaluate_c09_only(a, b)["experiment_status"] in {"INCOMPLETE", "COMPLETE"}
