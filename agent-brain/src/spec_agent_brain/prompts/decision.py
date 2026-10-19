@@ -8,11 +8,12 @@ Reflection 与 Planning 有意放在同一次模型调用中;这个边界绝不�
 """
 
 import json
+import os
 from typing import Any, Dict
 
 from ..contracts.inputs import AgentV2RequestEnvelope
 
-SYSTEM_PROMPT = """你是需求工作区的决策引擎。你在一次响应中完成反思（reflection）与规划（planning），只输出一个 JSON 对象。
+_BASE_SYSTEM_PROMPT = """你是需求工作区的决策引擎。你在一次响应中完成反思（reflection）与规划（planning），只输出一个 JSON 对象。
 
 输出结构：
 {"observation": {"known": [...], "unknowns": [...], "conflicts": [...], "risks": [...]},
@@ -54,6 +55,53 @@ SYSTEM_PROMPT = """你是需求工作区的决策引擎。你在一次响应中�
 25. WAIT 只有在存在真实且已知的 external dependency、async process、pending prerequisite 或 already-started operation，并且当前无法主动推进时才 eligible。uncertainty、missing information、用户选择、普通澄清，或不知道该选什么动作，都不是 WAIT 的 positive evidence。
 26. RESPOND_TO_USER 只有在当前 state 已足以直接回应用户，且不需要新的用户信息、不需要新的 Graph mutation、不需要 capability、也不需要等待时才 eligible。resolved 且没有新的 durable Graph 工作时，直接使用 RESPOND_TO_USER；不要把它当作其他动作的模糊 fallback。
 27. 对非 NODE_QUERY，先逐项证明各 action independently eligible，再在 eligible actions 中选择最直接推进用户意图且 mutation 最少者；不能先排除动作、再把剩余动作当默认动作。NODE_QUERY 继续遵守第 8 条；已解决的冲突继续遵守当前 state，不得因历史上曾经有过不确定性而重新提问或创建重复 clarification node。"""
+
+
+# P3-B 候选规则通过同一 DECISION 调用做受控实验。默认启用的规则只会在
+# 自动 A/B 判据 ACCEPT 后更新；评测专用环境变量允许隔离服务选择冻结版本，
+# 不增加推理请求，也不改变 Runtime 的 eligibility 或授权判断。
+P3B_DECISION_PROMPT_RULES = {
+    "c03": (
+        "28. 在决定 REQUEST_USER_INPUT 之前，先核对 snapshot.lineage 中既往问题及其 answer/patches，"
+        "并结合 effectiveClaims 与当前事件，确认所需信息是否已经由用户提供。若新问题只是已答问题的"
+        "语义等价改写，即使措辞不同，也不得重复追问；使用已有答案继续推进。只有当用户提出了真正冲突"
+        "的新约束、既往答案不足以执行必要步骤，或仍缺少可靠推进所必需的信息时，才可追问，并且只问"
+        "实际缺少的内容；不得猜测或编造来代替必要追问。"
+    ),
+    "c08": (
+        "29. 能力与当前主题相关，不等于必须调用。若用户目标明确要求读取现有项目资料或执行外部步骤，"
+        "且 availableCapabilities 中存在匹配能力、其声明必填参数都能从当前输入有依据地构造，选择"
+        "INVOKE_CAPABILITY 取得完成目标所需结果；不要为已在参数或上下文中给出的信息继续追问。若无需"
+        "能力结果即可可靠完成用户目标，则直接推进或回应，不为使用工具而调用。"
+    ),
+    "c09": (
+        "30. 若能力步骤确实必要，但其声明的必填参数有任何一项尚未在当前输入中提供，不得发起缺参调用，"
+        "不得编造参数，也不得再次询问已经提供的值；只向用户询问真正缺少的必填参数。若当前目标无需"
+        "能力结果也能有依据地完成，则直接回应，不强行要求调用。"
+    ),
+}
+
+# 初始对照版本保持现有 Prompt。每项自动 A/B 完成后，仅把被接受的规则加入此集合。
+_ACTIVE_P3B_PROMPT_RULES: tuple[str, ...] = ()
+
+
+def _selected_p3b_prompt_rules() -> tuple[str, ...]:
+    override = os.environ.get("SPEC_AGENT_P3B_EVAL_PROMPT_RULES")
+    if override is None:
+        return _ACTIVE_P3B_PROMPT_RULES
+    if override.strip().lower() in {"", "none"}:
+        return ()
+    selected = tuple(dict.fromkeys(part.strip().lower() for part in override.split(",") if part.strip()))
+    unknown = sorted(set(selected) - P3B_DECISION_PROMPT_RULES.keys())
+    if unknown:
+        raise RuntimeError(f"Unknown P3-B evaluation prompt rule(s): {unknown}")
+    return selected
+
+
+SELECTED_P3B_PROMPT_RULES = _selected_p3b_prompt_rules()
+SYSTEM_PROMPT = _BASE_SYSTEM_PROMPT + "".join(
+    f"\n{P3B_DECISION_PROMPT_RULES[rule]}" for rule in SELECTED_P3B_PROMPT_RULES
+)
 
 
 def _related_node_view(ref) -> Dict[str, Any]:

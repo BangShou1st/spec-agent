@@ -1,9 +1,39 @@
-# P3-B 语义错误清单与下一阶段最小 Prompt A/B 方案
+# P3-B 语义错误清单、最小 Prompt A/B 方案与执行证据
 
 状态：**PENDING_HUMAN_REVIEW**（AI 候选标签，尚未人工审核）
 
-本轮不修改 DECISION Prompt，也不修改 18×2 oracle 与 acceptableActions；本文件只做
-"从真实证据出发的语义错误归档 + 下一阶段最小 A/B 提议"。
+本文件先归档截至 2026-10-18 的真实语义错误与原始 A/B 提议；2026-10-19 的执行结果见下方。
+默认生产 DECISION Prompt 未推广候选规则；18×2 oracle 与 acceptableActions 始终保持冻结。
+
+## 2026-10-19 自主 A/B 执行补充
+
+以下记录覆盖上面“本轮不执行真实模型调用”的历史计划。原始场景标签和 oracle 仍保持
+`PENDING_HUMAN_REVIEW`，未改写、未据模型输出调标签。预注册方案及完整机器报告：
+`tools/p3b/p3b_ab_protocol_20261019.json`、
+`tools/p3b/p3b_semantic_ab_report_20261019.json`；逐臂报告与请求级脱敏证据位于
+`tools/p3b/ab_runs/20261019/`。
+
+- 固定模型：Kilo `cohere/north-mini-code:free`；同一隔离库、运行时、场景事实和资格门禁；
+  每个场景只执行一次，每次两个模型请求；没有 judge、重试或 fallback。
+- C03：A/B 各 16 次请求。fresh A 的 C03/holdout 是 `RESPOND_TO_USER`，B 变成
+  `REQUEST_USER_INPUT`；因此按预注册行为判据 **REJECT**。C03/base 两臂均回应。
+  A 的 C02/base 与 B 的 C01/base 各有一个模型契约失败，计为未测动作。
+- C08：A 有 8 次成功请求，C08/base 和 holdout 都选择追问；C07/holdout 有一个模型契约失败。
+  B 在 C08/base 遇到模型契约失败，C08/holdout 遇到 502 提供商失败，随即触发停止规则，
+  只完成 4 次请求，C07 的 B 变体未运行。故 C08 **INCONCLUSIVE**，不能据此声称改善。
+- C09：未启动 live A/B；C08 B 的提供商失败触发了预注册停止条件，故 **INCONCLUSIVE**。
+- 合计 44/64 次新上游请求：43 成功、1 失败；0 次 429、0 次重试、0 次裁判请求。
+  另有 4 个 `MODEL_PROTOCOL_VIOLATION` 尝试（它们的模型请求本身成功），以及 5 条
+  已持久化的 `RUN_FAILED` 机器码证据；失败机器码摘要见总报告。
+- 自动复核只断言结构、资格门禁、参数声明、来源引用和实际执行等可验证事实。
+  C03 的语义等价判断与无依据事实断言仍是 `UNRESOLVED`；没有独立裁判，也没有把
+  `PENDING_HUMAN_REVIEW` 改成已审核。
+- 没有规则达到 `ACCEPT`，默认生产 Prompt 维持原样；C03 候选规则被拒绝，C08/C09 候选规则
+  不推广。C01/C02 的问题未被证明消除；已完成的 C07 变体没有发生能力调用，C08 B 的 C07
+  未测。结果只代表这些单次 live 样本，不代表稳定语义质量。
+- 回归结果：Brain pytest `249 passed`；`tools/tests` `140 passed`；`evalBFast` `133 passed`；
+  `testNonLive` `2,154 passed / 36 skipped / 0 failed`。四次 live arm 调用的 harness 均正常结束，
+  但这不改变 C08/C09 的 A/B 结论为 `INCONCLUSIVE`。
 
 ## 证据来源（只读，未被改写）
 
@@ -79,6 +109,8 @@ v2 后，`run_normal_terminal_rate` / `action_submitted_rate` / `action_complete
   泛化异常文案放在了 `RUN_FAILED.reason` 之前），因此按"原因未证实即 UNKNOWN"如实维持 UNKNOWN。
   修复后评测先读 `RUN_FAILED.reason`；下一次 live 运行会得到明确分类
   （该形态最可能是 `MODEL_PROTOCOL_VIOLATION`，但**本轮不据此下断言**）。
+2026-10-19 A/B 产生的新 `RUN_FAILED` 证据已单独保存于本文件上方所列报告；它不恢复或替代
+旧 C08/C15 run 的错误机器码，旧样本仍维持 `UNKNOWN`。
 
 ## 下一阶段最小 Prompt A/B 方案（本轮不执行真实模型调用）
 

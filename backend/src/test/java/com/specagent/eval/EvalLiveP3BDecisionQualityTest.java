@@ -2,6 +2,7 @@ package com.specagent.eval;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.agent.trace.SemanticTrace;
+import com.specagent.agent.trace.SemanticTraceSanitizer;
 import com.specagent.model.contract.ModelProvider;
 import com.sharedlibs.kilogateway.FreeModelPolicy;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,10 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -61,10 +66,14 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
 
     /** 明确的 Kilo 模型 ID;不用 kilo-auto/free 等动态路由模型做固定质量比较。 */
     private static final String KILO_MODEL = System.getenv().getOrDefault(
-            "SPEC_AGENT_EVAL_KILO_MODEL", "poolside/laguna-s-2.1:free");
+            "SPEC_AGENT_EVAL_KILO_MODEL", "cohere/north-mini-code:free");
 
     /** 首次评测的请求总量上限(含 STATE_UPDATE + DECISION)。 */
-    private static final int MAX_TOTAL_REQUESTS = 40;
+    private static final int MAX_TOTAL_REQUESTS = 64;
+    private static final String EXPERIMENT_ID = System.getenv().getOrDefault(
+            "SPEC_AGENT_EVAL_P3B_EXPERIMENT", "p3b-live-priority");
+    private static final String PROMPT_RULE_SET = System.getenv().getOrDefault(
+            "SPEC_AGENT_EVAL_P3B_PROMPT_RULES", "default");
 
     private static final java.util.UUID LOCAL_ORG =
             java.util.UUID.fromString("00000000-0000-4000-8000-000000000001");
@@ -131,6 +140,12 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                 .as("fixed quality comparison uses an explicitly named free model")
                 .isTrue();
 
+        Path output = reportPath();
+        Path attemptSidecar = output.resolveSibling(output.getFileName() + ".attempts.jsonl");
+        Files.createDirectories(output.getParent());
+        Files.writeString(attemptSidecar, "", StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+
         List<Map<String, Object>> attemptReports = new ArrayList<>();
         List<P3BDecisionQuality.DecisionObservation> qualityObservations = new ArrayList<>();
         Map<String, P3BCorpus.P3BOracle> oracles = new LinkedHashMap<>();
@@ -140,6 +155,7 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         }
         boolean rateLimited = false;
         boolean stoppedAfterProviderFailure = false;
+        boolean stoppedAfterProviderRetry = false;
         boolean stoppedAfterUnclassifiedFailure = false;
         boolean stoppedOnRequestBudget = false;
         int totalRequests = 0;
@@ -211,8 +227,17 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                 Map<String, Object> attempt = new LinkedHashMap<>();
                 attempt.put("scenario_id", scenario.scenarioId());
                 attempt.put("variant_id", variant.variantId());
-                attempt.put("attempt_id", observation.attemptId());
-                attempt.put("reported_run_id", observation.runId());
+                attempt.put("run_correlation_id", safeCorrelationId(observation.attemptId()));
+                attempt.put("scenario_hash", scenario.definition().scenarioHash());
+                attempt.put("candidate_label_status", "PENDING_HUMAN_REVIEW");
+                attempt.put("oracle_candidate", Map.of(
+                        "acceptable_primary_actions", scenario.definition().expect().acceptablePrimaryActions(),
+                        "forbidden_actions", scenario.definition().expect().forbiddenActions(),
+                        "expected_gate", scenario.oracle().gate().name(),
+                        "expected_veto_reason_codes", scenario.oracle().vetoReasonCodes()));
+                attempt.put("model_request_events", requestEvidence.events());
+                attempt.put("run_failed_evidence", runFailedEvidence(observation.attemptId()));
+                attempt.put("input_evidence", inputEvidence(observation.semanticTrace()));
                 attempt.put("model_selected_action", modelSelected);
                 attempt.put("model_selection_measured", modelSelectionMeasured);
                 attempt.put("model_selection_acceptable", modelSelectionAcceptable);
@@ -227,11 +252,14 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                         && !acceptedAction.isBlank());
                 attempt.put("payload_validity", P3BDecisionQuality.payloadValidity(
                         acceptedAction, executionResult).name());
-                attempt.put("execution_result", executionResult);
+                attempt.put("execution_state", safeExecutionState(executionResult));
                 attempt.put("failure_classification", failure.name());
                 attempt.put("model_request_count", requestEvidence.requestCount());
                 attempt.put("successful_model_requests", requestEvidence.successCount());
                 attempt.put("failed_model_requests", requestEvidence.failedCount());
+                attempt.put("provider_retries", observation.providerRetries());
+                attempt.put("judge_model_calls", observation.judgeModelCalls());
+                attempt.put("reported_production_model_calls", observation.productionModelCalls());
                 attempt.put("provider_failure_categories", requestEvidence.failureCategories());
                 attempt.put("attribution_basis", attributionBasis(
                         acceptedAction, requestEvidence, failure));
@@ -241,13 +269,21 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                 attempt.put("unresolved_semantic_error_signal", semanticErrorSignal);
                 attempt.put("manual_semantic_review_required",
                         Set.of("P3B-C03", "P3B-C13", "P3B-C15").contains(scenario.scenarioId()));
-                attempt.put("decision_output", stage(
-                        observation.semanticTrace(), "DECISION_OUTPUT").get("normalized_output"));
+                attempt.put("model_raw_action", sanitizedModelAction(observation.semanticTrace()));
+                attempt.put("prompt_hashes", promptHashes(observation.semanticTrace()));
+                attempt.put("source_reference_audit", sourceReferenceAudit(observation.semanticTrace()));
+                attempt.put("automatic_semantic_review", automaticSemanticReview(
+                        scenario, modelSelected, observation.semanticTrace(), requestEvidence,
+                        failure, executionResult, capabilityCalls));
                 attempt.put("duration_ms", observation.latencyMs() == null
                         ? measuredDurationMs : observation.latencyMs());
                 attempt.put("measured_duration_ms", measuredDurationMs);
                 attempt.put("stage_latency_ms", observation.stageLatencyMs());
                 attemptReports.add(attempt);
+                Files.writeString(attemptSidecar,
+                        mapper.writeValueAsString(attempt) + System.lineSeparator(),
+                        StandardCharsets.UTF_8, StandardOpenOption.CREATE,
+                        StandardOpenOption.APPEND);
 
                 if (failure == P3BDecisionQuality.FailureClassification.RATE_LIMITED) {
                     rateLimited = true;
@@ -255,6 +291,10 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                 }
                 if (failure.infrastructureFailure()) {
                     stoppedAfterProviderFailure = true;
+                    break outer;
+                }
+                if (observation.providerRetries() > 0) {
+                    stoppedAfterProviderRetry = true;
                     break outer;
                 }
                 if (acceptedAction == null
@@ -270,7 +310,7 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                 qualityObservations, oracles);
         LiveBrainHealth after = readLiveBrainHealth(BRAIN_HEALTH);
         Map<String, Object> report = new LinkedHashMap<>();
-        report.put("schema_version", "p3b-live-priority.v2");
+        report.put("schema_version", "p3b-live-priority.v3");
         report.put("schema_migration",
                 "v1 execution_success_rate 把 Run 正常终态(policy_denied/awaiting_approval)与"
                         + "动作实际执行混为一谈;v2 拆分为 run_normal_terminal_rate /"
@@ -278,6 +318,10 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                         + " 作为 action_completed_rate 的兼容别名(v1 的分母等于 action_measured_count)。"
                         + "v1 的 executed_action 也据此收窄:只有 completed 才记为已执行。");
         report.put("suite", "EvalLiveP3BDecisionQualityTest");
+        report.put("experiment_id", EXPERIMENT_ID);
+        report.put("arm", System.getenv().getOrDefault("SPEC_AGENT_EVAL_P3B_ARM", "UNSPECIFIED"));
+        report.put("prompt_rule_set", PROMPT_RULE_SET);
+        report.put("prompt_version_basis", "DECISION system prompt SHA-256 in each attempt");
         report.put("eval_database", evalDatabase);
         report.put("provider", before.provider());
         report.put("model_id", before.selectedModel());
@@ -291,12 +335,33 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         report.put("scenario_ids", SCENARIO_IDS);
         report.put("attempt_count", attemptReports.size());
         report.put("expected_attempt_count", SCENARIO_IDS.size() * 2);
-        report.put("labels", "AI candidate labels; pending human review");
+        report.put("report_status", attemptReports.size() == SCENARIO_IDS.size() * 2
+                && !rateLimited && !stoppedAfterProviderFailure && !stoppedAfterProviderRetry
+                && !stoppedAfterUnclassifiedFailure
+                && !stoppedOnRequestBudget ? "COMPLETE" : "INCOMPLETE");
+        report.put("human_review_status", "PENDING_HUMAN_REVIEW");
+        report.put("oracle_policy", "Frozen AI candidate labels; this report does not approve or modify them");
+        report.put("request_budget", Map.of(
+                "experiment_max_new_upstream_requests", MAX_TOTAL_REQUESTS,
+                "requests_in_this_arm", totalRequests,
+                "judge_requests", 0,
+                "retry_policy", "No explicit retries or provider fallback; actual inference events are counted"));
         report.put("stopped_after_rate_limit", rateLimited);
         report.put("stopped_after_provider_failure", stoppedAfterProviderFailure);
+        report.put("stopped_after_provider_retry", stoppedAfterProviderRetry);
         report.put("stopped_after_unclassified_failure", stoppedAfterUnclassifiedFailure);
         report.put("stopped_on_request_budget", stoppedOnRequestBudget);
         report.put("total_model_requests", totalRequests);
+        report.put("successful_model_requests", attemptReports.stream()
+                .mapToLong(attempt -> ((Number) attempt.getOrDefault("successful_model_requests", 0)).longValue())
+                .sum());
+        report.put("failed_model_requests", attemptReports.stream()
+                .mapToLong(attempt -> ((Number) attempt.getOrDefault("failed_model_requests", 0)).longValue())
+                .sum());
+        report.put("not_measured_action_count", attemptReports.stream()
+                .filter(attempt -> !Boolean.TRUE.equals(attempt.get("action_measured"))).count());
+        report.put("protocol_failure_count", summary.protocolFailures());
+        report.put("sanitization_policy", "No raw run IDs, full inputs, private prompts, tokens, or HTTP requests; prompt hashes and fixture-only action payloads retained.");
         // 三组独立指标,每组都带显式分母。
         report.put("model_selection_accuracy", summary.modelSelectionAccuracy());
         report.put("model_selection_measured_count", summary.modelSelectionMeasuredCount());
@@ -350,13 +415,12 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         report.put("infrastructure_failure_count", summary.infraFailures());
         report.put("unknown_failure_count", summary.unknownFailureCount());
         report.put("attempts", attemptReports);
+        report.put("attempt_evidence_sidecar", attemptSidecar.toString());
         report.put("python_state_update_delta",
                 after.stateUpdates() - before.pythonBefore().stateUpdates());
         report.put("python_decision_delta",
                 after.decisions() - before.pythonBefore().decisions());
 
-        Path output = Path.of(System.getProperty("user.dir"), "build", "eval-p3b-live",
-                "p3b-live-priority-report.json");
         Files.createDirectories(output.getParent());
         mapper.writerWithDefaultPrettyPrinter().writeValue(output.toFile(), report);
         System.out.println("P3-B live priority report: " + output.toAbsolutePath());
@@ -434,30 +498,280 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
 
     private ModelRequestEvidence modelRequestEvidence(String runId) {
         if (runId == null || runId.isBlank()) {
-            return new ModelRequestEvidence(0, 0, 0, List.of());
+            return new ModelRequestEvidence(0, 0, 0, List.of(), List.of());
         }
         List<String> categories = new ArrayList<>();
+        List<Map<String, Object>> events = new ArrayList<>();
         int[] counts = new int[3];
         jdbcTemplate.query(
-                "SELECT event_type, payload ->> 'gatewayCategory' FROM agent_run_events "
+                "SELECT event_type, payload ->> 'callType', payload ->> 'gatewayCategory' "
+                        + "FROM agent_run_events "
                         + "WHERE run_id = ? AND event_type IN ('MODEL_INFERENCE', "
                         + "'MODEL_INFERENCE_FAILED') ORDER BY sequence",
                 resultSet -> {
                     while (resultSet.next()) {
+                        String eventType = resultSet.getString(1);
+                        String callType = resultSet.getString(2);
+                        String category = resultSet.getString(3);
+                        boolean succeeded = "MODEL_INFERENCE".equals(eventType);
                         counts[0]++;
-                        if ("MODEL_INFERENCE".equals(resultSet.getString(1))) {
+                        if (succeeded) {
                             counts[1]++;
                         } else {
                             counts[2]++;
-                            String category = resultSet.getString(2);
                             if (category != null && !categories.contains(category)) {
                                 categories.add(category);
                             }
                         }
+                        Map<String, Object> evidence = new LinkedHashMap<>();
+                        evidence.put("call_type", callType);
+                        evidence.put("status", succeeded ? "SUCCESS" : "FAILED");
+                        evidence.put("gateway_category", category);
+                        events.add(evidence);
                     }
                     return null;
                 }, UUID.fromString(runId));
-        return new ModelRequestEvidence(counts[0], counts[1], counts[2], categories);
+        return new ModelRequestEvidence(counts[0], counts[1], counts[2], categories, events);
+    }
+
+    /** 在逐项目清理前读取终态机器码;不保留自由文本 summary 或恢复定位 ID。 */
+    private Map<String, Object> runFailedEvidence(String runId) {
+        if (runId == null || runId.isBlank()) {
+            return Map.of("present", false, "reason", "NOT_MEASURED", "error_code", "NOT_MEASURED");
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.query(
+                "SELECT payload ->> 'reason' AS reason, payload ->> 'errorCode' AS error_code "
+                        + "FROM agent_run_events WHERE run_id = ? AND event_type = 'RUN_FAILED' "
+                        + "ORDER BY sequence",
+                (resultSet, rowNum) -> Map.of(
+                        "reason", safeMachineCode(resultSet.getString("reason")),
+                        "error_code", safeMachineCode(resultSet.getString("error_code"))),
+                UUID.fromString(runId));
+        if (rows.isEmpty()) {
+            return Map.of("present", false, "reason", "NONE", "error_code", "NONE");
+        }
+        return Map.of("present", true, "events", rows);
+    }
+
+    private static String safeMachineCode(String value) {
+        if (value == null || value.isBlank()) {
+            return "NOT_RECORDED";
+        }
+        return value.matches("[A-Za-z0-9_]{1,80}") ? value : "UNCLASSIFIED_REDACTED";
+    }
+
+    /** 只留下结构证据摘要;不把完整事实、answer 正文或私人工作区内容写进报告。 */
+    private static Map<String, Object> inputEvidence(SemanticTrace trace) {
+        Map<String, Object> decisionStage = stage(trace, "DECISION_INPUT");
+        Map<String, Object> input = asMap(decisionStage.get("model_input"));
+        if (input.isEmpty()) input = asMap(decisionStage.get("runtime_request"));
+        Map<String, Object> snapshot = asMap(input.get("snapshot"));
+        List<?> lineage = asList(snapshot.get("lineage"));
+        long answeredEntries = lineage.stream().filter(entry -> {
+            Map<String, Object> item = asMap(entry);
+            return item.get("answer") instanceof Map<?, ?>
+                    || !asList(item.get("patches")).isEmpty();
+        }).count();
+        List<?> claims = asList(snapshot.get("effectiveClaims"));
+        long unresolvedClaims = claims.stream().filter(claim ->
+                "unresolved".equalsIgnoreCase(asMap(claim).get("status") == null
+                        ? "" : String.valueOf(asMap(claim).get("status")))).count();
+        List<String> allowedRefs = stringList(snapshot.get("allowedSourceRefs"));
+        List<Map<String, Object>> capabilities = new ArrayList<>();
+        for (Object value : asList(snapshot.get("availableCapabilities"))) {
+            Map<String, Object> descriptor = asMap(value);
+            Map<String, Object> schema = asMap(descriptor.get("inputSchema"));
+            capabilities.add(Map.of(
+                    "id", safeMachineCode(nullableString(descriptor.get("id"))),
+                    "required_arguments", stringList(schema.get("required"))));
+        }
+        Map<String, Object> evidence = new LinkedHashMap<>();
+        evidence.put("answered_lineage_entries", answeredEntries);
+        evidence.put("unresolved_effective_claims", unresolvedClaims);
+        evidence.put("available_capabilities", capabilities);
+        evidence.put("allowed_source_ref_count", allowedRefs.size());
+        evidence.put("allowed_source_refs_sha256", sha256(String.join("\n", allowedRefs.stream().sorted().toList())));
+        evidence.put("retrieved_context_count", asList(snapshot.get("retrievedContext")).size());
+        return evidence;
+    }
+
+    private static Map<String, Object> sanitizedModelAction(SemanticTrace trace) {
+        Map<String, Object> normalized = asMap(stage(trace, "DECISION_OUTPUT").get("normalized_output"));
+        if (normalized.isEmpty()) {
+            return Map.of("status", "NOT_MEASURED");
+        }
+        Map<String, Object> action = new LinkedHashMap<>();
+        action.put("action_family", normalized.getOrDefault("actionFamily", "NOT_MEASURED"));
+        Object payload = normalized.get("payload");
+        action.put("payload", SemanticTraceSanitizer.sanitize(payload == null ? Map.of() : payload));
+        action.put("source_ref_count", stringList(normalized.get("sourceRefs")).size());
+        return action;
+    }
+
+    private static Map<String, Object> promptHashes(SemanticTrace trace) {
+        Map<String, Object> hashes = new LinkedHashMap<>();
+        for (String stageName : List.of("STATE_UPDATE_INPUT", "DECISION_INPUT")) {
+            Map<String, Object> prompt = asMap(stage(trace, stageName).get("prompt"));
+            hashes.put(stageName.toLowerCase(), prompt.getOrDefault(
+                    "system_prompt_sha256", "NOT_MEASURED"));
+        }
+        return hashes;
+    }
+
+    private static Map<String, Object> sourceReferenceAudit(SemanticTrace trace) {
+        Map<String, Object> decisionStage = stage(trace, "DECISION_INPUT");
+        Map<String, Object> input = asMap(decisionStage.get("model_input"));
+        if (input.isEmpty()) input = asMap(decisionStage.get("runtime_request"));
+        Map<String, Object> snapshot = asMap(input.get("snapshot"));
+        Map<String, Object> normalized = asMap(stage(trace, "DECISION_OUTPUT").get("normalized_output"));
+        if (normalized.isEmpty()) {
+            return Map.of("status", "NOT_MEASURED", "source_refs_allowed", "NOT_MEASURED",
+                    "source_ref_count", 0, "anchor_ref_count", 0,
+                    "invalidated_source_ref_count", 0,
+                    "invalidated_source_reference_used", "NOT_MEASURED");
+        }
+        List<String> allowed = stringList(snapshot.get("allowedSourceRefs"));
+        List<String> refs = stringList(normalized.get("sourceRefs"));
+        List<String> anchors = stringList(normalized.get("anchorRefs"));
+        boolean valid = allowed.containsAll(refs) && allowed.containsAll(anchors);
+        Set<String> invalidated = invalidatedSourceRefs(snapshot);
+        long invalidatedCount = java.util.stream.Stream.concat(refs.stream(), anchors.stream())
+                .filter(invalidated::contains).distinct().count();
+        return Map.of(
+                "status", snapshot.isEmpty() ? "PARTIALLY_MEASURED" : "DETERMINISTIC_VERIFIED",
+                "source_refs_allowed", valid,
+                "source_ref_count", refs.size(),
+                "anchor_ref_count", anchors.size(),
+                "source_ref_manifest_sha256", sha256(String.join("\n", refs.stream().sorted().toList())),
+                "invalidated_source_ref_count", invalidatedCount,
+                "invalidated_source_reference_used", invalidatedCount > 0);
+    }
+
+    private static Set<String> invalidatedSourceRefs(Map<String, Object> snapshot) {
+        java.util.Set<String> invalidated = new java.util.LinkedHashSet<>();
+        for (Object value : asList(snapshot.get("retrievedContext"))) {
+            Map<String, Object> item = asMap(value);
+            String status = nullableString(item.get("status"));
+            Object current = item.get("isCurrent");
+            if ("stale".equalsIgnoreCase(status) || "superseded".equalsIgnoreCase(status)
+                    || "rejected".equalsIgnoreCase(status) || Boolean.FALSE.equals(current)) {
+                String ref = nullableString(item.get("sourceRef"));
+                if (ref != null) invalidated.add(ref);
+            }
+        }
+        return invalidated;
+    }
+
+    private static Map<String, Object> automaticSemanticReview(
+            P3BCorpus.P3BScenario scenario, String proposedAction, SemanticTrace trace,
+            ModelRequestEvidence requests, P3BDecisionQuality.FailureClassification failure,
+            String executionResult, int capabilityCalls) {
+        Map<String, Object> evidence = inputEvidence(trace);
+        Map<String, Object> decisionStage = stage(trace, "DECISION_INPUT");
+        Map<String, Object> input = asMap(decisionStage.get("model_input"));
+        if (input.isEmpty()) input = asMap(decisionStage.get("runtime_request"));
+        Map<String, Object> snapshot = asMap(input.get("snapshot"));
+        Map<String, Object> normalized = asMap(stage(trace, "DECISION_OUTPUT").get("normalized_output"));
+        Map<String, Object> payload = asMap(normalized.get("payload"));
+        Map<String, Object> argumentAudit = capabilityArgumentAudit(
+                snapshot, nullableString(payload.get("capabilityId")), asMap(payload.get("arguments")));
+        boolean measured = proposedAction != null && requests.requestCount() > 0;
+        Map<String, Object> review = new LinkedHashMap<>();
+        review.put("status", measured ? "AUTO_REVIEWED" : "UNRESOLVED");
+        review.put("reviewer", "p3b-deterministic-evidence-audit.v1");
+        review.put("review_scope", "fixture facts, candidate oracle alignment, protocol, source refs, declared parameters, and execution trace");
+        review.put("oracle_human_review_status", "PENDING_HUMAN_REVIEW");
+        review.put("candidate_oracle_action_match", proposedAction != null
+                && scenario.definition().expect().acceptablePrimaryActions().contains(proposedAction));
+        review.put("answered_lineage_present", ((Number) evidence.getOrDefault("answered_lineage_entries", 0)).longValue() > 0);
+        review.put("unresolved_effective_claim_count", evidence.getOrDefault("unresolved_effective_claims", 0));
+        review.put("capability_argument_audit", argumentAudit);
+        review.put("capability_invocation_count", capabilityCalls);
+        review.put("cycle_completed", "completed".equalsIgnoreCase(executionResult));
+        review.put("failure_classification", failure.name());
+        review.put("source_reference_audit", sourceReferenceAudit(trace));
+        review.put("semantic_equivalence", "UNRESOLVED");
+        review.put("unsupported_factual_assertions", "UNRESOLVED");
+        review.put("basis", List.of(
+                "The frozen candidate label was compared without editing it.",
+                "The report records structural facts and runtime outcomes; no independent judge model was called."));
+        return review;
+    }
+
+    private static Map<String, Object> capabilityArgumentAudit(
+            Map<String, Object> snapshot, String capabilityId, Map<String, Object> arguments) {
+        if (capabilityId == null || capabilityId.isBlank()) {
+            return Map.of("status", "NOT_APPLICABLE");
+        }
+        for (Object value : asList(snapshot.get("availableCapabilities"))) {
+            Map<String, Object> descriptor = asMap(value);
+            if (!capabilityId.equals(descriptor.get("id"))) continue;
+            Map<String, Object> schema = asMap(descriptor.get("inputSchema"));
+            List<String> required = stringList(schema.get("required"));
+            List<String> missing = required.stream().filter(name -> {
+                Object argument = arguments.get(name);
+                return argument == null || (argument instanceof String text && text.isBlank());
+            }).toList();
+            return Map.of(
+                    "status", "DETERMINISTIC_VERIFIED",
+                    "capability_visible", true,
+                    "required_arguments", required,
+                    "provided_argument_names", arguments.keySet().stream().map(String::valueOf).sorted().toList(),
+                    "missing_required_arguments", missing,
+                    "complete", missing.isEmpty());
+        }
+        return Map.of("status", "DETERMINISTIC_VERIFIED", "capability_visible", false);
+    }
+
+    private static Path reportPath() {
+        String configured = System.getenv("SPEC_AGENT_EVAL_P3B_REPORT_PATH");
+        return configured == null || configured.isBlank()
+                ? Path.of(System.getProperty("user.dir"), "build", "eval-p3b-live",
+                        "p3b-live-priority-report.json")
+                : Path.of(configured);
+    }
+
+    private static String safeCorrelationId(String value) {
+        return value == null || value.isBlank() ? "NOT_MEASURED" : sha256(value).substring(0, 20);
+    }
+
+    private static String sha256(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is unavailable", impossible);
+        }
+    }
+
+    private static Map<String, Object> asMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) return Map.of();
+        Map<String, Object> result = new LinkedHashMap<>();
+        map.forEach((key, item) -> result.put(String.valueOf(key), item));
+        return result;
+    }
+
+    private static List<?> asList(Object value) {
+        return value instanceof List<?> list ? list : List.of();
+    }
+
+    private static List<String> stringList(Object value) {
+        return asList(value).stream().filter(java.util.Objects::nonNull)
+                .map(String::valueOf).toList();
+    }
+
+    private static String nullableString(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static String safeExecutionState(String value) {
+        if (value == null || value.isBlank()) return "NOT_MEASURED";
+        String normalized = value.toLowerCase(java.util.Locale.ROOT);
+        for (String state : List.of("completed", "failed", "policy_denied", "awaiting_approval", "cancelled")) {
+            if (normalized.equals(state) || normalized.startsWith(state + ":")) return state;
+        }
+        return "UNKNOWN";
     }
 
     private int persistedCapabilityInvocations(UUID projectId) {
@@ -500,6 +814,7 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
     }
 
     private record ModelRequestEvidence(int requestCount, int successCount, int failedCount,
-                                        List<String> failureCategories) {
+                                        List<String> failureCategories,
+                                        List<Map<String, Object>> events) {
     }
 }
