@@ -22,6 +22,12 @@ C09_SEMANTIC_REVIEWER = "p3b-c09-rule-judge.v1"
 C09_SEMANTIC_INPUT_VERSION = "c09-clarification-input.v1"
 C09_SEMANTIC_OUTPUT_VERSION = "c09-semantic-review.v1"
 
+# 冻结的期望提供商/模型标签。默认值保持历史 Kilo 实验的约束不变;本地 CUSTOM
+# (例如本机 Ollama) 实验通过 --expected-provider/--expected-model 显式传入,
+# 完整性检查的强度不放松:两臂仍必须与同一个显式期望标签一致。
+EXPECTED_PROVIDER = "KILO"
+EXPECTED_MODEL = "cohere/north-mini-code:free"
+
 
 def _attempt_map(report: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
     attempts = report.get("attempts")
@@ -48,7 +54,7 @@ def _capability_calls(attempt: dict[str, Any] | None) -> int:
 def _reliable_report(report: dict[str, Any] | None) -> bool:
     if not report or report.get("report_status") != "COMPLETE":
         return False
-    if report.get("provider") != "KILO" or report.get("model_id") != "cohere/north-mini-code:free":
+    if report.get("provider") != EXPECTED_PROVIDER or report.get("model_id") != EXPECTED_MODEL:
         return False
     if report.get("stopped_after_rate_limit") or report.get("stopped_after_provider_failure"):
         return False
@@ -807,6 +813,82 @@ def evaluate_reports(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any
     }
 
 
+def evaluate_c09_only(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dict[str, Any]:
+    """Evaluate only the frozen C09 A/B pair (local, small-budget experiment).
+
+    Reuses ``_decide_c09`` (and through it the ``_pair_integrity`` gate and the
+    ``p3b-c09-rule-judge.v1`` deterministic judge) unchanged. It narrows the
+    experiment scope to the C09 rule; it never relaxes an integrity or scoring
+    check and never mutates the frozen oracle.
+    """
+    decision = _decide_c09(a, b)
+    rule_errors: list[str] = []
+    for arm_name, expected_rules, arm in (("c09_a", "none", a), ("c09_b", "c09", b)):
+        if arm is None:
+            rule_errors.append(f"{arm_name} missing")
+        elif arm.get("prompt_rule_set") != expected_rules:
+            rule_errors.append(
+                f"{arm_name} prompt rule set was {arm.get('prompt_rule_set')!r};"
+                f" expected {expected_rules!r}")
+    if rule_errors:
+        decision = _result("INCONCLUSIVE", {
+            "reason": "prompt rule set mismatch", "rule_errors": rule_errors})
+    provided = [report for report in (a, b) if report]
+    request_counts = {name: int(report.get("total_model_requests", 0))
+                      for name, report in (("c09_a", a), ("c09_b", b)) if report}
+    total = sum(request_counts.values())
+    experiment_status = "COMPLETE" if decision["status"] in {"ACCEPT", "REJECT"} else "INCOMPLETE"
+    if total > MAX_NEW_REQUESTS:
+        experiment_status = "BUDGET_EXCEEDED"
+        decision = _result("INCONCLUSIVE", {
+            "reason": f"actual request count {total} exceeds frozen limit {MAX_NEW_REQUESTS}"})
+    arm_metrics = {name: _arm_metrics(report)
+                   for name, report in (("c09_a", a), ("c09_b", b)) if report}
+    stop_reasons = sorted({
+        reason
+        for metrics in arm_metrics.values()
+        for reason, occurred in metrics["stop_flags"].items()
+        if occurred
+    })
+    review_counts = Counter(
+        attempt.get("automatic_semantic_review", {}).get("status", "UNRESOLVED")
+        for report in provided for attempt in report.get("attempts", []))
+    return {
+        "schema_version": "p3b-semantic-ab-c09-local.v1",
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "scope": "C09-only local A/B; reuses the frozen C09 rule judge and _pair_integrity gate",
+        "pre_registered_protocol": "tools/p3b/p3b_ab_protocol_20261019.json",
+        "experiment_status": experiment_status,
+        "human_review_status": "PENDING_HUMAN_REVIEW",
+        "oracle_policy": "Original 18x2 candidate oracle is frozen and remains unapproved.",
+        "provider": EXPECTED_PROVIDER,
+        "model": EXPECTED_MODEL,
+        "request_budget": {
+            "maximum_new_upstream_model_requests": MAX_NEW_REQUESTS,
+            "actual_requests_by_arm": request_counts,
+            "actual_total_requests": total,
+            "automatic_judge_requests": 0,
+            "judge_policy": "C09 uses a blind deterministic rule evaluator; it makes zero model calls and leaves generic or ambiguous questions UNRESOLVED.",
+        },
+        "semantic_evaluator": {
+            "reviewer": C09_SEMANTIC_REVIEWER,
+            "input_version": C09_SEMANTIC_INPUT_VERSION,
+            "output_version": C09_SEMANTIC_OUTPUT_VERSION,
+            "type": "DETERMINISTIC_RULES",
+            "model_calls": 0,
+            "blind_to_ab_arm_and_candidate_action": True,
+            "does_not_claim_model_cognition": True,
+        },
+        "arm_measurements": arm_metrics,
+        "experiment_stop_reasons": stop_reasons,
+        "rule_decisions": {"c09": decision},
+        "automatic_review_counts": dict(review_counts),
+        "arm_reports": {"c09_a": a, "c09_b": b},
+        "historical_evidence_policy": "Prior live JSON was context only and was not reused as a fresh A/B arm.",
+        "conclusion_scope": "Single fresh attempt per variant on a local provider; it does not establish stable model improvement.",
+    }
+
+
 def _load(path: str | None) -> dict[str, Any] | None:
     if not path:
         return None
@@ -814,14 +896,24 @@ def _load(path: str | None) -> dict[str, Any] | None:
 
 
 def main() -> int:
+    global EXPECTED_PROVIDER, EXPECTED_MODEL
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("c03_a", "c03_b", "c08_a", "c08_b", "c09_a", "c09_b"):
         parser.add_argument(f"--{name.replace('_', '-')}")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--expected-provider", default="KILO")
+    parser.add_argument("--expected-model", default="cohere/north-mini-code:free")
+    parser.add_argument("--c09-only", action="store_true",
+                        help="Evaluate only the C09 A/B pair (local small-budget experiment).")
     args = parser.parse_args()
+    EXPECTED_PROVIDER = args.expected_provider
+    EXPECTED_MODEL = args.expected_model
     reports = {name: _load(getattr(args, name)) for name in
                ("c03_a", "c03_b", "c08_a", "c08_b", "c09_a", "c09_b")}
-    report = evaluate_reports(reports)
+    if args.c09_only:
+        report = evaluate_c09_only(reports["c09_a"], reports["c09_b"])
+    else:
+        report = evaluate_reports(reports)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

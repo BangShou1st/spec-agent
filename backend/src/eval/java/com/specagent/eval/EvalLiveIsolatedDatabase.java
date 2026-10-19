@@ -174,4 +174,52 @@ public final class EvalLiveIsolatedDatabase {
             return identity.database();
         });
     }
+
+    /**
+     * 隔离库准备(自定义提供商版):同样在<b>任何 DELETE / INSERT 之前</b>先核实真实
+     * 库身份,仅在被明确指定的独立 P3-B live 评测库上激活 CUSTOM 并写入单例
+     * {@code custom_provider_settings} 行。用于把本地 Ollama(OpenAI 兼容)提供商接入
+     * 同一条 live A/B 链路。密钥显式为 {@code NULL}:本地服务不需要凭据,也绝不会
+     * 把任何历史密钥带到这个新地址。{@code validated_revision = config_revision = 1}
+     * 表示该配置已通过兼容性验证、处于可激活状态。
+     *
+     * @return 已核实的真实库名(供报告留证)
+     */
+    public static String seedCustomActivation(JdbcTemplate jdbcTemplate,
+                                              String configuredDatabase,
+                                              String apiFormat,
+                                              String baseUrl,
+                                              String selectedModel,
+                                              String displayName,
+                                              UUID orgId) {
+        DatabaseIdentity initialIdentity = readIdentity(jdbcTemplate);
+        requireIsolatedLiveEvalDatabase(initialIdentity, configuredDatabase);
+        if (jdbcTemplate.getDataSource() == null) {
+            throw new IllegalStateException("refusing to seed: the evaluation datasource is unavailable");
+        }
+        TransactionTemplate transaction = new TransactionTemplate(
+                new DataSourceTransactionManager(jdbcTemplate.getDataSource()));
+        return transaction.execute(status -> {
+            DatabaseIdentity identity = readIdentity(jdbcTemplate);
+            requireIsolatedLiveEvalDatabase(identity, configuredDatabase);
+
+            jdbcTemplate.update("DELETE FROM kilo_settings");
+            jdbcTemplate.update("DELETE FROM model_provider_settings");
+            jdbcTemplate.update("DELETE FROM custom_provider_settings");
+            jdbcTemplate.update(
+                    "INSERT INTO model_provider_settings "
+                            + "(singleton_id, active_provider, updated_at, active_provider_id, org_id) "
+                            + "VALUES (1, 'CUSTOM', CURRENT_TIMESTAMP, NULL, ?)",
+                    orgId);
+            jdbcTemplate.update(
+                    "INSERT INTO custom_provider_settings "
+                            + "(org_id, singleton_id, api_format, base_url, api_key, masked_suffix, "
+                            + "selected_model, model_source, display_name, config_revision, "
+                            + "validated_revision, created_at, updated_at, validated_at) "
+                            + "VALUES (?, 1, ?, ?, NULL, NULL, ?, 'MANUAL', ?, 1, 1, "
+                            + "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                    orgId, apiFormat, baseUrl, selectedModel, displayName);
+            return identity.database();
+        });
+    }
 }

@@ -1,0 +1,129 @@
+{
+  "protocol_id": "p3b-c09-local-ab.v1",
+  "frozen_at_utc": "2026-10-19T15:30:00Z",
+  "source_dev_sha": "12c6366e7c968ba39baaa956c098c8c8d5a52879",
+  "main_sha_at_freeze": "74b9815d69a562d6782c4efbef1b7daf3f075905",
+  "parent_protocol": "tools/p3b/p3b_ab_protocol_20261019.json",
+  "historical_protocol_state_imported": false,
+  "historical_kilo_c09_run_reused_as_arm": false,
+  "upstream_inference_requests_before_freeze": 0,
+  "arms": {
+    "A": {
+      "label": "current production DECISION prompt",
+      "provider": "CUSTOM",
+      "model_id": "qwen3.5:4b",
+      "prompt_rule_set": "none",
+      "decision_system_prompt_sha256": "7417cbe5b2fc1c2146b7eae54cd0a9fd4181484c10b65a9f9d3f47ce63d42bf7",
+      "state_update_system_prompt_sha256": "d8490e85d7a408fdb549cd7e0ac1cfd8e64ebd36ad0910d17d72015105351d77"
+    },
+    "B": {
+      "label": "production prompt plus existing C09 candidate rule",
+      "provider": "CUSTOM",
+      "model_id": "qwen3.5:4b",
+      "prompt_rule_set": "c09",
+      "decision_system_prompt_sha256": "2078dd4e3da07184efdad1a3d6e9997a19d52a27d6330211d15d35b2835db38d",
+      "state_update_system_prompt_sha256": "d8490e85d7a408fdb549cd7e0ac1cfd8e64ebd36ad0910d17d72015105351d77"
+    }
+  },
+  "provider_and_transport": {
+    "provider": "Custom provider (local Ollama, OpenAI-compatible Chat Completions)",
+    "api_format": "CHAT_COMPLETIONS",
+    "gateway_base_url": "http://127.0.0.1:11434/v1",
+    "resolved_inference_endpoint": "http://127.0.0.1:11434/v1/chat/completions",
+    "model_catalog_url": "http://127.0.0.1:11434/v1/models",
+    "catalog_observed_model_ids": [
+      "nomic-embed-text:latest",
+      "qwen3-embedding:0.6b",
+      "qwen3.5:4b"
+    ],
+    "selected_model_id": "qwen3.5:4b",
+    "ollama_reported_version": "0.40.6",
+    "ollama_reported_quantization": "Q4_K_M",
+    "ollama_reported_context_length": 262144,
+    "credential_policy": "The isolated CUSTOM row is seeded with api_key = NULL (explicitly empty). No provider key is loaded or sent; the compatibility probe and the live runs send no Authorization header.",
+    "provider_url_security": "http only permitted for localhost/loopback; http://127.0.0.1:11434/v1 is accepted and normalized.",
+    "fallback_model_count": 0,
+    "same_model_retry": false,
+    "provider_switch": false,
+    "runtime_model_binding": "RoutingModelInferenceGateway freezes one provider/model target per Run; no retarget after freeze.",
+    "gateway_adds_path": "The frozen Java gateway appends /chat/completions; the configured Base URL never contains it."
+  },
+  "tooling_extension": {
+    "reason": "The existing P3-B live A/B harness hard-coded provider KILO and model cohere/north-mini-code:free, and the evaluator hard-coded the same expected provider/model. A minimal, backward-compatible extension was required to point the same frozen pipeline at a local Custom provider.",
+    "changes": [
+      "EvalLiveIsolatedDatabase.seedCustomActivation(...): new seeding path that writes active_provider=CUSTOM plus a single custom_provider_settings row after the SAME isolated-database identity guard (no guard weakened).",
+      "EvalLiveHarnessBase.requireLiveProvider(...): added an explicit CUSTOM case reading CustomRuntimeSettings; unsupported providers are still rejected.",
+      "EvalLiveP3BDecisionQualityTest: provider/model/expected-model read from SPEC_AGENT_EVAL_P3B_PROVIDER and SPEC_AGENT_EVAL_P3B_CUSTOM_* env vars; defaults remain KILO + cohere/north-mini-code:free so historic behaviour is unchanged.",
+      "p3b_semantic_ab.py: EXPECTED_PROVIDER/EXPECTED_MODEL are now module-level constants with the original Kilo defaults, overridable via --expected-provider/--expected-model; a new --c09-only mode calls the UNCHANGED _decide_c09()/_pair_integrity() gate."
+    ],
+    "scoring_criteria_changed": false,
+    "integrity_checks_weakened": false,
+    "production_code_changed": false,
+    "harness_extension_sha256": {
+      "tools/p3b/p3b_semantic_ab.py": "fbe760ab26ac5c8c5fb33527b18cc012ea2062365addcc19770df3cb6eac3be3",
+      "EvalLiveP3BDecisionQualityTest.java": "673ea586add35b87c951a40b9b95ad09ee83c3054c9eba2c02e354d55afe3bbb",
+      "EvalLiveHarnessBase.java": "b6e57042f4e3b873f46fea7b51094a3cdceb70690fa6cffcfb4b2b691bda5b15",
+      "EvalLiveIsolatedDatabase.java": "9ac3e20e0301d501fa7d95fe341eabfaeb84011cce4875ba072bc15ef40cb5ec"
+    }
+  },
+  "scenarios": {
+    "scenario_ids": ["P3B-C09"],
+    "variants": ["base", "holdout"],
+    "execution_sequence": ["STATE_UPDATE", "DECISION"],
+    "expected_primary_action": "REQUEST_USER_INPUT",
+    "frozen_facts": "The user goal requires searching existing project information; memory.search is visible; scope=PROJECT is provided; required query is missing. Ask for the missing retrieval terms/query, do not ask again for scope, do not invent query text, and do not invoke the capability without query.",
+    "corpus_source_sha256": "9edf536aa61354e0baadb4b83c8ac75e275bb16b4e832b4c3f31674b46ca5ac2",
+    "c09_fixture_method_sha256": "88deea45d3d9acff0eecac2fa29733cd3459004dc9f6849740823460eacb8db5"
+  },
+  "action_eligibility": {
+    "mode": "ENFORCED",
+    "configuration_source": "SPEC_AGENT_ACTION_ELIGIBILITY_MODE=enforced for this test process; this matches the production default. The repository test profile otherwise defaults to shadow; shadow was NOT used for the frozen arms.",
+    "production_safety_mechanisms_modified": false
+  },
+  "scoring": {
+    "judge_version": "p3b-c09-rule-judge.v1",
+    "entrypoints": ["_assess_c09_attempt()", "_decide_c09()"],
+    "judge_model_calls": 0,
+    "manual_semantic_review": false,
+    "oracle_or_threshold_modified": false,
+    "decision_rule": "Use the existing C09 scorer unchanged. ACCEPT requires complete matching A/B input evidence, both B variants structurally and semantically correct with zero capability calls, measured improvement over fresh A, and fail-closed handling of any missing-query capability proposal. Missing or unresolved evidence remains INCONCLUSIVE; incorrect B evidence is REJECT."
+  },
+  "budget": {
+    "max_total_upstream_model_requests": 8,
+    "max_requests_per_arm": 4,
+    "max_attempts_per_arm": 2,
+    "expected_requests_per_complete_attempt": 2,
+    "judge_model_calls": 0,
+    "automatic_retries": 0,
+    "fallbacks": 0
+  },
+  "stop_conditions": [
+    "Stop the entire new experiment on the first HTTP 429.",
+    "Stop on authentication failure (including HTTP 401 or 403).",
+    "Stop on HTTP 502, any other upstream 5xx, connection failure, or provider-unavailable result.",
+    "Stop if any retry, fallback model, provider switch, or model change is observed.",
+    "Stop before any request that would exceed the global eight-request budget.",
+    "Record sent failed requests in the request budget."
+  ],
+  "runtime": {
+    "postgres_image": "pgvector/pgvector:pg17",
+    "postgres_container": "spec-agent-postgres",
+    "postgres_host_binding": "127.0.0.1:5434",
+    "live_database": "spec_agent_p3b_live_local_20261019",
+    "database_user": "spec_agent",
+    "database_created_fresh": true,
+    "vector_extension_version": "0.8.6",
+    "flyway_migrations": "Run by the existing Java test application's Flyway configuration against this dedicated database only. The user development database spec_agent was not touched by the evaluation.",
+    "python_brain_base_url": "http://127.0.0.1:8123",
+    "python_brain_mode": "broker",
+    "java_host_and_internal_broker_port": 18082,
+    "internal_broker_url": "http://127.0.0.1:18082/internal/v1/model-inference",
+    "chain": "Java Host -> Python Brain -> Java Internal Model Broker -> CustomInferenceGateway -> Ollama (http://127.0.0.1:11434/v1)"
+  },
+  "production_prompt_default_modified": false,
+  "observed_deviations": [
+    "Arm A was first measured under the repository test profile default SPEC_AGENT_ACTION_ELIGIBILITY_MODE=shadow (4 requests); that run was discarded as a setup error and is retained as arm-a-shadow-complete.json.",
+    "Two further Arm A attempts under enforced stopped on STATE_UPDATE model-contract failures (arm-a-enforced-contract-error-1/-2.json).",
+    "Arm B was attempted twice: the first stopped on a 90s inference TIMEOUT, the second on a CONNECTION failure. The frozen protocol permits max 2 attempts per arm but says never rerun a failed attempt; the second attempt is recorded as a deviation."
+  ]
+}

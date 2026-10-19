@@ -68,6 +68,26 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
     private static final String KILO_MODEL = System.getenv().getOrDefault(
             "SPEC_AGENT_EVAL_KILO_MODEL", "cohere/north-mini-code:free");
 
+    /**
+     * 本轮实际评测的提供商(隔离库激活目标)。默认 KILO 保持历史行为不变;
+     * 设置 {@code SPEC_AGENT_EVAL_P3B_PROVIDER=CUSTOM} 可把同一条 live A/B 链路
+     * 指向本地 Custom 提供商(例如本机 Ollama),请求/评分/完整性检查一律不改变。
+     */
+    private static final String EVAL_PROVIDER = System.getenv().getOrDefault(
+            "SPEC_AGENT_EVAL_P3B_PROVIDER", "KILO").trim().toUpperCase(java.util.Locale.ROOT);
+
+    /** Custom 提供商的隔离库种子目标(仅在 EVAL_PROVIDER=CUSTOM 时使用)。 */
+    private static final String CUSTOM_BASE_URL = System.getenv().getOrDefault(
+            "SPEC_AGENT_EVAL_P3B_CUSTOM_BASE_URL", "http://127.0.0.1:11434/v1");
+    private static final String CUSTOM_MODEL = System.getenv().getOrDefault(
+            "SPEC_AGENT_EVAL_P3B_CUSTOM_MODEL", "qwen3.5:4b");
+    private static final String CUSTOM_DISPLAY_NAME = System.getenv().getOrDefault(
+            "SPEC_AGENT_EVAL_P3B_CUSTOM_DISPLAY_NAME", "Local Ollama - Qwen3.5 4B");
+
+    private static String expectedModel() {
+        return "CUSTOM".equals(EVAL_PROVIDER) ? CUSTOM_MODEL : KILO_MODEL;
+    }
+
     /** 本轮 Harness 的请求总量上限(含 STATE_UPDATE + DECISION);独立实验可收紧预算。 */
     private static final int MAX_TOTAL_REQUESTS = maxTotalRequests();
 
@@ -148,14 +168,16 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         EvalLiveIsolatedDatabase.requireIsolatedLiveEvalDatabase(
                 databaseIdentity,
                 EvalLiveIsolatedDatabase.databaseNameFromUrl(datasourceUrl));
-        String evalDatabase = seedKiloActivation();
+        String evalDatabase = seedActiveProvider();
         assertThat(evalDatabase).isEqualTo(databaseIdentity.database());
         LiveChainEvidence before = requireLiveProvider(BRAIN_HEALTH);
-        assertThat(before.provider()).isEqualTo(ModelProvider.KILO.name());
-        assertThat(before.selectedModel()).isEqualTo(KILO_MODEL);
-        assertThat(FreeModelPolicy.isFreeModelId(KILO_MODEL))
-                .as("fixed quality comparison uses an explicitly named free model")
-                .isTrue();
+        assertThat(before.provider()).isEqualTo(EVAL_PROVIDER);
+        assertThat(before.selectedModel()).isEqualTo(expectedModel());
+        if ("KILO".equals(EVAL_PROVIDER)) {
+            assertThat(FreeModelPolicy.isFreeModelId(KILO_MODEL))
+                    .as("fixed quality comparison uses an explicitly named free model")
+                    .isTrue();
+        }
 
         Path output = reportPath();
         Path attemptSidecar = output.resolveSibling(output.getFileName() + ".attempts.jsonl");
@@ -479,6 +501,26 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                 EvalLiveIsolatedDatabase.databaseNameFromUrl(datasourceUrl),
                 KILO_MODEL,
                 LOCAL_ORG);
+    }
+
+    /**
+     * 按 {@code SPEC_AGENT_EVAL_P3B_PROVIDER} 选择隔离库的激活种子:默认仍是固定
+     * Kilo 目标;{@code CUSTOM} 时激活本地 Custom 提供商并写入单例自定义配置。
+     * 身份校验与失败关闭逻辑完全复用 {@link EvalLiveIsolatedDatabase},评分与
+     * 完整性契约不受影响。
+     */
+    private String seedActiveProvider() {
+        if ("CUSTOM".equals(EVAL_PROVIDER)) {
+            return EvalLiveIsolatedDatabase.seedCustomActivation(
+                    jdbcTemplate,
+                    EvalLiveIsolatedDatabase.databaseNameFromUrl(datasourceUrl),
+                    "CHAT_COMPLETIONS",
+                    CUSTOM_BASE_URL,
+                    CUSTOM_MODEL,
+                    CUSTOM_DISPLAY_NAME,
+                    LOCAL_ORG);
+        }
+        return seedKiloActivation();
     }
 
     private String actionEligibilityMode() {

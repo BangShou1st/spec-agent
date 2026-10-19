@@ -3,9 +3,11 @@ package com.specagent.eval;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.model.contract.ModelProvider;
+import com.specagent.model.contract.RuntimeCustomSettings;
 import com.specagent.model.contract.RuntimeKiloSettings;
 import com.specagent.model.contract.RuntimeOpenCodeSettings;
 import com.specagent.model.provider.OpenCodeZenTransport;
+import com.specagent.modelsettings.CustomProviderSettingsService;
 import com.specagent.modelsettings.KiloSettingsService;
 import com.specagent.modelsettings.ModelProviderSettingsService;
 import com.specagent.modelsettings.OpenCodeSettingsService;
@@ -68,6 +70,9 @@ public abstract class EvalLiveHarnessBase {
     protected KiloSettingsService kiloSettingsService;
 
     @Autowired
+    protected CustomProviderSettingsService customProviderSettingsService;
+
+    @Autowired
     protected KiloGatewayProperties kiloGatewayProperties;
 
     private final EvalProjectCleanup liveProjectCleanup = new EvalProjectCleanup();
@@ -126,8 +131,10 @@ public abstract class EvalLiveHarnessBase {
      * 这条真实链路,且该提供商在隔离库里已配置有效运行时设置。
      *
      * <p>与 {@link #requireLiveBrain(String)} 一样失败关闭:显式配置缺失或无效时,
-     * live 运行绝不能跳过或回退。只接受已显式接入 live 的提供商(OPENCODE_ZEN / KILO);
-     * 其余提供商明确拒绝,绝不假装 live。
+     * live 运行绝不能跳过或回退。只接受已显式接入 live 的提供商
+     * (OPENCODE_ZEN / KILO / CUSTOM);其余提供商明确拒绝,绝不假装 live。
+     * CUSTOM 走的是同一条 Java Host → Python Brain → Java Broker → Custom Gateway
+     * 链路,网关自动拼接 {@code /chat/completions},因此这里给出的是 Base URL。
      */
     protected LiveChainEvidence requireLiveProvider(String brainHealthUrl) {
         ModelProvider active = modelProviderSettingsService.activeProvider();
@@ -149,10 +156,18 @@ public abstract class EvalLiveHarnessBase {
                 credentialSource = settings.credentialSource();
                 endpoint = kiloGatewayProperties.getBaseUrl();
             }
+            case CUSTOM -> {
+                RuntimeCustomSettings settings = requireRuntimeSettings(
+                        () -> customProviderSettingsService.requireRuntimeSettings(),
+                        "Custom provider");
+                selectedModel = settings.selectedModel();
+                credentialSource = "database:custom_provider_settings";
+                endpoint = settings.baseUrl();
+            }
             default -> throw new IllegalStateException(
                     "B-live rejected before baseline: active provider " + active
                             + " is not wired for the P3-B live path"
-                            + " (supported: OPENCODE_ZEN, KILO)");
+                            + " (supported: OPENCODE_ZEN, KILO, CUSTOM)");
         }
         LiveExecutionGuard.Evidence javaWiring = scenarioRunner.requireLiveWiring();
         LiveBrainHealth health = readLiveBrainHealth(brainHealthUrl);
