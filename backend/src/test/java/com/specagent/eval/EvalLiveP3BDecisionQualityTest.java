@@ -68,8 +68,19 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
     private static final String KILO_MODEL = System.getenv().getOrDefault(
             "SPEC_AGENT_EVAL_KILO_MODEL", "cohere/north-mini-code:free");
 
-    /** 首次评测的请求总量上限(含 STATE_UPDATE + DECISION)。 */
-    private static final int MAX_TOTAL_REQUESTS = 64;
+    /** 本轮 Harness 的请求总量上限(含 STATE_UPDATE + DECISION);独立实验可收紧预算。 */
+    private static final int MAX_TOTAL_REQUESTS = maxTotalRequests();
+
+    private static int maxTotalRequests() {
+        String configured = System.getenv().getOrDefault(
+                "SPEC_AGENT_EVAL_P3B_MAX_TOTAL_REQUESTS", "64");
+        int parsed = Integer.parseInt(configured);
+        if (parsed < 1) {
+            throw new IllegalArgumentException(
+                    "SPEC_AGENT_EVAL_P3B_MAX_TOTAL_REQUESTS must be at least 1");
+        }
+        return parsed;
+    }
     private static final String EXPERIMENT_ID = System.getenv().getOrDefault(
             "SPEC_AGENT_EVAL_P3B_EXPERIMENT", "p3b-live-priority");
     private static final String PROMPT_RULE_SET = System.getenv().getOrDefault(
@@ -132,7 +143,13 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
 
     @Test
     void priorityScenariosRecordRealModelDecisionEvidence() throws Exception {
+        EvalLiveIsolatedDatabase.DatabaseIdentity databaseIdentity =
+                EvalLiveIsolatedDatabase.readIdentity(jdbcTemplate);
+        EvalLiveIsolatedDatabase.requireIsolatedLiveEvalDatabase(
+                databaseIdentity,
+                EvalLiveIsolatedDatabase.databaseNameFromUrl(datasourceUrl));
         String evalDatabase = seedKiloActivation();
+        assertThat(evalDatabase).isEqualTo(databaseIdentity.database());
         LiveChainEvidence before = requireLiveProvider(BRAIN_HEALTH);
         assertThat(before.provider()).isEqualTo(ModelProvider.KILO.name());
         assertThat(before.selectedModel()).isEqualTo(KILO_MODEL);
@@ -323,6 +340,11 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         report.put("prompt_rule_set", PROMPT_RULE_SET);
         report.put("prompt_version_basis", "DECISION system prompt SHA-256 in each attempt");
         report.put("eval_database", evalDatabase);
+        report.put("eval_database_identity", Map.of(
+                "database", databaseIdentity.database(),
+                "user", databaseIdentity.user(),
+                "host", databaseIdentity.host(),
+                "port", databaseIdentity.port()));
         report.put("provider", before.provider());
         report.put("model_id", before.selectedModel());
         report.put("model_listed_as_free",
