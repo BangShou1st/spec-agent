@@ -19,8 +19,8 @@ final class P3BSafeCapabilityEvidence {
         Map<String, Object> memorySearch = findMemorySearch(descriptors);
         boolean visible = !memorySearch.isEmpty();
         SchemaFacts schema = schemaFacts(asMap(memorySearch.get("inputSchema")));
-        List<String> fixtureMissing = fixtureMissingArguments(scenario, schema);
-        List<String> fixtureProvided = fixtureProvidedArgumentNames(scenario);
+        List<String> provided = providedArgumentNames(scenario);
+        List<String> missing = missingArguments(schema.requiredArguments(), provided);
         List<Map<String, Object>> safeCapabilities = visible
                 ? List.of(Map.of("id", MEMORY_SEARCH_ID,
                         "required_arguments", schema.verified() ? schema.requiredArguments() : List.of()))
@@ -31,9 +31,29 @@ final class P3BSafeCapabilityEvidence {
                 "memory_search_visible", visible,
                 "memory_search_query_required", schema.verified()
                         && schema.requiredArguments().contains("query"),
-                "memory_search_missing_arguments", fixtureMissing,
-                "memory_search_provided_argument_names", fixtureProvided,
+                "memory_search_missing_arguments", missing,
+                "memory_search_provided_argument_names", provided,
                 "required_arguments_verified", schema.verified());
+    }
+
+    /**
+     * "已提供的参数名"的**唯一**取值口径:一律优先取场景显式声明的、由模型可见
+     * 输入承载的已知参数({@code modelVisibleProvidedArguments});只有在场景没有
+     * 做这种声明时才回退到历史行为(读取夹具脚本化决策的 payload)。
+     *
+     * <p>这条优先级是修复 C09 公平性的关键:live 链路不执行夹具脚本,脚本里的
+     * {@code scope} 参数因此**不能**当作模型已知的事实。新自然语言场景直接声明
+     * {@code ["scope"]},并由离线测试断言该声明确实由可见任务文本承载。
+     */
+    private static List<String> providedArgumentNames(P3BCorpus.P3BScenario scenario) {
+        if (scenario == null) return List.of();
+        if (!scenario.modelVisibleProvidedArguments().isEmpty()) {
+            return scenario.modelVisibleProvidedArguments().stream()
+                    .filter(SAFE_ARGUMENT_NAMES::contains)
+                    .sorted()
+                    .toList();
+        }
+        return fixtureProvidedArgumentNames(scenario);
     }
 
     static Map<String, Object> argumentAudit(Map<String, Object> snapshot,
@@ -105,6 +125,12 @@ final class P3BSafeCapabilityEvidence {
             Object value = arguments.get(name);
             return value == null || value instanceof String text && text.isBlank();
         }).toList();
+    }
+
+    /** 声明式口径:必填参数中尚未由**模型可见输入**提供的那部分。 */
+    private static List<String> missingArguments(List<String> required,
+                                                 List<String> providedNames) {
+        return required.stream().filter(name -> !providedNames.contains(name)).toList();
     }
 
     private static Map<String, Object> findMemorySearch(List<?> descriptors) {

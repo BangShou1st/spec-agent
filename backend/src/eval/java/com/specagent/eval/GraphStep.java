@@ -33,9 +33,32 @@ public sealed interface GraphStep
      * 种子渲染(见 {@link #renderText})刻意产出占位串,适合确定性 B-fast;
      * 但真实模型评测需要模型看到真实自然语言,否则测到的是占位符而不是理解
      * 能力。这条变体只服务于 live 评测,语义与 {@link CreateRootQuestion} 相同。
+     *
+     * <p>{@code questionTexts} 是一组**语义等价、措辞不同**的字面文本:变体的
+     * {@code paraphraseIndex} 选中其中一条(与 {@link #renderText} 相同的取模规则),
+     * 于是 base 与 holdout 可以各自看到真实但不同的中文,而不是同一句被复制。
+     * 只要一条文本时行为与旧的单串构造完全一致。
      */
-    record CreateRootQuestionText(String questionText, boolean allowFreeAnswer)
+    record CreateRootQuestionText(List<String> questionTexts, boolean allowFreeAnswer)
             implements GraphStep {
+
+        public CreateRootQuestionText {
+            if (questionTexts == null || questionTexts.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "CreateRootQuestionText requires at least one literal question text");
+            }
+            questionTexts = List.copyOf(questionTexts);
+        }
+
+        /** 旧的单串构造:一条文本,所有变体看到同一句。 */
+        public CreateRootQuestionText(String questionText, boolean allowFreeAnswer) {
+            this(List.of(questionText), allowFreeAnswer);
+        }
+
+        /** 按变体的改写索引选择字面文本(取模,与 {@link #renderText} 一致)。 */
+        String questionText(int paraphraseIndex) {
+            return questionTexts.get(Math.floorMod(paraphraseIndex, questionTexts.size()));
+        }
     }
 
     /** 在前序步骤构建的节点下创建子 INTERACTION/QUESTION。 */
@@ -67,8 +90,8 @@ public sealed interface GraphStep
                 rendered.append("root(").append(root.questionSeed())
                         .append(",").append(root.allowFreeAnswer()).append(");");
             } else if (step instanceof CreateRootQuestionText rootText) {
-                // 字面文本直接进入哈希:live 评测的语义就是这段真实问题。
-                rendered.append("rootText(").append(rootText.questionText())
+                // 字面文本直接进入哈希:live 评测的语义就是这些真实问题(全部变体)。
+                rendered.append("rootText(").append(String.join("|", rootText.questionTexts()))
                         .append(",").append(rootText.allowFreeAnswer()).append(");");
             } else if (step instanceof CreateChildQuestion child) {
                 rendered.append("child(").append(child.parentStepRef())

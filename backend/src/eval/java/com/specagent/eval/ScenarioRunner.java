@@ -290,9 +290,10 @@ public class ScenarioRunner {
                 setup.stepNodes.put(ref, node.id());
                 setup.activeRoute = routeRepository.findById(setup.activeRoute.id()).orElseThrow();
             } else if (step instanceof GraphStep.CreateRootQuestionText rootText) {
-                // Live 评测:真实自然语言问题,而不是种子占位串。
+                // Live 评测:真实自然语言问题,而不是种子占位串。变体按改写索引
+                // 选中各自措辞的那一条,使 base 与 holdout 看到不同但等价的真实中文。
                 Node node = nodeService.createRootNode(project.id(), setup.activeRoute.id(),
-                        rootText.questionText(),
+                        rootText.questionText(variant.paraphraseIndex()),
                         "eval purpose", List.of(), rootText.allowFreeAnswer());
                 setup.stepNodes.put(ref, node.id());
                 setup.activeRoute = routeRepository.findById(setup.activeRoute.id()).orElseThrow();
@@ -476,11 +477,12 @@ public class ScenarioRunner {
             return new DriveResult(queued);
         }
         if (event instanceof UserEvent.AnswerTipText answerText) {
-            // Live 评测:真实自然语言回答,不做种子渲染。
+            // Live 评测:真实自然语言回答,不做种子渲染;变体按改写索引选择各自措辞。
             Route route = routeRepository.findById(setup.activeRoute.id()).orElseThrow();
             UUID queued = runService.createQueuedRunWithInput(
                     project.id(), "ANSWER_TIP", route.tipNodeId(), null,
-                    answerText.freeText(), null, answerText.persistenceIntent());
+                    answerText.freeText(variant.paraphraseIndex()), null,
+                    answerText.persistenceIntent());
             try {
                 AgentRun claimed = runService.claimAnswerCycleRun(queued)
                         .orElseThrow(() -> new IllegalStateException(

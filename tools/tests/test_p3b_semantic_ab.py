@@ -477,3 +477,68 @@ def test_c09_only_lower_budget_tightens_the_arm_reliability_cap():
     b = _single_variant_report(5)
     assert evaluate_c09_only(a, b, max_requests=8)["experiment_status"] == "BUDGET_EXCEEDED"
     assert evaluate_c09_only(a, b)["experiment_status"] in {"INCOMPLETE", "COMPLETE"}
+
+
+def _c09_nl_attempt(action="REQUEST_USER_INPUT", scenario_id="P3B-C09-NL"):
+    attempt = _c09_attempt(action)
+    attempt["scenario_id"] = scenario_id
+    return attempt
+
+
+def _c09_nl_pair(a_action, b_action):
+    a = _c09_report([
+        {**_c09_nl_attempt(a_action), "variant_id": variant,
+         "prompt_hashes": {"state_update_input": "same", "decision_input": "prompt-a"}}
+        for variant in ("base", "holdout")
+    ])
+    b_attempts = []
+    for variant in ("base", "holdout"):
+        attempt = {**_c09_nl_attempt(b_action), "variant_id": variant,
+                   "prompt_hashes": {"state_update_input": "same", "decision_input": "prompt-b"}}
+        if b_action == "REQUEST_USER_INPUT":
+            attempt["model_raw_action"] = {
+                "payload": {"questionText": "请问需要检索哪些关键词？范围按当前项目即可。"}}
+        b_attempts.append(attempt)
+    return a, _c09_report(b_attempts)
+
+
+def test_c09_scenario_id_selects_the_natural_language_task_without_relaxing_checks():
+    # The new P3B-C09-NL task gets the SAME paired A/B treatment as P3B-C09:
+    # fresh A (wrong action) vs B (correct clarification) still ACCEPTs.
+    a, b = _c09_nl_pair("RESPOND_TO_USER", "REQUEST_USER_INPUT")
+    assert _decide_c09(a, b, scenario_id="P3B-C09-NL")["status"] == "ACCEPT"
+
+    # But the ids are NOT interchangeable: the default P3B-C09 pairing fails
+    # closed because the arms do not cover P3B-C09.
+    assert _decide_c09(a, b)["status"] != "ACCEPT"
+
+    # Nor does the new id relax the frozen candidate oracle: a B arm that keeps
+    # proposing the forbidden action is still REJECT.
+    a_ok, b_wrong = _c09_nl_pair("RESPOND_TO_USER", "RESPOND_TO_USER")
+    assert _decide_c09(a_ok, b_wrong, scenario_id="P3B-C09-NL")["status"] == "REJECT"
+
+
+def test_cross_scenario_c09_arms_are_never_paired():
+    # A = historical P3B-C09, B = new P3B-C09-NL: different tasks, so no
+    # same-task ACCEPT/REJECT may be fabricated. This stays INCONCLUSIVE.
+    a = _c09_report([
+        {**_c09_attempt(), "variant_id": variant,
+         "prompt_hashes": {"state_update_input": "same", "decision_input": "prompt-a"}}
+        for variant in ("base", "holdout")
+    ])
+    b = _c09_report([
+        {**_c09_nl_attempt(), "variant_id": variant,
+         "prompt_hashes": {"state_update_input": "same", "decision_input": "prompt-b"}}
+        for variant in ("base", "holdout")
+    ])
+    decision = _decide_c09(a, b)
+    assert decision["status"] == "INCONCLUSIVE"
+    assert decision["status"] != "ACCEPT"
+    assert "cross-scenario" in decision["evidence"]["reason"]
+
+
+def test_c09_only_reports_the_configured_scenario_id():
+    a = _single_variant_report(4)
+    b = _single_variant_report(4)
+    assert evaluate_c09_only(a, b)["scenario_id"] == "P3B-C09"
+    assert evaluate_c09_only(a, b, scenario_id="P3B-C09-NL")["scenario_id"] == "P3B-C09-NL"

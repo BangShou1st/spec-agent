@@ -195,6 +195,11 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         for (P3BCorpus.P3BScenario scenario : P3BCorpus.all()) {
             byId.put(scenario.scenarioId(), scenario);
         }
+        // 新 C09 自然语言场景(P3B-C09-NL)与历史语料并存:仅当调用方通过
+        // SPEC_AGENT_EVAL_P3B_SCENARIOS 显式选中它时才会运行,默认场景集不变。
+        for (P3BCorpus.P3BScenario scenario : P3BC09NaturalLanguageScenarios.all()) {
+            byId.put(scenario.scenarioId(), scenario);
+        }
         boolean rateLimited = false;
         boolean stoppedAfterProviderFailure = false;
         boolean stoppedAfterProviderRetry = false;

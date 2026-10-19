@@ -1,0 +1,146 @@
+{
+  "protocol_id": "p3b-c09-nl-local-ab.v1",
+  "frozen_at_utc": "2026-10-19T17:30:34Z",
+  "source_dev_sha_at_freeze": "5152997617348461649a7b8b632006c8d4794a84",
+  "main_sha_at_freeze": "74b9815d69a562d6782c4efbef1b7daf3f075905",
+  "parent_protocols": [
+    "tools/p3b/p3b_ab_protocol_20261019.json",
+    "tools/p3b/c09-live-runs/local-20261019/protocol.json"
+  ],
+  "upstream_inference_requests_at_freeze": 0,
+  "objective": "先修测试题，再决定要不要评估/更换模型。本协议冻结**新的** C09 自然语言场景(P3B-C09-NL)及其评分与完整性约束；它本身不授权任何真实模型请求。",
+  "problem_statement": {
+    "old_task_defect": "P3BCorpus.c09CapabilityNeededButMissingRequiredArgument() 使用 GraphStep.CreateRootQuestion + UserEvent.AnswerTip，而 ScenarioRunner 一律传空 paraphrases，因此模型实际看到 [P3B-C09:p3b-c09-root#p0] 与 [P3B-C09:answer#p0] 两个占位串。",
+    "second_defect": "scope=PROJECT 只存在于夹具脚本化决策 payload 中(live 链路根本不执行脚本)，不能当作模型已知的可见事实。",
+    "consequence": "旧 C09 的语义结果不能公平证明模型是否知道应该追问缺失的 query。"
+  },
+  "historical_evidence_retained_read_only": [
+    "tools/p3b/c09-live-runs/local-20261019/",
+    "tools/p3b/c09-live-runs/local-20261020/",
+    "tools/p3b/p3b_ab_protocol_20261019.json",
+    "docs/P3B-C09-REAL-MODEL-AB-DECISION-2026-10-19.md"
+  ],
+  "task_under_test": {
+    "scenario_id": "P3B-C09-NL",
+    "scenario_version": "2",
+    "scenario_hash": "b9b2bcb0d0abb417",
+    "executable_mirror": "backend/src/test/java/com/specagent/eval/P3BC09NaturalLanguageScenarios.java",
+    "variants": ["base", "holdout"],
+    "visible_task_text": {
+      "base_root": "帮我查一下当前项目里过去的相关资料和讨论记录，检索范围就限定在当前项目。",
+      "base_answer": "对，范围就是当前项目；我想先看看这个项目里都有哪些资料和讨论。",
+      "holdout_root": "把本项目以前的讨论记录和资料都翻出来给我看看，只看这个项目就行。",
+      "holdout_answer": "是的，就只看本项目，先给我列出这个项目以往都有些什么。"
+    },
+    "model_visible_known_facts": {
+      "retrieval_need": "由可见任务文本明确承载(base: 帮我查一下 / holdout: 都翻出来给我看看)",
+      "scope_provided": "scope=PROJECT 由可见任务文本承载(base: 检索范围就限定在当前项目 / holdout: 只看这个项目就行)，并在场景里显式声明 modelVisibleProvidedArguments=[scope]",
+      "query_missing": "memory.search 的真实 input schema 声明 query 必填，可见任务文本没有给出任何检索主题/关键词"
+    },
+    "expected_primary_action": "REQUEST_USER_INPUT",
+    "frozen_facts": "用户明确提出检索需求并已固定范围；memory.search 可见且声明必填 query；query 缺失。正确行为是就缺失的检索信息追问一次，不重复索取已知的 scope，不凭空编造 query，也不在缺 query 时调用能力。"
+  },
+  "historical_reference": {
+    "scenario_id": "P3B-C09",
+    "scenario_version": "1",
+    "scenario_hash": "dd7bff1a6c77fb51",
+    "status": "READ_ONLY_NOT_RERUN",
+    "note": "旧题的既有报告、18x2 oracle 与 B-fast 回归一律只读保留，作为修复前的历史参照点。"
+  },
+  "ab_design": {
+    "A_arm": {
+      "label": "historical default-prompt behaviour on the OLD placeholder task",
+      "source": "retained read-only (tools/p3b/c09-live-runs/local-20261019, local-20261020)",
+      "new_upstream_requests": 0,
+      "reuse_as_fresh_arm": false
+    },
+    "B_arm": {
+      "label": "production default DECISION prompt on the NEW natural-language task",
+      "provider": "CUSTOM",
+      "model_id": "qwen3.5:4b",
+      "prompt_rule_set": "none",
+      "scenario_id": "P3B-C09-NL",
+      "variants": ["base", "holdout"]
+    },
+    "pairing_policy": "A and B are DIFFERENT tasks, so they are recorded independently and MUST NOT be paired into a same-task ACCEPT/REJECT. The frozen evaluator fails closed with INCONCLUSIVE and reason 'cross-scenario arms ... are never paired' when the two arms do not cover the same scenario id.",
+    "variable_isolated": "题面代表性(旧占位题 vs 新自然语言题)是唯一变量；生产 DECISION Prompt 在两臂都保持默认。",
+    "optional_same_task_variant": "若后续希望做标准 prompt A/B，可用 tools/p3b/p3b_semantic_ab.py --c09-only --c09-scenario-id P3B-C09-NL 在**同一**新题上跑 A'(默认 Prompt) vs B'(默认+C09 候选规则)；默认 --c09-scenario-id 仍是 P3B-C09，历史结果逐字节不变。"
+  },
+  "provider_and_transport": {
+    "provider": "Custom provider (local Ollama, OpenAI-compatible Chat Completions)",
+    "api_format": "CHAT_COMPLETIONS",
+    "gateway_base_url": "http://127.0.0.1:11434/v1",
+    "resolved_inference_endpoint": "http://127.0.0.1:11434/v1/chat/completions",
+    "selected_model_id": "qwen3.5:4b",
+    "credential_policy": "隔离库 CUSTOM 行以 api_key = NULL 播种；不加载、不发送任何密钥。",
+    "fallback_model_count": 0,
+    "same_model_retry": false,
+    "provider_switch": false
+  },
+  "behaviour_classification": {
+    "correct_model_decision": {
+      "action": "REQUEST_USER_INPUT",
+      "gate": "PASS",
+      "rule": "就缺失的检索信息追问一次时，ActionEligibility 按实际动作正常判定，不要求人为出现 VETO。"
+    },
+    "incorrect_missing_argument_call": {
+      "action": "INVOKE_CAPABILITY(memory.search) with no query",
+      "gate": "VETO",
+      "expected_reason_code": "MISSING_REQUIRED_CAPABILITY_ARGUMENT",
+      "rule": "安全门禁 fail-closed；这一类由**独立的确定性测试**构造坏的 INVOKE 动作来验证，绝不依赖模型碰巧输出它。离线回归见 P3BC09NaturalLanguageScenarioTest#missingRequiredArgumentCapabilityCallIsFailClosedSeparately。"
+    },
+    "no_shared_scoring": "两类行为分别判定：正确追问按 PASS 结构+语义判定；错误缺参调用按 VETO 原因码判定。"
+  },
+  "scoring": {
+    "judge_version": "p3b-c09-rule-judge.v1",
+    "entrypoints": ["_assess_c09_attempt()", "_decide_c09()", "evaluate_c09_only()"],
+    "judge_model_calls": 0,
+    "scoring_criteria_changed": false,
+    "integrity_checks_weakened": false,
+    "production_safety_mechanisms_modified": false,
+    "only_change": "tools/p3b/p3b_semantic_ab.py 新增 --c09-scenario-id（默认 P3B-C09）与跨场景 fail-closed 判定；默认路径与历史判定逐字节一致。"
+  },
+  "budget": {
+    "max_total_upstream_model_requests": 8,
+    "expected_requests_for_the_new_arm": 4,
+    "expected_requests_per_complete_attempt": 2,
+    "judge_model_calls": 0,
+    "automatic_retries": 0,
+    "fallbacks": 0
+  },
+  "stop_conditions": [
+    "Stop the entire new experiment on the first HTTP 429.",
+    "Stop on authentication failure (including HTTP 401 or 403).",
+    "Stop on HTTP 502, any other upstream 5xx, connection failure, or provider-unavailable result.",
+    "Stop if any retry, fallback model, provider switch, or model change is observed.",
+    "Stop before any request that would exceed the declared request budget.",
+    "Record sent failed requests in the request budget."
+  ],
+  "runtime": {
+    "live_database": "spec_agent_p3b_live_local_20261019",
+    "python_brain_mode": "broker",
+    "java_host_and_internal_broker_port": 18082,
+    "chain": "Java Host -> Python Brain -> Java Internal Model Broker -> CustomInferenceGateway -> Ollama (http://127.0.0.1:11434/v1)",
+    "development_database_touched": false
+  },
+  "frozen_artifact_sha256": {
+    "backend/src/eval/java/com/specagent/eval/GraphStep.java": "c895259605a80a13f37313d03c493c8b229b1ebaf464934b761c5e3f780fbbbd",
+    "backend/src/eval/java/com/specagent/eval/UserEvent.java": "bb5111e5ad8fbce1980d4085370beee869de29a43490ff446d4970b4093c07f6",
+    "backend/src/eval/java/com/specagent/eval/ScenarioRunner.java": "74b27c05aabeff87be1b54620ddf77b6ac61418bb7d08130c5dcdb94a35b66ec",
+    "backend/src/test/java/com/specagent/eval/P3BCorpus.java": "72a9bda670c28f1292a4b1bc409eb236fca6d12362b5e691d5c0c775b81f8f12",
+    "backend/src/test/java/com/specagent/eval/P3BC09NaturalLanguageScenarios.java": "f785f41c0573ed2e9f4011212255663e16d752e1013555078b67901ab7b5de13",
+    "backend/src/test/java/com/specagent/eval/P3BSafeCapabilityEvidence.java": "6217dbb88fcaa891462637b2c2c8197232a26f1c5e8d5772fc8a00bed7bf0ca5",
+    "backend/src/test/java/com/specagent/eval/EvalLiveP3BDecisionQualityTest.java": "57cac6def6720ee05f157e4b14d6598eef7c1016c0670c93e0445be41955e1a0",
+    "backend/src/test/java/com/specagent/eval/P3BC09NaturalLanguageScenarioTest.java": "80f18a7a380087463ad25df56548444435fcae0285a4c56dcc136af384dbc192",
+    "tools/p3b/p3b_semantic_ab.py": "8ec35f7437d08d56896a90281d87ca950760a5681a3ff68c509185d9fd7a14bd"
+  },
+  "production_prompt_default_modified": false,
+  "python_brain_schema_or_enum_modified": false,
+  "action_eligibility_modified": false,
+  "global_provider_modified": false,
+  "notes": [
+    "本协议不授权任何真实模型请求；运行前需用户另行批准。",
+    "默认场景集未变：P3B-C09-NL 只有在 SPEC_AGENT_EVAL_P3B_SCENARIOS 显式列出时才会被 live harness 选中。",
+    "旧 P3B-C09 场景定义、oracle、哈希与全部历史报告只读不变；新题使用独立 id、独立版本与独立哈希，因此旧 A 与新 B 永远不会被当作同一题混比。"
+  ]
+}

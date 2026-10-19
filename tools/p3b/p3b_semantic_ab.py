@@ -129,6 +129,17 @@ def _attempts_for(report: dict[str, Any], scenario: str) -> dict[str, dict[str, 
     }
 
 
+def _arm_scenario_ids(report: dict[str, Any] | None) -> set[str]:
+    """The scenarios an arm actually covers, read from its attempts."""
+    if not report:
+        return set()
+    return {
+        item.get("scenario_id")
+        for item in report.get("attempts", [])
+        if isinstance(item, dict) and item.get("scenario_id")
+    }
+
+
 def _c09_input_facts_verified(facts: Any) -> bool:
     if not isinstance(facts, dict):
         return False
@@ -641,13 +652,26 @@ def _decide_c08(a: dict[str, Any] | None, b: dict[str, Any] | None,
 
 
 def _decide_c09(a: dict[str, Any] | None, b: dict[str, Any] | None,
-                max_requests: int = MAX_NEW_REQUESTS) -> dict[str, Any]:
+                max_requests: int = MAX_NEW_REQUESTS,
+                scenario_id: str = "P3B-C09") -> dict[str, Any]:
     if not a or not b:
         return _result("INCONCLUSIVE", {"reason": "A/B arm missing"})
-    intact, errors = _pair_integrity(a, b, {"P3B-C09"}, max_requests)
+    # Cross-scenario arms (e.g. historical P3B-C09 as A and the new
+    # P3B-C09-NL as B) are deliberately NOT paired: they are different tasks,
+    # so a same-task ACCEPT/REJECT decision would be fabricated. Fail closed
+    # with an explicit reason; each arm is still recorded independently.
+    a_scenarios, b_scenarios = _arm_scenario_ids(a), _arm_scenario_ids(b)
+    if a_scenarios != b_scenarios:
+        return _result("INCONCLUSIVE", {
+            "reason": "A and B arms cover different scenarios; cross-scenario arms are"
+                      " recorded separately and are never paired",
+            "a_scenarios": sorted(a_scenarios),
+            "b_scenarios": sorted(b_scenarios),
+        })
+    intact, errors = _pair_integrity(a, b, {scenario_id}, max_requests)
     if not intact:
         return _result("INCONCLUSIVE", {"integrity_errors": errors})
-    a09, b09 = _attempts_for(a, "P3B-C09"), _attempts_for(b, "P3B-C09")
+    a09, b09 = _attempts_for(a, scenario_id), _attempts_for(b, scenario_id)
     if set(a09) != {"base", "holdout"} or set(b09) != {"base", "holdout"}:
         return _result("INCONCLUSIVE", {"reason": "C09 base/holdout coverage is incomplete"})
     input_mismatches = [variant for variant in ("base", "holdout")
@@ -820,7 +844,8 @@ def evaluate_reports(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any
 
 
 def evaluate_c09_only(a: dict[str, Any] | None, b: dict[str, Any] | None,
-                      max_requests: int = MAX_NEW_REQUESTS) -> dict[str, Any]:
+                      max_requests: int = MAX_NEW_REQUESTS,
+                      scenario_id: str = "P3B-C09") -> dict[str, Any]:
     """Evaluate only the frozen C09 A/B pair (local, small-budget experiment).
 
     Reuses ``_decide_c09`` (and through it the ``_pair_integrity`` gate and the
@@ -833,8 +858,14 @@ def evaluate_c09_only(a: dict[str, Any] | None, b: dict[str, Any] | None,
     8, not the global 64), and it is used BOTH for the reported budget and for
     the arm-reliability cap, so a lower declared budget tightens rather than
     loosens the integrity gate.
+
+    ``scenario_id`` selects which C09 task the paired arms must share. It
+    defaults to the historical ``P3B-C09`` (byte-identical to previous
+    behaviour); the new natural-language task uses ``P3B-C09-NL``. Passing a
+    different id narrows nothing: ``_pair_integrity`` still requires exactly the
+    declared scenario's base + holdout in both arms.
     """
-    decision = _decide_c09(a, b, max_requests)
+    decision = _decide_c09(a, b, max_requests, scenario_id)
     rule_errors: list[str] = []
     for arm_name, expected_rules, arm in (("c09_a", "none", a), ("c09_b", "c09", b)):
         if arm is None:
@@ -870,6 +901,7 @@ def evaluate_c09_only(a: dict[str, Any] | None, b: dict[str, Any] | None,
         "schema_version": "p3b-semantic-ab-c09-local.v1",
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "scope": "C09-only local A/B; reuses the frozen C09 rule judge and _pair_integrity gate",
+        "scenario_id": scenario_id,
         "pre_registered_protocol": "tools/p3b/p3b_ab_protocol_20261019.json",
         "experiment_status": experiment_status,
         "human_review_status": "PENDING_HUMAN_REVIEW",
@@ -921,6 +953,9 @@ def main() -> int:
     parser.add_argument("--max-new-requests", type=int, default=MAX_NEW_REQUESTS,
                         help="Request budget the C09-only evaluation is bound by; it must match"
                              " the frozen local protocol (local Ollama C09 uses 8, not 64).")
+    parser.add_argument("--c09-scenario-id", default="P3B-C09",
+                        help="Scenario the paired C09 arms must share. Default P3B-C09 preserves"
+                             " the historical result; the natural-language task is P3B-C09-NL.")
     args = parser.parse_args()
     EXPECTED_PROVIDER = args.expected_provider
     EXPECTED_MODEL = args.expected_model
@@ -928,7 +963,8 @@ def main() -> int:
                ("c03_a", "c03_b", "c08_a", "c08_b", "c09_a", "c09_b")}
     if args.c09_only:
         report = evaluate_c09_only(reports["c09_a"], reports["c09_b"],
-                                   max_requests=args.max_new_requests)
+                                   max_requests=args.max_new_requests,
+                                   scenario_id=args.c09_scenario_id)
     else:
         report = evaluate_reports(reports)
     output = Path(args.output)
