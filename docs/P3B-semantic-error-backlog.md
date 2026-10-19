@@ -160,6 +160,8 @@ v2 后，`run_normal_terminal_rate` / `action_submitted_rate` / `action_complete
 
 本轮没有发送模型请求。仓库冻结 live 协议仍登记 Kilo / `cohere/north-mini-code:free`，与优先目标不同；本机没有 OpenCode eval 模型/凭据环境变量，Ollama 仅有 embedding 模型。生产 OpenCode runtime 从数据库设置取模型；live OpenCode eval 则要求显式 `SPEC_AGENT_EVAL_OPENCODE_MODEL`，付费档另需 `SPEC_AGENT_EVAL_OPENCODE_KEY`，不会回退读取数据库设置。当前无法安全确认本地数据库中活动模型/提供商或凭据来源，因此不能证明目标路由已配置可达，也不能把历史 502 当作本轮可达性证据。
 
+OpenCode 的只读模型目录 API 本轮可达，共返回 85 个模型并包含下方所列 ID；这只确认目录/模型元数据可访问，未发起 Chat Completions，不能证明推理服务可达。
+
 现有 Kilo 路径也已核实：固定 OpenAI-compatible Chat Completions 网关 `https://ai-gateway.kilo.ai/api/v1`；免费档匿名调用，付费凭据按组织加密保存在 `kilo_settings`。本轮未读取或修改该用户设置，不能确认活动组织行或实际凭据状态；没有因 OpenCode 路由不明而切换到 Kilo。
 
 OpenCode 当前文档列出的对应免费模型 ID 是 `deepseek-v4.1-flash-free`，协议为 OpenAI Chat Completions；用户口头别名 `dsv4.1free` 与本地活动设置的对应关系仍待验证（[模型目录](https://dev.opencode.ai/v2/docs/console/models)、[Inference API](https://dev.opencode.ai/v2/docs/console/api/inference)）。虽然离线正反例门槛已通过，当前仍不建议花费真实请求：活动路由与认证未证实，且既有预注册协议的模型是 Kilo/Cohere。
