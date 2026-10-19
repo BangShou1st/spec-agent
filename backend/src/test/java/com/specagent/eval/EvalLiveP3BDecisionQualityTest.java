@@ -174,6 +174,7 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         boolean stoppedAfterProviderFailure = false;
         boolean stoppedAfterProviderRetry = false;
         boolean stoppedAfterUnclassifiedFailure = false;
+        boolean stoppedAfterModelContractFailure = false;
         boolean stoppedOnRequestBudget = false;
         int totalRequests = 0;
         outer:
@@ -314,6 +315,12 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                     stoppedAfterProviderRetry = true;
                     break outer;
                 }
+                if (failure == P3BDecisionQuality.FailureClassification.NON_JSON_MODEL_OUTPUT
+                        || failure == P3BDecisionQuality.FailureClassification.MODEL_PROTOCOL_VIOLATION
+                        || failure == P3BDecisionQuality.FailureClassification.INVALID_ACTION_PAYLOAD) {
+                    stoppedAfterModelContractFailure = true;
+                    break outer;
+                }
                 if (acceptedAction == null
                         && (requestEvidence.failedCount() > 0 || failure
                         == P3BDecisionQuality.FailureClassification.UNKNOWN_FAILURE)) {
@@ -359,7 +366,7 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         report.put("expected_attempt_count", SCENARIO_IDS.size() * 2);
         report.put("report_status", attemptReports.size() == SCENARIO_IDS.size() * 2
                 && !rateLimited && !stoppedAfterProviderFailure && !stoppedAfterProviderRetry
-                && !stoppedAfterUnclassifiedFailure
+                && !stoppedAfterUnclassifiedFailure && !stoppedAfterModelContractFailure
                 && !stoppedOnRequestBudget ? "COMPLETE" : "INCOMPLETE");
         report.put("human_review_status", "PENDING_HUMAN_REVIEW");
         report.put("oracle_policy", "Frozen AI candidate labels; this report does not approve or modify them");
@@ -372,6 +379,7 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         report.put("stopped_after_provider_failure", stoppedAfterProviderFailure);
         report.put("stopped_after_provider_retry", stoppedAfterProviderRetry);
         report.put("stopped_after_unclassified_failure", stoppedAfterUnclassifiedFailure);
+        report.put("stopped_after_model_contract_failure", stoppedAfterModelContractFailure);
         report.put("stopped_on_request_budget", stoppedOnRequestBudget);
         report.put("total_model_requests", totalRequests);
         report.put("successful_model_requests", attemptReports.stream()
