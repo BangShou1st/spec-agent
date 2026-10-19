@@ -97,8 +97,10 @@ v2 后，`run_normal_terminal_rate` / `action_submitted_rate` / `action_complete
 
 ## 遗留限制（如实记录）
 
-1. **冻结绑定的进程内 LRU**：容量 4096、访问序淘汰；不能跨进程重启或多实例。同一 Run 跨进程时
-   冻结对会丢失（需要在 run 记录上持久化绑定，本轮不做）。
+1. **冻结绑定 LRU 限制（已关闭）**：4096 项访问序 LRU 仅作热缓存；完整运行配置的 SHA-256
+   指纹已通过原子条件更新持久化在 `agent_runs.model_binding_fingerprint`。并发首绑只有一个配置能成功，
+   活跃 Run 被淘汰后或服务重启/切换实例后，数据库仍拒绝不同指纹重绑。迁移前已进入执行阶段的 Run
+   无法恢复旧进程内指纹，因此 V99 为它们写入不可匹配标记并失败关闭；新 Run 正常绑定。数据库不保存明文凭据。
 2. **live 证据留存**：`EvalLiveHarnessBase` 的逐用例清理会删掉该用例的 run 事件（含 `RUN_FAILED`）。
    因此"事后从隔离库复查某次 live 失败的机器码"目前不可行；本轮以保留的报告 JSON + 同机
    `spec_agent_p3b_20261017` 库作为替代证据。

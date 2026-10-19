@@ -63,6 +63,11 @@ public class OpenRouterInferenceGateway implements ModelInferenceGateway {
         return doComplete(request, selectedModel, s.apiKey());
     }
 
+    /** 使用路由目标解析产生的同一份凭据/模型快照,避免请求中途重新读设置。 */
+    public ModelInferenceResponse complete(ModelInferenceRequest request, RuntimeOpenRouterSettings settings) {
+        return doComplete(request, settings.selectedModel(), settings.apiKey());
+    }
+
     private ModelInferenceResponse doComplete(ModelInferenceRequest request,
                                               String selectedModel, String apiKey) {
         ProtocolAdapter adapter = registry.require(CustomApiFormat.CHAT_COMPLETIONS);
@@ -85,6 +90,12 @@ public class OpenRouterInferenceGateway implements ModelInferenceGateway {
                                                     FragmentListener listener, String selectedModel) {
         RuntimeOpenRouterSettings s = settings.requireRuntimeSettings();
         return doCompleteStreaming(request, listener, selectedModel, s.apiKey());
+    }
+
+    /** 流式路由使用同一份运行时快照。 */
+    public ModelInferenceResponse completeStreaming(ModelInferenceRequest request,
+            FragmentListener listener, RuntimeOpenRouterSettings settings) {
+        return doCompleteStreaming(request, listener, settings.selectedModel(), settings.apiKey());
     }
 
     private ModelInferenceResponse doCompleteStreaming(ModelInferenceRequest request,

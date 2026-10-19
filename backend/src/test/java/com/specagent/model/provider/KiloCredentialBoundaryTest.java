@@ -88,7 +88,8 @@ class KiloCredentialBoundaryTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/chat/completions", exchange -> {
             requests.incrementAndGet();
-            authorizations.add(exchange.getRequestHeaders().getFirst("Authorization"));
+            String authorization = exchange.getRequestHeaders().getFirst("Authorization");
+            authorizations.add(authorization == null ? "<missing>" : authorization);
             byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", contentType);
             exchange.sendResponseHeaders(200, bytes.length);
@@ -164,7 +165,7 @@ class KiloCredentialBoundaryTest {
         new KiloGaNativeTransport(properties).complete(target, gaRequest(), Duration.ofSeconds(30), () -> true);
 
         assertThat(authorizations).hasSize(1);
-        assertThat(authorizations.get(0)).isNull();
+        assertThat(authorizations.get(0)).isEqualTo("<missing>");
         assertThat(requests.get()).isEqualTo(1);
     }
 
@@ -179,7 +180,7 @@ class KiloCredentialBoundaryTest {
         new KiloGaNativeTransport(properties).complete(target, gaRequest(), Duration.ofSeconds(30), () -> true);
 
         assertThat(authorizations).hasSize(1);
-        assertThat(authorizations.get(0)).isNull();
+        assertThat(authorizations.get(0)).isEqualTo("<missing>");
         // 不因修复而发生额外模型请求:一次调用一次请求。
         assertThat(requests.get()).isEqualTo(1);
     }
@@ -225,7 +226,7 @@ class KiloCredentialBoundaryTest {
 
         assertThat(response.content()).isEqualTo("ok");
         assertThat(authorizations).hasSize(1);
-        assertThat(authorizations.get(0)).isNull();
+        assertThat(authorizations.get(0)).isEqualTo("<missing>");
         assertThat(requests.get()).isEqualTo(1);
     }
 
@@ -278,12 +279,12 @@ class KiloCredentialBoundaryTest {
 
         // 免费:Project Agent 匿名。
         projectAgent(properties, settings).complete(agentRequest());
-        assertThat(authorizations.get(0)).isNull();
+        assertThat(authorizations.get(0)).isEqualTo("<missing>");
 
         // 切到付费模型并带上密钥:Project Agent 携带该密钥。
         when(repository.find()).thenReturn(Optional.of(stored("paid-key", PAID_MODEL)));
         projectAgent(properties, settings).complete(agentRequest());
-        assertThat(authorizations).containsExactly(null, "Bearer paid-key");
+        assertThat(authorizations).containsExactly("<missing>", "Bearer paid-key");
         assertThat(requests.get()).isEqualTo(2);
     }
 }

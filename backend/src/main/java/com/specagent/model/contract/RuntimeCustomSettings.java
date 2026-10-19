@@ -9,13 +9,19 @@ package com.specagent.model.contract;
 public record RuntimeCustomSettings(String apiFormat,
                                      String baseUrl,
                                      String apiKey,
-                                     String selectedModel) {
+                                     String selectedModel,
+                                     long configRevision) {
+
+    public RuntimeCustomSettings(String apiFormat, String baseUrl, String apiKey, String selectedModel) {
+        this(apiFormat, baseUrl, apiKey, selectedModel, 0);
+    }
 
     /** 防止意外的诊断日志把提供商密钥暴露出去。 */
     @Override
     public String toString() {
         return "RuntimeCustomSettings[apiFormat=" + apiFormat
                 + ", baseUrl=" + baseUrl
-                + ", selectedModel=" + selectedModel + "]";
+                + ", selectedModel=" + selectedModel
+                + ", configRevision=" + configRevision + "]";
     }
 }

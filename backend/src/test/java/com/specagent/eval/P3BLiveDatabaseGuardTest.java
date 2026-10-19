@@ -70,6 +70,20 @@ class P3BLiveDatabaseGuardTest {
                 .doesNotThrowAnyException();
     }
 
+    @Test
+    void anUnresolvedConfiguredDatabaseNameIsRefused() {
+        for (String configured : List.of("", "   ")) {
+            assertThatThrownBy(() -> EvalLiveIsolatedDatabase.requireIsolatedLiveEvalDatabase(
+                    identity("spec_agent_p3b_live_20261019"), configured))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("configured database name is undeterminable");
+        }
+        assertThatThrownBy(() -> EvalLiveIsolatedDatabase.requireIsolatedLiveEvalDatabase(
+                identity("spec_agent_p3b_live_20261019"), null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("configured database name is undeterminable");
+    }
+
     /** 环境变量声明的是隔离库、实际连到的却是别的库:必须拒绝(不信任客户端字符串)。 */
     @Test
     void aConfiguredNameThatDoesNotMatchTheRealConnectionIsRefused() {

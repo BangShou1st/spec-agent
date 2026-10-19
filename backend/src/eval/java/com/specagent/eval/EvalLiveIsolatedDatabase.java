@@ -1,6 +1,8 @@
 package com.specagent.eval;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.Locale;
@@ -95,6 +97,10 @@ public final class EvalLiveIsolatedDatabase {
             throw new IllegalStateException(
                     "refusing to seed: the connected database identity is undeterminable");
         }
+        if (configuredDatabase == null || configuredDatabase.isBlank()) {
+            throw new IllegalStateException(
+                    "refusing to seed: the configured database name is undeterminable");
+        }
         String actual = identity.database().trim();
         String normalized = actual.toLowerCase(Locale.ROOT);
         if (FORBIDDEN_DATABASES.contains(normalized)) {
@@ -107,8 +113,7 @@ public final class EvalLiveIsolatedDatabase {
                     + " is not a designated P3-B live evaluation database"
                     + " (expected spec_agent_p3b_live_*)");
         }
-        if (configuredDatabase != null && !configuredDatabase.isBlank()
-                && !actual.equals(configuredDatabase.trim())) {
+        if (!actual.equals(configuredDatabase.trim())) {
             throw new IllegalStateException("refusing to seed: the configured database "
                     + configuredDatabase + " does not match the connected database "
                     + identity.describe() + " — the connection is not the intended isolated"
@@ -140,21 +145,33 @@ public final class EvalLiveIsolatedDatabase {
                                             String configuredDatabase,
                                             String kiloModel,
                                             UUID orgId) {
-        DatabaseIdentity identity = readIdentity(jdbcTemplate);
-        requireIsolatedLiveEvalDatabase(identity, configuredDatabase);
+        // Check first on the caller's current connection so rejected configurations remain
+        // read-only even when no transaction-capable datasource is available.
+        DatabaseIdentity initialIdentity = readIdentity(jdbcTemplate);
+        requireIsolatedLiveEvalDatabase(initialIdentity, configuredDatabase);
+        if (jdbcTemplate.getDataSource() == null) {
+            throw new IllegalStateException("refusing to seed: the evaluation datasource is unavailable");
+        }
+        TransactionTemplate transaction = new TransactionTemplate(
+                new DataSourceTransactionManager(jdbcTemplate.getDataSource()));
+        return transaction.execute(status -> {
+            // Recheck inside the transaction in case a pool or routing datasource changed targets.
+            DatabaseIdentity identity = readIdentity(jdbcTemplate);
+            requireIsolatedLiveEvalDatabase(identity, configuredDatabase);
 
-        jdbcTemplate.update("DELETE FROM kilo_settings");
-        jdbcTemplate.update("DELETE FROM model_provider_settings");
-        jdbcTemplate.update(
-                "INSERT INTO model_provider_settings "
-                        + "(singleton_id, active_provider, updated_at, active_provider_id, org_id) "
-                        + "VALUES (1, 'KILO', CURRENT_TIMESTAMP, NULL, ?)",
-                orgId);
-        jdbcTemplate.update(
-                "INSERT INTO kilo_settings "
-                        + "(org_id, singleton_id, api_key, masked_suffix, selected_model) "
-                        + "VALUES (?, 1, NULL, NULL, ?)",
-                orgId, kiloModel);
-        return identity.database();
+            jdbcTemplate.update("DELETE FROM kilo_settings");
+            jdbcTemplate.update("DELETE FROM model_provider_settings");
+            jdbcTemplate.update(
+                    "INSERT INTO model_provider_settings "
+                            + "(singleton_id, active_provider, updated_at, active_provider_id, org_id) "
+                            + "VALUES (1, 'KILO', CURRENT_TIMESTAMP, NULL, ?)",
+                    orgId);
+            jdbcTemplate.update(
+                    "INSERT INTO kilo_settings "
+                            + "(org_id, singleton_id, api_key, masked_suffix, selected_model) "
+                            + "VALUES (?, 1, NULL, NULL, ?)",
+                    orgId, kiloModel);
+            return identity.database();
+        });
     }
 }

@@ -64,6 +64,11 @@ public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
         return doComplete(request, runtime, requiredModel(selectedModel));
     }
 
+    /** 使用路由目标解析产生的同一份凭据/模型快照,避免请求中途重新读设置。 */
+    public ModelInferenceResponse complete(ModelInferenceRequest request, RuntimeOpenCodeSettings runtime) {
+        return doComplete(request, runtime, requiredModel(runtime.selectedModel()));
+    }
+
     @Override
     public ModelInferenceResponse completeStreaming(ModelInferenceRequest request,
             com.specagent.model.contract.FragmentListener listener) {
@@ -76,6 +81,12 @@ public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
             com.specagent.model.contract.FragmentListener listener, String selectedModel) {
         RuntimeOpenCodeSettings runtime = settingsService.requireRuntimeSettings();
         return doCompleteStreaming(request, listener, runtime, requiredModel(selectedModel));
+    }
+
+    /** 流式路由使用同一份运行时快照。 */
+    public ModelInferenceResponse completeStreaming(ModelInferenceRequest request,
+            com.specagent.model.contract.FragmentListener listener, RuntimeOpenCodeSettings runtime) {
+        return doCompleteStreaming(request, listener, runtime, requiredModel(runtime.selectedModel()));
     }
 
     private static String requiredModel(String selectedModel) {

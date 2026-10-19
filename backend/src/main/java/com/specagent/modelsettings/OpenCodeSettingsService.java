@@ -180,8 +180,7 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
         String key = hasKey(externalApiKey) ? externalApiKey.trim() : null;
         String model = externalSelectedModel.trim();
         String credential = credentialForRuntime(model, key);
-        return new RuntimeOpenCodeSettings(credential, model,
-                EXTERNAL_CREDENTIAL_SOURCE);
+        return new RuntimeOpenCodeSettings(credential, model, EXTERNAL_CREDENTIAL_SOURCE);
     }
 
     /** 一次实时调用得到完整提供商目录与免费子集。 */

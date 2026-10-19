@@ -28,8 +28,8 @@ import org.springframework.stereotype.Component;
  * 文件名:CustomInferenceGateway.java
  *
  * 用途:自定义提供商的推理网关,实现 {@link ModelInferenceGateway}。API 格式是
- * 用户的显式选择:绝不自动探测,也绝不回退到其他格式。每次调用按当前存储的设置
- * 解析端点、适配器和凭据后直连提供商。
+ * 用户的显式选择:绝不自动探测,也绝不回退到其他格式。路由调用使用目标解析阶段
+ * 取得的同一份运行时快照来解析端点、适配器和凭据。
  */
 @Component
 @ConditionalOnProperty(name = "spec.agent.model.inference", havingValue = "opencode", matchIfMissing = true)
@@ -61,6 +61,11 @@ public class CustomInferenceGateway implements ModelInferenceGateway {
         return doComplete(request, resolve().withModel(selectedModel));
     }
 
+    /** 路由入口直接交付该次目标解析所用的配置快照。 */
+    public ModelInferenceResponse complete(ModelInferenceRequest request, RuntimeCustomSettings settings) {
+        return doComplete(request, resolve(settings));
+    }
+
     private ModelInferenceResponse doComplete(ModelInferenceRequest request, Resolved resolved) {
         Map<String, Object> body = resolved.adapter().buildRequestBody(request, resolved.model());
         ProviderHttpSupport.HttpResult result = ProviderHttpSupport.postJson(
@@ -80,6 +85,12 @@ public class CustomInferenceGateway implements ModelInferenceGateway {
         return doCompleteStreaming(request, listener, resolve().withModel(selectedModel));
     }
 
+    /** 流式路由也消费同一份配置快照。 */
+    public ModelInferenceResponse completeStreaming(ModelInferenceRequest request,
+            FragmentListener listener, RuntimeCustomSettings settings) {
+        return doCompleteStreaming(request, listener, resolve(settings));
+    }
+
     private ModelInferenceResponse doCompleteStreaming(ModelInferenceRequest request,
                                                        FragmentListener listener, Resolved resolved) {
         Map<String, Object> body = new LinkedHashMap<>(
@@ -96,7 +107,10 @@ public class CustomInferenceGateway implements ModelInferenceGateway {
     }
 
     private Resolved resolve() {
-        RuntimeCustomSettings s = settings.requireRuntimeSettings();
+        return resolve(settings.requireRuntimeSettings());
+    }
+
+    private Resolved resolve(RuntimeCustomSettings s) {
         CustomApiFormat format = CustomApiFormat.fromCode(s.apiFormat());
         String normalized = ProviderUrlSecurity.validateAndNormalizeBaseUrl(s.baseUrl());
         String endpoint = ProviderUrlSecurity.canonicalEndpoint(normalized, format);

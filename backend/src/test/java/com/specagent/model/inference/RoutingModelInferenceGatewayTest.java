@@ -14,6 +14,12 @@ import com.specagent.model.provider.RoutingModelInferenceGateway;
 
 import com.specagent.model.contract.FragmentListener;
 import com.specagent.model.contract.ModelProvider;
+import com.specagent.model.contract.RuntimeCustomSettings;
+import com.specagent.model.contract.RuntimeKiloSettings;
+import com.specagent.model.contract.RuntimeOpenCodeSettings;
+import com.specagent.model.contract.RuntimeOpenRouterSettings;
+import com.specagent.common.InMemoryRunModelBindingPort;
+import com.specagent.common.RunModelBindingPort;
 import com.specagent.model.provider.OpenCodeModelErrorCategory;
 import com.specagent.model.provider.OpenCodeModelException;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,12 +32,20 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -76,13 +90,24 @@ class RoutingModelInferenceGatewayTest {
     }
 
     private static ModelInferenceRequest request() {
-        return new ModelInferenceRequest(UUID.randomUUID(), "DECISION",
+        return new ModelInferenceRequest(null, "DECISION",
                 List.of(new ModelInferenceMessage("user", "{}")), null);
     }
 
     private static ModelInferenceRequest request(UUID runId, String callType) {
         return new ModelInferenceRequest(runId, callType,
                 List.of(new ModelInferenceMessage("user", "{}")), null);
+    }
+
+    private static ActiveModelTargetPort.Target frozenTarget(String provider, String model) {
+        Object runtime = switch (ModelProvider.fromCode(provider)) {
+            case OPENCODE_ZEN -> new RuntimeOpenCodeSettings("key-" + model, model);
+            case OPENROUTER -> new RuntimeOpenRouterSettings("key-" + model, model);
+            case KILO -> new RuntimeKiloSettings("key-" + model, model);
+            case CUSTOM -> new RuntimeCustomSettings("CHAT_COMPLETIONS", "http://127.0.0.1/v1",
+                    "key-" + model, model);
+        };
+        return new ActiveModelTargetPort.Target(provider, model, runtime);
     }
 
     // -- 目标不可解析时的历史路由(无 Run 身份)-------------------------------
@@ -165,16 +190,17 @@ class RoutingModelInferenceGatewayTest {
     @Test
     void frozenTargetDrivesProviderAndModelWithoutASecondRead() {
         UUID runId = UUID.randomUUID();
-        when(activeModelTarget.activeTarget()).thenReturn(Optional.of(
-                new ActiveModelTargetPort.Target("KILO", "poolside/laguna-s-2.1:free")));
+        ActiveModelTargetPort.Target frozen = frozenTarget("KILO", "poolside/laguna-s-2.1:free");
+        RuntimeKiloSettings runtime = (RuntimeKiloSettings) frozen.runtimeSettings();
+        when(activeModelTarget.activeTarget()).thenReturn(Optional.of(frozen));
         ModelInferenceRequest stateUpdate = request(runId, "STATE_UPDATE");
         ModelInferenceRequest decision = request(runId, "DECISION");
 
         gateway.complete(stateUpdate);
         gateway.complete(decision);
 
-        verify(kilo).complete(stateUpdate, "poolside/laguna-s-2.1:free");
-        verify(kilo).complete(decision, "poolside/laguna-s-2.1:free");
+        verify(kilo).complete(stateUpdate, runtime);
+        verify(kilo).complete(decision, runtime);
         // 冻结目标已经携带提供商,因此不再读取激活提供商端口。
         verifyNoInteractions(activeProvider, openCode, openRouter, custom);
     }
@@ -190,19 +216,20 @@ class RoutingModelInferenceGatewayTest {
         ModelInferenceRequest stateUpdate = request(runId, "STATE_UPDATE");
         ModelInferenceRequest decision = request(runId, "DECISION");
         AtomicReference<ActiveModelTargetPort.Target> target = new AtomicReference<>(
-                new ActiveModelTargetPort.Target("OPENCODE_ZEN", "model-a"));
+                frozenTarget("OPENCODE_ZEN", "model-a"));
+        RuntimeOpenCodeSettings frozenSettings = (RuntimeOpenCodeSettings) target.get().runtimeSettings();
         when(activeModelTarget.activeTarget()).thenAnswer(invocation -> Optional.of(target.get()));
 
         gateway.complete(stateUpdate);
 
         // 运行中把提供商与模型一起切换(DECISION 之前)。
-        target.set(new ActiveModelTargetPort.Target("KILO", "model-b"));
+        target.set(frozenTarget("KILO", "model-b"));
 
         assertThatThrownBy(() -> gateway.complete(decision))
                 .isInstanceOf(ModelProviderException.class)
                 .hasMessageContaining("MODEL_BINDING_MISMATCH");
 
-        verify(openCode).complete(stateUpdate, "model-a");
+        verify(openCode).complete(stateUpdate, frozenSettings);
         verifyNoMoreInteractions(openCode);
         verifyNoInteractions(kilo, openRouter, custom);
     }
@@ -214,17 +241,18 @@ class RoutingModelInferenceGatewayTest {
     void sameRunFailsClosedWhenOnlyTheModelDrifts() {
         UUID runId = UUID.randomUUID();
         AtomicReference<ActiveModelTargetPort.Target> target = new AtomicReference<>(
-                new ActiveModelTargetPort.Target("KILO", "model-a"));
+                frozenTarget("KILO", "model-a"));
+        RuntimeKiloSettings frozenSettings = (RuntimeKiloSettings) target.get().runtimeSettings();
         when(activeModelTarget.activeTarget()).thenAnswer(invocation -> Optional.of(target.get()));
 
         gateway.complete(request(runId, "STATE_UPDATE"));
-        target.set(new ActiveModelTargetPort.Target("KILO", "model-b"));
+        target.set(frozenTarget("KILO", "model-b"));
 
         assertThatThrownBy(() -> gateway.complete(request(runId, "DECISION")))
                 .isInstanceOf(ModelProviderException.class)
                 .hasMessageContaining("MODEL_BINDING_MISMATCH");
 
-        verify(kilo).complete(any(ModelInferenceRequest.class), eq("model-a"));
+        verify(kilo).complete(any(ModelInferenceRequest.class), eq(frozenSettings));
         verifyNoMoreInteractions(kilo);
     }
 
@@ -235,8 +263,10 @@ class RoutingModelInferenceGatewayTest {
     @Test
     void frozenRunFailsClosedWhenTheTargetBecomesUnresolvable() {
         UUID runId = UUID.randomUUID();
+        ActiveModelTargetPort.Target initial = frozenTarget("KILO", "model-a");
+        RuntimeKiloSettings frozenSettings = (RuntimeKiloSettings) initial.runtimeSettings();
         when(activeModelTarget.activeTarget())
-                .thenReturn(Optional.of(new ActiveModelTargetPort.Target("KILO", "model-a")))
+                .thenReturn(Optional.of(initial))
                 .thenThrow(new IllegalStateException("provider is not configured"));
 
         gateway.complete(request(runId, "STATE_UPDATE"));
@@ -245,7 +275,7 @@ class RoutingModelInferenceGatewayTest {
                 .isInstanceOf(ModelProviderException.class)
                 .hasMessageContaining("MODEL_BINDING_MISMATCH");
 
-        verify(kilo).complete(any(ModelInferenceRequest.class), eq("model-a"));
+        verify(kilo).complete(any(ModelInferenceRequest.class), eq(frozenSettings));
         verifyNoInteractions(activeProvider, openCode, openRouter, custom);
     }
 
@@ -254,15 +284,19 @@ class RoutingModelInferenceGatewayTest {
     void freezeIsPerRunAndDoesNotLeakAcrossRuns() {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
+        ActiveModelTargetPort.Target firstTarget = frozenTarget("OPENCODE_ZEN", "model-a");
+        ActiveModelTargetPort.Target secondTarget = frozenTarget("OPENROUTER", "model-c");
         when(activeModelTarget.activeTarget())
-                .thenReturn(Optional.of(new ActiveModelTargetPort.Target("OPENCODE_ZEN", "model-a")))
-                .thenReturn(Optional.of(new ActiveModelTargetPort.Target("OPENROUTER", "model-c")));
+                .thenReturn(Optional.of(firstTarget))
+                .thenReturn(Optional.of(secondTarget));
 
         gateway.complete(request(first, "STATE_UPDATE"));
         gateway.complete(request(second, "DECISION"));
 
-        verify(openCode).complete(any(ModelInferenceRequest.class), eq("model-a"));
-        verify(openRouter).complete(any(ModelInferenceRequest.class), eq("model-c"));
+        verify(openCode).complete(any(ModelInferenceRequest.class),
+                eq((RuntimeOpenCodeSettings) firstTarget.runtimeSettings()));
+        verify(openRouter).complete(any(ModelInferenceRequest.class),
+                eq((RuntimeOpenRouterSettings) secondTarget.runtimeSettings()));
         verifyNoInteractions(activeProvider, kilo, custom);
     }
 
@@ -270,14 +304,15 @@ class RoutingModelInferenceGatewayTest {
     @Test
     void streamingUsesTheFrozenTargetModel() {
         UUID runId = UUID.randomUUID();
-        when(activeModelTarget.activeTarget()).thenReturn(Optional.of(
-                new ActiveModelTargetPort.Target("OPENROUTER", "model-a")));
+        ActiveModelTargetPort.Target frozen = frozenTarget("OPENROUTER", "model-a");
+        RuntimeOpenRouterSettings runtime = (RuntimeOpenRouterSettings) frozen.runtimeSettings();
+        when(activeModelTarget.activeTarget()).thenReturn(Optional.of(frozen));
         FragmentListener listener = mock(FragmentListener.class);
         ModelInferenceRequest request = request(runId, "DECISION");
 
         gateway.completeStreaming(request, listener);
 
-        verify(openRouter).completeStreaming(request, listener, "model-a");
+        verify(openRouter).completeStreaming(request, listener, runtime);
         verifyNoInteractions(openCode, kilo, custom);
     }
 
@@ -286,14 +321,101 @@ class RoutingModelInferenceGatewayTest {
     void newRunMayUseTheNewlySelectedModel() {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
+        ActiveModelTargetPort.Target firstTarget = frozenTarget("KILO", "model-a");
+        ActiveModelTargetPort.Target secondTarget = frozenTarget("KILO", "model-b");
         when(activeModelTarget.activeTarget())
-                .thenReturn(Optional.of(new ActiveModelTargetPort.Target("KILO", "model-a")))
-                .thenReturn(Optional.of(new ActiveModelTargetPort.Target("KILO", "model-b")));
+                .thenReturn(Optional.of(firstTarget))
+                .thenReturn(Optional.of(secondTarget));
 
         gateway.complete(request(first, "STATE_UPDATE"));
         gateway.complete(request(second, "STATE_UPDATE"));
 
-        verify(kilo).complete(any(ModelInferenceRequest.class), eq("model-a"));
-        verify(kilo).complete(any(ModelInferenceRequest.class), eq("model-b"));
+        verify(kilo).complete(any(ModelInferenceRequest.class),
+                eq((RuntimeKiloSettings) firstTarget.runtimeSettings()));
+        verify(kilo).complete(any(ModelInferenceRequest.class),
+                eq((RuntimeKiloSettings) secondTarget.runtimeSettings()));
+    }
+
+    @Test
+    void concurrentFirstCallsCannotBindOneRunToTwoDifferentTargets() throws Exception {
+        UUID runId = UUID.randomUUID();
+        CyclicBarrier bothResolved = new CyclicBarrier(2);
+        AtomicInteger resolutions = new AtomicInteger();
+        when(activeModelTarget.activeTarget()).thenAnswer(invocation -> {
+            int order = resolutions.incrementAndGet();
+            bothResolved.await(5, TimeUnit.SECONDS);
+            return Optional.of(order == 1
+                    ? frozenTarget("OPENCODE_ZEN", "model-a")
+                    : frozenTarget("KILO", "model-b"));
+        });
+        RoutingModelInferenceGateway concurrentGateway = new RoutingModelInferenceGateway(
+                activeProvider, activeModelTarget, openCode, openRouter, kilo, custom,
+                new InMemoryRunModelBindingPort());
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> first = pool.submit(() -> succeeds(concurrentGateway, request(runId, "STATE_UPDATE")));
+            Future<Boolean> second = pool.submit(() -> succeeds(concurrentGateway, request(runId, "DECISION")));
+
+            assertThat(first.get(10, TimeUnit.SECONDS)).isNotEqualTo(second.get(10, TimeUnit.SECONDS));
+            int delegateCalls = mockingDetails(openCode).getInvocations().size()
+                    + mockingDetails(openRouter).getInvocations().size()
+                    + mockingDetails(kilo).getInvocations().size()
+                    + mockingDetails(custom).getInvocations().size();
+            assertThat(delegateCalls).isEqualTo(1);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void evictedPausedRunAndNewGatewayStillCannotSilentlyRebind() {
+        UUID pausedRun = UUID.randomUUID();
+        AtomicReference<ActiveModelTargetPort.Target> target = new AtomicReference<>(
+                frozenTarget("KILO", "model-a"));
+        when(activeModelTarget.activeTarget()).thenAnswer(invocation -> Optional.of(target.get()));
+        RunModelBindingPort durableBindings = new InMemoryRunModelBindingPort();
+        RoutingModelInferenceGateway firstProcess = new RoutingModelInferenceGateway(
+                activeProvider, activeModelTarget, openCode, openRouter, kilo, custom, durableBindings);
+
+        firstProcess.complete(request(pausedRun, "STATE_UPDATE"));
+        // With the current 4096-entry LRU, insert enough other active Runs to evict the paused one.
+        for (int i = 0; i < 4096; i++) {
+            firstProcess.complete(request(UUID.randomUUID(), "STATE_UPDATE"));
+        }
+        target.set(frozenTarget("KILO", "model-b"));
+
+        assertThatThrownBy(() -> firstProcess.complete(request(pausedRun, "DECISION")))
+                .isInstanceOf(ModelProviderException.class)
+                .hasMessageContaining("MODEL_BINDING_MISMATCH");
+
+        RoutingModelInferenceGateway restartedProcess = new RoutingModelInferenceGateway(
+                activeProvider, activeModelTarget, openCode, openRouter, kilo, custom, durableBindings);
+        assertThatThrownBy(() -> restartedProcess.complete(request(pausedRun, "DECISION")))
+                .isInstanceOf(ModelProviderException.class)
+                .hasMessageContaining("MODEL_BINDING_MISMATCH");
+
+        // The updated global config is valid for a fresh Run.
+        firstProcess.complete(request(UUID.randomUUID(), "STATE_UPDATE"));
+    }
+
+    @Test
+    void runWithIncompleteRuntimeSnapshotFailsClosedBeforeProviderGateway() {
+        when(activeModelTarget.activeTarget()).thenReturn(Optional.of(
+                new ActiveModelTargetPort.Target("KILO", "model-a")));
+
+        assertThatThrownBy(() -> gateway.complete(request(UUID.randomUUID(), "STATE_UPDATE")))
+                .isInstanceOf(ModelProviderException.class)
+                .hasMessageContaining("MODEL_BINDING_MISMATCH");
+
+        verifyNoInteractions(openCode, openRouter, kilo, custom);
+    }
+
+    private static boolean succeeds(RoutingModelInferenceGateway gateway, ModelInferenceRequest request) {
+        try {
+            gateway.complete(request);
+            return true;
+        } catch (ModelProviderException mismatch) {
+            return false;
+        }
     }
 }

@@ -68,10 +68,20 @@ public class KiloInferenceGateway implements ModelInferenceGateway {
         return doComplete(request, selectedModel, runtime.apiKey());
     }
 
+    /** 路由入口传入同一次目标解析产生的快照;此处不再读取可变设置。 */
+    public ModelInferenceResponse complete(ModelInferenceRequest request, RuntimeKiloSettings runtime) {
+        return doComplete(request, runtime.selectedModel(), runtime.apiKey(), runtime.baseUrl());
+    }
+
     private ModelInferenceResponse doComplete(ModelInferenceRequest request, String model, String apiKey) {
+        return doComplete(request, model, apiKey, null);
+    }
+
+    private ModelInferenceResponse doComplete(ModelInferenceRequest request, String model,
+                                              String apiKey, String baseUrl) {
         ObjectNode body = buildBody(request, model, false);
         try {
-            return toResponse(client(apiKey).chat(body));
+            return toResponse(client(apiKey, baseUrl).chat(body));
         } catch (KiloGatewayException error) {
             throw translate(error);
         }
@@ -90,15 +100,29 @@ public class KiloInferenceGateway implements ModelInferenceGateway {
         return doCompleteStreaming(request, listener, selectedModel, runtime.apiKey());
     }
 
+    /** 流式路由同样消费目标解析时取得的不可变快照。 */
+    public ModelInferenceResponse completeStreaming(ModelInferenceRequest request,
+                                                     FragmentListener listener,
+                                                     RuntimeKiloSettings runtime) {
+        return doCompleteStreaming(request, listener, runtime.selectedModel(),
+                runtime.apiKey(), runtime.baseUrl());
+    }
+
     private ModelInferenceResponse doCompleteStreaming(ModelInferenceRequest request,
                                                        FragmentListener listener, String model, String apiKey) {
+        return doCompleteStreaming(request, listener, model, apiKey, null);
+    }
+
+    private ModelInferenceResponse doCompleteStreaming(ModelInferenceRequest request,
+                                                       FragmentListener listener, String model,
+                                                       String apiKey, String baseUrl) {
         ObjectNode body = buildBody(request, model, true);
         StringBuilder aggregated = new StringBuilder();
         AtomicReference<String> finishReason = new AtomicReference<>();
         AtomicReference<Integer> promptTokens = new AtomicReference<>();
         AtomicReference<Integer> completionTokens = new AtomicReference<>();
         try {
-            client(apiKey).streamChat(body, chunk -> {
+            client(apiKey, baseUrl).streamChat(body, chunk -> {
                 JsonNode choice = chunk.path("choices").path(0);
                 String delta = choice.path("delta").path("content").asText("");
                 if (!delta.isEmpty()) {
@@ -166,7 +190,14 @@ public class KiloInferenceGateway implements ModelInferenceGateway {
      * 只覆盖凭据与"仅免费"策略。保留 base URL/代理/超时,便于本地或代理部署。
      */
     private KiloGatewayClient client(String apiKey) {
+        return client(apiKey, null);
+    }
+
+    private KiloGatewayClient client(String apiKey, String baseUrl) {
         KiloGatewayProperties callProperties = KiloClientProperties.forCredential(properties, apiKey, false);
+        if (baseUrl != null && !baseUrl.isBlank()) {
+            callProperties.setBaseUrl(baseUrl);
+        }
         return new KiloGatewayClient(callProperties, mapper, http);
     }
 
