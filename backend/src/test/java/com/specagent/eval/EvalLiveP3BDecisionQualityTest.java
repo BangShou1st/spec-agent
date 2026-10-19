@@ -237,7 +237,7 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                         "expected_veto_reason_codes", scenario.oracle().vetoReasonCodes()));
                 attempt.put("model_request_events", requestEvidence.events());
                 attempt.put("run_failed_evidence", runFailedEvidence(observation.attemptId()));
-                attempt.put("input_evidence", inputEvidence(observation.semanticTrace()));
+                attempt.put("input_evidence", inputEvidence(observation.semanticTrace(), scenario));
                 attempt.put("model_selected_action", modelSelected);
                 attempt.put("model_selection_measured", modelSelectionMeasured);
                 attempt.put("model_selection_acceptable", modelSelectionAcceptable);
@@ -561,7 +561,8 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
     }
 
     /** 只留下结构证据摘要;不把完整事实、answer 正文或私人工作区内容写进报告。 */
-    private static Map<String, Object> inputEvidence(SemanticTrace trace) {
+    private static Map<String, Object> inputEvidence(
+            SemanticTrace trace, P3BCorpus.P3BScenario scenario) {
         Map<String, Object> decisionStage = stage(trace, "DECISION_INPUT");
         Map<String, Object> input = asMap(decisionStage.get("model_input"));
         if (input.isEmpty()) input = asMap(decisionStage.get("runtime_request"));
@@ -577,18 +578,11 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                 "unresolved".equalsIgnoreCase(asMap(claim).get("status") == null
                         ? "" : String.valueOf(asMap(claim).get("status")))).count();
         List<String> allowedRefs = stringList(snapshot.get("allowedSourceRefs"));
-        List<Map<String, Object>> capabilities = new ArrayList<>();
-        for (Object value : asList(snapshot.get("availableCapabilities"))) {
-            Map<String, Object> descriptor = asMap(value);
-            Map<String, Object> schema = asMap(descriptor.get("inputSchema"));
-            capabilities.add(Map.of(
-                    "id", safeMachineCode(nullableString(descriptor.get("id"))),
-                    "required_arguments", stringList(schema.get("required"))));
-        }
         Map<String, Object> evidence = new LinkedHashMap<>();
         evidence.put("answered_lineage_entries", answeredEntries);
         evidence.put("unresolved_effective_claims", unresolvedClaims);
-        evidence.put("available_capabilities", capabilities);
+        evidence.putAll(P3BSafeCapabilityEvidence.summarize(
+                asList(snapshot.get("availableCapabilities")), scenario));
         evidence.put("allowed_source_ref_count", allowedRefs.size());
         evidence.put("allowed_source_refs_sha256", sha256(String.join("\n", allowedRefs.stream().sorted().toList())));
         evidence.put("retrieved_context_count", asList(snapshot.get("retrievedContext")).size());
@@ -666,14 +660,14 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
             P3BCorpus.P3BScenario scenario, String proposedAction, SemanticTrace trace,
             ModelRequestEvidence requests, P3BDecisionQuality.FailureClassification failure,
             String executionResult, int capabilityCalls) {
-        Map<String, Object> evidence = inputEvidence(trace);
+        Map<String, Object> evidence = inputEvidence(trace, scenario);
         Map<String, Object> decisionStage = stage(trace, "DECISION_INPUT");
         Map<String, Object> input = asMap(decisionStage.get("model_input"));
         if (input.isEmpty()) input = asMap(decisionStage.get("runtime_request"));
         Map<String, Object> snapshot = asMap(input.get("snapshot"));
         Map<String, Object> normalized = asMap(stage(trace, "DECISION_OUTPUT").get("normalized_output"));
         Map<String, Object> payload = asMap(normalized.get("payload"));
-        Map<String, Object> argumentAudit = capabilityArgumentAudit(
+        Map<String, Object> argumentAudit = P3BSafeCapabilityEvidence.argumentAudit(
                 snapshot, nullableString(payload.get("capabilityId")), asMap(payload.get("arguments")));
         boolean measured = proposedAction != null && requests.requestCount() > 0;
         Map<String, Object> review = new LinkedHashMap<>();
@@ -686,6 +680,8 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         review.put("answered_lineage_present", ((Number) evidence.getOrDefault("answered_lineage_entries", 0)).longValue() > 0);
         review.put("unresolved_effective_claim_count", evidence.getOrDefault("unresolved_effective_claims", 0));
         review.put("capability_argument_audit", argumentAudit);
+        review.put("clarification_structure_audit", clarificationStructureAudit(
+                proposedAction, payload));
         review.put("capability_invocation_count", capabilityCalls);
         review.put("cycle_completed", "completed".equalsIgnoreCase(executionResult));
         review.put("failure_classification", failure.name());
@@ -698,29 +694,17 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         return review;
     }
 
-    private static Map<String, Object> capabilityArgumentAudit(
-            Map<String, Object> snapshot, String capabilityId, Map<String, Object> arguments) {
-        if (capabilityId == null || capabilityId.isBlank()) {
+    private static Map<String, Object> clarificationStructureAudit(
+            String actionFamily, Map<String, Object> payload) {
+        if (!"REQUEST_USER_INPUT".equals(actionFamily)) {
             return Map.of("status", "NOT_APPLICABLE");
         }
-        for (Object value : asList(snapshot.get("availableCapabilities"))) {
-            Map<String, Object> descriptor = asMap(value);
-            if (!capabilityId.equals(descriptor.get("id"))) continue;
-            Map<String, Object> schema = asMap(descriptor.get("inputSchema"));
-            List<String> required = stringList(schema.get("required"));
-            List<String> missing = required.stream().filter(name -> {
-                Object argument = arguments.get(name);
-                return argument == null || (argument instanceof String text && text.isBlank());
-            }).toList();
-            return Map.of(
-                    "status", "DETERMINISTIC_VERIFIED",
-                    "capability_visible", true,
-                    "required_arguments", required,
-                    "provided_argument_names", arguments.keySet().stream().map(String::valueOf).sorted().toList(),
-                    "missing_required_arguments", missing,
-                    "complete", missing.isEmpty());
-        }
-        return Map.of("status", "DETERMINISTIC_VERIFIED", "capability_visible", false);
+        Object rawQuestion = payload.get("questionText");
+        boolean questionPresent = rawQuestion instanceof String question && !question.isBlank();
+        return Map.of(
+                "status", "DETERMINISTIC_VERIFIED",
+                "question_text_present", questionPresent,
+                "semantic_intent", "UNRESOLVED");
     }
 
     private static Path reportPath() {

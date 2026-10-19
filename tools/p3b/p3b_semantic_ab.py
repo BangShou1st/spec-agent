@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,8 +15,6 @@ from typing import Any
 
 
 MAX_NEW_REQUESTS = 64
-QUERY_WORDS = re.compile(r"检索|查询|搜索|关键词|查找|query", re.IGNORECASE)
-SCOPE_WORDS = re.compile(r"范围|scope", re.IGNORECASE)
 RULES = ("c03", "c08", "c09")
 
 
@@ -191,20 +188,68 @@ def _c08_correct(attempt: dict[str, Any] | None) -> bool:
             and attempt.get("execution_state") == "completed")
 
 
-def _c09_correct(attempt: dict[str, Any] | None) -> bool:
-    if not attempt or _action(attempt) != "REQUEST_USER_INPUT":
-        return False
-    action = attempt.get("model_raw_action", {})
-    question = str(action.get("payload", {}).get("questionText", ""))
-    declarations = attempt.get("input_evidence", {}).get("available_capabilities", [])
-    memory = next((item for item in declarations if item.get("id") == "memory.search"), None)
-    required = memory.get("required_arguments", []) if memory else []
-    return (_candidate_acceptable(attempt)
-            and "query" in required
-            and QUERY_WORDS.search(question) is not None
-            and SCOPE_WORDS.search(question) is None
-            and _capability_calls(attempt) == 0
-            and attempt.get("execution_state") == "completed")
+def _assess_c09_attempt(attempt: dict[str, Any] | None) -> dict[str, Any]:
+    """Classify C09 using safe schema/action facts; natural-language intent stays unresolved."""
+    if not attempt:
+        return {"status": "UNRESOLVED", "structure_status": "UNRESOLVED",
+                "reason": "attempt_missing"}
+
+    action = _action(attempt)
+    if action is None:
+        return {"status": "UNRESOLVED", "structure_status": "UNRESOLVED",
+                "reason": "action_not_measured"}
+    oracle = attempt.get("oracle_candidate")
+    acceptable_actions = oracle.get("acceptable_primary_actions") if isinstance(oracle, dict) else None
+    if isinstance(acceptable_actions, list):
+        candidate_acceptable = action in acceptable_actions
+    elif isinstance(attempt.get("action_acceptable"), bool):
+        # Historical live reports predate the structured oracle copy but did
+        # preserve the same frozen-label comparison as a boolean.
+        candidate_acceptable = attempt["action_acceptable"]
+    else:
+        return {"status": "UNRESOLVED", "structure_status": "UNRESOLVED",
+                "reason": "frozen_candidate_action_evidence_missing"}
+    if not candidate_acceptable:
+        return {"status": "INCORRECT", "structure_status": "FAIL",
+                "reason": "action_outside_frozen_acceptable_set"}
+
+    facts = attempt.get("input_evidence", {})
+    missing = facts.get("memory_search_missing_arguments")
+    if (facts.get("memory_search_visible") is not True
+            or facts.get("memory_search_query_required") is not True
+            or facts.get("required_arguments_verified") is not True
+            or not isinstance(missing, list)
+            or "query" not in missing):
+        return {"status": "UNRESOLVED", "structure_status": "UNRESOLVED",
+                "reason": "frozen_capability_schema_or_fixture_evidence_incomplete"}
+
+    review = attempt.get("automatic_semantic_review", {})
+    clarification = review.get("clarification_structure_audit", {})
+    if action == "REQUEST_USER_INPUT":
+        if (clarification.get("status") != "DETERMINISTIC_VERIFIED"
+                or clarification.get("question_text_present") is not True
+                or _capability_calls(attempt) != 0
+                or attempt.get("execution_state") != "completed"):
+            return {"status": "INCORRECT", "structure_status": "FAIL",
+                    "reason": "clarification_action_structure_invalid"}
+        return {
+            "status": "UNRESOLVED",
+            "structure_status": "PASS",
+            "semantic_intent": "UNRESOLVED",
+            "reason": "question_intent_cannot_be_proved_from_action_structure",
+        }
+
+    # The frozen C09 oracle allows only REQUEST_USER_INPUT. Other measured
+    # actions are a clear mismatch; do not infer question meaning from text.
+    if action == "INVOKE_CAPABILITY":
+        args = review.get("capability_argument_audit", {})
+        if (args.get("capability_visible") is True
+                and args.get("required_arguments_verified") is True
+                and "query" in args.get("missing_required_arguments", [])):
+            return {"status": "INCORRECT", "structure_status": "FAIL",
+                    "reason": "proposed_capability_missing_required_query"}
+    return {"status": "INCORRECT", "structure_status": "FAIL",
+            "reason": "action_outside_frozen_acceptable_set"}
 
 
 def _result(status: str, evidence: dict[str, Any]) -> dict[str, Any]:
@@ -320,19 +365,28 @@ def _decide_c09(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dict[str,
     if not intact:
         return _result("INCONCLUSIVE", {"integrity_errors": errors})
     a09, b09 = _attempts_for(a, "P3B-C09"), _attempts_for(b, "P3B-C09")
-    a_errors = sum(not _c09_correct(item) for item in a09.values())
-    b_errors = sum(not _c09_correct(item) for item in b09.values())
+    a_assessments = {variant: _assess_c09_attempt(item) for variant, item in a09.items()}
+    b_assessments = {variant: _assess_c09_attempt(item) for variant, item in b09.items()}
+    a_errors = sum(item["status"] == "INCORRECT" for item in a_assessments.values())
+    b_errors = sum(item["status"] == "INCORRECT" for item in b_assessments.values())
+    unresolved = any(item["status"] == "UNRESOLVED"
+                     for item in (*a_assessments.values(), *b_assessments.values()))
     checks = {
-        "b_asks_only_for_missing_query_without_calling": len(b09) == 2 and b_errors == 0,
-        "behavior_improved_over_fresh_a": b_errors < a_errors,
+        "b_clarification_structure_passes_without_calling": len(b09) == 2 and all(
+            item["structure_status"] == "PASS" for item in b_assessments.values()),
+        "behavior_improved_over_fresh_a": not unresolved and b_errors < a_errors,
         "missing_argument_proposal_remains_fail_closed": all(
             _action(item) != "INVOKE_CAPABILITY"
             or ("MISSING_REQUIRED_CAPABILITY_ARGUMENT" in item.get("eligibility_reason_codes", [])
                 and _capability_calls(item) == 0)
             for item in b09.values()),
     }
-    if not all(checks.values()):
-        status = "REJECT" if b_errors > 0 else "INCONCLUSIVE"
+    if b_errors > 0:
+        status = "REJECT"
+    elif unresolved:
+        status = "INCONCLUSIVE"
+    elif not all(checks.values()):
+        status = "INCONCLUSIVE"
     elif a_errors > 0:
         status = "ACCEPT"
     else:
@@ -341,7 +395,9 @@ def _decide_c09(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dict[str,
         "checks": checks,
         "c09_a_errors": a_errors,
         "c09_b_errors": b_errors,
-        "query_parameter_source": "visible memory.search declaration and frozen C09 fixture",
+        "c09_a_assessments": a_assessments,
+        "c09_b_assessments": b_assessments,
+        "semantic_intent_policy": "UNRESOLVED unless a structured field proves which required argument is requested",
     })
 
 
