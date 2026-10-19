@@ -92,9 +92,23 @@ def test_c09_targeted_query_question_has_a_real_positive_acceptance_path():
     assert assessment["semantic_review"]["model_calls"] == 0
 
 
+def test_c09_project_scope_context_question_is_correct_through_attempt_assessment():
+    attempt = _c09_attempt()
+    attempt["model_raw_action"] = {
+        "payload": {"questionText": "请问需要在当前项目范围内检索哪些关键词？"}
+    }
+
+    assessment = _assess_c09_attempt(attempt)
+
+    assert assessment["structure_status"] == "PASS"
+    assert assessment["semantic_intent"] == "PASS"
+    assert assessment["status"] == "CORRECT"
+
+
 def test_c09_semantic_review_rejects_known_scope_and_unrelated_requests():
     for question in (
         "您希望检索哪个项目？",
+        "请提供项目范围。",
         "请问您打算什么时候完成？",
     ):
         attempt = _c09_attempt()
@@ -102,6 +116,47 @@ def test_c09_semantic_review_rejects_known_scope_and_unrelated_requests():
         result = _assess_c09_attempt(attempt)
         assert result["status"] == "INCORRECT", question
         assert result["semantic_intent"] == "INCORRECT", question
+
+
+def test_c09_semantic_review_does_not_confuse_known_scope_context_with_query_request():
+    for question in (
+        "请问需要在当前项目范围内检索哪些关键词？",
+        "在当前项目范围内，您希望检索哪些关键词？",
+        "Which keywords should I search for in the current project scope?",
+        "For the current project scope, which search terms should I use?",
+        "请问需要检索哪些关键词？范围按当前项目即可。",
+        "系统已提供当前项目范围。请问需要检索哪些关键词？",
+        "Which search terms should I use? The current project is already the scope.",
+        "请问需要检索哪些关键词？还需要搜索什么内容？",
+    ):
+        result = _judge_c09_question(question, _c09_attempt()["input_evidence"])
+        assert result["status"] == "PASS", (question, result["reason_code"])
+
+
+def test_c09_semantic_review_does_not_accept_why_method_or_format_questions():
+    for question in (
+        "为什么要检索？",
+        "用什么方式检索？",
+        "检索什么格式？",
+        "What is the reason for searching?",
+        "How should I search?",
+        "What format should I search in?",
+        "Which content format should I search in?",
+        "What keywords define a search query?",
+        "请问需要在当前项目范围内检索什么格式？",
+    ):
+        result = _judge_c09_question(question, _c09_attempt()["input_evidence"])
+        assert result["status"] == "UNRESOLVED", (question, result["reason_code"])
+
+
+def test_c09_scope_request_in_any_subquestion_overrides_query_keyword_request():
+    for question in (
+        "请问需要哪些关键词？您希望在哪个项目范围内检索？",
+        "Which search terms should I use? Which project should I search?",
+        "请问需要检索哪些关键词？另外，您希望什么时候完成？",
+    ):
+        result = _judge_c09_question(question, _c09_attempt()["input_evidence"])
+        assert result["status"] == "INCORRECT", (question, result["reason_code"])
 
 
 def test_c09_query_token_without_an_actual_request_is_not_semantic_proof():

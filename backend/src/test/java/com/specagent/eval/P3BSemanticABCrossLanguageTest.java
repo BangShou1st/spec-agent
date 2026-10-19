@@ -55,7 +55,7 @@ class P3BSemanticABCrossLanguageTest {
                 "acceptable_primary_actions", List.of("REQUEST_USER_INPUT")));
         attempt.put("input_evidence", facts);
         attempt.put("model_raw_action", Map.of("payload", Map.of(
-                "questionText", "请问需要检索哪些关键词？范围按当前项目即可。")));
+                "questionText", "请问需要在当前项目范围内检索哪些关键词？")));
         attempt.put("automatic_semantic_review", Map.of(
                 "clarification_structure_audit", Map.of(
                         "status", "DETERMINISTIC_VERIFIED",

@@ -255,10 +255,17 @@ def _judge_c09_question(question_text: Any, facts: dict[str, Any]) -> dict[str, 
         r"哪些|什么|哪一|哪种|怎么|如何",
         re.IGNORECASE,
     )
-    scope_topic = re.compile(r"范围|scope|项目|project|route|路线", re.IGNORECASE)
-    scope_request = re.compile(
-        r"(哪个|哪一个|什么|希望|选择|提供|补充|给出|告诉|which|what|choose|"
-        r"provide|share|tell me|请问|请您|请你)",
+    known_scope_request = re.compile(
+        r"(?:哪个|哪一个|什么)\s*(?:项目|范围|路线)"
+        r"|(?:项目|范围|路线)\s*(?:是)?\s*(?:什么|哪个|哪一个)"
+        r"|^(?:(?:请问|请您|请你|麻烦)?(?:请|麻烦)?|(?:希望|需要)(?:您|你)?)\s*"
+        r"(?:提供|补充|说明|告诉(?:我)?|明确|选择|指定)"
+        r".{0,12}(?:项目|范围|路线)"
+        r"|\b(?:which|what)\s+(?:project|scope|route)\b"
+        r"|^(?:please\s+)?(?:specify|choose|provide|share|tell me)\s+"
+        r"(?:the\s+)?(?:project|scope|route)\b"
+        r"|\b(?:could|can) you\s+(?:specify|choose|provide|share|tell me)\s+"
+        r"(?:the\s+)?(?:project|scope|route)\b",
         re.IGNORECASE,
     )
     unrelated_topic = re.compile(
@@ -271,19 +278,30 @@ def _judge_c09_question(question_text: Any, facts: dict[str, Any]) -> dict[str, 
         r"search\s+terms?|search\s+keywords?|keywords?|search\s+query|query\s+text",
         re.IGNORECASE,
     )
-    information_request_verb = re.compile(
-        r"提供|补充|给出|填写|输入|告诉(?:我)?|provide|share|tell(?: me)?|"
-        r"enter|fill in|give(?: me)?",
-        re.IGNORECASE,
-    )
     query_meta_topic = re.compile(
-        r"定义|含义|意义|解释|概念|作用|格式|正确|有效|"
-        r"definition|meaning|explain|format|correct|valid",
+        r"定义|含义|意义|解释|概念|作用|原因|理由|格式|正确|有效|"
+        r"define|definition|meaning|explain|reason|purpose|format|correct|valid",
         re.IGNORECASE,
     )
     search_verb = re.compile(r"检索|搜索|查询|查找|search|retrieve|look up", re.IGNORECASE)
-    interrogative = re.compile(
-        r"哪些|什么|哪一|哪种|what|which|\?", re.IGNORECASE
+    direct_search_content_question = re.compile(
+        r"(?:检索|搜索|查询|查找)(?:要|需要)?\s*(?:哪些|什么|哪一|哪种)"
+        r"(?!格式|方式|方法|原因|目的|理由)"
+        r"|\b(?:which|what)\s+(?:search\s+)?"
+        r"(?:keywords?|terms?|content|information|topics?)\b.{0,80}"
+        r"\b(?:search|retrieve|look up)\b"
+        r"|\b(?:search|retrieve|look up)\s+(?:for\s+)?"
+        r"(?:what|which)(?!\s+(?:format|way|method|reason|purpose))\b"
+        r"|\bwhat\s+(?:should\s+(?:i|we)|do you want me to)\s+"
+        r"(?:search for|look up|retrieve)\b",
+        re.IGNORECASE,
+    )
+    direct_query_term_question = re.compile(
+        r"(?<!为)(?:哪些|什么|哪一|哪种)\s*(?:搜索|检索|查询)?\s*"
+        r"(?:关键词|关键字|检索词|搜索词|查询词|搜索内容|检索内容|查询内容)"
+        r"|\b(?:which|what)\s+(?:search\s+)?"
+        r"(?:keywords?|terms?|content|information|topics?)\b",
+        re.IGNORECASE,
     )
     explicit_query_request = re.compile(
         r"(?:请|麻烦|请您|请你|please|could you|can you).{0,24}"
@@ -295,10 +313,7 @@ def _judge_c09_question(question_text: Any, facts: dict[str, Any]) -> dict[str, 
         re.IGNORECASE,
     )
 
-    known_requested = any(
-        scope_topic.search(clause) and scope_request.search(clause)
-        for clause in clauses
-    )
+    known_requested = any(known_scope_request.search(clause) for clause in clauses)
     if known_requested:
         status, reason = "INCORRECT", "KNOWN_SCOPE_REQUESTED"
     else:
@@ -310,13 +325,17 @@ def _judge_c09_question(question_text: Any, facts: dict[str, Any]) -> dict[str, 
             status, reason = "INCORRECT", "UNRELATED_INFORMATION_REQUESTED"
         else:
             query_requested = any(
-                not (query_terms.search(clause) and query_meta_topic.search(clause))
+                not query_meta_topic.search(clause)
                 and (
-                    (query_terms.search(clause) and information_request_verb.search(clause))
-                    or (query_terms.search(clause) and interrogative.search(clause)
-                        and re.search(
-                            r"是(?:什么|哪些|哪一|哪种)|(?:what|which)\s+(?:are|is)", clause))
-                    or (search_verb.search(clause) and interrogative.search(clause))
+                    (query_terms.search(clause)
+                     and re.search(
+                         r"(?:是(?:什么|哪些|哪一|哪种)|(?:what|which)\s+(?:are|is))",
+                         clause,
+                         re.IGNORECASE,
+                     ))
+                    or direct_query_term_question.search(clause)
+                    or (search_verb.search(clause)
+                        and direct_search_content_question.search(clause))
                     or explicit_query_request.search(clause)
                 )
                 for clause in clauses
