@@ -29,8 +29,8 @@
 ## 安全边界和未验收项
 
 - PASS：无授权 Spring 测试入口拒绝；组合外部标签拒绝；显式授权与模拟身份通过；静态普通库拒绝；同名异服务器/用户/端口拒绝；数据源与独立 Flyway 目标漂移在应用 Bean 前拒绝；模拟连接资源关闭；种子重置前拒绝非法库。所有正反例无真实 DB/provider 请求。
-- `SKIPPED_EXTERNAL_DEPENDENCY`：需要完整业务类型的 C03 集成发现测试、真实 Spring 应用集成验证（生产源码直接使用不可用 Zen 类型，不能安全删依赖硬跑）。不能将本报告的本地 GenericApplicationContext 成功描述为生产 Spring 上下文启动通过。
+- 本机最终完整 classpath 的 `testOffline` 已执行 C03 集成类型发现测试并通过（只加载元数据，不执行集成方法）；该类不纳入独立编译项目。干净环境中需要完整业务类型的这一检查仍受 Zen 编译依赖限制。真实 Spring 应用集成验证未运行，不能将本报告的本地 GenericApplicationContext 成功描述为生产 Spring 上下文启动通过。
 - `NOT_MEASURED`：真实隔离数据库的显式授权集成、Flyway/数据库网络访问、Provider 执行、子进程端到端测试。本轮没有创建、连接、迁移或修改数据库，没有改变 Provider/Prompt，没有新增模型请求。
 - factory 保护 Spring TestContext 引导，不能构成任意 JVM 代码沙箱；手写 SpringApplication、ApplicationContextRunner、子进程不自动受此 factory 保护。这些入口不在已审计离线白名单，独立构建也不编译其测试。未来扩充白名单必须审查继承、静态初始化、extensions 和整个调用链。
-- 根 Gradle 的 `testOffline` 与 bootRun/其他 Test/JavaExec 的任务组合检查由主代理修复及记录；本报告不把静态审查当作组合命令实际通过。
+- 根 Gradle 的任务图守卫由主代理补齐；实际拒绝 `testOffline bootRun`、带授权的 offline+test/offline+live 组合以及未授权 test。最终根白名单 48/48、独立项目 85/85 通过，详情和原始日志见 delivery.md；这两套有重叠，不能相加作为覆盖数。
 - 恢复共享库后须重跑完整源码编译、C03 真实类型发现，以及仅针对新建且核实隔离库的 Spring 启动和显式授权集成验收。
