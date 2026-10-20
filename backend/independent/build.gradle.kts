@@ -57,6 +57,11 @@ sourceSets {
         java.include("com/specagent/eval/P3BLiveDatabaseGuardTest.java")
         java.include("com/specagent/support/DatabaseTestContextGuard.java")
         java.include("com/specagent/support/DatabaseTestContextGuardTest.java")
+        // Existing cleanup failure tests use only UUIDs, Consumers and JUnit.
+        // They do not load EvalHarnessBase or execute its JDBC cleanup.
+        java.include("com/specagent/eval/EvalProjectCleanup.java")
+        java.include("com/specagent/eval/EvalCleanupFailureHandler.java")
+        java.include("com/specagent/eval/EvalProjectCleanupTest.java")
         // Deterministic corpus/scoring only: never compile EvalHarnessBase.
         listOf("P3BCorpus", "P3BDecisionQuality", "P3BGateMeasurementTest",
             "P3BC03NaturalLanguageScenarios", "P3BC03NaturalLanguageScenarioTest",

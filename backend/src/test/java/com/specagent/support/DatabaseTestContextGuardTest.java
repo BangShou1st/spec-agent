@@ -53,6 +53,30 @@ class DatabaseTestContextGuardTest {
     @org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
     static class SliceBootstrap { }
 
+    @org.springframework.test.context.ContextConfiguration(classes = SideEffectConfig.class)
+    static class EnclosingSpringBootstrap {
+        @org.junit.jupiter.api.Nested
+        class NestedBootstrap { }
+
+        @org.junit.jupiter.api.Nested
+        @org.springframework.test.context.NestedTestConfiguration(
+                org.springframework.test.context.NestedTestConfiguration.EnclosingConfiguration.OVERRIDE)
+        class IndependentNestedBootstrap { }
+    }
+
+    @ExternalService
+    @org.springframework.test.context.ContextConfiguration(classes = SideEffectConfig.class)
+    static class EnclosingExternalBootstrap {
+        @org.junit.jupiter.api.Nested
+        class NestedBootstrap { }
+
+        @org.junit.jupiter.api.Nested
+        @org.springframework.test.context.NestedTestConfiguration(
+                org.springframework.test.context.NestedTestConfiguration.EnclosingConfiguration.OVERRIDE)
+        @org.springframework.test.context.ContextConfiguration(classes = SideEffectConfig.class)
+        class OverrideNestedBootstrap { }
+    }
+
     @Configuration(proxyBeanMethods = false)
     static class SideEffectConfig {
         @Bean Object sideEffect() {
@@ -94,6 +118,32 @@ class DatabaseTestContextGuardTest {
                     .hasMessageContaining("explicit -PdatabaseIntegration=true");
         }
         assertThat(STARTS.get()).isZero();
+    }
+
+    @Test void enclosingSpringConfigurationCannotBypassDisabledGate() {
+        STARTS.set(0);
+        assertThatThrownBy(() -> new TestContextManager(EnclosingSpringBootstrap.NestedBootstrap.class))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("explicit -PdatabaseIntegration=true");
+        assertThat(STARTS.get()).isZero();
+    }
+
+    @Test void enclosingExternalServiceTagCannotBeBypassedByNestedTest() {
+        var guard = new DatabaseTestContextGuard(() -> "true",
+                name -> { throw new AssertionError("external gate must precede environment access"); },
+                (url, user, password) -> { throw new AssertionError("must not connect"); });
+        for (Class<?> entry : java.util.List.of(EnclosingExternalBootstrap.NestedBootstrap.class,
+                EnclosingExternalBootstrap.OverrideNestedBootstrap.class))
+            assertThatThrownBy(() -> guard.createContextCustomizer(entry, java.util.List.of()))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("-PexternalServices=true");
+    }
+
+    @Test void explicitOverrideDoesNotInheritEnclosingSpringConfiguration() {
+        var guard = new DatabaseTestContextGuard(() -> { throw new AssertionError("no inherited Spring entry"); },
+                name -> { throw new AssertionError("must not inspect environment"); },
+                (url, user, password) -> { throw new AssertionError("must not connect"); });
+        assertThat(guard.createContextCustomizer(EnclosingSpringBootstrap.IndependentNestedBootstrap.class,
+                java.util.List.of())).isNull();
     }
 
     @Test void explicitOptInWithMissingOrSharedTargetNeverRequestsConnection() {

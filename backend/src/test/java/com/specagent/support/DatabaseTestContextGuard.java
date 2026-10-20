@@ -6,6 +6,7 @@ import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.test.context.ContextConfigurationAttributes;
 import org.springframework.test.context.ContextCustomizer;
 import org.springframework.test.context.ContextCustomizerFactory;
+import org.springframework.test.context.TestContextAnnotationUtils;
 import org.springframework.boot.test.util.TestPropertyValues;
 
 import java.util.List;
@@ -33,21 +34,22 @@ public final class DatabaseTestContextGuard implements ContextCustomizerFactory 
     @Override
     public ContextCustomizer createContextCustomizer(Class<?> testClass,
             List<ContextConfigurationAttributes> configurationAttributes) {
-        if (!AnnotatedElementUtils.hasAnnotation(testClass, SpringBootTest.class)
-                && !AnnotatedElementUtils.hasAnnotation(testClass,
+        // Use Spring's enclosing-class inheritance rules as well as superclass
+        // and composed annotations. @Nested tests can inherit a real context.
+        if (!TestContextAnnotationUtils.hasAnnotation(testClass, SpringBootTest.class)
+                && !TestContextAnnotationUtils.hasAnnotation(testClass,
                         org.springframework.boot.test.autoconfigure.data.jdbc.DataJdbcTest.class)
-                && !AnnotatedElementUtils.hasAnnotation(testClass,
+                && !TestContextAnnotationUtils.hasAnnotation(testClass,
                         org.springframework.boot.test.autoconfigure.jdbc.JdbcTest.class)
-                && !AnnotatedElementUtils.hasAnnotation(testClass,
+                && !TestContextAnnotationUtils.hasAnnotation(testClass,
                         org.springframework.test.context.ContextConfiguration.class)
-                && !AnnotatedElementUtils.hasAnnotation(testClass,
+                && !TestContextAnnotationUtils.hasAnnotation(testClass,
                         org.springframework.test.context.ContextHierarchy.class)
-                && !AnnotatedElementUtils.hasAnnotation(testClass,
+                && !TestContextAnnotationUtils.hasAnnotation(testClass,
                         org.springframework.test.context.BootstrapWith.class)) return null;
         // Do not even inspect connection credentials until the explicit execution gate passes.
         requireEnabled(enabled.get());
-        if (AnnotatedElementUtils.findMergedRepeatableAnnotations(testClass, org.junit.jupiter.api.Tag.class).stream()
-                .anyMatch(tag -> tag.value().equals("external-service"))
+        if (isExternalService(testClass)
                 && !"true".equals(System.getProperty("specagent.external-tests.enabled")))
             throw new IllegalStateException("External-service Spring tests also require explicit -PexternalServices=true");
         String url = environment.apply("SPEC_AGENT_TEST_DB_URL");
@@ -57,6 +59,17 @@ public final class DatabaseTestContextGuard implements ContextCustomizerFactory 
                 environment.apply("SPEC_AGENT_TEST_DB_SERVER_ADDRESS"),
                 environment.apply("SPEC_AGENT_TEST_DB_SERVER_PORT"), connections);
         return new VerifiedTarget(url, user, password);
+    }
+
+    private static boolean isExternalService(Class<?> testClass) {
+        for (Class<?> candidate = testClass; candidate != null; candidate = candidate.getEnclosingClass()) {
+            if (AnnotatedElementUtils.findMergedRepeatableAnnotations(candidate, org.junit.jupiter.api.Tag.class)
+                    .stream().anyMatch(tag -> tag.value().equals("external-service"))) return true;
+            // JUnit inherits enclosing tags for @Nested tests even when Spring
+            // configuration inheritance is explicitly OVERRIDE.
+            if (!AnnotatedElementUtils.hasAnnotation(candidate, org.junit.jupiter.api.Nested.class)) break;
+        }
+        return false;
     }
 
     static void requireEnabled(String enabled) {

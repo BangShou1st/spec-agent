@@ -102,7 +102,9 @@ val auditedOfflineTests = setOf(
     "com.specagent.eval.P3BC03NaturalLanguageScenarioTest",
     "com.specagent.eval.P3BGateMeasurementTest",
     "com.specagent.support.DatabaseTestContextGuardTest",
-    "com.specagent.support.DatabaseTestDiscoveryTest"
+    "com.specagent.support.DatabaseTestDiscoveryTest",
+    // All provider gateways are Mockito mocks; concurrency/LRU fixtures are in-memory.
+    "com.specagent.model.inference.RoutingModelInferenceGatewayTest"
 )
 val databaseIntegrationEnabled = providers.gradleProperty("databaseIntegration").map { it == "true" }.orElse(false)
 val externalServicesEnabled = providers.gradleProperty("externalServices").map { it == "true" }.orElse(false)
