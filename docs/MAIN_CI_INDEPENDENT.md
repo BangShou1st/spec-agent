@@ -53,6 +53,11 @@ executing in independent mode also fails the summary. Summary unit tests cover
 these cases. GitHub's overall independent run may be green; its declared scope
 explicitly excludes the skipped integrations, which are never counted as passes.
 
+The summary validates that the mode job emits an explicit `true` or `false`
+consistent with `CI_FULL`; missing or invalid scope fails closed. Real failures,
+cancellations, unexpected skips and missing results are separately reported as
+`FAIL`, `CANCELLED`, `UNEXPECTED_SKIP` and `MISSING` and fail the summary.
+
 ## Reviewed historical failure and branch settings
 
 All four failed jobs in [run 171](https://github.com/BangShou1st/spec-agent/actions/runs/39132798714)

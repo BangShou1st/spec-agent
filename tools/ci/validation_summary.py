@@ -12,6 +12,9 @@ def summarize(needs, full):
     failures = []
     if needs.get("validation-mode", {}).get("result") != "success":
         failures.append("validation-mode did not complete successfully")
+    selected = needs.get("validation-mode", {}).get("outputs", {}).get("full")
+    if selected not in ("true", "false") or (selected == "true") != full:
+        failures.append("validation-mode output missing, invalid or inconsistent")
     for name in INDEPENDENT + EXTERNAL:
         result = needs.get(name, {}).get("result", "missing")
         if name in EXTERNAL and not full and result == "skipped":
@@ -22,7 +25,9 @@ def summarize(needs, full):
             if name in EXTERNAL and not full:
                 failures.append(name + ": external job ran in independent mode")
         else:
-            status, reason = "BLOCKED", "Actual GitHub job result: " + result
+            status = {"failure": "FAIL", "cancelled": "CANCELLED",
+                      "skipped": "UNEXPECTED_SKIP", "missing": "MISSING"}.get(result, "INVALID")
+            reason = "Actual GitHub job result: " + result
             failures.append(name + ": " + result)
         rows.append((name, status, reason))
     scope = "full" if full else "independent"
@@ -35,7 +40,10 @@ def summarize(needs, full):
 
 
 if __name__ == "__main__":
-    report, failures = summarize(json.loads(os.environ["CI_NEEDS"]), os.environ["CI_FULL"] == "true")
+    raw_full = os.environ["CI_FULL"]
+    report, failures = summarize(json.loads(os.environ["CI_NEEDS"]), raw_full == "true")
+    if raw_full not in ("true", "false"):
+        failures.append("CI_FULL must explicitly be true or false")
     with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as stream:
         stream.write(report)
     print(report)
