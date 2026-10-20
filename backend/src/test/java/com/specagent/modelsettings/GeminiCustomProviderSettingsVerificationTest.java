@@ -36,8 +36,9 @@ class GeminiCustomProviderSettingsVerificationTest {
     }
 
     private static final String GEMINI_OPENAI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai";
-    private static final String PRIMARY_MODEL_ID = "gemini-3.8-flash";
-    private static final String DISPLAY_NAME = "Google Gemini 3.8 Flash";
+    private static final String PRIMARY_MODEL_ID = System.getenv().getOrDefault(
+            "SPEC_AGENT_GEMINI_MODEL_ID", "gemini-3.5-flash-lite");
+    private static final String DISPLAY_NAME = "Google Gemini 3.5 Flash Lite";
 
     @Autowired
     private CustomProviderSettingsService customService;
@@ -49,7 +50,7 @@ class GeminiCustomProviderSettingsVerificationTest {
     static void configureTargetDatabase(DynamicPropertyRegistry registry) {
         String targetUrl = System.getenv().getOrDefault(
                 "SPEC_AGENT_TARGET_DB_URL",
-                "jdbc:postgresql://localhost:5434/spec_agent");
+                "jdbc:postgresql://localhost:5434/spec_agent_p3b_live_gemini_20261020");
         registry.add("spring.datasource.url", () -> targetUrl);
 
         Path backendKeyFile = Path.of("E:/project/spec-agent/backend/data/secret-master.key");
@@ -87,8 +88,10 @@ class GeminiCustomProviderSettingsVerificationTest {
         assertThat(discovery.manualModel()).isFalse();
         assertThat(discovery.models()).isNotEmpty();
         assertThat(discovery.models().stream().anyMatch(m -> m.contains(PRIMARY_MODEL_ID)))
-                .as("Gemini 3.8 Flash must exist in official models catalog")
+                .as("%s must exist in official models catalog", PRIMARY_MODEL_ID)
                 .isTrue();
+        System.out.println("[GEMINI_LITE_DISCOVERY] Found models count: " + discovery.models().size()
+                + ", target " + PRIMARY_MODEL_ID + " is verified available.");
 
         // 2. Save settings via official service (encrypted via ModelCredentialCrypto, revision incremented)
         CustomProviderSettingsService.Status savedStatus = customService.save(
@@ -102,14 +105,26 @@ class GeminiCustomProviderSettingsVerificationTest {
         assertThat(savedStatus.selectedModel()).isEqualTo(PRIMARY_MODEL_ID);
         assertThat(savedStatus.hasKey()).isTrue();
         assertThat(savedStatus.maskedKey()).isNotNull();
+        System.out.println("[GEMINI_LITE_SAVE] Saved revision: " + savedStatus.configRevision()
+                + ", selectedModel: " + savedStatus.selectedModel()
+                + ", maskedKey: " + savedStatus.maskedKey());
 
-        // 3. Validate compatibility via official probe (1 inference call to Gemini 3.8 Flash)
+        // 3. Validate compatibility via official probe (1 inference call to Gemini Lite candidate)
+        long startProbe = System.currentTimeMillis();
         CustomProviderSettingsService.Status validatedStatus = customService.validate();
+        long probeDurationMs = System.currentTimeMillis() - startProbe;
         assertThat(validatedStatus.validated()).isTrue();
+        System.out.println("[GEMINI_LITE_PROBE] Probe SUCCESS in " + probeDurationMs + " ms, validated="
+                + validatedStatus.validated() + ", revision=" + validatedStatus.configRevision());
 
-        // 4. Verify global provider remains KILO
+        // 4. Verify global provider on isolated DB can be activated via official service
         assertThat(modelProviderSettingsService.activeProvider())
-                .as("Active global provider must remain KILO")
+                .as("Initial active provider on isolated DB")
                 .isEqualTo(ModelProvider.KILO);
+        modelProviderSettingsService.setActiveProvider(ModelProvider.CUSTOM);
+        assertThat(modelProviderSettingsService.activeProvider())
+                .as("Active provider on isolated DB after activation")
+                .isEqualTo(ModelProvider.CUSTOM);
+        System.out.println("[GEMINI_LITE_ACTIVATION] Successfully activated CUSTOM on isolated database.");
     }
 }

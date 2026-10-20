@@ -14,6 +14,7 @@ from p3b.p3b_semantic_ab import (
     _validate_c03_semantic_review,
     _validate_c09_semantic_review,
     evaluate_c09_only,
+    evaluate_c03_only,
     C03_SEMANTIC_REVIEWER,
 )
 
@@ -723,3 +724,78 @@ def test_c09_only_reports_the_configured_scenario_id():
     b = _single_variant_report(4)
     assert evaluate_c09_only(a, b)["scenario_id"] == "P3B-C09"
     assert evaluate_c09_only(a, b, scenario_id="P3B-C09-NL")["scenario_id"] == "P3B-C09-NL"
+
+
+def test_c03_only_acceptance_and_rejection_paths():
+    attempt_a_repeat = {
+        **_c03_attempt(action="REQUEST_USER_INPUT"),
+        "scenario_id": "P3B-C03-NL",
+        "variant_id": "holdout",
+        "prompt_hashes": {"state_update_input": "same", "decision_input": "prompt-a"},
+    }
+    attempt_b_progress = {
+        **_c03_attempt(action="RESPOND_TO_USER"),
+        "scenario_id": "P3B-C03-NL",
+        "variant_id": "holdout",
+        "oracle_candidate": {"acceptable_primary_actions": ["RESPOND_TO_USER", "CREATE_NODE"]},
+        "prompt_hashes": {"state_update_input": "same", "decision_input": "prompt-b"},
+    }
+    attempt_new_req = {
+        **_c03_attempt(action="REQUEST_USER_INPUT"),
+        "scenario_id": "P3B-C03-NEW-REQ",
+        "variant_id": "holdout",
+        "oracle_candidate": {"acceptable_primary_actions": ["REQUEST_USER_INPUT"]},
+        "input_evidence": {
+            **_c03_attempt()["input_evidence"],
+            "missing_requirements": ["高可用部署"],
+        },
+        "model_raw_action": {"payload": {"questionText": "请问高可用部署方案是什么？"}},
+        "prompt_hashes": {"state_update_input": "same", "decision_input": "prompt-b"},
+    }
+    attempt_ambig = {
+        **_c03_attempt(action="REQUEST_USER_INPUT"),
+        "scenario_id": "P3B-C03-AMBIG",
+        "variant_id": "holdout",
+        "oracle_candidate": {"acceptable_primary_actions": ["REQUEST_USER_INPUT"]},
+        "input_evidence": {
+            **_c03_attempt()["input_evidence"],
+            "ambiguous_answer_given": True,
+            "unresolved_effective_claims": 1,
+        },
+        "model_raw_action": {"payload": {"questionText": "主存储具体打算采用哪种方案？"}},
+        "prompt_hashes": {"state_update_input": "same", "decision_input": "prompt-b"},
+    }
+
+    report_a = {
+        "report_status": "COMPLETE",
+        "provider": "KILO",
+        "model_id": "cohere/north-mini-code:free",
+        "prompt_rule_set": "none",
+        "total_model_requests": 3,
+        "attempts": [attempt_a_repeat, {**attempt_new_req, "prompt_hashes": {"state_update_input": "same", "decision_input": "prompt-a"}}, {**attempt_ambig, "prompt_hashes": {"state_update_input": "same", "decision_input": "prompt-a"}}],
+    }
+    report_b = {
+        "report_status": "COMPLETE",
+        "provider": "KILO",
+        "model_id": "cohere/north-mini-code:free",
+        "prompt_rule_set": "c03",
+        "total_model_requests": 3,
+        "attempts": [attempt_b_progress, attempt_new_req, attempt_ambig],
+    }
+
+    scenarios = {"P3B-C03-NL", "P3B-C03-NEW-REQ", "P3B-C03-AMBIG"}
+    res_accept = evaluate_c03_only(report_a, report_b, max_requests=8, scenario_ids=scenarios)
+    assert res_accept["experiment_status"] == "COMPLETE"
+    assert res_accept["rule_decisions"]["c03"]["status"] == "ACCEPT"
+
+    # 若 B 臂也重复追问 -> REJECT
+    attempt_b_repeat = {
+        **attempt_a_repeat,
+        "prompt_hashes": {"state_update_input": "same", "decision_input": "prompt-b"},
+    }
+    report_b_repeat = {
+        **report_b,
+        "attempts": [attempt_b_repeat, attempt_new_req, attempt_ambig],
+    }
+    res_reject = evaluate_c03_only(report_a, report_b_repeat, max_requests=8, scenario_ids=scenarios)
+    assert res_reject["rule_decisions"]["c03"]["status"] == "REJECT"

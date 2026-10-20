@@ -80,7 +80,8 @@ def _reliable_report(report: dict[str, Any] | None,
 
 def _pair_integrity(a: dict[str, Any] | None, b: dict[str, Any] | None,
                     expected_scenarios: set[str],
-                    max_requests: int = MAX_NEW_REQUESTS) -> tuple[bool, list[str]]:
+                    max_requests: int = MAX_NEW_REQUESTS,
+                    expected_variants: set[str] | None = None) -> tuple[bool, list[str]]:
     errors: list[str] = []
     if not _reliable_report(a, max_requests) or not _reliable_report(b, max_requests):
         errors.append("one or both arms are incomplete or contain failed/retried requests")
@@ -88,10 +89,11 @@ def _pair_integrity(a: dict[str, Any] | None, b: dict[str, Any] | None,
         errors.append("provider or model differs between arms")
     a_attempts = _attempt_map(a)
     b_attempts = _attempt_map(b)
+    variants = expected_variants or {"base", "holdout"}
     expected_keys = {
         (scenario, variant)
         for scenario in expected_scenarios
-        for variant in ("base", "holdout")
+        for variant in variants
     }
     if set(a_attempts) != expected_keys or set(b_attempts) != expected_keys:
         errors.append("scenario or variant coverage differs from the frozen sample set")
@@ -1215,6 +1217,157 @@ def evaluate_c09_only(a: dict[str, Any] | None, b: dict[str, Any] | None,
     }
 
 
+def _decide_c03_nl(a: dict[str, Any] | None, b: dict[str, Any] | None,
+                   max_requests: int = MAX_NEW_REQUESTS,
+                   scenario_ids: set[str] | None = None) -> dict[str, Any]:
+    if not a or not b:
+        return _result("INCONCLUSIVE", {"reason": "A/B arm missing"})
+    a_scenarios, b_scenarios = _arm_scenario_ids(a), _arm_scenario_ids(b)
+    if a_scenarios != b_scenarios:
+        return _result("INCONCLUSIVE", {
+            "reason": "A and B arms cover different scenarios; cross-scenario arms are"
+                      " recorded separately and are never paired",
+            "a_scenarios": sorted(a_scenarios),
+            "b_scenarios": sorted(b_scenarios),
+        })
+    target_scenarios = scenario_ids or a_scenarios or {"P3B-C03-NL"}
+    variants = {v for (s, v) in _attempt_map(a).keys()}
+    intact, errors = _pair_integrity(a, b, target_scenarios, max_requests, expected_variants=variants)
+    if not intact:
+        return _result("INCONCLUSIVE", {"integrity_errors": errors})
+
+    aa, ba = _attempt_map(a), _attempt_map(b)
+    c03_nl_attempts_a = [item for (s, v), item in aa.items() if s == "P3B-C03-NL"]
+    c03_nl_attempts_b = [item for (s, v), item in ba.items() if s == "P3B-C03-NL"]
+    new_req_attempts_b = [item for (s, v), item in ba.items() if s == "P3B-C03-NEW-REQ"]
+    ambig_attempts_b = [item for (s, v), item in ba.items() if s == "P3B-C03-AMBIG"]
+
+    b_repeat_violations = []
+    for item in c03_nl_attempts_b:
+        action = _action(item)
+        if action == "REQUEST_USER_INPUT":
+            assess = _assess_c03_attempt(item)
+            if assess.get("status") == "INCORRECT":
+                b_repeat_violations.append(item)
+        elif not _candidate_acceptable(item):
+            b_repeat_violations.append(item)
+
+    new_req_preserved = True
+    if new_req_attempts_b:
+        for item in new_req_attempts_b:
+            action = _action(item)
+            if action != "REQUEST_USER_INPUT":
+                new_req_preserved = False
+            else:
+                assess = _assess_c03_attempt(item)
+                if assess.get("status") != "CORRECT":
+                    new_req_preserved = False
+
+    ambig_preserved = True
+    if ambig_attempts_b:
+        for item in ambig_attempts_b:
+            action = _action(item)
+            if action != "REQUEST_USER_INPUT":
+                ambig_preserved = False
+            else:
+                assess = _assess_c03_attempt(item)
+                if assess.get("status") != "CORRECT":
+                    ambig_preserved = False
+
+    a_had_repeat = any(_action(item) == "REQUEST_USER_INPUT" for item in c03_nl_attempts_a)
+    checks = {
+        "b_c03_nl_no_repeated_clarification": len(b_repeat_violations) == 0,
+        "new_necessary_clarification_preserved": new_req_preserved,
+        "ambiguous_clarification_preserved": ambig_preserved,
+        "a_baseline_had_repeated_clarification": a_had_repeat,
+    }
+
+    if not checks["b_c03_nl_no_repeated_clarification"]:
+        status = "REJECT"
+    elif not checks["new_necessary_clarification_preserved"] or not checks["ambiguous_clarification_preserved"]:
+        status = "REJECT"
+    elif checks["b_c03_nl_no_repeated_clarification"] and a_had_repeat:
+        status = "ACCEPT"
+    else:
+        status = "INCONCLUSIVE"
+
+    return _result(status, {
+        "checks": checks,
+        "b_repeat_violation_count": len(b_repeat_violations),
+        "target_scenarios": sorted(target_scenarios),
+    })
+
+
+def evaluate_c03_only(a: dict[str, Any] | None, b: dict[str, Any] | None,
+                      max_requests: int = MAX_NEW_REQUESTS,
+                      scenario_ids: set[str] | None = None) -> dict[str, Any]:
+    decision = _decide_c03_nl(a, b, max_requests, scenario_ids)
+    rule_errors: list[str] = []
+    for arm_name, expected_rules, arm in (("c03_a", "none", a), ("c03_b", "c03", b)):
+        if arm is None:
+            rule_errors.append(f"{arm_name} missing")
+        elif arm.get("prompt_rule_set") != expected_rules:
+            rule_errors.append(
+                f"{arm_name} prompt rule set was {arm.get('prompt_rule_set')!r};"
+                f" expected {expected_rules!r}")
+    if rule_errors:
+        decision = _result("INCONCLUSIVE", {
+            "reason": "prompt rule set mismatch", "rule_errors": rule_errors})
+    provided = [report for report in (a, b) if report]
+    request_counts = {name: int(report.get("total_model_requests", 0))
+                      for name, report in (("c03_a", a), ("c03_b", b)) if report}
+    total = sum(request_counts.values())
+    experiment_status = "COMPLETE" if decision["status"] in {"ACCEPT", "REJECT"} else "INCOMPLETE"
+    if total > max_requests:
+        experiment_status = "BUDGET_EXCEEDED"
+        decision = _result("INCONCLUSIVE", {
+            "reason": f"actual request count {total} exceeds the declared limit {max_requests}"})
+    arm_metrics = {name: _arm_metrics(report)
+                   for name, report in (("c03_a", a), ("c03_b", b)) if report}
+    stop_reasons = sorted({
+        reason
+        for metrics in arm_metrics.values()
+        for reason, occurred in metrics["stop_flags"].items()
+        if occurred
+    })
+    review_counts = Counter(
+        attempt.get("automatic_semantic_review", {}).get("status", "UNRESOLVED")
+        for report in provided for attempt in report.get("attempts", []))
+    return {
+        "schema_version": "p3b-semantic-ab-c03-local.v1",
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "scope": "C03-only real model A/B; reuses the deterministic C03 rule judge and _pair_integrity gate",
+        "scenarios": sorted(scenario_ids or _arm_scenario_ids(a)),
+        "experiment_status": experiment_status,
+        "human_review_status": "PENDING_HUMAN_REVIEW",
+        "oracle_policy": "Original candidate oracle is frozen and remains unapproved.",
+        "provider": EXPECTED_PROVIDER,
+        "model": EXPECTED_MODEL,
+        "request_budget": {
+            "maximum_new_upstream_model_requests": max_requests,
+            "actual_requests_by_arm": request_counts,
+            "actual_total_requests": total,
+            "automatic_judge_requests": 0,
+            "judge_policy": "C03 uses a blind deterministic rule evaluator; it makes zero model calls.",
+        },
+        "semantic_evaluator": {
+            "reviewer": C03_SEMANTIC_REVIEWER,
+            "input_version": C03_SEMANTIC_INPUT_VERSION,
+            "output_version": C03_SEMANTIC_OUTPUT_VERSION,
+            "type": "DETERMINISTIC_RULES",
+            "model_calls": 0,
+            "blind_to_ab_arm_and_candidate_action": True,
+            "does_not_claim_model_cognition": True,
+        },
+        "arm_measurements": arm_metrics,
+        "experiment_stop_reasons": stop_reasons,
+        "rule_decisions": {"c03": decision},
+        "automatic_review_counts": dict(review_counts),
+        "arm_reports": {"c03_a": a, "c03_b": b},
+        "conclusion_scope": "Single fresh attempt per variant on verified model; does not claim cognition.",
+    }
+
+
 def _load(path: str | None) -> dict[str, Any] | None:
     if not path:
         return None
@@ -1231,12 +1384,14 @@ def main() -> int:
     parser.add_argument("--expected-model", default="cohere/north-mini-code:free")
     parser.add_argument("--c09-only", action="store_true",
                         help="Evaluate only the C09 A/B pair (local small-budget experiment).")
+    parser.add_argument("--c03-only", action="store_true",
+                        help="Evaluate only the C03 A/B pair (natural language experiment).")
+    parser.add_argument("--c03-scenarios", default="P3B-C03-NL,P3B-C03-NEW-REQ,P3B-C03-AMBIG",
+                        help="Scenarios required for C03 evaluation (comma-separated).")
     parser.add_argument("--max-new-requests", type=int, default=MAX_NEW_REQUESTS,
-                        help="Request budget the C09-only evaluation is bound by; it must match"
-                             " the frozen local protocol (local Ollama C09 uses 8, not 64).")
+                        help="Request budget the evaluation is bound by.")
     parser.add_argument("--c09-scenario-id", default="P3B-C09",
-                        help="Scenario the paired C09 arms must share. Default P3B-C09 preserves"
-                             " the historical result; the natural-language task is P3B-C09-NL.")
+                        help="Scenario the paired C09 arms must share.")
     args = parser.parse_args()
     EXPECTED_PROVIDER = args.expected_provider
     EXPECTED_MODEL = args.expected_model
@@ -1246,6 +1401,11 @@ def main() -> int:
         report = evaluate_c09_only(reports["c09_a"], reports["c09_b"],
                                    max_requests=args.max_new_requests,
                                    scenario_id=args.c09_scenario_id)
+    elif args.c03_only:
+        scenarios = set(s.strip() for s in args.c03_scenarios.split(",") if s.strip())
+        report = evaluate_c03_only(reports["c03_a"], reports["c03_b"],
+                                   max_requests=args.max_new_requests,
+                                   scenario_ids=scenarios)
     else:
         report = evaluate_reports(reports)
     output = Path(args.output)

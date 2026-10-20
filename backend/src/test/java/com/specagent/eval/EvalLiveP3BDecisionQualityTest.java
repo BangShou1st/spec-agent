@@ -64,6 +64,12 @@ import static org.assertj.core.api.Assertions.assertThat;
         })
 class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
 
+    static {
+        System.setProperty("https.proxyHost", "127.0.0.1");
+        System.setProperty("https.proxyPort", "7897");
+        System.setProperty("http.nonProxyHosts", "localhost|127.0.0.1");
+    }
+
     /** 明确的 Kilo 模型 ID;不用 kilo-auto/free 等动态路由模型做固定质量比较。 */
     private static final String KILO_MODEL = System.getenv().getOrDefault(
             "SPEC_AGENT_EVAL_KILO_MODEL", "cohere/north-mini-code:free");
@@ -159,6 +165,27 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
                 "SPEC_AGENT_EVAL_DB_URL",
                 "jdbc:postgresql://localhost:5434/spec_agent_p3b_live_20261018");
         registry.add("spring.datasource.url", () -> url);
+
+        Path backendKeyFile = Path.of("E:/project/spec-agent/backend/data/secret-master.key");
+        if (Files.exists(backendKeyFile)) {
+            registry.add("spec.agent.secret.master-key", () -> {
+                try {
+                    return Files.readString(backendKeyFile).strip();
+                } catch (Exception ex) {
+                    throw new RuntimeException(ex);
+                }
+            });
+        }
+        Path rootKeyFile = Path.of("E:/project/spec-agent/data/secret-master.key");
+        if (Files.exists(rootKeyFile)) {
+            registry.add("spec.agent.secret.master-key-fallback", () -> {
+                try {
+                    return Files.readString(rootKeyFile).strip();
+                } catch (Exception ex) {
+                    throw new RuntimeException(ex);
+                }
+            });
+        }
     }
 
     @Test
@@ -200,6 +227,17 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         for (P3BCorpus.P3BScenario scenario : P3BC09NaturalLanguageScenarios.all()) {
             byId.put(scenario.scenarioId(), scenario);
         }
+        // 新 C03 自然语言场景(P3B-C03-NL / NEW-REQ / AMBIG)并存:仅显式选中时运行
+        for (P3BCorpus.P3BScenario scenario : P3BC03NaturalLanguageScenarios.all()) {
+            byId.put(scenario.scenarioId(), scenario);
+        }
+        String rawVariants = System.getenv("SPEC_AGENT_EVAL_P3B_VARIANTS");
+        Set<String> selectedVariants = (rawVariants != null && !rawVariants.isBlank())
+                ? java.util.Arrays.stream(rawVariants.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .collect(java.util.stream.Collectors.toSet())
+                : null;
         boolean rateLimited = false;
         boolean stoppedAfterProviderFailure = false;
         boolean stoppedAfterProviderRetry = false;
@@ -215,6 +253,9 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
             }
             oracles.put(scenario.scenarioId(), scenario.oracle());
             for (VariantSpec variant : scenario.definition().variants()) {
+                if (selectedVariants != null && !selectedVariants.contains(variant.variantId())) {
+                    continue;
+                }
                 if (totalRequests >= MAX_TOTAL_REQUESTS) {
                     stoppedOnRequestBudget = true;
                     break outer;

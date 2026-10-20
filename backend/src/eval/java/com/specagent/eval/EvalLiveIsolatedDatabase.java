@@ -203,6 +203,22 @@ public final class EvalLiveIsolatedDatabase {
             DatabaseIdentity identity = readIdentity(jdbcTemplate);
             requireIsolatedLiveEvalDatabase(identity, configuredDatabase);
 
+            // 保留已存同 origin 的加密凭据与脱敏后缀(若存在)
+            String existingKey = null;
+            String existingMasked = null;
+            try {
+                var rows = jdbcTemplate.queryForList(
+                        "SELECT api_key, masked_suffix, base_url FROM custom_provider_settings WHERE singleton_id = 1");
+                if (!rows.isEmpty()) {
+                    var row = rows.get(0);
+                    if (baseUrl != null && baseUrl.equals(row.get("base_url"))) {
+                        existingKey = (String) row.get("api_key");
+                        existingMasked = (String) row.get("masked_suffix");
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+
             jdbcTemplate.update("DELETE FROM kilo_settings");
             jdbcTemplate.update("DELETE FROM model_provider_settings");
             jdbcTemplate.update("DELETE FROM custom_provider_settings");
@@ -216,9 +232,9 @@ public final class EvalLiveIsolatedDatabase {
                             + "(org_id, singleton_id, api_format, base_url, api_key, masked_suffix, "
                             + "selected_model, model_source, display_name, config_revision, "
                             + "validated_revision, created_at, updated_at, validated_at) "
-                            + "VALUES (?, 1, ?, ?, NULL, NULL, ?, 'MANUAL', ?, 1, 1, "
+                            + "VALUES (?, 1, ?, ?, ?, ?, ?, 'MANUAL', ?, 1, 1, "
                             + "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-                    orgId, apiFormat, baseUrl, selectedModel, displayName);
+                    orgId, apiFormat, baseUrl, existingKey, existingMasked, selectedModel, displayName);
             return identity.database();
         });
     }
