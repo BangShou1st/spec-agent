@@ -40,3 +40,28 @@
 当前不合并、不推送 main。dev 相对 main 含生产模型绑定、协议/Prompt 与 V98/V99 迁移，不只是本轮离线修复。V99 会更新旧活动运行的绑定指纹，存在主动 fail-closed 的业务行为；需要获准的新隔离库验证迁移、升级、活动/审批 run、重启和跨实例一致性。当前缺这些证据，不能把无冲突等同于发布验收通过。
 
 后续 main CI 使用隔离的小分支，只包含独立验证与诚实状态报告，不夹带这 28 个提交，不直接推送或合并 main。所有远端运行链接和提交结果在 CI 交付报告单独记录。
+
+## 后续 main CI 实跑交付
+
+按上述顺序完成 dev 修复/合并评估后，CI 小分支 `codex/main-ci-independent` 已提交并推送：`f004530c64a96a4a1e3361b005cba67e6dbeb843`。分支基于 main、仅 1 个 CI 提交和 8 个文件，不含 dev 生产改动。main 本身未修改、未合并；没有创建 PR。
+
+真实远端运行：[39463930433](https://github.com/BangShou1st/spec-agent/actions/runs/39463930433)，`workflow_dispatch` 显式 `full_validation=false`，独立范围结果成功。已下载远端 JUnit/source/dependency 产物核对，元数据留在 `ci-run.json`。
+
+| job | 状态 | 实际结果 |
+| --- | --- | --- |
+| backend-independent | PASS | 54 个生产 Java 源文件，38 tests / 0 failed / 0 skipped；远端依赖图无 sharedlibs/Zen |
+| frontend | PASS | 类型检查/生产构建通过；952 passed、1 skipped（不同于 dev 的 953 passed） |
+| brain | PASS | 246 passed（不同于 dev 的 255 passed） |
+| contracts-static | PASS | 141 passed（仅 main 已有工具加 CI 配置回归，不冒充 dev 的 215） |
+| validation-mode / validation-summary | PASS | scope 显式；失败、取消、意外跳过会使 summary 失败，无 continue-on-error |
+| backend | SKIPPED_EXTERNAL_DEPENDENCY | 完整业务编译依赖真实 Zen 类型 |
+| eval-baseline | SKIPPED_EXTERNAL_DEPENDENCY | 完整 eval/应用编译及数据库链路依赖 |
+| cross-language | SKIPPED_EXTERNAL_DEPENDENCY | Java-Python 真实进程互调未执行；静态共享 fixture 另由独立任务覆盖 |
+| e2e | SKIPPED_EXTERNAL_DEPENDENCY | 后端真实启动/浏览器端到端未执行 |
+| 实时模型/完整应用启动/真实数据库及迁移 | NOT_MEASURED | 无新增实验、无数据库操作 |
+
+原 CI Run #171 的全部四个失败日志已审查，首要原因确为 starter 解析失败。分支保护只读查询返回 `Branch not protected`，仓库 rulesets/active rules 为空；没有改 required checks 或保护配置。恢复完整验证保留手动 `full_validation=true` 入口，但本轮未启用。
+
+结论是**独立 CI 分支已真实验证通过，完整后端 CI 验证仍受外部依赖限制，main 尚未应用修复**。不是“所有 CI 已修复”。
+
+Git 状态：dev 修复代码提交 `b487993`，补充证据提交另见 `git log`；dev 未推送。原有 `report.md` 删除、`agent-brain/uv.lock`、`docs/P3B_AE4_DATABASE_INCIDENT_REVIEW.md`、`docs/acceptance-evidence/p3bae4/` 保留为原有未提交/未跟踪内容。CI 分支已推送，无未提交源码修改。
