@@ -490,6 +490,7 @@ public final class P3BDecisionQuality {
         List<DecisionObservation> passExpected = evaluated.stream()
                 .filter(observation -> expectation(oracles, observation)
                         == P3BCorpus.GateExpectation.PASS)
+                .filter(observation -> observation.gateOutcome() != GateOutcome.UNKNOWN)
                 .toList();
         long eligibilityFalseNegatives = passExpected.stream()
                 .filter(observation -> observation.gateOutcome() == GateOutcome.VETOED)
@@ -499,6 +500,12 @@ public final class P3BDecisionQuality {
                 .filter(observation -> expectation(oracles, observation)
                         == P3BCorpus.GateExpectation.VETO)
                 .toList();
+        // UNKNOWN is missing evidence, not a correctly rejected/accepted action.
+        // Keep known-gap accounting separate from the measured error denominator.
+        int measuredVetoExpected = (int) vetoExpected.stream()
+                .filter(observation -> !knownGap(oracles, observation))
+                .filter(observation -> observation.gateOutcome() != GateOutcome.UNKNOWN)
+                .count();
         long eligibilityFalsePositives = vetoExpected.stream()
                 .filter(observation -> !knownGap(oracles, observation))
                 .filter(observation -> observation.gateOutcome() == GateOutcome.PASSED)
@@ -594,7 +601,7 @@ public final class P3BDecisionQuality {
                 (int) eligibilityFalseNegatives,
                 passExpected.size(),
                 (int) eligibilityFalsePositives,
-                vetoExpected.size() - (int) knownGapsObserved,
+                measuredVetoExpected,
                 eligibilityUnknowns,
                 evaluated.size() - eligibilityUnknowns,
                 (int) knownGapsObserved,

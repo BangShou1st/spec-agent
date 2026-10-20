@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>真实自然语言可见文本中无任何占位符。</li>
  * </ul>
  */
-class P3BC03NaturalLanguageScenarioTest extends EvalHarnessBase {
+class P3BC03NaturalLanguageScenarioTest {
 
     /** 历史 C03 的场景哈希: 锁定为常量，任何无意改动都会让本测试失败。 */
     private static final String FROZEN_HISTORICAL_C03_HASH = "4b70d1eea1c16480";
@@ -132,13 +132,4 @@ class P3BC03NaturalLanguageScenarioTest extends EvalHarnessBase {
                 .doesNotContain("REQUEST_USER_INPUT");
     }
 
-    @Test
-    void offlineBfastExecutionSucceedsForNaturalLanguageC03() {
-        // 在离线 B-fast 链路下执行一遍场景，断言无崩溃且正常到达终态
-        ObservationEnvelope obs = runScenario(rewordedRepeat().definition(),
-                VariantSpec.base("base", 33501L));
-        assertThat(obs.executionResult()).isEqualTo("completed");
-        assertThat(obs.actualPrimaryAction()).isEqualTo("RESPOND_TO_USER");
-        assertThat(obs.violations()).isEmpty();
-    }
 }

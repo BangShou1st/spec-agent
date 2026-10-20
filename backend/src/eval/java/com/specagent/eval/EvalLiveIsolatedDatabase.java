@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 
 /**
  * 文件名:EvalLiveIsolatedDatabase.java
@@ -18,8 +21,9 @@ import java.util.regex.Pattern;
  * Kilo 目标(先 {@code DELETE} 再 {@code INSERT})。虽然默认地址指向隔离库,
  * {@code SPEC_AGENT_EVAL_DB_URL} 可以把它覆盖成任何地址——一旦覆盖成用户开发库,
  * 这些 {@code DELETE} 就会造成不可逆的数据破坏。<b>只看环境变量名不足以判定安全</b>:
- * 这里在<b>任何写操作之前</b>向服务器查询<b>真实连接的库身份</b>,只要不是被明确
- * 指定的独立 P3-B live 评测库就立即失败关闭,一行数据也不改。
+ * 种子方法在自己的写操作前查询真实库身份。Spring 启动时的 Flyway / Runner 写入
+ * 必须由入口在 DynamicPropertySource 中先调用 verifyBeforeContext 防护;
+ * 测试方法内的连接池复核本身不能保护已经执行的框架初始化。
  *
  * <p>被接受的库名必须同时满足:
  * <ol>
@@ -47,6 +51,125 @@ public final class EvalLiveIsolatedDatabase {
             "template1");
 
     private EvalLiveIsolatedDatabase() {
+    }
+
+    @FunctionalInterface
+    public interface ConnectionFactory {
+        Connection open(String url, String user, String password) throws SQLException;
+    }
+
+    /** Explicit credentials are supplied by the caller; never infer credentials from a profile. */
+    public static DatabaseIdentity verifyBeforeContext(String url, String user, String password,
+                                                       String serverAddress, String serverPort) {
+        return verifyBeforeContext(url, user, password, serverAddress, serverPort,
+                DriverManager::getConnection);
+    }
+
+    /** Read-only, independent connection. Must finish before registering application datasource properties.
+     * Server address/port are PostgreSQL's reported endpoint, not a client-side proxy address.
+     * This pins an endpoint, not a cryptographic server identity; routing can still change later.
+     */
+    public static DatabaseIdentity verifyBeforeContext(String url, String user, String password,
+                                                       String serverAddress, String serverPort,
+                                                       ConnectionFactory factory) {
+        String database = validateTargetDatabaseUrlStatic(url);
+        if (user == null || user.isBlank() || password == null || password.isBlank()
+                || serverAddress == null || serverAddress.isBlank()
+                || serverPort == null || !serverPort.matches("[0-9]{1,5}")) {
+            throw new IllegalStateException("refusing preflight: explicit database credentials and server endpoint required");
+        }
+        int port = Integer.parseInt(serverPort);
+        if (port < 1 || port > 65535) {
+            throw new IllegalStateException("refusing preflight: invalid server port");
+        }
+        try (Connection connection = factory.open(url, user, password)) {
+            connection.setReadOnly(true);
+            try (var statement = connection.createStatement()) {
+                statement.setQueryTimeout(10);
+                try (var rows = statement.executeQuery("SELECT current_database() AS db, current_user AS usr, "
+                        + "coalesce(inet_server_addr()::text, 'local') AS host, "
+                        + "coalesce(inet_server_port(), -1) AS port")) {
+                    DatabaseIdentity identity = rows.next() ? new DatabaseIdentity(rows.getString("db"),
+                            rows.getString("usr"), rows.getString("host"), rows.getInt("port")) : null;
+                    requireIsolatedLiveEvalDatabase(identity, database);
+                    requireServerEndpoint(identity, user, serverAddress, port);
+                    return identity;
+                }
+            }
+        } catch (SQLException ex) {
+            // Driver errors may contain credentials/URLs. Do not attach their text or cause.
+            throw new IllegalStateException("refusing preflight: independent JDBC verification failed");
+        }
+    }
+
+    public static void requireServerEndpoint(DatabaseIdentity identity, String user, String address, int port) {
+        if (identity == null || !java.util.Objects.equals(user, identity.user())
+                || !java.util.Objects.equals(address, identity.host()) || port != identity.port()) {
+            throw new IllegalStateException("refusing live test: server endpoint/user does not match explicit target");
+        }
+    }
+
+    /**
+     * 静态预检查目标数据库 URL:
+     * 1. targetUrl 必须显式配置且非空;
+     * 2. 解析出的数据库名称必须存在;
+     * 3. 库名不能在 FORBIDDEN_DATABASES 黑名单中;
+     * 4. 库名必须匹配 LIVE_EVAL_DATABASE 白名单 (spec_agent_p3b_live_*).
+     *
+     * <p>注意: 此方法仅执行静态纯字符串解析预检查，用于在 Spring 上下文构建和任何
+     * 数据源初始化之前 fail-closed 拦截非法配置。它不能替代服务器端真实身份验证。
+     *
+     * @param targetUrl 声明的目标 JDBC URL
+     * @return 解析出的合法隔离数据库名称
+     * @throws IllegalStateException 若未配置或静态判定不合法
+     */
+    public static String validateTargetDatabaseUrlStatic(String targetUrl) {
+        if (targetUrl == null || targetUrl.isBlank()) {
+            throw new IllegalStateException(
+                    "refusing to run live test: SPEC_AGENT_TARGET_DB_URL must be explicitly configured");
+        }
+        String configuredDatabase = databaseNameFromUrl(targetUrl);
+        if (configuredDatabase == null || configuredDatabase.isBlank()) {
+            throw new IllegalStateException(
+                    "refusing to run live test: the configured database name is undeterminable");
+        }
+        String normalized = configuredDatabase.trim().toLowerCase(Locale.ROOT);
+        if (FORBIDDEN_DATABASES.contains(normalized)) {
+            throw new IllegalStateException("refusing to run live test: " + configuredDatabase
+                    + " is an ordinary development/test database, not an isolated"
+                    + " P3-B live evaluation database");
+        }
+        if (!LIVE_EVAL_DATABASE.matcher(normalized).matches()) {
+            throw new IllegalStateException("refusing to run live test: " + configuredDatabase
+                    + " is not a designated P3-B live evaluation database"
+                    + " (expected spec_agent_p3b_live_*)");
+        }
+        return configuredDatabase;
+    }
+
+    /**
+     * 校验目标数据库的隔离性(服务器端身份验证与再次校验):
+     * 1. 目标 URL 必须显式声明且能解析出库名;
+     * 2. 读取当前连接的真实服务器端数据库身份(通过 SQL 查询 current_database);
+     * 3. 执行完整的隔离库判定:必须匹配 spec_agent_p3b_live_*，不能是普通库，且配置名与真实库名一致。
+     *
+     * <p>与 {@link #validateTargetDatabaseUrlStatic(String)} 静态预检查明确区分:
+     * 本方法执行真实的服务器端身份核验，不能仅用静态字符串代替。
+     *
+     * @param jdbcTemplate 真实数据库连接模板
+     * @param targetUrl 声明的目标 JDBC URL
+     * @return 经过验证的真实数据库身份
+     * @throws IllegalStateException 若未配置 URL、库名不合法或与真实连接不匹配
+     */
+    public static DatabaseIdentity verifyTargetDatabaseIsolation(JdbcTemplate jdbcTemplate, String targetUrl) {
+        if (targetUrl == null || targetUrl.isBlank()) {
+            throw new IllegalStateException(
+                    "refusing to run live test: SPEC_AGENT_TARGET_DB_URL must be explicitly configured");
+        }
+        String configuredDatabase = databaseNameFromUrl(targetUrl);
+        DatabaseIdentity identity = readIdentity(jdbcTemplate);
+        requireIsolatedLiveEvalDatabase(identity, configuredDatabase);
+        return identity;
     }
 
     /** 真实连接的库身份(全部取自服务器端,不信任任何客户端字符串)。 */

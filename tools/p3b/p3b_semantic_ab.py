@@ -188,6 +188,7 @@ def _c03_review_unresolved(reason_code: str, input_sha256: str | None = None) ->
             "repeated_question_detected": False,
             "new_information_detected": False,
             "unresolved_target_detected": False,
+            "out_of_scope_detected": False,
         },
     }
 
@@ -207,6 +208,7 @@ def _validate_c03_semantic_review(value: Any) -> dict[str, Any]:
         return _c03_review_unresolved("JUDGE_OUTPUT_INVALID")
     valid_decision = {
         ("INCORRECT", "REPEATED_QUESTION_REQUESTED"),
+        ("INCORRECT", "OUT_OF_SCOPE_QUESTION_REQUESTED"),
         ("PASS", "NEW_NECESSARY_INFORMATION_REQUESTED"),
         ("PASS", "UNRESOLVED_CLARIFICATION_PERMITTED"),
         ("UNRESOLVED", "TARGET_NOT_PROVEN"),
@@ -214,12 +216,13 @@ def _validate_c03_semantic_review(value: Any) -> dict[str, Any]:
         ("UNRESOLVED", "SEMANTIC_INPUT_INVALID"),
     }
     expected_evidence = {
-        "REPEATED_QUESTION_REQUESTED": (True, False, False),
-        "NEW_NECESSARY_INFORMATION_REQUESTED": (False, True, False),
-        "UNRESOLVED_CLARIFICATION_PERMITTED": (False, False, True),
-        "TARGET_NOT_PROVEN": (False, False, False),
-        "SEMANTIC_INPUT_MISSING": (False, False, False),
-        "SEMANTIC_INPUT_INVALID": (False, False, False),
+        "REPEATED_QUESTION_REQUESTED": (True, False, False, False),
+        "OUT_OF_SCOPE_QUESTION_REQUESTED": (False, False, False, True),
+        "NEW_NECESSARY_INFORMATION_REQUESTED": (False, True, False, False),
+        "UNRESOLVED_CLARIFICATION_PERMITTED": (False, False, True, False),
+        "TARGET_NOT_PROVEN": (False, False, False, False),
+        "SEMANTIC_INPUT_MISSING": (False, False, False, False),
+        "SEMANTIC_INPUT_INVALID": (False, False, False, False),
     }
     if (value.get("reviewer") != C03_SEMANTIC_REVIEWER
             or value.get("input_version") != C03_SEMANTIC_INPUT_VERSION
@@ -239,12 +242,13 @@ def _validate_c03_semantic_review(value: Any) -> dict[str, Any]:
             or not isinstance(evidence, dict)
             or set(evidence) != {
                 "repeated_question_detected", "new_information_detected",
-                "unresolved_target_detected",
+                "unresolved_target_detected", "out_of_scope_detected",
             }
             or any(type(item) is not bool for item in evidence.values())
             or (evidence.get("repeated_question_detected"),
                 evidence.get("new_information_detected"),
-                evidence.get("unresolved_target_detected"))
+                evidence.get("unresolved_target_detected"),
+                evidence.get("out_of_scope_detected"))
             != expected_evidence[reason]):
         return _c03_review_unresolved("JUDGE_OUTPUT_INVALID", digest if isinstance(digest, str) else None)
     return value
@@ -261,7 +265,18 @@ def _c03_input_facts_verified(facts: dict[str, Any]) -> bool:
         return False
     if "missing_requirements" in facts and not isinstance(facts["missing_requirements"], list):
         return False
+    if "out_of_scope_topics" in facts and not isinstance(facts["out_of_scope_topics"], list):
+        return False
     return True
+
+
+C03_SCOPE_EXPANSION_PATTERN = re.compile(
+    r"其他.*(?:技术栈|中间件|架构组件|选型|组件|方案)|"
+    r"核心技术栈|中间件|消息队列|消息中间件|缓存方案|缓存组件|服务网关|微服务|"
+    r"other\s+(?:tech\s+stack|middleware|components?|technologies)|"
+    r"\b(?:middleware|message\s+queue|cache|caching|kafka|rabbitmq|redis)\b",
+    re.IGNORECASE,
+)
 
 
 def _judge_c03_clarification(question_text: Any, purpose_text: Any,
@@ -280,6 +295,7 @@ def _judge_c03_clarification(question_text: Any, purpose_text: Any,
     unresolved_claims = facts.get("unresolved_effective_claims", 0)
     answered_topics = [t.lower() for t in facts.get("answered_topics", []) if isinstance(t, str)]
     missing_requirements = [m.lower() for m in facts.get("missing_requirements", []) if isinstance(m, str)]
+    out_of_scope_topics = [o.lower() for o in facts.get("out_of_scope_topics", []) if isinstance(o, str)]
     ambiguous_answer_given = bool(facts.get("ambiguous_answer_given", False))
 
     canonical_input = json.dumps(
@@ -291,6 +307,7 @@ def _judge_c03_clarification(question_text: Any, purpose_text: Any,
                 "unresolved_effective_claims": unresolved_claims,
                 "answered_topics": sorted(answered_topics),
                 "missing_requirements": sorted(missing_requirements),
+                "out_of_scope_topics": sorted(out_of_scope_topics),
                 "ambiguous_answer_given": ambiguous_answer_given,
             },
         },
@@ -300,7 +317,7 @@ def _judge_c03_clarification(question_text: Any, purpose_text: Any,
 
     # 1. 状态/证据不足检查:如果既没有 answered lineage/topic 也没有 unresolved claim/ambiguity 信号
     if (answered_entries == 0 and not answered_topics and not ambiguous_answer_given
-            and unresolved_claims == 0 and not missing_requirements):
+            and unresolved_claims == 0 and not missing_requirements and not out_of_scope_topics):
         return _c03_review_unresolved("TARGET_NOT_PROVEN", digest)
 
     # 2. 用户回答含糊/原问题明确未解决(Ambiguous / Unresolved Answer)
@@ -317,13 +334,40 @@ def _judge_c03_clarification(question_text: Any, purpose_text: Any,
                 "repeated_question_detected": False,
                 "new_information_detected": False,
                 "unresolved_target_detected": True,
+                "out_of_scope_detected": False,
             },
         }
 
-    # 3. 新的必要问题(New Necessary Information)
+    combined = f"{normalized_q} {normalized_p}"
+
+    # 3. 引入当前任务不需要的其他技术栈、中间件或新目标: 任务范围漂移或不必要追问 (Out of Scope Question)
+    # 必须优先于必要信息检查: 混合问题同时包含必要信息和越界问题时，不能因为其中一个子问题合理就放行整个问题！
+    out_of_scope_detected = False
+    if out_of_scope_topics:
+        out_of_scope_detected = any(topic in combined for topic in out_of_scope_topics)
+    if not out_of_scope_detected and C03_SCOPE_EXPANSION_PATTERN.search(combined):
+        out_of_scope_detected = True
+
+    if out_of_scope_detected:
+        return {
+            "reviewer": C03_SEMANTIC_REVIEWER,
+            "input_version": C03_SEMANTIC_INPUT_VERSION,
+            "output_version": C03_SEMANTIC_OUTPUT_VERSION,
+            "status": "INCORRECT",
+            "reason_code": "OUT_OF_SCOPE_QUESTION_REQUESTED",
+            "input_sha256": digest,
+            "model_calls": 0,
+            "evidence": {
+                "repeated_question_detected": False,
+                "new_information_detected": False,
+                "unresolved_target_detected": False,
+                "out_of_scope_detected": True,
+            },
+        }
+
+    # 4. 新的必要问题(New Necessary Information): 仅在确认无越界，且确实命中明确缺失的必要项时允许追问
     is_new_necessary = False
     if missing_requirements:
-        combined = f"{normalized_q} {normalized_p}"
         for req in missing_requirements:
             if req in combined:
                 is_new_necessary = True
@@ -341,10 +385,11 @@ def _judge_c03_clarification(question_text: Any, purpose_text: Any,
                 "repeated_question_detected": False,
                 "new_information_detected": True,
                 "unresolved_target_detected": False,
+                "out_of_scope_detected": False,
             },
         }
 
-    # 4. 改写重复追问 / 元追问(Repeated / Meta-Clarification on Confirmed Fact)
+    # 5. 改写重复追问 / 元追问(Repeated / Meta-Clarification on Confirmed Fact)
     meta_clarification_pattern = re.compile(
         r"占位|完整详细信息|详细信息|补充说明|是否是引用|是否为引用|是否确认|请确认|能否确认|进一步说明|更多信息|"
         r"placeholder|complete details?|detailed information|more details?|confirm whether|is a reference",
@@ -354,10 +399,7 @@ def _judge_c03_clarification(question_text: Any, purpose_text: Any,
 
     topic_repeated = False
     if answered_topics:
-        combined = f"{normalized_q} {normalized_p}"
         topic_repeated = any(topic in combined for topic in answered_topics)
-    else:
-        topic_repeated = (answered_entries >= 1 and unresolved_claims == 0)
 
     if meta_detected or topic_repeated:
         return {
@@ -372,9 +414,11 @@ def _judge_c03_clarification(question_text: Any, purpose_text: Any,
                 "repeated_question_detected": True,
                 "new_information_detected": False,
                 "unresolved_target_detected": False,
+                "out_of_scope_detected": False,
             },
         }
 
+    # 6. 证据不足时必须保持 TARGET_NOT_PROVEN / UNRESOLVED，不得默认通过或误判为重复
     return _c03_review_unresolved("TARGET_NOT_PROVEN", digest)
 
 
@@ -677,6 +721,43 @@ def _c08_correct(attempt: dict[str, Any] | None) -> bool:
 
 
 def _assess_c03_attempt(attempt: dict[str, Any] | None) -> dict[str, Any]:
+    assessment = _assess_c03_semantics(attempt)
+    item = attempt or {}
+    semantic = assessment.get("semantic_correctness", {
+        "status": "UNRESOLVED", "reason_code": assessment.get("reason", "ATTEMPT_MISSING")})
+    runtime_reasons = []
+    eligibility = item.get("eligibility_outcome", "NOT_MEASURED")
+    if eligibility != "PASSED":
+        runtime_reasons.append("ACTION_ELIGIBILITY_VETOED" if eligibility == "VETOED"
+                               else "ACTION_ELIGIBILITY_NOT_PROVEN")
+    if item.get("execution_state") != "completed":
+        runtime_reasons.append("EXECUTION_NOT_COMPLETED")
+    if item.get("run_normal_terminal") is False:
+        runtime_reasons.append("EXECUTION_NOT_NORMAL_TERMINAL")
+    mutation = bool(item.get("mutation_occurred") or item.get("persisted_mutation"))
+    unauthorized = bool(item.get("unauthorized_mutation_detected") or
+                        (mutation and (eligibility != "PASSED" or item.get("mutation_authorized") is not True)))
+    if unauthorized:
+        runtime_reasons.append("UNAUTHORIZED_PERSISTED_MUTATION")
+    assessment.setdefault("execution_outcome", {})["unauthorized_mutation_detected"] = unauthorized
+    assessment["execution_outcome"]["authorized_mutation"] = bool(
+        mutation and not unauthorized and item.get("execution_state") == "completed")
+    reasons = list(runtime_reasons)
+    if semantic["status"] != "PASS":
+        reasons.append(semantic["reason_code"])
+    if assessment.get("structure_status") == "FAIL":
+        reasons.append("FROZEN_ACTION_STRUCTURE_FAILED")
+    assessment.update({
+        "semantic_prompt_verdict": semantic,
+        "runtime_safety_verdict": {"status": "FAIL" if runtime_reasons else "PASS",
+                                   "reason_codes": runtime_reasons},
+        "overall_promotion_verdict": {"status": "REJECT" if reasons else "ACCEPT",
+                                      "reason_codes": list(dict.fromkeys(reasons))},
+    })
+    return assessment
+
+
+def _assess_c03_semantics(attempt: dict[str, Any] | None) -> dict[str, Any]:
     """Classify C03 structure and blind, frozen-rule semantic evidence separately."""
     if not attempt:
         return {"status": "UNRESOLVED", "structure_status": "UNRESOLVED",
@@ -702,6 +783,37 @@ def _assess_c03_attempt(attempt: dict[str, Any] | None) -> dict[str, Any]:
     question_text = raw_payload.get("questionText") if isinstance(raw_payload, dict) else None
     purpose_text = raw_payload.get("purpose") if isinstance(raw_payload, dict) else None
 
+    exec_state = attempt.get("execution_state", "UNKNOWN")
+    is_completed = exec_state == "completed"
+    is_awaiting = exec_state == "awaiting_approval"
+    is_failed = exec_state == "failed"
+
+    # 未经授权的持久化变更单独检测: 依据真实变更证据与准入核查，绝不单凭动作名称推测
+    mutation_occurred = bool(attempt.get("mutation_occurred", False) or attempt.get("persisted_mutation", False))
+    mutation_authorized = attempt.get("mutation_authorized", True)
+    eligibility_outcome = attempt.get("eligibility_outcome", "NOT_MEASURED")
+    unauthorized_mutation = bool(
+        attempt.get("unauthorized_mutation_detected", False)
+        or (mutation_occurred and (eligibility_outcome == "VETOED" or not mutation_authorized))
+    )
+
+    action_eligibility = {
+        "outcome": eligibility_outcome,
+        "reason_codes": attempt.get("eligibility_reason_codes", []),
+    }
+    execution_outcome = {
+        "state": exec_state,
+        "completed": is_completed,
+        "awaiting_approval": is_awaiting,
+        "failed": is_failed,
+        "terminal_normal": attempt.get(
+            "run_normal_terminal",
+            is_completed or is_awaiting,
+        ),
+        "unauthorized_mutation_detected": unauthorized_mutation,
+        "authorized_mutation": is_completed and mutation_occurred and not unauthorized_mutation,
+    }
+
     if action == "REQUEST_USER_INPUT":
         semantic_review = _validate_c03_semantic_review(
             _judge_c03_clarification(question_text, purpose_text, facts))
@@ -713,6 +825,13 @@ def _assess_c03_attempt(attempt: dict[str, Any] | None) -> dict[str, Any]:
                 "semantic_intent": "INCORRECT",
                 "semantic_review": semantic_review,
                 "reason": semantic_review["reason_code"],
+                "semantic_correctness": {
+                    "status": "INCORRECT",
+                    "reason_code": semantic_review["reason_code"],
+                    "evidence": semantic_review.get("evidence", {}),
+                },
+                "action_eligibility": action_eligibility,
+                "execution_outcome": execution_outcome,
             }
         elif semantic_status == "PASS":
             return {
@@ -721,14 +840,28 @@ def _assess_c03_attempt(attempt: dict[str, Any] | None) -> dict[str, Any]:
                 "semantic_intent": "PASS",
                 "semantic_review": semantic_review,
                 "reason": semantic_review["reason_code"],
+                "semantic_correctness": {
+                    "status": "PASS",
+                    "reason_code": semantic_review["reason_code"],
+                    "evidence": semantic_review.get("evidence", {}),
+                },
+                "action_eligibility": action_eligibility,
+                "execution_outcome": execution_outcome,
             }
         else:
             return {
                 "status": "INCORRECT" if not candidate_acceptable else "UNRESOLVED",
                 "structure_status": "FAIL" if not candidate_acceptable else "UNRESOLVED",
-                "semantic_intent": semantic_status,
+                "semantic_intent": "UNRESOLVED",
                 "semantic_review": semantic_review,
                 "reason": semantic_review["reason_code"],
+                "semantic_correctness": {
+                    "status": "UNRESOLVED",
+                    "reason_code": semantic_review["reason_code"],
+                    "evidence": semantic_review.get("evidence", {}),
+                },
+                "action_eligibility": action_eligibility,
+                "execution_outcome": execution_outcome,
             }
 
     if candidate_acceptable:
@@ -737,12 +870,25 @@ def _assess_c03_attempt(attempt: dict[str, Any] | None) -> dict[str, Any]:
             "structure_status": "PASS",
             "semantic_intent": "PASS",
             "reason": "candidate_acceptable_non_repeat_action",
+            "semantic_correctness": {
+                "status": "PASS",
+                "reason_code": "CANDIDATE_ACCEPTABLE_NON_REPEAT_ACTION",
+            },
+            "action_eligibility": action_eligibility,
+            "execution_outcome": execution_outcome,
         }
 
     return {
         "status": "INCORRECT",
         "structure_status": "FAIL",
+        "semantic_intent": "UNRESOLVED",
         "reason": "action_outside_frozen_acceptable_set",
+        "semantic_correctness": {
+            "status": "UNRESOLVED",
+            "reason_code": "ACTION_OUTSIDE_FROZEN_ACCEPTABLE_SET",
+        },
+        "action_eligibility": action_eligibility,
+        "execution_outcome": execution_outcome,
     }
 
 
@@ -1217,7 +1363,7 @@ def evaluate_c09_only(a: dict[str, Any] | None, b: dict[str, Any] | None,
     }
 
 
-def _decide_c03_nl(a: dict[str, Any] | None, b: dict[str, Any] | None,
+def _decide_c03_nl_core(a: dict[str, Any] | None, b: dict[str, Any] | None,
                    max_requests: int = MAX_NEW_REQUESTS,
                    scenario_ids: set[str] | None = None) -> dict[str, Any]:
     if not a or not b:
@@ -1243,14 +1389,43 @@ def _decide_c03_nl(a: dict[str, Any] | None, b: dict[str, Any] | None,
     ambig_attempts_b = [item for (s, v), item in ba.items() if s == "P3B-C03-AMBIG"]
 
     b_repeat_violations = []
+    b_out_of_scope_violations = []
+    b_eligibility_violations = []
+    b_execution_violations = []
+    b_unresolved_attempts = []
+    b_other_violations = []
+
+    # 独立核验 B 臂所有场景尝试的准入 (ActionEligibility) 与执行状态 (ExecutionOutcome)
+    for (s, v), item in ba.items():
+        if s in target_scenarios:
+            # 1. ActionEligibility 门禁: 否决即违规，绝不能仅因语义正确就绕过
+            if item.get("eligibility_outcome") != "PASSED":
+                b_eligibility_violations.append(item)
+            # 2. ExecutionOutcome 真实状态: 失败或未经授权持久化变更即违规
+            assessment = _assess_c03_attempt(item)
+            exec_outcome = assessment.get("execution_outcome", {})
+            if (item.get("execution_state") != "completed"
+                    or item.get("run_normal_terminal") is False
+                    or exec_outcome.get("unauthorized_mutation_detected")):
+                b_execution_violations.append(item)
+
     for item in c03_nl_attempts_b:
         action = _action(item)
         if action == "REQUEST_USER_INPUT":
             assess = _assess_c03_attempt(item)
             if assess.get("status") == "INCORRECT":
-                b_repeat_violations.append(item)
+                reason = assess.get("reason")
+                if reason == "REPEATED_QUESTION_REQUESTED":
+                    b_repeat_violations.append(item)
+                elif reason == "OUT_OF_SCOPE_QUESTION_REQUESTED":
+                    b_out_of_scope_violations.append(item)
+                else:
+                    b_other_violations.append(item)
+            elif assess.get("status") == "UNRESOLVED":
+                # TARGET_NOT_PROVEN / 证据不足必须保持 UNRESOLVED，不得默认为 ACCEPT
+                b_unresolved_attempts.append(item)
         elif not _candidate_acceptable(item):
-            b_repeat_violations.append(item)
+            b_other_violations.append(item)
 
     new_req_preserved = True
     if new_req_attempts_b:
@@ -1262,6 +1437,8 @@ def _decide_c03_nl(a: dict[str, Any] | None, b: dict[str, Any] | None,
                 assess = _assess_c03_attempt(item)
                 if assess.get("status") != "CORRECT":
                     new_req_preserved = False
+                if assess.get("status") == "UNRESOLVED":
+                    b_unresolved_attempts.append(item)
 
     ambig_preserved = True
     if ambig_attempts_b:
@@ -1273,20 +1450,49 @@ def _decide_c03_nl(a: dict[str, Any] | None, b: dict[str, Any] | None,
                 assess = _assess_c03_attempt(item)
                 if assess.get("status") != "CORRECT":
                     ambig_preserved = False
+                if assess.get("status") == "UNRESOLVED":
+                    b_unresolved_attempts.append(item)
 
-    a_had_repeat = any(_action(item) == "REQUEST_USER_INPUT" for item in c03_nl_attempts_a)
+    a_had_repeat = False
+    for item in c03_nl_attempts_a:
+        if _action(item) == "REQUEST_USER_INPUT":
+            assess = _assess_c03_attempt(item)
+            if assess.get("reason") == "REPEATED_QUESTION_REQUESTED":
+                a_had_repeat = True
+
     checks = {
         "b_c03_nl_no_repeated_clarification": len(b_repeat_violations) == 0,
+        "b_c03_nl_no_out_of_scope_clarification": len(b_out_of_scope_violations) == 0,
+        "b_action_eligibility_passed": len(b_eligibility_violations) == 0,
+        "b_execution_successful_and_authorized": len(b_execution_violations) == 0,
+        "b_has_no_unresolved_claims": len(b_unresolved_attempts) == 0,
         "new_necessary_clarification_preserved": new_req_preserved,
         "ambiguous_clarification_preserved": ambig_preserved,
         "a_baseline_had_repeated_clarification": a_had_repeat,
     }
 
-    if not checks["b_c03_nl_no_repeated_clarification"]:
+    b_total_violations = (
+        len(b_repeat_violations) + len(b_out_of_scope_violations) + len(b_other_violations)
+    )
+
+    if b_total_violations > 0:
+        status = "REJECT"
+    elif not checks["b_action_eligibility_passed"]:
+        # ActionEligibility 独立门禁: 准入被否决时绝不能仅因语义正确就放行
+        status = "REJECT"
+    elif not checks["b_execution_successful_and_authorized"]:
+        # ExecutionOutcome 独立门禁: 执行失败或未授权写变更一票否决
         status = "REJECT"
     elif not checks["new_necessary_clarification_preserved"] or not checks["ambiguous_clarification_preserved"]:
         status = "REJECT"
-    elif checks["b_c03_nl_no_repeated_clarification"] and a_had_repeat:
+    elif len(b_unresolved_attempts) > 0:
+        # TARGET_NOT_PROVEN / UNRESOLVED: 证据不足保持 INCONCLUSIVE，绝不默认为 ACCEPT！
+        status = "INCONCLUSIVE"
+    elif (checks["b_c03_nl_no_repeated_clarification"]
+          and checks["b_c03_nl_no_out_of_scope_clarification"]
+          and checks["b_action_eligibility_passed"]
+          and checks["b_execution_successful_and_authorized"]
+          and a_had_repeat):
         status = "ACCEPT"
     else:
         status = "INCONCLUSIVE"
@@ -1294,78 +1500,200 @@ def _decide_c03_nl(a: dict[str, Any] | None, b: dict[str, Any] | None,
     return _result(status, {
         "checks": checks,
         "b_repeat_violation_count": len(b_repeat_violations),
+        "b_out_of_scope_violation_count": len(b_out_of_scope_violations),
+        "b_eligibility_violation_count": len(b_eligibility_violations),
+        "b_execution_violation_count": len(b_execution_violations),
+        "b_unresolved_attempt_count": len(b_unresolved_attempts),
+        "b_total_violation_count": b_total_violations,
         "target_scenarios": sorted(target_scenarios),
+        "dimensions": {
+            "semantic_correctness": {
+                "b_repeat_violations": len(b_repeat_violations),
+                "b_out_of_scope_violations": len(b_out_of_scope_violations),
+                "b_other_violations": len(b_other_violations),
+                "b_unresolved_attempts": len(b_unresolved_attempts),
+                "new_necessary_preserved": new_req_preserved,
+                "ambiguous_preserved": ambig_preserved,
+            },
+            "action_eligibility": {
+                "b_eligibility_violations": len(b_eligibility_violations),
+                "a_attempts_eligibility": [
+                    {
+                        "scenario": item.get("scenario_id"),
+                        "variant": item.get("variant_id"),
+                        "action": _action(item),
+                        "outcome": item.get("eligibility_outcome"),
+                        "reason_codes": item.get("eligibility_reason_codes", []),
+                    }
+                    for item in c03_nl_attempts_a
+                ],
+                "b_attempts_eligibility": [
+                    {
+                        "scenario": item.get("scenario_id"),
+                        "variant": item.get("variant_id"),
+                        "action": _action(item),
+                        "outcome": item.get("eligibility_outcome"),
+                        "reason_codes": item.get("eligibility_reason_codes", []),
+                    }
+                    for item in c03_nl_attempts_b
+                ],
+            },
+            "execution_outcome": {
+                "b_execution_violations": len(b_execution_violations),
+                "a_execution_states": [
+                    {
+                        "scenario": item.get("scenario_id"),
+                        "variant": item.get("variant_id"),
+                        "execution_state": item.get("execution_state"),
+                    }
+                    for item in c03_nl_attempts_a
+                ],
+                "b_execution_states": [
+                    {
+                        "scenario": item.get("scenario_id"),
+                        "variant": item.get("variant_id"),
+                        "execution_state": item.get("execution_state"),
+                    }
+                    for item in c03_nl_attempts_b
+                ],
+            },
+        },
     })
+
+
+def _decide_c03_nl(a: dict[str, Any] | None, b: dict[str, Any] | None,
+                   max_requests: int = MAX_NEW_REQUESTS,
+                   scenario_ids: set[str] | None = None) -> dict[str, Any]:
+    result = _decide_c03_nl_core(a, b, max_requests, scenario_ids)
+    evidence = result["evidence"]
+    targets = scenario_ids or _arm_scenario_ids(a) or {"P3B-C03-NL"}
+    assessments = {
+        arm: [{"scenario_id": s, "variant_id": v, **_assess_c03_attempt(item)}
+              for (s, v), item in _attempt_map(report or {}).items() if s in targets]
+        for arm, report in (("a", a), ("b", b))
+    }
+    candidate = assessments["b"]
+    semantic_states = [x["semantic_prompt_verdict"]["status"] for x in candidate]
+    semantic_status = ("INCORRECT" if "INCORRECT" in semantic_states else
+                       "PASS" if semantic_states and all(x == "PASS" for x in semantic_states)
+                       else "UNRESOLVED")
+    runtime_reasons = sorted({reason for x in candidate
+                              for reason in x["runtime_safety_verdict"]["reason_codes"]})
+    reasons = [{"scope": "b", "scenario_id": x["scenario_id"], "variant_id": x["variant_id"],
+                "reason_code": reason}
+               for x in candidate for reason in x["overall_promotion_verdict"]["reason_codes"]]
+    for gate, passed in evidence.get("checks", {}).items():
+        if not passed:
+            reasons.append({"scope": "experiment", "reason_code": "HARD_GATE_FAILED:" + gate})
+    if "checks" not in evidence:
+        reasons.append({"scope": "experiment", "reason_code": "PAIR_INTEGRITY_NOT_PROVEN"})
+    # Retain core frozen-rule decisions; every new hard runtime/structure failure also closes promotion.
+    if runtime_reasons or any(x.get("structure_status") == "FAIL" for x in candidate):
+        result["status"] = "REJECT"
+    elif semantic_status != "PASS" and result["status"] == "ACCEPT":
+        result["status"] = "INCONCLUSIVE"
+    evidence.update({
+        "verdict_version": "p3b-c03-promotion.v2",
+        "attempt_assessments": assessments,
+        "semantic_prompt_verdict": {"status": semantic_status},
+        "runtime_safety_verdict": {"status": "FAIL" if runtime_reasons else
+                                   "PASS" if candidate else "UNRESOLVED",
+                                   "reason_codes": runtime_reasons},
+        "overall_promotion_verdict": {"status": "ACCEPT" if result["status"] == "ACCEPT" else "REJECT",
+                                      "decision_status": result["status"], "reasons": reasons},
+    })
+    return result
 
 
 def evaluate_c03_only(a: dict[str, Any] | None, b: dict[str, Any] | None,
                       max_requests: int = MAX_NEW_REQUESTS,
-                      scenario_ids: set[str] | None = None) -> dict[str, Any]:
-    decision = _decide_c03_nl(a, b, max_requests, scenario_ids)
-    rule_errors: list[str] = []
-    for arm_name, expected_rules, arm in (("c03_a", "none", a), ("c03_b", "c03", b)):
-        if arm is None:
-            rule_errors.append(f"{arm_name} missing")
-        elif arm.get("prompt_rule_set") != expected_rules:
-            rule_errors.append(
-                f"{arm_name} prompt rule set was {arm.get('prompt_rule_set')!r};"
-                f" expected {expected_rules!r}")
-    if rule_errors:
-        decision = _result("INCONCLUSIVE", {
-            "reason": "prompt rule set mismatch", "rule_errors": rule_errors})
-    provided = [report for report in (a, b) if report]
-    request_counts = {name: int(report.get("total_model_requests", 0))
-                      for name, report in (("c03_a", a), ("c03_b", b)) if report}
-    total = sum(request_counts.values())
-    experiment_status = "COMPLETE" if decision["status"] in {"ACCEPT", "REJECT"} else "INCOMPLETE"
-    if total > max_requests:
-        experiment_status = "BUDGET_EXCEEDED"
-        decision = _result("INCONCLUSIVE", {
-            "reason": f"actual request count {total} exceeds the declared limit {max_requests}"})
-    arm_metrics = {name: _arm_metrics(report)
-                   for name, report in (("c03_a", a), ("c03_b", b)) if report}
-    stop_reasons = sorted({
-        reason
-        for metrics in arm_metrics.values()
-        for reason, occurred in metrics["stop_flags"].items()
-        if occurred
-    })
-    review_counts = Counter(
-        attempt.get("automatic_semantic_review", {}).get("status", "UNRESOLVED")
-        for report in provided for attempt in report.get("attempts", []))
-    return {
-        "schema_version": "p3b-semantic-ab-c03-local.v1",
-        "created_at_utc": datetime.now(timezone.utc).isoformat(),
-        "scope": "C03-only real model A/B; reuses the deterministic C03 rule judge and _pair_integrity gate",
-        "scenarios": sorted(scenario_ids or _arm_scenario_ids(a)),
-        "experiment_status": experiment_status,
-        "human_review_status": "PENDING_HUMAN_REVIEW",
-        "oracle_policy": "Original candidate oracle is frozen and remains unapproved.",
-        "provider": EXPECTED_PROVIDER,
-        "model": EXPECTED_MODEL,
-        "request_budget": {
-            "maximum_new_upstream_model_requests": max_requests,
-            "actual_requests_by_arm": request_counts,
-            "actual_total_requests": total,
-            "automatic_judge_requests": 0,
-            "judge_policy": "C03 uses a blind deterministic rule evaluator; it makes zero model calls.",
-        },
-        "semantic_evaluator": {
-            "reviewer": C03_SEMANTIC_REVIEWER,
-            "input_version": C03_SEMANTIC_INPUT_VERSION,
-            "output_version": C03_SEMANTIC_OUTPUT_VERSION,
-            "type": "DETERMINISTIC_RULES",
-            "model_calls": 0,
-            "blind_to_ab_arm_and_candidate_action": True,
-            "does_not_claim_model_cognition": True,
-        },
-        "arm_measurements": arm_metrics,
-        "experiment_stop_reasons": stop_reasons,
-        "rule_decisions": {"c03": decision},
-        "automatic_review_counts": dict(review_counts),
-        "arm_reports": {"c03_a": a, "c03_b": b},
-        "conclusion_scope": "Single fresh attempt per variant on verified model; does not claim cognition.",
-    }
+                      scenario_ids: set[str] | None = None,
+                      expected_provider: str | None = None,
+                      expected_model: str | None = None) -> dict[str, Any]:
+    global EXPECTED_PROVIDER, EXPECTED_MODEL
+    old_provider, old_model = EXPECTED_PROVIDER, EXPECTED_MODEL
+    try:
+        if expected_provider:
+            EXPECTED_PROVIDER = expected_provider
+        if expected_model:
+            EXPECTED_MODEL = expected_model
+        decision = _decide_c03_nl(a, b, max_requests, scenario_ids)
+        rule_errors: list[str] = []
+        for arm_name, expected_rules, arm in (("c03_a", "none", a), ("c03_b", "c03", b)):
+            if arm is None:
+                rule_errors.append(f"{arm_name} missing")
+            elif arm.get("prompt_rule_set") != expected_rules:
+                rule_errors.append(
+                    f"{arm_name} prompt rule set was {arm.get('prompt_rule_set')!r};"
+                    f" expected {expected_rules!r}")
+        if rule_errors:
+            decision = _result("INCONCLUSIVE", {
+                **decision["evidence"],
+                "reason": "prompt rule set mismatch", "rule_errors": rule_errors})
+            verdict = decision["evidence"]["overall_promotion_verdict"]
+            verdict["status"] = "REJECT"
+            verdict["decision_status"] = decision["status"]
+            verdict["reasons"].append({"scope": "experiment", "reason_code": "PROMPT_RULE_SET_MISMATCH"})
+        provided = [report for report in (a, b) if report]
+        request_counts = {name: int(report.get("total_model_requests", 0))
+                          for name, report in (("c03_a", a), ("c03_b", b)) if report}
+        total = sum(request_counts.values())
+        experiment_status = "COMPLETE" if decision["status"] in {"ACCEPT", "REJECT"} else "INCOMPLETE"
+        if total > max_requests:
+            experiment_status = "BUDGET_EXCEEDED"
+            decision = _result("INCONCLUSIVE", {
+                **decision["evidence"],
+                "reason": f"actual request count {total} exceeds the declared limit {max_requests}"})
+            verdict = decision["evidence"]["overall_promotion_verdict"]
+            verdict["status"] = "REJECT"
+            verdict["decision_status"] = decision["status"]
+            verdict["reasons"].append({"scope": "experiment", "reason_code": "REQUEST_BUDGET_EXCEEDED"})
+        arm_metrics = {name: _arm_metrics(report)
+                       for name, report in (("c03_a", a), ("c03_b", b)) if report}
+        stop_reasons = sorted({
+            reason
+            for metrics in arm_metrics.values()
+            for reason, occurred in metrics["stop_flags"].items()
+            if occurred
+        })
+        review_counts = Counter(
+            attempt.get("automatic_semantic_review", {}).get("status", "UNRESOLVED")
+            for report in provided for attempt in report.get("attempts", []))
+        return {
+            "schema_version": "p3b-semantic-ab-c03-local.v1",
+            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "scope": "C03-only real model A/B; reuses the deterministic C03 rule judge and _pair_integrity gate",
+            "scenarios": sorted(scenario_ids or _arm_scenario_ids(a)),
+            "experiment_status": experiment_status,
+            "human_review_status": "PENDING_HUMAN_REVIEW",
+            "oracle_policy": "Original candidate oracle is frozen and remains unapproved.",
+            "provider": EXPECTED_PROVIDER,
+            "model": EXPECTED_MODEL,
+            "request_budget": {
+                "maximum_new_upstream_model_requests": max_requests,
+                "actual_requests_by_arm": request_counts,
+                "actual_total_requests": total,
+                "automatic_judge_requests": 0,
+                "judge_policy": "C03 uses a blind deterministic rule evaluator; it makes zero model calls.",
+            },
+            "semantic_evaluator": {
+                "reviewer": C03_SEMANTIC_REVIEWER,
+                "input_version": C03_SEMANTIC_INPUT_VERSION,
+                "output_version": C03_SEMANTIC_OUTPUT_VERSION,
+                "type": "DETERMINISTIC_RULES",
+                "model_calls": 0,
+                "blind_to_ab_arm_and_candidate_action": True,
+                "does_not_claim_model_cognition": True,
+            },
+            "arm_measurements": arm_metrics,
+            "experiment_stop_reasons": stop_reasons,
+            "rule_decisions": {"c03": decision},
+            "automatic_review_counts": dict(review_counts),
+            "arm_reports": {"c03_a": a, "c03_b": b},
+            "conclusion_scope": "Single fresh attempt per variant on verified model; does not claim cognition.",
+        }
+    finally:
+        EXPECTED_PROVIDER, EXPECTED_MODEL = old_provider, old_model
 
 
 def _load(path: str | None) -> dict[str, Any] | None:

@@ -34,6 +34,110 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
  */
 class P3BLiveDatabaseGuardTest {
 
+    private static final String PREFLIGHT_URL = "jdbc:postgresql://unused/spec_agent_p3b_live_offline";
+
+    @Test
+    void preflightStaticFailureNeverOpensConnection() {
+        var factory = mock(EvalLiveIsolatedDatabase.ConnectionFactory.class);
+        assertThatThrownBy(() -> EvalLiveIsolatedDatabase.verifyBeforeContext(
+                "jdbc:postgresql://unused/spec_agent", "offline", "dummy", "192.0.2.1", "5432", factory))
+                .isInstanceOf(IllegalStateException.class);
+        org.mockito.Mockito.verifyNoInteractions(factory);
+    }
+
+    @Test
+    void preflightRequiresExplicitCredentialsAndEndpointBeforeConnecting() {
+        var factory = mock(EvalLiveIsolatedDatabase.ConnectionFactory.class);
+        for (String port : List.of("", "bad", "0", "65536")) {
+            assertThatThrownBy(() -> EvalLiveIsolatedDatabase.verifyBeforeContext(
+                    PREFLIGHT_URL, "offline", "dummy", "192.0.2.1", port, factory))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+        assertThatThrownBy(() -> EvalLiveIsolatedDatabase.verifyBeforeContext(
+                PREFLIGHT_URL, null, null, null, null, factory)).isInstanceOf(IllegalStateException.class);
+        org.mockito.Mockito.verifyNoInteractions(factory);
+    }
+
+    @Test
+    void preflightConnectionFailureIsClosedWithoutLeakingDriverDetails() throws Exception {
+        var factory = mock(EvalLiveIsolatedDatabase.ConnectionFactory.class);
+        org.mockito.Mockito.when(factory.open(anyString(), anyString(), anyString()))
+                .thenThrow(new java.sql.SQLException("sensitive driver details"));
+        assertThatThrownBy(() -> EvalLiveIsolatedDatabase.verifyBeforeContext(
+                PREFLIGHT_URL, "offline", "dummy", "192.0.2.1", "5432", factory))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("independent JDBC")
+                .hasMessageNotContaining("sensitive").hasNoCause();
+    }
+
+    @Test
+    void preflightChecksDatabaseAndSameNameServerDriftAndClosesResources() throws Exception {
+        for (String mismatch : List.of("none", "database", "host", "port", "user", "empty")) {
+            var connection = mock(java.sql.Connection.class);
+            var statement = mock(java.sql.Statement.class);
+            var rows = mock(java.sql.ResultSet.class);
+            org.mockito.Mockito.when(connection.createStatement()).thenReturn(statement);
+            org.mockito.Mockito.when(statement.executeQuery(anyString())).thenReturn(rows);
+            org.mockito.Mockito.when(rows.next()).thenReturn(!mismatch.equals("empty"));
+            org.mockito.Mockito.when(rows.getString("db")).thenReturn(mismatch.equals("database")
+                    ? "spec_agent_test" : "spec_agent_p3b_live_offline");
+            org.mockito.Mockito.when(rows.getString("usr")).thenReturn(mismatch.equals("user") ? "other" : "offline");
+            org.mockito.Mockito.when(rows.getString("host")).thenReturn(mismatch.equals("host") ? "192.0.2.2" : "192.0.2.1");
+            org.mockito.Mockito.when(rows.getInt("port")).thenReturn(mismatch.equals("port") ? 5433 : 5432);
+            org.assertj.core.api.ThrowableAssert.ThrowingCallable check = () ->
+                    EvalLiveIsolatedDatabase.verifyBeforeContext(PREFLIGHT_URL, "offline", "dummy",
+                            "192.0.2.1", "5432", (url, user, password) -> connection);
+            if (mismatch.equals("none")) assertThatCode(check).doesNotThrowAnyException();
+            else assertThatThrownBy(check).isInstanceOf(IllegalStateException.class);
+            verify(connection).setReadOnly(true);
+            verify(connection).createStatement();
+            verify(statement).setQueryTimeout(10);
+            verify(rows).close();
+            verify(statement).close();
+            verify(connection).close();
+            verifyNoMoreInteractions(connection);
+        }
+    }
+
+    static final java.util.concurrent.atomic.AtomicInteger FRAMEWORK_STARTS = new java.util.concurrent.atomic.AtomicInteger();
+
+    @org.springframework.test.context.ContextConfiguration(classes = SideEffectConfig.class)
+    static class InvalidTargetBootstrap {
+        @org.springframework.test.context.DynamicPropertySource
+        static void database(org.springframework.test.context.DynamicPropertyRegistry registry) {
+            EvalLiveIsolatedDatabase.verifyBeforeContext("jdbc:postgresql://unused/spec_agent",
+                    "offline", "dummy", "192.0.2.1", "5432",
+                    (url, user, password) -> { throw new AssertionError("must not open JDBC"); });
+        }
+    }
+
+    @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
+    static class SideEffectConfig {
+        @org.springframework.context.annotation.Bean
+        Object frameworkDatabaseSideEffect() {
+            FRAMEWORK_STARTS.incrementAndGet();
+            throw new AssertionError("framework database initialization must not start");
+        }
+    }
+
+    @Test
+    void unauthorizedPlainSpringBootstrapFailsBeforeDynamicPropertiesAndBeans() {
+        FRAMEWORK_STARTS.set(0);
+        assertThatThrownBy(() -> new org.springframework.test.context.TestContextManager(InvalidTargetBootstrap.class)
+                .prepareTestInstance(new InvalidTargetBootstrap()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("explicit -PdatabaseIntegration=true");
+        assertThat(FRAMEWORK_STARTS.get()).isZero();
+    }
+
+    @Test
+    void invalidDynamicPropertyTargetRejectsWithoutAnyJdbcConnection() {
+        FRAMEWORK_STARTS.set(0);
+        assertThatThrownBy(() -> InvalidTargetBootstrap.database(null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ordinary development/test database");
+        assertThat(FRAMEWORK_STARTS.get()).isZero();
+    }
+
     private static DatabaseIdentity identity(String database) {
         return new DatabaseIdentity(database, "spec_agent", "127.0.0.1", 5434);
     }
@@ -149,5 +253,144 @@ class P3BLiveDatabaseGuardTest {
 
         verify(jdbcTemplate, times(1)).query(anyString(), any(ResultSetExtractor.class));
         verifyNoMoreInteractions(jdbcTemplate);
+    }
+
+    // -- verifyTargetDatabaseIsolation 离线单元测试 ------------------------------
+
+    @Test
+    void verifyTargetDatabaseIsolationRefusesMissingOrBlankUrl() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        for (String url : List.of("", "   ")) {
+            assertThatThrownBy(() -> EvalLiveIsolatedDatabase.verifyTargetDatabaseIsolation(jdbcTemplate, url))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("SPEC_AGENT_TARGET_DB_URL must be explicitly configured");
+        }
+        assertThatThrownBy(() -> EvalLiveIsolatedDatabase.verifyTargetDatabaseIsolation(jdbcTemplate, null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("SPEC_AGENT_TARGET_DB_URL must be explicitly configured");
+        verifyNoMoreInteractions(jdbcTemplate);
+    }
+
+    @Test
+    void verifyTargetDatabaseIsolationRefusesForbiddenDatabase() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        doReturn(identity("spec_agent"))
+                .when(jdbcTemplate).query(anyString(), any(ResultSetExtractor.class));
+
+        assertThatThrownBy(() -> EvalLiveIsolatedDatabase.verifyTargetDatabaseIsolation(
+                jdbcTemplate, "jdbc:postgresql://localhost:5432/spec_agent"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ordinary development/test database");
+
+        verify(jdbcTemplate, times(1)).query(anyString(), any(ResultSetExtractor.class));
+        verifyNoMoreInteractions(jdbcTemplate);
+    }
+
+    @Test
+    void verifyTargetDatabaseIsolationRefusesNonLiveEvalDatabase() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        doReturn(identity("spec_agent_p3b_20261017"))
+                .when(jdbcTemplate).query(anyString(), any(ResultSetExtractor.class));
+
+        assertThatThrownBy(() -> EvalLiveIsolatedDatabase.verifyTargetDatabaseIsolation(
+                jdbcTemplate, "jdbc:postgresql://localhost:5434/spec_agent_p3b_20261017"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("not a designated P3-B live evaluation database");
+
+        verify(jdbcTemplate, times(1)).query(anyString(), any(ResultSetExtractor.class));
+        verifyNoMoreInteractions(jdbcTemplate);
+    }
+
+    @Test
+    void verifyTargetDatabaseIsolationRefusesMismatchedConnection() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        doReturn(identity("spec_agent_p3b_live_actual"))
+                .when(jdbcTemplate).query(anyString(), any(ResultSetExtractor.class));
+
+        assertThatThrownBy(() -> EvalLiveIsolatedDatabase.verifyTargetDatabaseIsolation(
+                jdbcTemplate, "jdbc:postgresql://localhost:5434/spec_agent_p3b_live_configured"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("does not match the connected database");
+
+        verify(jdbcTemplate, times(1)).query(anyString(), any(ResultSetExtractor.class));
+        verifyNoMoreInteractions(jdbcTemplate);
+    }
+
+    @Test
+    void verifyTargetDatabaseIsolationRefusesUndeterminableIdentity() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        doReturn(new DatabaseIdentity(null, "spec_agent", "local", -1))
+                .when(jdbcTemplate).query(anyString(), any(ResultSetExtractor.class));
+
+        assertThatThrownBy(() -> EvalLiveIsolatedDatabase.verifyTargetDatabaseIsolation(
+                jdbcTemplate, "jdbc:postgresql://localhost:5434/spec_agent_p3b_live_20261020"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("undeterminable");
+
+        verify(jdbcTemplate, times(1)).query(anyString(), any(ResultSetExtractor.class));
+        verifyNoMoreInteractions(jdbcTemplate);
+    }
+
+    @Test
+    void verifyTargetDatabaseIsolationAcceptsMatchingLiveDatabase() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        DatabaseIdentity expected = identity("spec_agent_p3b_live_gemini_20261020");
+        doReturn(expected)
+                .when(jdbcTemplate).query(anyString(), any(ResultSetExtractor.class));
+
+        DatabaseIdentity verified = EvalLiveIsolatedDatabase.verifyTargetDatabaseIsolation(
+                jdbcTemplate, "jdbc:postgresql://localhost:5434/spec_agent_p3b_live_gemini_20261020");
+
+        assertThat(verified).isEqualTo(expected);
+        verify(jdbcTemplate, times(1)).query(anyString(), any(ResultSetExtractor.class));
+        verifyNoMoreInteractions(jdbcTemplate);
+    }
+
+    // -- validateTargetDatabaseUrlStatic 离线静态预检查测试 ----------------------
+
+    @Test
+    void validateTargetDatabaseUrlStaticRefusesMissingOrBlank() {
+        for (String url : List.of("", "   ")) {
+            assertThatThrownBy(() -> EvalLiveIsolatedDatabase.validateTargetDatabaseUrlStatic(url))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("SPEC_AGENT_TARGET_DB_URL must be explicitly configured");
+        }
+        assertThatThrownBy(() -> EvalLiveIsolatedDatabase.validateTargetDatabaseUrlStatic(null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("SPEC_AGENT_TARGET_DB_URL must be explicitly configured");
+    }
+
+    @Test
+    void validateTargetDatabaseUrlStaticRefusesUndeterminableDatabaseName() {
+        for (String url : List.of("jdbc:postgresql://localhost:5434/", "not_a_valid_url")) {
+            assertThatThrownBy(() -> EvalLiveIsolatedDatabase.validateTargetDatabaseUrlStatic(url))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("database name is undeterminable");
+        }
+    }
+
+    @Test
+    void validateTargetDatabaseUrlStaticRefusesForbiddenDatabases() {
+        for (String db : List.of("spec_agent", "spec_agent_test", "spec_agent_p3a", "postgres")) {
+            assertThatThrownBy(() -> EvalLiveIsolatedDatabase.validateTargetDatabaseUrlStatic(
+                    "jdbc:postgresql://localhost:5434/" + db))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("ordinary development/test database");
+        }
+    }
+
+    @Test
+    void validateTargetDatabaseUrlStaticRefusesNonLiveEvalDatabase() {
+        assertThatThrownBy(() -> EvalLiveIsolatedDatabase.validateTargetDatabaseUrlStatic(
+                "jdbc:postgresql://localhost:5434/spec_agent_p3b_20261017"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("not a designated P3-B live evaluation database");
+    }
+
+    @Test
+    void validateTargetDatabaseUrlStaticAcceptsDesignatedLiveDatabase() {
+        String dbName = EvalLiveIsolatedDatabase.validateTargetDatabaseUrlStatic(
+                "jdbc:postgresql://localhost:5434/spec_agent_p3b_live_gemini_20261020?sslmode=disable");
+        assertThat(dbName).isEqualTo("spec_agent_p3b_live_gemini_20261020");
     }
 }

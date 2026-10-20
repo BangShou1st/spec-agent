@@ -28,6 +28,7 @@ import java.util.UUID;
  * 引到别的 run 上——这与 P3-B 之前记录的那 17 例失败同根。
  */
 @SpringBootTest
+@org.junit.jupiter.api.Tag("database-integration")
 @ActiveProfiles("test")
 @Import({ScriptedBrain.Config.class, EvalProbeCapabilities.Config.class})
 public abstract class EvalHarnessBase {

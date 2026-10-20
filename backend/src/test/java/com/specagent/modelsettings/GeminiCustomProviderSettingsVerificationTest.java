@@ -1,9 +1,11 @@
 package com.specagent.modelsettings;
 
+import com.specagent.eval.EvalLiveIsolatedDatabase;
 import com.specagent.model.contract.ModelProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -25,6 +27,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * 4. 保持全局激活提供商不变 (仍为 KILO), 不擅自切换全局状态。
  */
 @SpringBootTest
+@org.junit.jupiter.api.Tag("external-service")
+@org.junit.jupiter.api.Tag("database-integration")
 @ActiveProfiles("test")
 @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "SPEC_AGENT_LIVE_GEMINI_TEST", matches = "true")
 class GeminiCustomProviderSettingsVerificationTest {
@@ -46,12 +50,25 @@ class GeminiCustomProviderSettingsVerificationTest {
     @Autowired
     private ModelProviderSettingsService modelProviderSettingsService;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @DynamicPropertySource
     static void configureTargetDatabase(DynamicPropertyRegistry registry) {
-        String targetUrl = System.getenv().getOrDefault(
-                "SPEC_AGENT_TARGET_DB_URL",
-                "jdbc:postgresql://localhost:5434/spec_agent_p3b_live_gemini_20261020");
+        String targetUrl = System.getenv("SPEC_AGENT_TARGET_DB_URL");
+        // 阶段一: 静态预检查。必须显式配置且必须是合法的 spec_agent_p3b_live_* 隔离库。
+        // 在 Spring 上下文构建、Flyway 迁移和 Hikari 连接池初始化之前 fail-closed 拦截非法配置！
+        EvalLiveIsolatedDatabase.validateTargetDatabaseUrlStatic(targetUrl);
+        // Stage 2: independent, read-only JDBC check BEFORE Spring creates its datasource/Flyway.
+        // Explicit env credentials override the test profile for BOTH this connection and the pool.
+        String user = System.getenv("SPEC_AGENT_TARGET_DB_USERNAME");
+        String password = System.getenv("SPEC_AGENT_TARGET_DB_PASSWORD");
+        EvalLiveIsolatedDatabase.verifyBeforeContext(targetUrl, user, password,
+                System.getenv("SPEC_AGENT_TARGET_DB_SERVER_ADDRESS"),
+                System.getenv("SPEC_AGENT_TARGET_DB_SERVER_PORT"));
         registry.add("spring.datasource.url", () -> targetUrl);
+        registry.add("spring.datasource.username", () -> user);
+        registry.add("spring.datasource.password", () -> password);
 
         Path backendKeyFile = Path.of("E:/project/spec-agent/backend/data/secret-master.key");
         if (Files.exists(backendKeyFile)) {
@@ -77,6 +94,14 @@ class GeminiCustomProviderSettingsVerificationTest {
 
     @Test
     void configureAndValidateGeminiViaOfficialCustomService() throws Exception {
+        // 0. 数据库隔离性硬检查: 未显式配置隔离库、连接非隔离库或配置漂移时，在任何操作前立即失败关闭
+        String targetUrl = System.getenv("SPEC_AGENT_TARGET_DB_URL");
+        var identity = EvalLiveIsolatedDatabase.verifyTargetDatabaseIsolation(jdbcTemplate, targetUrl);
+        EvalLiveIsolatedDatabase.requireServerEndpoint(identity,
+                System.getenv("SPEC_AGENT_TARGET_DB_USERNAME"),
+                System.getenv("SPEC_AGENT_TARGET_DB_SERVER_ADDRESS"),
+                Integer.parseInt(System.getenv("SPEC_AGENT_TARGET_DB_SERVER_PORT")));
+
         Path keyPath = Path.of(System.getProperty("user.home"), "Desktop", "key2.txt");
         assumeTrue(Files.exists(keyPath), "Desktop key2.txt must exist to run live verification");
         String apiKey = Files.readString(keyPath).strip();

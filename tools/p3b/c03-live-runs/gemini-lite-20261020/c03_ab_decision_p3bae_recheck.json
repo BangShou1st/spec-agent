@@ -1,0 +1,976 @@
+{
+  "schema_version": "p3b-semantic-ab-c03-local.v1",
+  "created_at_utc": "2026-10-20T14:42:40.238033+00:00",
+  "scope": "C03-only real model A/B; reuses the deterministic C03 rule judge and _pair_integrity gate",
+  "scenarios": [
+    "P3B-C03-NL"
+  ],
+  "experiment_status": "COMPLETE",
+  "human_review_status": "PENDING_HUMAN_REVIEW",
+  "oracle_policy": "Original candidate oracle is frozen and remains unapproved.",
+  "provider": "CUSTOM",
+  "model": "gemini-3.5-flash-lite",
+  "request_budget": {
+    "maximum_new_upstream_model_requests": 8,
+    "actual_requests_by_arm": {
+      "c03_a": 4,
+      "c03_b": 4
+    },
+    "actual_total_requests": 8,
+    "automatic_judge_requests": 0,
+    "judge_policy": "C03 uses a blind deterministic rule evaluator; it makes zero model calls."
+  },
+  "semantic_evaluator": {
+    "reviewer": "p3b-c03-rule-judge.v1",
+    "input_version": "c03-clarification-input.v1",
+    "output_version": "c03-semantic-review.v1",
+    "type": "DETERMINISTIC_RULES",
+    "model_calls": 0,
+    "blind_to_ab_arm_and_candidate_action": true,
+    "does_not_claim_model_cognition": true
+  },
+  "arm_measurements": {
+    "c03_a": {
+      "attempt_count": 2,
+      "model_requests": 4,
+      "successful_model_requests": 4,
+      "failed_model_requests": 0,
+      "rate_limited_requests": 0,
+      "protocol_failure_attempts": 0,
+      "failure_classifications": {
+        "NONE": 2
+      },
+      "measured_actions": 2,
+      "not_measured_actions": 0,
+      "automatic_semantic_reviews": {
+        "AUTO_REVIEWED": 2
+      },
+      "run_failed_machine_codes": [],
+      "run_failed_contract_diagnostic_count": 0,
+      "stop_flags": {
+        "rate_limit": false,
+        "provider_failure": false,
+        "provider_retry": false,
+        "unclassified_failure": false,
+        "request_budget": false
+      }
+    },
+    "c03_b": {
+      "attempt_count": 2,
+      "model_requests": 4,
+      "successful_model_requests": 4,
+      "failed_model_requests": 0,
+      "rate_limited_requests": 0,
+      "protocol_failure_attempts": 0,
+      "failure_classifications": {
+        "NONE": 2
+      },
+      "measured_actions": 2,
+      "not_measured_actions": 0,
+      "automatic_semantic_reviews": {
+        "AUTO_REVIEWED": 2
+      },
+      "run_failed_machine_codes": [],
+      "run_failed_contract_diagnostic_count": 0,
+      "stop_flags": {
+        "rate_limit": false,
+        "provider_failure": false,
+        "provider_retry": false,
+        "unclassified_failure": false,
+        "request_budget": false
+      }
+    }
+  },
+  "experiment_stop_reasons": [],
+  "rule_decisions": {
+    "c03": {
+      "status": "REJECT",
+      "evidence": {
+        "checks": {
+          "b_c03_nl_no_repeated_clarification": true,
+          "b_c03_nl_no_out_of_scope_clarification": false,
+          "new_necessary_clarification_preserved": true,
+          "ambiguous_clarification_preserved": true,
+          "a_baseline_had_repeated_clarification": false
+        },
+        "b_repeat_violation_count": 0,
+        "b_out_of_scope_violation_count": 1,
+        "b_total_violation_count": 1,
+        "target_scenarios": [
+          "P3B-C03-NL"
+        ],
+        "dimensions": {
+          "semantic_correctness": {
+            "b_repeat_violations": 0,
+            "b_out_of_scope_violations": 1,
+            "b_other_violations": 0,
+            "new_necessary_preserved": true,
+            "ambiguous_preserved": true
+          },
+          "action_eligibility": {
+            "a_attempts_eligibility": [
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "base",
+                "action": "CREATE_NODE",
+                "outcome": "VETOED",
+                "reason_codes": [
+                  "MISSING_TYPED_PERSISTENCE_INTENT"
+                ]
+              },
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "holdout",
+                "action": "CREATE_NODE",
+                "outcome": "VETOED",
+                "reason_codes": [
+                  "MISSING_TYPED_PERSISTENCE_INTENT"
+                ]
+              }
+            ],
+            "b_attempts_eligibility": [
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "base",
+                "action": "REQUEST_USER_INPUT",
+                "outcome": "PASSED",
+                "reason_codes": []
+              },
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "holdout",
+                "action": "CREATE_NODE",
+                "outcome": "VETOED",
+                "reason_codes": [
+                  "MISSING_TYPED_PERSISTENCE_INTENT"
+                ]
+              }
+            ]
+          },
+          "execution_outcome": {
+            "a_execution_states": [
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "base",
+                "execution_state": "awaiting_approval"
+              },
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "holdout",
+                "execution_state": "awaiting_approval"
+              }
+            ],
+            "b_execution_states": [
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "base",
+                "execution_state": "completed"
+              },
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "holdout",
+                "execution_state": "awaiting_approval"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "automatic_review_counts": {
+    "AUTO_REVIEWED": 4
+  },
+  "arm_reports": {
+    "c03_a": {
+      "schema_version": "p3b-live-priority.v3",
+      "schema_migration": "v1 execution_success_rate 把 Run 正常终态(policy_denied/awaiting_approval)与动作实际执行混为一谈;v2 拆分为 run_normal_terminal_rate / action_submitted_rate / action_completed_rate,并保留 execution_success_rate 作为 action_completed_rate 的兼容别名(v1 的分母等于 action_measured_count)。v1 的 executed_action 也据此收窄:只有 completed 才记为已执行。",
+      "suite": "EvalLiveP3BDecisionQualityTest",
+      "experiment_id": "p3b-live-priority",
+      "arm": "c03_a",
+      "prompt_rule_set": "none",
+      "prompt_version_basis": "DECISION system prompt SHA-256 in each attempt",
+      "eval_database": "spec_agent_p3b_live_gemini_20261020",
+      "eval_database_identity": {
+        "database": "spec_agent_p3b_live_gemini_20261020",
+        "user": "spec_agent",
+        "host": "172.21.0.2/32",
+        "port": 5432
+      },
+      "provider": "CUSTOM",
+      "model_id": "gemini-3.5-flash-lite",
+      "model_listed_as_free": false,
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "credential_source": "database:custom_provider_settings",
+      "brain_model_mode": "broker",
+      "action_eligibility_mode": "shadow",
+      "scenario_count": 1,
+      "scenario_ids": [
+        "P3B-C03-NL"
+      ],
+      "attempt_count": 2,
+      "expected_attempt_count": 2,
+      "report_status": "COMPLETE",
+      "human_review_status": "PENDING_HUMAN_REVIEW",
+      "oracle_policy": "Frozen AI candidate labels; this report does not approve or modify them",
+      "request_budget": {
+        "requests_in_this_arm": 4,
+        "experiment_max_new_upstream_requests": 4,
+        "judge_requests": 0,
+        "retry_policy": "No explicit retries or provider fallback; actual inference events are counted"
+      },
+      "stopped_after_rate_limit": false,
+      "stopped_after_provider_failure": false,
+      "stopped_after_provider_retry": false,
+      "stopped_after_unclassified_failure": false,
+      "stopped_after_model_contract_failure": false,
+      "stopped_on_request_budget": false,
+      "total_model_requests": 4,
+      "successful_model_requests": 4,
+      "failed_model_requests": 0,
+      "not_measured_action_count": 0,
+      "protocol_failure_count": 0,
+      "sanitization_policy": "No raw run IDs, full inputs, private prompts, tokens, or HTTP requests; prompt hashes and fixture-only action payloads retained.",
+      "model_selection_accuracy": 1.0,
+      "model_selection_measured_count": 2,
+      "model_selection_not_measured_count": 0,
+      "gate_accuracy": null,
+      "gate_measured_count": 0,
+      "run_normal_terminal_rate": 1.0,
+      "run_normal_terminal_measured_count": 2,
+      "action_submitted_rate": 1.0,
+      "action_submitted_measured_count": 2,
+      "action_completed_rate": 0.0,
+      "action_completed_measured_count": 2,
+      "execution_success_rate": 0.0,
+      "execution_measured_count": 2,
+      "action_acceptable_set_accuracy": 1.0,
+      "action_acceptable_set_denominator": 2,
+      "action_measured_count": 2,
+      "repeated_clarification_count": 0,
+      "repeated_clarification_measured_count": 0,
+      "unnecessary_capability_call_count": 0,
+      "unnecessary_capability_call_measured_count": 0,
+      "capability_call_count": 0,
+      "payload_validity": 1.0,
+      "payload_validity_measured": 2,
+      "payload_validity_invalid_count": 0,
+      "eligibility_veto_count": 2,
+      "eligibility_unknown_count": 0,
+      "eligibility_measured_count": 2,
+      "unresolved_semantic_error_signal_count": 0,
+      "unresolved_semantic_error_signal_measured_count": 2,
+      "manual_semantic_review_required_count": 0,
+      "failure_classification_breakdown": {
+        "NONE": 2
+      },
+      "protocol_error_count": 0,
+      "rate_limited_count": 0,
+      "infrastructure_failure_count": 0,
+      "unknown_failure_count": 0,
+      "attempts": [
+        {
+          "scenario_id": "P3B-C03-NL",
+          "variant_id": "base",
+          "run_correlation_id": "d1278182541986b5345a",
+          "scenario_hash": "e055f0d21ac07c63",
+          "candidate_label_status": "PENDING_HUMAN_REVIEW",
+          "oracle_candidate": {
+            "expected_gate": "NO_DETERMINISTIC_SURFACE",
+            "acceptable_primary_actions": [
+              "CREATE_NODE",
+              "RESPOND_TO_USER"
+            ],
+            "forbidden_actions": [
+              "INVOKE_CAPABILITY",
+              "REQUEST_USER_INPUT"
+            ],
+            "expected_veto_reason_codes": []
+          },
+          "model_request_events": [
+            {
+              "call_type": "STATE_UPDATE",
+              "status": "SUCCESS",
+              "gateway_category": null
+            },
+            {
+              "call_type": "DECISION",
+              "status": "SUCCESS",
+              "gateway_category": null
+            }
+          ],
+          "run_failed_evidence": {
+            "reason": "NONE",
+            "error_code": "NONE",
+            "present": false
+          },
+          "input_evidence": {
+            "answered_lineage_entries": 1,
+            "unresolved_effective_claims": 0,
+            "memory_search_query_required": true,
+            "memory_search_provided_argument_names": [],
+            "required_arguments_verified": true,
+            "available_capabilities": [
+              {
+                "required_arguments": [
+                  "query"
+                ],
+                "id": "memory.search"
+              }
+            ],
+            "memory_search_visible": true,
+            "memory_search_missing_arguments": [
+              "query"
+            ],
+            "allowed_source_ref_count": 8,
+            "allowed_source_refs_sha256": "b3108ac4f0e9581ce302b4e1f38dfb02ea31328a4155e2f442753524fc3f0aeb",
+            "retrieved_context_count": 1
+          },
+          "model_selected_action": "CREATE_NODE",
+          "model_selection_measured": true,
+          "model_selection_acceptable": true,
+          "eligibility_outcome": "VETOED",
+          "eligibility_reason_codes": [
+            "MISSING_TYPED_PERSISTENCE_INTENT"
+          ],
+          "accepted_action": "CREATE_NODE",
+          "executed_action": null,
+          "action_acceptable": true,
+          "action_measured": true,
+          "payload_validity": "VALID",
+          "execution_state": "awaiting_approval",
+          "failure_classification": "NONE",
+          "model_request_count": 2,
+          "successful_model_requests": 2,
+          "failed_model_requests": 0,
+          "provider_retries": 0,
+          "judge_model_calls": 0,
+          "reported_production_model_calls": 2,
+          "provider_failure_categories": [],
+          "attribution_basis": "final_execution",
+          "capability_calls": 0,
+          "repeated_clarification": false,
+          "unnecessary_capability_call": false,
+          "unresolved_semantic_error_signal": false,
+          "manual_semantic_review_required": false,
+          "model_raw_action": {
+            "action_family": "CREATE_NODE",
+            "payload": {
+              "content": {
+                "text": "项目的主数据库已确定采用 PostgreSQL，版本为 16。"
+              },
+              "kind": "KNOWLEDGE",
+              "subtype": "DECISION"
+            },
+            "source_ref_count": 3
+          },
+          "prompt_hashes": {
+            "state_update_input": "d8490e85d7a408fdb549cd7e0ac1cfd8e64ebd36ad0910d17d72015105351d77",
+            "decision_input": "5afccda858be56e57de75b617cb6239eaf41594f4293b3d9aaa455b0298f5449"
+          },
+          "source_reference_audit": {
+            "invalidated_source_reference_used": false,
+            "anchor_ref_count": 0,
+            "status": "DETERMINISTIC_VERIFIED",
+            "source_ref_count": 3,
+            "source_ref_manifest_sha256": "7ff3910ff4a11b9b47f8ba5238ed9fe9c84023895639871ae4c585b299ce954f",
+            "source_refs_allowed": true,
+            "invalidated_source_ref_count": 0
+          },
+          "automatic_semantic_review": {
+            "status": "AUTO_REVIEWED",
+            "reviewer": "p3b-deterministic-evidence-audit.v1",
+            "review_scope": "fixture facts, candidate oracle alignment, protocol, source refs, declared parameters, and execution trace",
+            "oracle_human_review_status": "PENDING_HUMAN_REVIEW",
+            "candidate_oracle_action_match": true,
+            "answered_lineage_present": true,
+            "unresolved_effective_claim_count": 0,
+            "capability_argument_audit": {
+              "status": "NOT_APPLICABLE"
+            },
+            "clarification_structure_audit": {
+              "status": "NOT_APPLICABLE"
+            },
+            "capability_invocation_count": 0,
+            "cycle_completed": false,
+            "failure_classification": "NONE",
+            "source_reference_audit": {
+              "invalidated_source_reference_used": false,
+              "anchor_ref_count": 0,
+              "status": "DETERMINISTIC_VERIFIED",
+              "source_ref_count": 3,
+              "source_ref_manifest_sha256": "7ff3910ff4a11b9b47f8ba5238ed9fe9c84023895639871ae4c585b299ce954f",
+              "source_refs_allowed": true,
+              "invalidated_source_ref_count": 0
+            },
+            "semantic_equivalence": "UNRESOLVED",
+            "unsupported_factual_assertions": "UNRESOLVED",
+            "basis": [
+              "The frozen candidate label was compared without editing it.",
+              "The report records structural facts and runtime outcomes; no independent judge model was called."
+            ]
+          },
+          "duration_ms": 13393,
+          "measured_duration_ms": 13455,
+          "stage_latency_ms": {
+            "total": 13393,
+            "inference.STATE_UPDATE": 5818,
+            "inference.DECISION": 1805
+          }
+        },
+        {
+          "scenario_id": "P3B-C03-NL",
+          "variant_id": "holdout",
+          "run_correlation_id": "6e87e11fcd07a3b98ad2",
+          "scenario_hash": "e055f0d21ac07c63",
+          "candidate_label_status": "PENDING_HUMAN_REVIEW",
+          "oracle_candidate": {
+            "expected_gate": "NO_DETERMINISTIC_SURFACE",
+            "acceptable_primary_actions": [
+              "CREATE_NODE",
+              "RESPOND_TO_USER"
+            ],
+            "forbidden_actions": [
+              "INVOKE_CAPABILITY",
+              "REQUEST_USER_INPUT"
+            ],
+            "expected_veto_reason_codes": []
+          },
+          "model_request_events": [
+            {
+              "call_type": "STATE_UPDATE",
+              "status": "SUCCESS",
+              "gateway_category": null
+            },
+            {
+              "call_type": "DECISION",
+              "status": "SUCCESS",
+              "gateway_category": null
+            }
+          ],
+          "run_failed_evidence": {
+            "reason": "NONE",
+            "error_code": "NONE",
+            "present": false
+          },
+          "input_evidence": {
+            "answered_lineage_entries": 1,
+            "unresolved_effective_claims": 0,
+            "memory_search_query_required": true,
+            "memory_search_provided_argument_names": [],
+            "required_arguments_verified": true,
+            "available_capabilities": [
+              {
+                "required_arguments": [
+                  "query"
+                ],
+                "id": "memory.search"
+              }
+            ],
+            "memory_search_visible": true,
+            "memory_search_missing_arguments": [
+              "query"
+            ],
+            "allowed_source_ref_count": 8,
+            "allowed_source_refs_sha256": "89609652a68ddbb62483d74be57ac10ff771ea4b39dd429b98fa1d925fe39cda",
+            "retrieved_context_count": 1
+          },
+          "model_selected_action": "CREATE_NODE",
+          "model_selection_measured": true,
+          "model_selection_acceptable": true,
+          "eligibility_outcome": "VETOED",
+          "eligibility_reason_codes": [
+            "MISSING_TYPED_PERSISTENCE_INTENT"
+          ],
+          "accepted_action": "CREATE_NODE",
+          "executed_action": null,
+          "action_acceptable": true,
+          "action_measured": true,
+          "payload_validity": "VALID",
+          "execution_state": "awaiting_approval",
+          "failure_classification": "NONE",
+          "model_request_count": 2,
+          "successful_model_requests": 2,
+          "failed_model_requests": 0,
+          "provider_retries": 0,
+          "judge_model_calls": 0,
+          "reported_production_model_calls": 2,
+          "provider_failure_categories": [],
+          "attribution_basis": "final_execution",
+          "capability_calls": 0,
+          "repeated_clarification": false,
+          "unnecessary_capability_call": false,
+          "unresolved_semantic_error_signal": false,
+          "manual_semantic_review_required": false,
+          "model_raw_action": {
+            "action_family": "CREATE_NODE",
+            "payload": {
+              "content": {
+                "text": "系统确定采用 PostgreSQL 16 作为主存储数据库。"
+              },
+              "kind": "KNOWLEDGE",
+              "subtype": "DECISION"
+            },
+            "source_ref_count": 3
+          },
+          "prompt_hashes": {
+            "state_update_input": "d8490e85d7a408fdb549cd7e0ac1cfd8e64ebd36ad0910d17d72015105351d77",
+            "decision_input": "5afccda858be56e57de75b617cb6239eaf41594f4293b3d9aaa455b0298f5449"
+          },
+          "source_reference_audit": {
+            "invalidated_source_reference_used": false,
+            "anchor_ref_count": 0,
+            "status": "DETERMINISTIC_VERIFIED",
+            "source_ref_count": 3,
+            "source_ref_manifest_sha256": "022a3cdb557231750f81792713271606ed3cfd9f46cee9cc85e3a69b109d040c",
+            "source_refs_allowed": true,
+            "invalidated_source_ref_count": 0
+          },
+          "automatic_semantic_review": {
+            "status": "AUTO_REVIEWED",
+            "reviewer": "p3b-deterministic-evidence-audit.v1",
+            "review_scope": "fixture facts, candidate oracle alignment, protocol, source refs, declared parameters, and execution trace",
+            "oracle_human_review_status": "PENDING_HUMAN_REVIEW",
+            "candidate_oracle_action_match": true,
+            "answered_lineage_present": true,
+            "unresolved_effective_claim_count": 0,
+            "capability_argument_audit": {
+              "status": "NOT_APPLICABLE"
+            },
+            "clarification_structure_audit": {
+              "status": "NOT_APPLICABLE"
+            },
+            "capability_invocation_count": 0,
+            "cycle_completed": false,
+            "failure_classification": "NONE",
+            "source_reference_audit": {
+              "invalidated_source_reference_used": false,
+              "anchor_ref_count": 0,
+              "status": "DETERMINISTIC_VERIFIED",
+              "source_ref_count": 3,
+              "source_ref_manifest_sha256": "022a3cdb557231750f81792713271606ed3cfd9f46cee9cc85e3a69b109d040c",
+              "source_refs_allowed": true,
+              "invalidated_source_ref_count": 0
+            },
+            "semantic_equivalence": "UNRESOLVED",
+            "unsupported_factual_assertions": "UNRESOLVED",
+            "basis": [
+              "The frozen candidate label was compared without editing it.",
+              "The report records structural facts and runtime outcomes; no independent judge model was called."
+            ]
+          },
+          "duration_ms": 17319,
+          "measured_duration_ms": 17340,
+          "stage_latency_ms": {
+            "total": 17319,
+            "inference.STATE_UPDATE": 9687,
+            "inference.DECISION": 2688
+          }
+        }
+      ],
+      "attempt_evidence_sidecar": "E:\\project\\spec-agent\\tools\\p3b\\c03-live-runs\\gemini-lite-20261020\\c03_a.json.attempts.jsonl",
+      "python_state_update_delta": 2,
+      "python_decision_delta": 2
+    },
+    "c03_b": {
+      "schema_version": "p3b-live-priority.v3",
+      "schema_migration": "v1 execution_success_rate 把 Run 正常终态(policy_denied/awaiting_approval)与动作实际执行混为一谈;v2 拆分为 run_normal_terminal_rate / action_submitted_rate / action_completed_rate,并保留 execution_success_rate 作为 action_completed_rate 的兼容别名(v1 的分母等于 action_measured_count)。v1 的 executed_action 也据此收窄:只有 completed 才记为已执行。",
+      "suite": "EvalLiveP3BDecisionQualityTest",
+      "experiment_id": "p3b-live-priority",
+      "arm": "c03_b",
+      "prompt_rule_set": "c03",
+      "prompt_version_basis": "DECISION system prompt SHA-256 in each attempt",
+      "eval_database": "spec_agent_p3b_live_gemini_20261020",
+      "eval_database_identity": {
+        "user": "spec_agent",
+        "host": "172.21.0.2/32",
+        "port": 5432,
+        "database": "spec_agent_p3b_live_gemini_20261020"
+      },
+      "provider": "CUSTOM",
+      "model_id": "gemini-3.5-flash-lite",
+      "model_listed_as_free": false,
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "credential_source": "database:custom_provider_settings",
+      "brain_model_mode": "broker",
+      "action_eligibility_mode": "shadow",
+      "scenario_count": 1,
+      "scenario_ids": [
+        "P3B-C03-NL"
+      ],
+      "attempt_count": 2,
+      "expected_attempt_count": 2,
+      "report_status": "COMPLETE",
+      "human_review_status": "PENDING_HUMAN_REVIEW",
+      "oracle_policy": "Frozen AI candidate labels; this report does not approve or modify them",
+      "request_budget": {
+        "experiment_max_new_upstream_requests": 4,
+        "judge_requests": 0,
+        "retry_policy": "No explicit retries or provider fallback; actual inference events are counted",
+        "requests_in_this_arm": 4
+      },
+      "stopped_after_rate_limit": false,
+      "stopped_after_provider_failure": false,
+      "stopped_after_provider_retry": false,
+      "stopped_after_unclassified_failure": false,
+      "stopped_after_model_contract_failure": false,
+      "stopped_on_request_budget": false,
+      "total_model_requests": 4,
+      "successful_model_requests": 4,
+      "failed_model_requests": 0,
+      "not_measured_action_count": 0,
+      "protocol_failure_count": 0,
+      "sanitization_policy": "No raw run IDs, full inputs, private prompts, tokens, or HTTP requests; prompt hashes and fixture-only action payloads retained.",
+      "model_selection_accuracy": 0.5,
+      "model_selection_measured_count": 2,
+      "model_selection_not_measured_count": 0,
+      "gate_accuracy": null,
+      "gate_measured_count": 0,
+      "run_normal_terminal_rate": 1.0,
+      "run_normal_terminal_measured_count": 2,
+      "action_submitted_rate": 1.0,
+      "action_submitted_measured_count": 2,
+      "action_completed_rate": 0.5,
+      "action_completed_measured_count": 2,
+      "execution_success_rate": 0.5,
+      "execution_measured_count": 2,
+      "action_acceptable_set_accuracy": 0.5,
+      "action_acceptable_set_denominator": 2,
+      "action_measured_count": 2,
+      "repeated_clarification_count": 0,
+      "repeated_clarification_measured_count": 0,
+      "unnecessary_capability_call_count": 0,
+      "unnecessary_capability_call_measured_count": 0,
+      "capability_call_count": 0,
+      "payload_validity": 1.0,
+      "payload_validity_measured": 2,
+      "payload_validity_invalid_count": 0,
+      "eligibility_veto_count": 1,
+      "eligibility_unknown_count": 0,
+      "eligibility_measured_count": 2,
+      "unresolved_semantic_error_signal_count": 1,
+      "unresolved_semantic_error_signal_measured_count": 2,
+      "manual_semantic_review_required_count": 0,
+      "failure_classification_breakdown": {
+        "NONE": 2
+      },
+      "protocol_error_count": 0,
+      "rate_limited_count": 0,
+      "infrastructure_failure_count": 0,
+      "unknown_failure_count": 0,
+      "attempts": [
+        {
+          "scenario_id": "P3B-C03-NL",
+          "variant_id": "base",
+          "run_correlation_id": "4724cf423b445b2573f7",
+          "scenario_hash": "e055f0d21ac07c63",
+          "candidate_label_status": "PENDING_HUMAN_REVIEW",
+          "oracle_candidate": {
+            "forbidden_actions": [
+              "INVOKE_CAPABILITY",
+              "REQUEST_USER_INPUT"
+            ],
+            "expected_veto_reason_codes": [],
+            "expected_gate": "NO_DETERMINISTIC_SURFACE",
+            "acceptable_primary_actions": [
+              "CREATE_NODE",
+              "RESPOND_TO_USER"
+            ]
+          },
+          "model_request_events": [
+            {
+              "call_type": "STATE_UPDATE",
+              "status": "SUCCESS",
+              "gateway_category": null
+            },
+            {
+              "call_type": "DECISION",
+              "status": "SUCCESS",
+              "gateway_category": null
+            }
+          ],
+          "run_failed_evidence": {
+            "error_code": "NONE",
+            "present": false,
+            "reason": "NONE"
+          },
+          "input_evidence": {
+            "answered_lineage_entries": 1,
+            "unresolved_effective_claims": 0,
+            "memory_search_provided_argument_names": [],
+            "required_arguments_verified": true,
+            "available_capabilities": [
+              {
+                "required_arguments": [
+                  "query"
+                ],
+                "id": "memory.search"
+              }
+            ],
+            "memory_search_visible": true,
+            "memory_search_missing_arguments": [
+              "query"
+            ],
+            "memory_search_query_required": true,
+            "allowed_source_ref_count": 8,
+            "allowed_source_refs_sha256": "7fc66f46380a45a4537732cdd5cb5d75410a1fb2a30250546506e12fcbce39d1",
+            "retrieved_context_count": 1
+          },
+          "model_selected_action": "REQUEST_USER_INPUT",
+          "model_selection_measured": true,
+          "model_selection_acceptable": false,
+          "eligibility_outcome": "PASSED",
+          "eligibility_reason_codes": [],
+          "accepted_action": "REQUEST_USER_INPUT",
+          "executed_action": "REQUEST_USER_INPUT",
+          "action_acceptable": false,
+          "action_measured": true,
+          "payload_validity": "VALID",
+          "execution_state": "completed",
+          "failure_classification": "NONE",
+          "model_request_count": 2,
+          "successful_model_requests": 2,
+          "failed_model_requests": 0,
+          "provider_retries": 0,
+          "judge_model_calls": 0,
+          "reported_production_model_calls": 2,
+          "provider_failure_categories": [],
+          "attribution_basis": "final_execution",
+          "capability_calls": 0,
+          "repeated_clarification": false,
+          "unnecessary_capability_call": false,
+          "unresolved_semantic_error_signal": true,
+          "manual_semantic_review_required": false,
+          "model_raw_action": {
+            "action_family": "REQUEST_USER_INPUT",
+            "payload": {
+              "allowFreeAnswer": true,
+              "allowMultiSelect": false,
+              "kind": "INTERACTION",
+              "options": [
+                {
+                  "label": "是的，需要继续确定缓存、消息队列等组件",
+                  "recommended": true
+                },
+                {
+                  "label": "暂不需要，当前阶段只需确定数据库",
+                  "recommended": false
+                }
+              ],
+              "purpose": "在主数据库确定后，继续明确其他架构组件需求",
+              "questionText": "项目是否还需要确定其他核心技术栈或中间件选型？"
+            },
+            "source_ref_count": 2
+          },
+          "prompt_hashes": {
+            "state_update_input": "d8490e85d7a408fdb549cd7e0ac1cfd8e64ebd36ad0910d17d72015105351d77",
+            "decision_input": "670f13edcccd36aea4b20e21d063987f9ccbb7162b1fc246ef5b054d51a967ea"
+          },
+          "source_reference_audit": {
+            "anchor_ref_count": 0,
+            "status": "DETERMINISTIC_VERIFIED",
+            "source_ref_count": 2,
+            "source_ref_manifest_sha256": "ef79338f12a296a175d8152815f1935456f5baaa2a6033480972000c9001eb6c",
+            "source_refs_allowed": true,
+            "invalidated_source_ref_count": 0,
+            "invalidated_source_reference_used": false
+          },
+          "automatic_semantic_review": {
+            "status": "AUTO_REVIEWED",
+            "reviewer": "p3b-deterministic-evidence-audit.v1",
+            "review_scope": "fixture facts, candidate oracle alignment, protocol, source refs, declared parameters, and execution trace",
+            "oracle_human_review_status": "PENDING_HUMAN_REVIEW",
+            "candidate_oracle_action_match": false,
+            "answered_lineage_present": true,
+            "unresolved_effective_claim_count": 0,
+            "capability_argument_audit": {
+              "status": "NOT_APPLICABLE"
+            },
+            "clarification_structure_audit": {
+              "question_text_present": true,
+              "semantic_intent": "UNRESOLVED",
+              "status": "DETERMINISTIC_VERIFIED"
+            },
+            "capability_invocation_count": 0,
+            "cycle_completed": true,
+            "failure_classification": "NONE",
+            "source_reference_audit": {
+              "anchor_ref_count": 0,
+              "status": "DETERMINISTIC_VERIFIED",
+              "source_ref_count": 2,
+              "source_ref_manifest_sha256": "ef79338f12a296a175d8152815f1935456f5baaa2a6033480972000c9001eb6c",
+              "source_refs_allowed": true,
+              "invalidated_source_ref_count": 0,
+              "invalidated_source_reference_used": false
+            },
+            "semantic_equivalence": "UNRESOLVED",
+            "unsupported_factual_assertions": "UNRESOLVED",
+            "basis": [
+              "The frozen candidate label was compared without editing it.",
+              "The report records structural facts and runtime outcomes; no independent judge model was called."
+            ]
+          },
+          "duration_ms": 22468,
+          "measured_duration_ms": 22533,
+          "stage_latency_ms": {
+            "inference.STATE_UPDATE": 9226,
+            "inference.DECISION": 7170,
+            "total": 22468
+          }
+        },
+        {
+          "scenario_id": "P3B-C03-NL",
+          "variant_id": "holdout",
+          "run_correlation_id": "6c694336442516f155f1",
+          "scenario_hash": "e055f0d21ac07c63",
+          "candidate_label_status": "PENDING_HUMAN_REVIEW",
+          "oracle_candidate": {
+            "forbidden_actions": [
+              "INVOKE_CAPABILITY",
+              "REQUEST_USER_INPUT"
+            ],
+            "expected_veto_reason_codes": [],
+            "expected_gate": "NO_DETERMINISTIC_SURFACE",
+            "acceptable_primary_actions": [
+              "CREATE_NODE",
+              "RESPOND_TO_USER"
+            ]
+          },
+          "model_request_events": [
+            {
+              "call_type": "STATE_UPDATE",
+              "status": "SUCCESS",
+              "gateway_category": null
+            },
+            {
+              "call_type": "DECISION",
+              "status": "SUCCESS",
+              "gateway_category": null
+            }
+          ],
+          "run_failed_evidence": {
+            "error_code": "NONE",
+            "present": false,
+            "reason": "NONE"
+          },
+          "input_evidence": {
+            "answered_lineage_entries": 1,
+            "unresolved_effective_claims": 0,
+            "memory_search_provided_argument_names": [],
+            "required_arguments_verified": true,
+            "available_capabilities": [
+              {
+                "required_arguments": [
+                  "query"
+                ],
+                "id": "memory.search"
+              }
+            ],
+            "memory_search_visible": true,
+            "memory_search_missing_arguments": [
+              "query"
+            ],
+            "memory_search_query_required": true,
+            "allowed_source_ref_count": 8,
+            "allowed_source_refs_sha256": "38eae4e8731c3266a161c92184c9f4276c29ef8fca8085fefbaa6bf49d8bfd77",
+            "retrieved_context_count": 1
+          },
+          "model_selected_action": "CREATE_NODE",
+          "model_selection_measured": true,
+          "model_selection_acceptable": true,
+          "eligibility_outcome": "VETOED",
+          "eligibility_reason_codes": [
+            "MISSING_TYPED_PERSISTENCE_INTENT"
+          ],
+          "accepted_action": "CREATE_NODE",
+          "executed_action": null,
+          "action_acceptable": true,
+          "action_measured": true,
+          "payload_validity": "VALID",
+          "execution_state": "awaiting_approval",
+          "failure_classification": "NONE",
+          "model_request_count": 2,
+          "successful_model_requests": 2,
+          "failed_model_requests": 0,
+          "provider_retries": 0,
+          "judge_model_calls": 0,
+          "reported_production_model_calls": 2,
+          "provider_failure_categories": [],
+          "attribution_basis": "final_execution",
+          "capability_calls": 0,
+          "repeated_clarification": false,
+          "unnecessary_capability_call": false,
+          "unresolved_semantic_error_signal": false,
+          "manual_semantic_review_required": false,
+          "model_raw_action": {
+            "action_family": "CREATE_NODE",
+            "payload": {
+              "content": {
+                "text": "系统已确认采用 PostgreSQL 16 作为主存储数据库。"
+              },
+              "kind": "KNOWLEDGE",
+              "subtype": "DECISION"
+            },
+            "source_ref_count": 3
+          },
+          "prompt_hashes": {
+            "state_update_input": "d8490e85d7a408fdb549cd7e0ac1cfd8e64ebd36ad0910d17d72015105351d77",
+            "decision_input": "670f13edcccd36aea4b20e21d063987f9ccbb7162b1fc246ef5b054d51a967ea"
+          },
+          "source_reference_audit": {
+            "anchor_ref_count": 0,
+            "status": "DETERMINISTIC_VERIFIED",
+            "source_ref_count": 3,
+            "source_ref_manifest_sha256": "2711ad810777c14c3ae04f5b9a8c6668b6fa3d2a029782a118bf78b22748426e",
+            "source_refs_allowed": true,
+            "invalidated_source_ref_count": 0,
+            "invalidated_source_reference_used": false
+          },
+          "automatic_semantic_review": {
+            "status": "AUTO_REVIEWED",
+            "reviewer": "p3b-deterministic-evidence-audit.v1",
+            "review_scope": "fixture facts, candidate oracle alignment, protocol, source refs, declared parameters, and execution trace",
+            "oracle_human_review_status": "PENDING_HUMAN_REVIEW",
+            "candidate_oracle_action_match": true,
+            "answered_lineage_present": true,
+            "unresolved_effective_claim_count": 0,
+            "capability_argument_audit": {
+              "status": "NOT_APPLICABLE"
+            },
+            "clarification_structure_audit": {
+              "status": "NOT_APPLICABLE"
+            },
+            "capability_invocation_count": 0,
+            "cycle_completed": false,
+            "failure_classification": "NONE",
+            "source_reference_audit": {
+              "anchor_ref_count": 0,
+              "status": "DETERMINISTIC_VERIFIED",
+              "source_ref_count": 3,
+              "source_ref_manifest_sha256": "2711ad810777c14c3ae04f5b9a8c6668b6fa3d2a029782a118bf78b22748426e",
+              "source_refs_allowed": true,
+              "invalidated_source_ref_count": 0,
+              "invalidated_source_reference_used": false
+            },
+            "semantic_equivalence": "UNRESOLVED",
+            "unsupported_factual_assertions": "UNRESOLVED",
+            "basis": [
+              "The frozen candidate label was compared without editing it.",
+              "The report records structural facts and runtime outcomes; no independent judge model was called."
+            ]
+          },
+          "duration_ms": 20490,
+          "measured_duration_ms": 20507,
+          "stage_latency_ms": {
+            "inference.STATE_UPDATE": 8972,
+            "inference.DECISION": 6565,
+            "total": 20490
+          }
+        }
+      ],
+      "attempt_evidence_sidecar": "E:\\project\\spec-agent\\tools\\p3b\\c03-live-runs\\gemini-lite-20261020\\c03_b.json.attempts.jsonl",
+      "python_state_update_delta": 2,
+      "python_decision_delta": 2
+    }
+  },
+  "conclusion_scope": "Single fresh attempt per variant on verified model; does not claim cognition."
+}

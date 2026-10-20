@@ -161,10 +161,15 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
 
     @DynamicPropertySource
     static void isolatedDatabase(DynamicPropertyRegistry registry) {
-        String url = System.getenv().getOrDefault(
-                "SPEC_AGENT_EVAL_DB_URL",
-                "jdbc:postgresql://localhost:5434/spec_agent_p3b_live_20261018");
+        String url = System.getenv("SPEC_AGENT_EVAL_DB_URL");
+        String user = System.getenv("SPEC_AGENT_TARGET_DB_USERNAME");
+        String password = System.getenv("SPEC_AGENT_TARGET_DB_PASSWORD");
+        EvalLiveIsolatedDatabase.verifyBeforeContext(url, user, password,
+                System.getenv("SPEC_AGENT_TARGET_DB_SERVER_ADDRESS"),
+                System.getenv("SPEC_AGENT_TARGET_DB_SERVER_PORT"));
         registry.add("spring.datasource.url", () -> url);
+        registry.add("spring.datasource.username", () -> user);
+        registry.add("spring.datasource.password", () -> password);
 
         Path backendKeyFile = Path.of("E:/project/spec-agent/backend/data/secret-master.key");
         if (Files.exists(backendKeyFile)) {
@@ -198,6 +203,10 @@ class EvalLiveP3BDecisionQualityTest extends EvalLiveHarnessBase {
         EvalLiveIsolatedDatabase.requireIsolatedLiveEvalDatabase(
                 databaseIdentity,
                 EvalLiveIsolatedDatabase.databaseNameFromUrl(datasourceUrl));
+        EvalLiveIsolatedDatabase.requireServerEndpoint(databaseIdentity,
+                System.getenv("SPEC_AGENT_TARGET_DB_USERNAME"),
+                System.getenv("SPEC_AGENT_TARGET_DB_SERVER_ADDRESS"),
+                Integer.parseInt(System.getenv("SPEC_AGENT_TARGET_DB_SERVER_PORT")));
         String evalDatabase = seedActiveProvider();
         assertThat(evalDatabase).isEqualTo(databaseIdentity.database());
         LiveChainEvidence before = requireLiveProvider(BRAIN_HEALTH);

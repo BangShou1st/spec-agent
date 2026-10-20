@@ -95,6 +95,18 @@ implementation("io.modelcontextprotocol.sdk:mcp:0.18.4")
     testImplementation(eval.output)
 }
 
+// Deliberately small, reviewed offline set. Expand only after reviewing inheritance,
+// extensions, static initialization and the entire invoked fixture/call chain.
+val auditedOfflineTests = setOf(
+    "com.specagent.eval.P3BLiveDatabaseGuardTest",
+    "com.specagent.eval.P3BC03NaturalLanguageScenarioTest",
+    "com.specagent.eval.P3BGateMeasurementTest",
+    "com.specagent.support.DatabaseTestContextGuardTest",
+    "com.specagent.support.DatabaseTestDiscoveryTest"
+)
+val databaseIntegrationEnabled = providers.gradleProperty("databaseIntegration").map { it == "true" }.orElse(false)
+val externalServicesEnabled = providers.gradleProperty("externalServices").map { it == "true" }.orElse(false)
+
 tasks.withType<Test> {
     useJUnitPlatform()
     // 第二阶段（身份/权限）给测试 classpath 增加了 Spring Security 与
@@ -106,6 +118,60 @@ tasks.withType<Test> {
     // Each cached integration context owns a JDBC pool and a mode-admission connection.
     // Bound their total below the isolated PostgreSQL limit, including dual API acceptance processes.
     systemProperty("spring.test.context.cache.maxSize", "6")
+    systemProperty("specagent.database-tests.enabled", databaseIntegrationEnabled.get().toString())
+    systemProperty("specagent.external-tests.enabled", externalServicesEnabled.get().toString())
+    if (!databaseIntegrationEnabled.get()) {
+        useJUnitPlatform { excludeTags("database-integration") }
+    }
+    if (!externalServicesEnabled.get()) useJUnitPlatform { excludeTags("external-service") }
+    doFirst {
+        if (!databaseIntegrationEnabled.get()) {
+            if (name != "testOffline") {
+                throw GradleException("Unreviewed test selection: use testOffline. " +
+                    "Database suites require -PdatabaseIntegration=true and isolated target; external suites also require -PexternalServices=true. --offline only controls dependencies.")
+            }
+        }
+    }
+}
+
+tasks.register<Test>("testOffline") {
+    group = "verification"
+    description = "Runs only reviewed pure-rule and mock database/bootstrap guard tests; no real datasource."
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    filter { auditedOfflineTests.forEach { includeTestsMatching(it) } }
+    // This task can never inherit an integration opt-in from the invoking shell/build.
+    systemProperty("specagent.database-tests.enabled", "false")
+    systemProperty("specagent.external-tests.enabled", "false")
+    useJUnitPlatform { excludeTags("database-integration", "external-service") }
+}
+
+tasks.register<Test>("testDatabaseIntegration") {
+    group = "verification"
+    description = "Runs tagged database integration tests only; requires explicit isolated target and opt-in."
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform { includeTags("database-integration"); excludeTags("external-service") }
+    doFirst {
+        if (!databaseIntegrationEnabled.get()) throw GradleException("Requires -PdatabaseIntegration=true")
+    }
+}
+
+// Reject the whole graph before any task action: task combinations must not
+// turn an explicitly offline invocation into bootRun, a live JavaExec or an
+// integration suite. Test.doFirst above remains a second execution-time gate.
+gradle.taskGraph.whenReady {
+    val offline = tasks.named("testOffline").get()
+    if (hasTask(offline)) {
+        val unsafe = allTasks.filter { it != offline && (it is Test || it is JavaExec) }
+        if (unsafe.isNotEmpty()) throw GradleException(
+            "testOffline cannot be combined with other Test/JavaExec tasks: " + unsafe.joinToString { it.path })
+    }
+    if (!databaseIntegrationEnabled.get()) {
+        val unaudited = allTasks.filterIsInstance<Test>().filter { it != offline }
+        if (unaudited.isNotEmpty()) throw GradleException(
+            "Unreviewed test selection: use testOffline; integration requires -PdatabaseIntegration=true and isolated target")
+    }
 }
 
 // The default `test` task never runs live-provider suites. Live behavior is
