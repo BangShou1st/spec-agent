@@ -46,11 +46,21 @@ sourceSets {
         java.include("com/specagent/model/contract/ModelOutputContract.java")
         java.include("com/specagent/model/contract/ModelInferenceRequest.java")
         java.include("com/specagent/model/contract/ModelInferenceMessage.java")
+        java.include("com/specagent/model/contract/ActiveModelTargetPort.java")
+        java.include("com/specagent/model/contract/RuntimeCustomSettings.java")
+        java.include("com/specagent/model/contract/RuntimeKiloSettings.java")
+        java.include("com/specagent/model/contract/RuntimeOpenCodeSettings.java")
+        java.include("com/specagent/model/contract/RuntimeOpenRouterSettings.java")
+        java.include("com/specagent/common/RunModelBindingPort.java")
+        java.include("com/specagent/common/InMemoryRunModelBindingPort.java")
     }
     test {
         java.setSrcDirs(listOf("../src/test/java", "../src/eval/java"))
         java.include("com/specagent/agent/action/ActionEligibility*Test.java")
+        java.include("com/specagent/agent/action/C16WaitContractTest.java")
+        java.include("com/specagent/agent/decision/AgentBrainArgumentGroundingTest.java")
         java.include("com/specagent/model/inference/ModelOutputContractTest.java")
+        java.include("com/specagent/model/inference/ModelTargetBindingContractTest.java")
         // AE-4 fixtures use mocked JDBC and local contexts only. Keep full eval
         // harness/discovery classes outside this independent compilation boundary.
         java.include("com/specagent/eval/EvalLiveIsolatedDatabase.java")

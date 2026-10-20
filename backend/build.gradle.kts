@@ -104,7 +104,11 @@ val auditedOfflineTests = setOf(
     "com.specagent.support.DatabaseTestContextGuardTest",
     "com.specagent.support.DatabaseTestDiscoveryTest",
     // All provider gateways are Mockito mocks; concurrency/LRU fixtures are in-memory.
-    "com.specagent.model.inference.RoutingModelInferenceGatewayTest"
+    "com.specagent.model.inference.RoutingModelInferenceGatewayTest",
+    "com.specagent.model.inference.ModelTargetBindingContractTest",
+    "com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest",
+    "com.specagent.agent.decision.AgentBrainArgumentGroundingTest",
+    "com.specagent.agent.action.C16WaitContractTest"
 )
 val databaseIntegrationEnabled = providers.gradleProperty("databaseIntegration").map { it == "true" }.orElse(false)
 val externalServicesEnabled = providers.gradleProperty("externalServices").map { it == "true" }.orElse(false)

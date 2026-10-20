@@ -11,6 +11,7 @@ public final class InMemoryRunModelBindingPort implements RunModelBindingPort {
 
     @Override
     public boolean bindOrVerify(UUID runId, String fingerprint) {
+        if (runId == null || !RunModelBindingPort.isValidFingerprint(fingerprint)) return false;
         String existing = bindings.putIfAbsent(runId, fingerprint);
         return existing == null || existing.equals(fingerprint);
     }

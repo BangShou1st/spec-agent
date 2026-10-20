@@ -132,6 +132,7 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
         // query 参数,所以这个 fixture 引擎在普通回答循环中不会猜用它们。
         CapabilityDescriptor candidate = request.snapshot().availableCapabilities().stream()
                 .filter(descriptor -> supportsLineage(descriptor, request))
+                .filter(descriptor -> !requiresQuery(descriptor))
                 .findFirst()
                 .orElseGet(() -> request.snapshot().availableCapabilities().stream()
                         .filter(descriptor -> !requiresQuery(descriptor))
@@ -225,10 +226,7 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
 
     private boolean requiresQuery(CapabilityDescriptor descriptor) {
         Map<String, Object> schema = descriptor.inputSchema();
-        Object properties = schema.get("properties");
-        if (properties instanceof Map<?, ?> propertyMap
-                && propertyMap.containsKey("query")
-                && schema.get("required") instanceof List<?> required
+        if (schema.get("required") instanceof List<?> required
                 && required.stream().anyMatch("query"::equals)) {
             return true;
         }

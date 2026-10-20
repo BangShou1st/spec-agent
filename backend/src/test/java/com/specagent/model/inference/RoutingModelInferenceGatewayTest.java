@@ -418,4 +418,33 @@ class RoutingModelInferenceGatewayTest {
             return false;
         }
     }
+
+    @Test void refusedDurableBindingStopsBeforeAnyProviderCall() {
+        var target = frozenTarget("KILO", "model-a");
+        when(activeModelTarget.activeTarget()).thenReturn(Optional.of(target));
+        var bindings = mock(RunModelBindingPort.class);
+        var routed = new RoutingModelInferenceGateway(activeProvider, activeModelTarget,
+                openCode, openRouter, kilo, custom, bindings);
+        UUID run = UUID.randomUUID();
+        assertThatThrownBy(() -> routed.complete(request(run, "DECISION")))
+                .isInstanceOf(ModelProviderException.class).hasMessageContaining("MODEL_BINDING_MISMATCH");
+        verify(bindings).bindOrVerify(run, target.bindingFingerprint());
+        verifyNoMoreInteractions(bindings);
+        verifyNoInteractions(activeProvider, openCode, openRouter, kilo, custom);
+    }
+
+    @Test void failedDurableBindingDoesNotFallBackToMemoryOrRetry() {
+        var target = frozenTarget("KILO", "model-a");
+        when(activeModelTarget.activeTarget()).thenReturn(Optional.of(target));
+        var bindings = mock(RunModelBindingPort.class);
+        UUID run = UUID.randomUUID();
+        var failure = new IllegalStateException("offline binding failure fixture");
+        when(bindings.bindOrVerify(run, target.bindingFingerprint())).thenThrow(failure);
+        var routed = new RoutingModelInferenceGateway(activeProvider, activeModelTarget,
+                openCode, openRouter, kilo, custom, bindings);
+        assertThatThrownBy(() -> routed.complete(request(run, "DECISION"))).isSameAs(failure);
+        verify(bindings).bindOrVerify(run, target.bindingFingerprint());
+        verifyNoMoreInteractions(bindings);
+        verifyNoInteractions(activeProvider, openCode, openRouter, kilo, custom);
+    }
 }

@@ -290,13 +290,23 @@ public final class AgentBrainResponseValidator {
             throw new AgentContractException("INVOKE_CAPABILITY arguments must be an object");
         }
         for (Object value : argumentMap.values()) {
-            if (value instanceof String candidate
-                    && REF_PREFIXES.stream().anyMatch(candidate::startsWith)
-                    && !snapshot.allowedSourceRefs().contains(candidate)) {
-                throw new AgentContractException(
-                        "INVOKE_CAPABILITY argument ref outside the allowed snapshot refs: "
-                                + candidate);
-            }
+            validateArgumentRef(value, snapshot);
+        }
+    }
+
+    private static void validateArgumentRef(Object value, AgentInputSnapshot snapshot) {
+        if (value instanceof String candidate
+                && REF_PREFIXES.stream().anyMatch(candidate::startsWith)
+                && !snapshot.allowedSourceRefs().contains(candidate)) {
+            throw new AgentContractException(
+                    "INVOKE_CAPABILITY argument ref outside the allowed snapshot refs",
+                    "JAVA_RESPONSE_CONTRACT_INVALID", "actionProposal.payload.arguments",
+                    "allowed source reference", "string", "AgentBrainResponseValidator");
+        }
+        if (value instanceof Map<?, ?> nested) {
+            nested.values().forEach(item -> validateArgumentRef(item, snapshot));
+        } else if (value instanceof List<?> nested) {
+            nested.forEach(item -> validateArgumentRef(item, snapshot));
         }
     }
 

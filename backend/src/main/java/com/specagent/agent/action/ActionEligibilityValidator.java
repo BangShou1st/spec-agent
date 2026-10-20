@@ -227,16 +227,18 @@ public final class ActionEligibilityValidator {
 
     private static List<String> declaredRequiredFields(Map<String, Object> inputSchema) {
         List<String> required = new java.util.ArrayList<>();
-        Object properties = inputSchema.get("properties");
-        if (properties instanceof Map<?, ?> propertyMap) {
-            Object declared = inputSchema.get("required");
-            if (declared instanceof List<?> names) {
-                for (Object name : names) {
-                    if (name != null && !required.contains(String.valueOf(name))) {
-                        required.add(String.valueOf(name));
-                    }
+        // JSON Schema's required keyword applies even without properties (or
+        // when the required name has no property definition).
+        Object declared = inputSchema.get("required");
+        if (declared instanceof List<?> names) {
+            for (Object name : names) {
+                if (name != null && !required.contains(String.valueOf(name))) {
+                    required.add(String.valueOf(name));
                 }
             }
+        }
+        Object properties = inputSchema.get("properties");
+        if (properties instanceof Map<?, ?> propertyMap) {
             for (Map.Entry<?, ?> entry : propertyMap.entrySet()) {
                 if (entry.getValue() instanceof Map<?, ?> definition
                         && isRequiredFlag(definition.get("required"))

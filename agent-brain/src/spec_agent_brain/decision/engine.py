@@ -434,6 +434,30 @@ def _check_source_refs(output: ModelDecisionOutput, request: AgentV2RequestEnvel
                 ),
             )
 
+    if output.action.action_family == "INVOKE_CAPABILITY":
+        pending = [output.action.payload.get("arguments")]
+        while pending:
+            value = pending.pop()
+            if isinstance(value, dict):
+                pending.extend(value.values())
+            elif isinstance(value, list):
+                pending.extend(value)
+            elif (isinstance(value, str)
+                  and value.startswith(("node:", "answer:", "patch:", "context:", "route:"))
+                  and value not in allowed):
+                raise UngroundedReferenceError(
+                    "capability argument ref outside the allowed snapshot refs",
+                    _contract_diagnostic(
+                        stage="brain.output_grounding",
+                        validator_id="capabilityArgumentRefAllowlist",
+                        machine_code="MODEL_OUTPUT_UNGROUNDED_REFERENCE",
+                        field_path="action.payload.arguments",
+                        expected_type="allowed source reference",
+                        actual_type="string",
+                        source_exception_type=None,
+                    ),
+                )
+
 
 def _check_eligibility_action(output: ModelDecisionOutput,
                               request: AgentV3RequestEnvelope) -> None:

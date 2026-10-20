@@ -17,6 +17,7 @@ public class AgentRunModelBindingRepository implements RunModelBindingPort {
 
     @Override
     public boolean bindOrVerify(UUID runId, String fingerprint) {
+        if (runId == null || !RunModelBindingPort.isValidFingerprint(fingerprint)) return false;
         String sql = """
                 UPDATE agent_runs
                    SET model_binding_fingerprint = COALESCE(model_binding_fingerprint, :fingerprint)

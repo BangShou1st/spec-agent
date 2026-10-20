@@ -39,8 +39,10 @@ public interface ActiveModelTargetPort {
         }
 
         public Target {
-            if (bindingFingerprint == null || bindingFingerprint.isBlank()) {
-                throw new IllegalArgumentException("A model target fingerprint is required");
+            // A supplied digest is not authority: it must describe this exact
+            // immutable snapshot, including credentials, endpoint and revision.
+            if (!fingerprint(provider, model, runtimeSettings).equals(bindingFingerprint)) {
+                throw new IllegalArgumentException("Model target fingerprint does not match its runtime snapshot");
             }
         }
 
