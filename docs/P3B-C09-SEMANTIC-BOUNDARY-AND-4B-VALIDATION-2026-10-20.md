@@ -249,7 +249,7 @@ allowed_source_ref_count = 9，retrieved_context_count = 2
 
 - 分支：`dev`（未改 `main`，未 force push，未丢弃任何未提交修改）。
 - 开始核实状态：`dev = 2e8ab6f4ef224294c98e7af552e30fa200088edd`，`main = 74b9815d69a562d6782c4efbef1b7daf3f075905`（与任务书参考一致；工作区仅有未跟踪的 `agent-brain/uv.lock`）。
-- 本轮提交后的 `dev` SHA 见提交记录（提交后回填）。
+- 本轮在 `dev` 上的提交：`2ddf823`（C09 场景拆分为"宽泛可执行"与"对象未知"两类 + 门禁）、`4de9ff8`（本报告与真实推理证据）。推送后 `dev` HEAD 见 `git log`（仅推送 `origin/dev`，未触碰 `main`）。
 - 离线测试：`P3BC09NaturalLanguageScenarioTest` 20/20、`P3BC09AmbiguousGateEnforcementTest` 2/2、`tools/tests` 165、`agent-brain/tests` 253、`evalBFast` 162、`testNonLive` 2225（36 skipped）、`testCrossLanguage` 2 —— 全部 0 失败。
 - 真实推理证据：[single-arm.json](computer://e:\project\spec-agent\tools\p3b\c09-live-runs\ambig-20261020\single-arm.json)（报告）与 `single-arm.json.attempts.jsonl`（逐尝试 sidecar）。
 - 冻结协议：[p3b_c09ambig_local_protocol.v1.json](computer://e:\project\spec-agent\tools\p3b\p3b_c09ambig_local_protocol.v1.json)。
