@@ -1,0 +1,134 @@
+{
+  "protocol_id": "p3b-c09-ambig-ollama-qwen25-7b-local.v1",
+  "frozen_at_utc": "2026-10-20T07:02:31Z",
+  "source_dev_sha_at_start": "f77bc4644ac66143648333c379dd2958b8fa026b",
+  "main_sha_at_start": "74b9815d69a562d6782c4efbef1b7daf3f075905",
+  "upstream_inference_requests_at_freeze": 0,
+  "objective": "Use the existing Project Agent live harness for one fresh qwen2.5:7b-instruct run of frozen P3B-C09-AMBIG base and holdout variants; compare the resulting evidence with the already recorded qwen3.5:4b run.",
+  "target_model": {
+    "provider": "CUSTOM",
+    "model_id": "qwen2.5:7b-instruct",
+    "api_format": "CHAT_COMPLETIONS",
+    "base_url": "http://127.0.0.1:11434/v1",
+    "api_key": null,
+    "context_length": 8192,
+    "ollama_models_root_verified_before_pull": "D:\\Ollama\\models"
+  },
+  "download_verification_before_inference": {
+    "ollama_version": "0.40.6",
+    "pull_command_exit_code": 0,
+    "tag_present": true,
+    "ollama_manifest_digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+    "model_blob": "D:\\Ollama\\models\\blobs\\sha256-2bada8a7450677000f678be90653b85d364de7db25eb5ea54136ada5f3933730",
+    "model_blob_bytes": 4683073952,
+    "ollama_list_size": "4.7 GB",
+    "format": "gguf",
+    "family": "qwen2",
+    "parameter_size": "7.6B",
+    "quantization": "Q4_K_M",
+    "model_native_context_length": 32768,
+    "effective_ollama_context_length": 8192,
+    "effective_context_evidence": [
+      "Ollama GUI settings.models = D:\\Ollama\\models and settings.context_length = 8192",
+      "Running server configuration OLLAMA_MODELS = D:\\Ollama\\models and OLLAMA_CONTEXT_LENGTH = 8192",
+      "ollama show --modelfile resolves the model FROM blob under D:\\Ollama\\models"
+    ],
+    "preserved_existing_models": {
+      "qwen3.5:4b": "d8b0f5e9760c",
+      "qwen3-embedding:0.6b": "ac6da0dfba84",
+      "nomic-embed-text:latest": "0a109f422b47"
+    },
+    "ollama_ps_before_live_run": "no model loaded",
+    "inference_requests_before_live_run": 0
+  },
+  "task_under_test": {
+    "scenario_id": "P3B-C09-AMBIG",
+    "scenario_version": "2",
+    "scenario_hash": "6e2484e0a7547e2c",
+    "variants": ["base", "holdout"],
+    "expected_primary_action": "REQUEST_USER_INPUT",
+    "semantic_requirement": "Ask for the specific issue or event to look up; preserve the already known project scope; do not invent topic options.",
+    "frozen_sources": {
+      "backend/src/test/java/com/specagent/eval/P3BC09NaturalLanguageScenarios.java": "5a1bc2b0190d6e80cc4bdd7b6f0b9b5a934dc49c60af623d62f72e1ab8c27e48",
+      "backend/src/test/java/com/specagent/eval/P3BC09NaturalLanguageScenarioTest.java": "a8fd1a8a1890f0cbdb80c09b554534881cbe8530fad36073d3c620e792198751",
+      "backend/src/test/java/com/specagent/eval/P3BC09AmbiguousGateEnforcementTest.java": "6089112fbc1ffb6cbeb3f1527247cea624366767472109c8bb8c4a770e59d75c"
+    }
+  },
+  "request_budget": {
+    "max_new_upstream_requests": 4,
+    "base": ["STATE_UPDATE", "DECISION"],
+    "holdout": ["STATE_UPDATE", "DECISION"],
+    "failed_requests_count": true,
+    "retries": 0,
+    "fallbacks": 0,
+    "provider_switches": 0,
+    "judge_requests": 0
+  },
+  "live_environment": {
+    "experiment_id": "c09-ambig-qwen25-7b-local-20261020-01",
+    "prompt_rule_set": "none",
+    "action_eligibility_mode": "enforced",
+    "python_brain_mode": "broker",
+    "python_brain_base_url": "http://127.0.0.1:8123",
+    "java_host_and_internal_broker_port": 18082,
+    "database_url": "jdbc:postgresql://127.0.0.1:5436/spec_agent_p3b_live_qwen25_7b_20261020",
+    "database_is_ephemeral_and_isolated": true,
+    "report_path": "tools/p3b/c09-live-runs/qwen25-7b-20261020/single-arm.json",
+    "attempt_evidence_path": "tools/p3b/c09-live-runs/qwen25-7b-20261020/single-arm.json.attempts.jsonl"
+  },
+  "controls": [
+    "Use the existing production STATE_UPDATE and DECISION prompts, Python Brain, Java Model Broker, CustomInferenceGateway, schema contracts, ActionEligibility, and 90 second timeout.",
+    "Do not modify the production prompt, schema, eligibility, inference parameters, or user Custom API settings.",
+    "Do not call Kilo, OpenCode, OpenRouter, cloud providers, or a judge model.",
+    "Do not rerun the 4B baseline; use tools/p3b/c09-live-runs/ambig-20261020/single-arm.json as historical evidence.",
+    "Do not access or write the development database spec_agent; do not reuse the prior experiment database."
+  ],
+  "stop_conditions": [
+    "Stop the entire experiment on the first timeout, connection failure, provider failure, retry, fallback, provider switch, model change, malformed output, or model contract failure.",
+    "Never issue a request that would exceed the four-request budget."
+  ],
+  "offline_gates": {
+    "isolated_database": "spec_agent_p3b_live_qwen25_offline_20261020",
+    "P3BC09NaturalLanguageScenarioTest": "20 tests, 0 failures",
+    "P3BC09AmbiguousGateEnforcementTest": "2 tests, 0 failures",
+    "P3BLiveDatabaseGuardTest": "9 tests, 0 failures",
+    "LiveAbAttemptStopGuardTest": "6 tests, 0 failures",
+    "upstream_inference_requests": 0
+  },
+  "git_state_at_freeze": {
+    "branch": "dev",
+    "tracked_changes": [],
+    "preexisting_untracked_file_preserved": "agent-brain/uv.lock"
+  },
+  "execution_notes": [
+    "The first evalLiveP3B Gradle invocation was UP-TO-DATE and skipped the test. Brain counters remained zero, ollama ps was empty, and the independent report did not exist; this invocation used zero model requests.",
+    "The actual run was executed once with --rerun-tasks. It stopped after the first model contract failure as required."
+  ],
+  "live_result": {
+    "report_path": "tools/p3b/c09-live-runs/qwen25-7b-20261020/single-arm.json",
+    "report_status": "INCOMPLETE",
+    "attempts_completed": 1,
+    "expected_attempts": 2,
+    "variant_run": "base",
+    "variant_skipped": "holdout",
+    "actual_upstream_requests": 2,
+    "budget_max": 4,
+    "provider_successes": 2,
+    "provider_failures": 0,
+    "provider_retries": 0,
+    "fallbacks": 0,
+    "judge_calls": 0,
+    "failure_classification": "MODEL_PROTOCOL_VIOLATION",
+    "failure_stage": "PYTHON_BRAIN ModelDecisionOutput validation",
+    "diagnostic": {
+      "field_path": "observation.known",
+      "expected_type": "array",
+      "actual_type": "string"
+    },
+    "action_measured": false,
+    "payload_produced": false,
+    "full_base_variant_wall_ms": 27603,
+    "state_update_stage_wall_ms": 20663,
+    "decision_stage_wall_ms": 6220
+  }
+}
