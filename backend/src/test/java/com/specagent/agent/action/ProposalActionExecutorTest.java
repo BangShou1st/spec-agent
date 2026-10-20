@@ -90,6 +90,31 @@ class ProposalActionExecutorTest {
     }
 
     @Test
+    void requestUserInputCreatesPersistedQuestionWithNoOptions() {
+        var answer = answerService.finalizeAnswer(project.id(), route.id(), rootNode.id(),
+                null, "我还没告诉你是哪件事", "test-user");
+        answerPatchService.save(project.id(), route.id(), rootNode.id(), answer.id(), List.of(), null);
+
+        ActionProposal proposal = proposal("REQUEST_USER_INPUT", Map.of(
+                "kind", "INTERACTION",
+                "questionText", "你希望查找当前项目中哪一件事的历史讨论？",
+                "purpose", "需要确定具体检索对象，才能准确查找相关记录。",
+                "options", List.of(),
+                "allowFreeAnswer", true,
+                "allowMultiSelect", false));
+        ActionResult result = executor.execute(proposal, context(rootNode.id()));
+
+        assertThat(result.actionFamily()).isEqualTo("REQUEST_USER_INPUT");
+        Node child = nodeService.getNode(result.producedNodeId()).orElseThrow();
+        assertThat(child.kind()).isEqualTo(com.specagent.workspace.node.NodeKind.INTERACTION);
+        assertThat(child.question()).isEqualTo("你希望查找当前项目中哪一件事的历史讨论？");
+        assertThat(child.options()).isEmpty();
+        assertThat(child.allowFreeAnswer()).isTrue();
+        assertThat(child.allowMultiSelect()).isFalse();
+        assertThat(child.parentNodeId()).isEqualTo(rootNode.id());
+    }
+
+    @Test
     void createNodeCreatesChildNode() {
         var answer = answerService.finalizeAnswer(project.id(), route.id(), rootNode.id(),
                 null, "answered root", "test-user");

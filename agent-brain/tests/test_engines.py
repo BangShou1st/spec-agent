@@ -92,6 +92,27 @@ def test_decision_fake_path_stamps_runtime_owned_base_context():
     assert proposal.base_context_hash == request.snapshot.context_hash
 
 
+def test_open_clarification_with_no_options_passes_python_decision_contract():
+    request = _request()
+    output = json.loads(fake_model.DECISION_OUTPUT)
+    payload = {
+        "kind": "INTERACTION",
+        "questionText": "你希望查找当前项目中哪一件事的历史讨论？",
+        "purpose": "需要确定具体检索对象，才能准确查找相关记录。",
+        "options": [],
+        "allowFreeAnswer": True,
+        "allowMultiSelect": False,
+    }
+    output["action"]["actionFamily"] = "REQUEST_USER_INPUT"
+    output["action"]["payload"] = payload
+
+    response = handle_decision(request, ScriptedClient(json.dumps(output, ensure_ascii=False)))
+
+    assert response.action_proposal.action_family == "REQUEST_USER_INPUT"
+    assert response.action_proposal.payload == payload
+    assert response.usage.model_calls == 1
+
+
 def test_v3_decision_enforces_mask_and_echoes_runtime_eligibility_identity():
     request = _v3_request()
     response = handle_decision(request, FakeModelClient())

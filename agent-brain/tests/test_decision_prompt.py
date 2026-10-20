@@ -50,6 +50,15 @@ def test_request_user_input_requires_a_current_user_provided_blocker():
     )
 
 
+def test_clarification_options_must_be_grounded_and_open_questions_may_be_free_text():
+    _assert_prompt_contains(
+        "options 仅列出能由当前用户输入或可信上下文支持的候选项",
+        "使用空数组 options: [] 并允许自由输入",
+        "不得为凑选项或推荐而猜测主题",
+        "已有依据时仍可提供有意义的选项",
+    )
+
+
 def test_decision_node_requires_explicit_authorization_or_persistence_request():
     _assert_prompt_contains(
         "用户明确授权 Agent 代为作出该决定",
