@@ -2,15 +2,19 @@
 
 from p3b.p3b_semantic_ab import (
     _c08_correct,
+    _assess_c03_attempt,
     _assess_c09_attempt,
     _arm_metrics,
     _decide_c03,
     _decide_c08,
     _decide_c09,
+    _judge_c03_clarification,
     _judge_c09_question,
     _no_unneeded_tool,
+    _validate_c03_semantic_review,
     _validate_c09_semantic_review,
     evaluate_c09_only,
+    C03_SEMANTIC_REVIEWER,
 )
 
 
@@ -436,6 +440,183 @@ def test_c03_holdout_repeat_is_rejected_even_if_another_attempt_failed():
     assert _decide_c03(a, b)["status"] == "REJECT"
     b_attempt["prompt_hashes"]["decision_input"] = "prompt-a"
     assert _decide_c03(a, b)["status"] == "INCONCLUSIVE"
+
+
+
+
+def _c03_attempt(action="REQUEST_USER_INPUT"):
+    return {
+        "scenario_id": "P3B-C03",
+        "variant_id": "holdout",
+        "model_selected_action": action,
+        "oracle_candidate": {"acceptable_primary_actions": ["RESPOND_TO_USER", "CREATE_NODE"]},
+        "input_evidence": {
+            "answered_lineage_entries": 1,
+            "unresolved_effective_claims": 0,
+            "answered_topics": ["数据库", "存储", "postgresql"],
+            "missing_requirements": [],
+            "ambiguous_answer_given": False,
+        },
+        "model_raw_action": {
+            "payload": {
+                "questionText": "请问我们系统后续打算采用哪种数据库进行数据存储？",
+                "purpose": "确认存储方案",
+            }
+        },
+        "capability_calls": 0,
+        "execution_state": "completed",
+        "model_request_count": 2,
+        "failed_model_requests": 0,
+        "provider_retries": 0,
+        "judge_model_calls": 0,
+        "failure_classification": "NONE",
+        "payload_validity": "VALID",
+        "source_reference_audit": {
+            "source_refs_allowed": True,
+            "invalidated_source_reference_used": False,
+        },
+        "prompt_hashes": {"state_update_input": "same-state", "decision_input": "prompt-b"},
+        "scenario_hash": "same-facts",
+        "candidate_label_status": "PENDING_HUMAN_REVIEW",
+    }
+
+
+def test_c03_reworded_repeat_question_is_classified_as_incorrect():
+    # 覆盖场景 1: 已回答的问题被改写后再次询问 -> 判定为 INCORRECT / REPEATED_QUESTION_REQUESTED
+    attempt = _c03_attempt()
+    attempt["model_raw_action"]["payload"]["questionText"] = "请问我们系统后续打算采用哪种数据库进行数据存储？"
+
+    assessment = _assess_c03_attempt(attempt)
+    assert assessment["structure_status"] == "FAIL"
+    assert assessment["status"] == "INCORRECT"
+    assert assessment["semantic_intent"] == "INCORRECT"
+    review = assessment["semantic_review"]
+    assert review["reviewer"] == C03_SEMANTIC_REVIEWER
+    assert review["status"] == "INCORRECT"
+    assert review["reason_code"] == "REPEATED_QUESTION_REQUESTED"
+    assert review["evidence"]["repeated_question_detected"] is True
+    assert review["evidence"]["new_information_detected"] is False
+    assert review["evidence"]["unresolved_target_detected"] is False
+
+
+def test_c03_synonym_reworded_and_meta_questions_are_classified_as_incorrect():
+    # 覆盖场景 2: 同一问题换用不同措辞/同义词，或发起元追问(索要占位/引用/详细说明)
+    attempt = _c03_attempt()
+    # 换词表达: 询问主存储方案
+    attempt["model_raw_action"]["payload"]["questionText"] = "请问系统的主存储方案与数据库选型是什么？"
+    assessment1 = _assess_c03_attempt(attempt)
+    assert assessment1["status"] == "INCORRECT"
+    assert assessment1["reason"] == "REPEATED_QUESTION_REQUESTED"
+
+    # 元追问 1: 2026-10-19 c03-b 真实失败重现 (把已有答案当占位并索取完整详细信息)
+    attempt["model_raw_action"]["payload"] = {
+        "questionText": "请提供答案的完整详细信息。",
+        "purpose": "答案现在为占位字段，需求更多详细信息才能接端？",
+    }
+    assessment2 = _assess_c03_attempt(attempt)
+    assert assessment2["status"] == "INCORRECT"
+    assert assessment2["reason"] == "REPEATED_QUESTION_REQUESTED"
+    assert assessment2["semantic_review"]["evidence"]["repeated_question_detected"] is True
+
+    # 元追问 2: 2026-10-18 run2 真实失败重现 (询问是否是引用或补充说明)
+    attempt["model_raw_action"]["payload"] = {
+        "questionText": "您刚才回答的是否是引用，还是希望补充说明？",
+        "purpose": "确认引用来源",
+    }
+    assessment3 = _assess_c03_attempt(attempt)
+    assert assessment3["status"] == "INCORRECT"
+    assert assessment3["reason"] == "REPEATED_QUESTION_REQUESTED"
+
+
+def test_c03_new_necessary_information_request_is_classified_as_pass():
+    # 覆盖场景 3: 旧问题已解决，但出现真正新的必要问题 -> 允许追问 PASS / NEW_NECESSARY_INFORMATION_REQUESTED
+    attempt = _c03_attempt()
+    attempt["input_evidence"]["missing_requirements"] = ["高可用部署", "备份策略"]
+    attempt["model_raw_action"]["payload"] = {
+        "questionText": "请问数据库需要采用哪种高可用部署方案及备份策略？",
+        "purpose": "明确高可用与容灾要求",
+    }
+
+    assessment = _assess_c03_attempt(attempt)
+    assert assessment["structure_status"] == "PASS"
+    assert assessment["status"] == "CORRECT"
+    assert assessment["semantic_intent"] == "PASS"
+    review = assessment["semantic_review"]
+    assert review["status"] == "PASS"
+    assert review["reason_code"] == "NEW_NECESSARY_INFORMATION_REQUESTED"
+    assert review["evidence"]["new_information_detected"] is True
+    assert review["evidence"]["repeated_question_detected"] is False
+
+
+def test_c03_ambiguous_unresolved_answer_allows_clarification():
+    # 覆盖场景 4: 用户回答含糊，不能证明原问题已解决 -> 允许追问 PASS / UNRESOLVED_CLARIFICATION_PERMITTED
+    attempt = _c03_attempt()
+    # 标注回答含糊且 claim 未决
+    attempt["input_evidence"]["ambiguous_answer_given"] = True
+    attempt["input_evidence"]["unresolved_effective_claims"] = 1
+    attempt["model_raw_action"]["payload"] = {
+        "questionText": "由于您刚才尚未确定具体数据库，请问主存储打算采用哪种方案？",
+        "purpose": "继续明确未决数据库选择",
+    }
+
+    assessment = _assess_c03_attempt(attempt)
+    assert assessment["structure_status"] == "PASS"
+    assert assessment["status"] == "CORRECT"
+    assert assessment["semantic_intent"] == "PASS"
+    review = assessment["semantic_review"]
+    assert review["status"] == "PASS"
+    assert review["reason_code"] == "UNRESOLVED_CLARIFICATION_PERMITTED"
+    assert review["evidence"]["unresolved_target_detected"] is True
+    assert review["evidence"]["repeated_question_detected"] is False
+
+
+def test_c03_insufficient_evidence_stays_unresolved():
+    # 覆盖场景 5: 状态或证据不足时，不得自动认定问题已解决 -> UNRESOLVED
+    facts = {
+        "answered_lineage_entries": 0,
+        "unresolved_effective_claims": 0,
+        "answered_topics": [],
+        "missing_requirements": [],
+        "ambiguous_answer_given": False,
+    }
+    # 既无 answered 事实也无 unresolved 信号 -> TARGET_NOT_PROVEN
+    review = _judge_c03_clarification("请问系统的数据库选型？", "", facts)
+    assert review["status"] == "UNRESOLVED"
+    assert review["reason_code"] == "TARGET_NOT_PROVEN"
+
+    # 缺失问题文本 -> SEMANTIC_INPUT_MISSING
+    review_empty = _judge_c03_clarification("", "", facts)
+    assert review_empty["status"] == "UNRESOLVED"
+    assert review_empty["reason_code"] == "SEMANTIC_INPUT_MISSING"
+
+    # 损坏事实类型 -> SEMANTIC_INPUT_INVALID
+    review_bad = _judge_c03_clarification("问题", "", "not-a-dict")
+    assert review_bad["status"] == "UNRESOLVED"
+    assert review_bad["reason_code"] == "SEMANTIC_INPUT_INVALID"
+
+
+def test_c03_judge_output_validation_rejects_malformed_output():
+    # 校验器: 结构缺漏、reason 与 evidence 冲突、伪造模型调用等，绝不放行
+    valid = _judge_c03_clarification("请问？", "", {"answered_lineage_entries": 0})
+    validated = _validate_c03_semantic_review(valid)
+    assert validated["status"] == "UNRESOLVED"
+
+    # 篡改 model_calls
+    tampered = dict(valid, model_calls=1)
+    assert _validate_c03_semantic_review(tampered)["reason_code"] == "JUDGE_OUTPUT_INVALID"
+
+    # 篡改 evidence
+    tampered_evidence = dict(valid, evidence={"repeated_question_detected": True})
+    assert _validate_c03_semantic_review(tampered_evidence)["reason_code"] == "JUDGE_OUTPUT_INVALID"
+
+
+def test_c03_non_repeat_acceptable_action_is_correct():
+    # 合法的非重复动作 RESPOND_TO_USER 直接为 CORRECT
+    attempt = _c03_attempt(action="RESPOND_TO_USER")
+    assessment = _assess_c03_attempt(attempt)
+    assert assessment["structure_status"] == "PASS"
+    assert assessment["status"] == "CORRECT"
+    assert assessment["reason"] == "candidate_acceptable_non_repeat_action"
 
 
 def test_incomplete_c08_and_missing_c09_arms_stay_inconclusive():

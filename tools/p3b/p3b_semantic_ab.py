@@ -18,6 +18,9 @@ from typing import Any
 
 MAX_NEW_REQUESTS = 64
 RULES = ("c03", "c08", "c09")
+C03_SEMANTIC_REVIEWER = "p3b-c03-rule-judge.v1"
+C03_SEMANTIC_INPUT_VERSION = "c03-clarification-input.v1"
+C03_SEMANTIC_OUTPUT_VERSION = "c03-semantic-review.v1"
 C09_SEMANTIC_REVIEWER = "p3b-c09-rule-judge.v1"
 C09_SEMANTIC_INPUT_VERSION = "c09-clarification-input.v1"
 C09_SEMANTIC_OUTPUT_VERSION = "c09-semantic-review.v1"
@@ -168,6 +171,209 @@ def _c09_input_facts_verified(facts: Any) -> bool:
         and isinstance(missing, list)
         and missing == ["query"]
     )
+
+
+def _c03_review_unresolved(reason_code: str, input_sha256: str | None = None) -> dict[str, Any]:
+    return {
+        "reviewer": C03_SEMANTIC_REVIEWER,
+        "input_version": C03_SEMANTIC_INPUT_VERSION,
+        "output_version": C03_SEMANTIC_OUTPUT_VERSION,
+        "status": "UNRESOLVED",
+        "reason_code": reason_code,
+        "input_sha256": input_sha256,
+        "model_calls": 0,
+        "evidence": {
+            "repeated_question_detected": False,
+            "new_information_detected": False,
+            "unresolved_target_detected": False,
+        },
+    }
+
+
+def _validate_c03_semantic_review(value: Any) -> dict[str, Any]:
+    """Validate the local rule evaluator output for C03; malformed output is never a pass."""
+    required = {
+        "reviewer", "input_version", "output_version", "status", "reason_code",
+        "input_sha256", "model_calls", "evidence",
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        return _c03_review_unresolved("JUDGE_OUTPUT_INVALID")
+    status = value.get("status")
+    reason = value.get("reason_code")
+    evidence = value.get("evidence")
+    if not isinstance(status, str) or not isinstance(reason, str):
+        return _c03_review_unresolved("JUDGE_OUTPUT_INVALID")
+    valid_decision = {
+        ("INCORRECT", "REPEATED_QUESTION_REQUESTED"),
+        ("PASS", "NEW_NECESSARY_INFORMATION_REQUESTED"),
+        ("PASS", "UNRESOLVED_CLARIFICATION_PERMITTED"),
+        ("UNRESOLVED", "TARGET_NOT_PROVEN"),
+        ("UNRESOLVED", "SEMANTIC_INPUT_MISSING"),
+        ("UNRESOLVED", "SEMANTIC_INPUT_INVALID"),
+    }
+    expected_evidence = {
+        "REPEATED_QUESTION_REQUESTED": (True, False, False),
+        "NEW_NECESSARY_INFORMATION_REQUESTED": (False, True, False),
+        "UNRESOLVED_CLARIFICATION_PERMITTED": (False, False, True),
+        "TARGET_NOT_PROVEN": (False, False, False),
+        "SEMANTIC_INPUT_MISSING": (False, False, False),
+        "SEMANTIC_INPUT_INVALID": (False, False, False),
+    }
+    if (value.get("reviewer") != C03_SEMANTIC_REVIEWER
+            or value.get("input_version") != C03_SEMANTIC_INPUT_VERSION
+            or value.get("output_version") != C03_SEMANTIC_OUTPUT_VERSION
+            or (status, reason) not in valid_decision
+            or type(value.get("model_calls")) is not int
+            or value.get("model_calls") != 0):
+        return _c03_review_unresolved("JUDGE_OUTPUT_INVALID")
+    digest = value.get("input_sha256")
+    digest_valid = (isinstance(digest, str)
+                    and re.fullmatch(r"[0-9a-f]{64}", digest) is not None)
+    missing_digest_is_explicit = (
+        digest is None and status == "UNRESOLVED"
+        and reason in {"SEMANTIC_INPUT_MISSING", "SEMANTIC_INPUT_INVALID"}
+    )
+    if (not (digest_valid or missing_digest_is_explicit)
+            or not isinstance(evidence, dict)
+            or set(evidence) != {
+                "repeated_question_detected", "new_information_detected",
+                "unresolved_target_detected",
+            }
+            or any(type(item) is not bool for item in evidence.values())
+            or (evidence.get("repeated_question_detected"),
+                evidence.get("new_information_detected"),
+                evidence.get("unresolved_target_detected"))
+            != expected_evidence[reason]):
+        return _c03_review_unresolved("JUDGE_OUTPUT_INVALID", digest if isinstance(digest, str) else None)
+    return value
+
+
+def _c03_input_facts_verified(facts: dict[str, Any]) -> bool:
+    if not isinstance(facts, dict):
+        return False
+    if "answered_lineage_entries" in facts and not isinstance(facts["answered_lineage_entries"], int):
+        return False
+    if "unresolved_effective_claims" in facts and not isinstance(facts["unresolved_effective_claims"], int):
+        return False
+    if "answered_topics" in facts and not isinstance(facts["answered_topics"], list):
+        return False
+    if "missing_requirements" in facts and not isinstance(facts["missing_requirements"], list):
+        return False
+    return True
+
+
+def _judge_c03_clarification(question_text: Any, purpose_text: Any,
+                              facts: dict[str, Any]) -> dict[str, Any]:
+    """Conservative, blind, task-specific rule judge for C03 repeat clarification."""
+    if not isinstance(question_text, str) or not question_text.strip():
+        return _c03_review_unresolved("SEMANTIC_INPUT_MISSING")
+    if len(question_text) > 2000 or not _c03_input_facts_verified(facts):
+        return _c03_review_unresolved("SEMANTIC_INPUT_INVALID")
+
+    normalized_q = re.sub(r"\s+", " ", question_text).strip().casefold()
+    purpose_str = str(purpose_text or "")
+    normalized_p = re.sub(r"\s+", " ", purpose_str).strip().casefold()
+
+    answered_entries = facts.get("answered_lineage_entries", 0)
+    unresolved_claims = facts.get("unresolved_effective_claims", 0)
+    answered_topics = [t.lower() for t in facts.get("answered_topics", []) if isinstance(t, str)]
+    missing_requirements = [m.lower() for m in facts.get("missing_requirements", []) if isinstance(m, str)]
+    ambiguous_answer_given = bool(facts.get("ambiguous_answer_given", False))
+
+    canonical_input = json.dumps(
+        {
+            "question_text": normalized_q,
+            "purpose_text": normalized_p,
+            "scenario_facts": {
+                "answered_lineage_entries": answered_entries,
+                "unresolved_effective_claims": unresolved_claims,
+                "answered_topics": sorted(answered_topics),
+                "missing_requirements": sorted(missing_requirements),
+                "ambiguous_answer_given": ambiguous_answer_given,
+            },
+        },
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    )
+    digest = hashlib.sha256(canonical_input.encode("utf-8")).hexdigest()
+
+    # 1. 状态/证据不足检查:如果既没有 answered lineage/topic 也没有 unresolved claim/ambiguity 信号
+    if (answered_entries == 0 and not answered_topics and not ambiguous_answer_given
+            and unresolved_claims == 0 and not missing_requirements):
+        return _c03_review_unresolved("TARGET_NOT_PROVEN", digest)
+
+    # 2. 用户回答含糊/原问题明确未解决(Ambiguous / Unresolved Answer)
+    if ambiguous_answer_given or (answered_entries == 0 and unresolved_claims > 0):
+        return {
+            "reviewer": C03_SEMANTIC_REVIEWER,
+            "input_version": C03_SEMANTIC_INPUT_VERSION,
+            "output_version": C03_SEMANTIC_OUTPUT_VERSION,
+            "status": "PASS",
+            "reason_code": "UNRESOLVED_CLARIFICATION_PERMITTED",
+            "input_sha256": digest,
+            "model_calls": 0,
+            "evidence": {
+                "repeated_question_detected": False,
+                "new_information_detected": False,
+                "unresolved_target_detected": True,
+            },
+        }
+
+    # 3. 新的必要问题(New Necessary Information)
+    is_new_necessary = False
+    if missing_requirements:
+        combined = f"{normalized_q} {normalized_p}"
+        for req in missing_requirements:
+            if req in combined:
+                is_new_necessary = True
+                break
+    if is_new_necessary:
+        return {
+            "reviewer": C03_SEMANTIC_REVIEWER,
+            "input_version": C03_SEMANTIC_INPUT_VERSION,
+            "output_version": C03_SEMANTIC_OUTPUT_VERSION,
+            "status": "PASS",
+            "reason_code": "NEW_NECESSARY_INFORMATION_REQUESTED",
+            "input_sha256": digest,
+            "model_calls": 0,
+            "evidence": {
+                "repeated_question_detected": False,
+                "new_information_detected": True,
+                "unresolved_target_detected": False,
+            },
+        }
+
+    # 4. 改写重复追问 / 元追问(Repeated / Meta-Clarification on Confirmed Fact)
+    meta_clarification_pattern = re.compile(
+        r"占位|完整详细信息|详细信息|补充说明|是否是引用|是否为引用|是否确认|请确认|能否确认|进一步说明|更多信息|"
+        r"placeholder|complete details?|detailed information|more details?|confirm whether|is a reference",
+        re.IGNORECASE,
+    )
+    meta_detected = bool(meta_clarification_pattern.search(normalized_q) or meta_clarification_pattern.search(normalized_p))
+
+    topic_repeated = False
+    if answered_topics:
+        combined = f"{normalized_q} {normalized_p}"
+        topic_repeated = any(topic in combined for topic in answered_topics)
+    else:
+        topic_repeated = (answered_entries >= 1 and unresolved_claims == 0)
+
+    if meta_detected or topic_repeated:
+        return {
+            "reviewer": C03_SEMANTIC_REVIEWER,
+            "input_version": C03_SEMANTIC_INPUT_VERSION,
+            "output_version": C03_SEMANTIC_OUTPUT_VERSION,
+            "status": "INCORRECT",
+            "reason_code": "REPEATED_QUESTION_REQUESTED",
+            "input_sha256": digest,
+            "model_calls": 0,
+            "evidence": {
+                "repeated_question_detected": True,
+                "new_information_detected": False,
+                "unresolved_target_detected": False,
+            },
+        }
+
+    return _c03_review_unresolved("TARGET_NOT_PROVEN", digest)
 
 
 def _c09_review_unresolved(reason_code: str, input_sha256: str | None = None) -> dict[str, Any]:
@@ -468,6 +674,76 @@ def _c08_correct(attempt: dict[str, Any] | None) -> bool:
             and attempt.get("execution_state") == "completed")
 
 
+def _assess_c03_attempt(attempt: dict[str, Any] | None) -> dict[str, Any]:
+    """Classify C03 structure and blind, frozen-rule semantic evidence separately."""
+    if not attempt:
+        return {"status": "UNRESOLVED", "structure_status": "UNRESOLVED",
+                "reason": "attempt_missing"}
+
+    action = _action(attempt)
+    if action is None:
+        return {"status": "UNRESOLVED", "structure_status": "UNRESOLVED",
+                "reason": "action_not_measured"}
+    oracle = attempt.get("oracle_candidate")
+    acceptable_actions = oracle.get("acceptable_primary_actions") if isinstance(oracle, dict) else None
+    if isinstance(acceptable_actions, list):
+        candidate_acceptable = action in acceptable_actions
+    elif isinstance(attempt.get("action_acceptable"), bool):
+        candidate_acceptable = attempt["action_acceptable"]
+    else:
+        return {"status": "UNRESOLVED", "structure_status": "UNRESOLVED",
+                "reason": "frozen_candidate_action_evidence_missing"}
+
+    facts = attempt.get("input_evidence", {})
+    raw_action = attempt.get("model_raw_action")
+    raw_payload = raw_action.get("payload") if isinstance(raw_action, dict) else {}
+    question_text = raw_payload.get("questionText") if isinstance(raw_payload, dict) else None
+    purpose_text = raw_payload.get("purpose") if isinstance(raw_payload, dict) else None
+
+    if action == "REQUEST_USER_INPUT":
+        semantic_review = _validate_c03_semantic_review(
+            _judge_c03_clarification(question_text, purpose_text, facts))
+        semantic_status = semantic_review["status"]
+        if semantic_status == "INCORRECT":
+            return {
+                "status": "INCORRECT",
+                "structure_status": "FAIL",
+                "semantic_intent": "INCORRECT",
+                "semantic_review": semantic_review,
+                "reason": semantic_review["reason_code"],
+            }
+        elif semantic_status == "PASS":
+            return {
+                "status": "CORRECT",
+                "structure_status": "PASS",
+                "semantic_intent": "PASS",
+                "semantic_review": semantic_review,
+                "reason": semantic_review["reason_code"],
+            }
+        else:
+            return {
+                "status": "INCORRECT" if not candidate_acceptable else "UNRESOLVED",
+                "structure_status": "FAIL" if not candidate_acceptable else "UNRESOLVED",
+                "semantic_intent": semantic_status,
+                "semantic_review": semantic_review,
+                "reason": semantic_review["reason_code"],
+            }
+
+    if candidate_acceptable:
+        return {
+            "status": "CORRECT",
+            "structure_status": "PASS",
+            "semantic_intent": "PASS",
+            "reason": "candidate_acceptable_non_repeat_action",
+        }
+
+    return {
+        "status": "INCORRECT",
+        "structure_status": "FAIL",
+        "reason": "action_outside_frozen_acceptable_set",
+    }
+
+
 def _assess_c09_attempt(attempt: dict[str, Any] | None) -> dict[str, Any]:
     """Classify C09 structure and blind, frozen-rule semantic evidence separately."""
     if not attempt:
@@ -570,6 +846,7 @@ def _decide_c03(a: dict[str, Any] | None, b: dict[str, Any] | None,
         if (b03_holdout and _action(b03_holdout) == "REQUEST_USER_INPUT"
                 and b03_holdout.get("failure_classification") == "NONE"
                 and comparable_prompt_pair):
+            assess_b = _assess_c03_attempt(b03_holdout)
             return _result("REJECT", {
                 "reason": "B selected a repeated C03 holdout clarification; the predeclared behavior check rejects it.",
                 "integrity_errors": errors,
@@ -578,7 +855,7 @@ def _decide_c03(a: dict[str, Any] | None, b: dict[str, Any] | None,
                 "observed_regression_from_a": _action(a03_holdout) != "REQUEST_USER_INPUT",
                 "same_state_update_prompt": True,
                 "decision_prompt_changed": True,
-                "semantic_equivalence_review": "UNRESOLVED; the frozen candidate label disallows the action, but no independent judge was called",
+                "semantic_equivalence_review": assess_b.get("semantic_review", assess_b),
             })
         return _result("INCONCLUSIVE", {"integrity_errors": errors})
     aa, ba = _attempt_map(a), _attempt_map(b)
@@ -589,6 +866,8 @@ def _decide_c03(a: dict[str, Any] | None, b: dict[str, Any] | None,
     c02_b = _attempts_for(b, "P3B-C02")
     c07_a = _attempts_for(a, "P3B-C07")
     c07_b = _attempts_for(b, "P3B-C07")
+    assess_a = _assess_c03_attempt(c03_a)
+    assess_b = _assess_c03_attempt(c03_b)
     checks = {
         "holdout_improved_from_repeat_to_nonrepeat": (
             _action(c03_a) == "REQUEST_USER_INPUT"
@@ -615,7 +894,9 @@ def _decide_c03(a: dict[str, Any] | None, b: dict[str, Any] | None,
         "checks": checks,
         "c03_holdout_a_action": _action(c03_a),
         "c03_holdout_b_action": _action(c03_b),
-        "semantic_equivalence_review": "UNRESOLVED; comparison is against the frozen candidate label, not an independent judge",
+        "c03_holdout_a_assessment": assess_a,
+        "c03_holdout_b_assessment": assess_b,
+        "semantic_equivalence_review": assess_b.get("semantic_review", assess_b),
     })
 
 
