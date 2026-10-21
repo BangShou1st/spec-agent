@@ -27,7 +27,7 @@ class RebuildReadinessOfflineTest {
         when(guard.canUseOrg(any(),eq(org),isNull())).thenReturn(AccessDecision.allow());
         when(named.queryForList(anyString(),anyMap())).thenReturn(List.of(Map.of("org_id",org,"project_id",project,
                 "corpus_id",project,"profile_id","profile","id",generation)));
-        var w=new RebuildLeaseCoordinator(named,guard,tx,120);w.setReadiness(readiness);return w;
+        var w=new RebuildLeaseCoordinator(named,guard,tx,120,3,0);w.setReadiness(readiness);return w;
     }
     RebuildLeaseCoordinator.Token token() {return new RebuildLeaseCoordinator.Token(generation,5,UUID.randomUUID(),UUID.randomUUID(),org,project,"profile");}
     @Test void actualWorkerReadyWritesDurableOutcomeInsideSameTransaction() {
