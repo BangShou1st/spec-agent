@@ -75,6 +75,6 @@ public class RebuildWaitRepository {
               WHERE i.status='PENDING' AND i.capability_id='retrieval.await_generation'
               ORDER BY b.last_checked_at,i.id LIMIT :limit FOR UPDATE OF b SKIP LOCKED)
             RETURNING invocation_id
-            """,Map.of("limit",limit),(rs,n)->rs.getObject("id",UUID.class));
+            """,Map.of("limit",limit),(rs,n)->rs.getObject("invocation_id",UUID.class));
     }
 }

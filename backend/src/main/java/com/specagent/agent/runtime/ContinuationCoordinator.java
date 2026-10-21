@@ -54,6 +54,9 @@ public class ContinuationCoordinator {
     private WaitDependencyRepository waitDependencies;
     @org.springframework.beans.factory.annotation.Autowired
     public void setWaitDependencies(WaitDependencyRepository dependencies) { this.waitDependencies = dependencies; }
+    private WorkspaceRunActorRepository runActors;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRunActors(WorkspaceRunActorRepository actors) { this.runActors = actors; }
 
     public ContinuationCoordinator(AgentRunService agentRunService,
                                    AgentRunRepository agentRunRepository,
@@ -97,12 +100,30 @@ public class ContinuationCoordinator {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Agent run not found: " + runId));
         try {
-            return Optional.of(runService.createContinueRun(parent).run());
+            // 续跑调度在后台轮询线程上执行，那里没有任何请求级身份：子 run 的
+            // 委托必须来自父 run 持久化的 workspace 授权，而不是环境里的偶然身份。
+            // 没有持久化委托的旧 run 保持原行为(由既有授权检查 fail-closed)。
+            var actor = persistedActor(runId);
+            if (actor == null) {
+                return Optional.of(runService.createContinueRun(parent).run());
+            }
+            try (var scope = com.specagent.access.ActorContextHolder.bind(actor)) {
+                return Optional.of(runService.createContinueRun(parent).run());
+            }
         } catch (StaleRunTargetException stale) {
             return Optional.empty();
         }
     }
 
+    /** 父 run 持久化的委托身份；没有则返回 null(调用方保持既有行为)。 */
+    private com.specagent.access.ActorContext persistedActor(UUID runId) {
+        if (runActors == null) return null;
+        try {
+            return runActors.require(runId);
+        } catch (com.specagent.access.AccessDeniedException missing) {
+            return null;
+        }
+    }
     /**
      * 从持久化状态裁决单个 run。终态 {@code FAILED} 映射到 {@code FAILED};
      * 非终态 run 属于调用方错误,直接抛异常。
