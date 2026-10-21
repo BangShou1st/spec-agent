@@ -10,4 +10,7 @@ import java.time.Duration;
 public interface DeferredCapabilityAdapter extends GuardedCapabilityAdapter {
     Duration completionTimeout();
     void requireAuthorizedCompletion(CapabilityInvocationRecord invocation);
+    /** Source-specific terminal identity/content fence. Authority checks above also
+     * serve pending projection reads, which need not have a terminal outcome yet. */
+    default void validateCompletion(CapabilityInvocationRecord invocation,CapabilityResult result) {}
 }

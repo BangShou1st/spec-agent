@@ -83,6 +83,7 @@ public class CapabilityRuntime {
             throw new IllegalArgumentException("Capability does not own deferred jobs");
         }
         deferred.requireAuthorizedCompletion(record);
+        deferred.validateCompletion(record,result);
         return invocationRepository.completePending(record.id(), result);
     }
 

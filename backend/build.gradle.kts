@@ -118,7 +118,15 @@ val auditedOfflineTests = setOf(
     "com.specagent.agent.runtime.WaitDependencyServiceOfflineTest",
     "com.specagent.agent.runtime.WaitDependencyRepositoryOfflineTest",
     "com.specagent.agent.runtime.WaitLifecycleOfflineTest",
-    "com.specagent.agent.runtime.WaitDecisionExecutionOfflineTest"
+    "com.specagent.agent.runtime.WaitDecisionExecutionOfflineTest",
+    // Actual production readiness adapter/scanner, Mockito JDBC only and resource-free transactions.
+    "com.specagent.capability.RetrievalAwaitGenerationOfflineTest",
+    "com.specagent.capability.RebuildWaitCompletionRecoveryOfflineTest",
+    "com.specagent.retrieval.workload.RebuildReadinessOfflineTest",
+    "com.specagent.capability.RebuildWaitRepositoryOfflineTest",
+    // ArchUnit reads class files only, without initializing application classes.
+    "com.specagent.architecture.AgentBoundaryArchitectureTests",
+    "com.specagent.architecture.CapabilitySkillsMcpBoundaryTests"
 )
 val databaseIntegrationEnabled = providers.gradleProperty("databaseIntegration").map { it == "true" }.orElse(false)
 val externalServicesEnabled = providers.gradleProperty("externalServices").map { it == "true" }.orElse(false)

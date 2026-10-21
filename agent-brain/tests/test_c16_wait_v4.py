@@ -13,6 +13,21 @@ FIXTURE = Path(__file__).resolve().parents[2] / "contracts/fixtures/agent-input-
 def raw():
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
 
+def test_production_readiness_dependency_uses_v4_without_exposing_external_id_as_wait_target():
+    value = json.loads(FIXTURE.read_text(encoding="utf-8").replace("deferred.probe", "retrieval.await_generation"))
+    descriptor = value["snapshot"]["availableCapabilities"][0]
+    descriptor["inputSchema"] = {"type": "object", "properties": {}, "additionalProperties": False}
+    request = parse_request_envelope(value)
+    ref = str(request.pending_dependencies.dependencies[0].invocation_id)
+    client = Client({"dependencyRef": ref})
+    response = handle_decision(request, client)
+    validate_v3_response_for_request(request, response)
+    assert response.protocol_version == "agent-decision.v4"
+    assert response.action_proposal.payload == {"dependencyRef": ref}
+    assert client.calls == 1
+    with pytest.raises(ActionIneligibleBrainError):
+        handle_decision(request, Client({"dependencyRef": "generation:11111111-2222-3333-4444-555555555555"}))
+
 class Client:
     def __init__(self, payload):
         self.payload, self.calls, self.messages = payload, 0, None

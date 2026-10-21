@@ -53,6 +53,7 @@ call is introduced merely to obtain a WAIT proposal.
 V102 supplies projections and subscriptions. V98–V101 remain untouched. Mixed
 version operation, database migration, real transaction races, process recovery
 and E2E require isolated PostgreSQL acceptance and remain NOT RUN in this change.
-There is no production deferred adapter yet. No simulated timer adapter is to be
-registered as a production capability. Adapter feasibility and the exact remaining
-external prerequisites are recorded in this round's delivery evidence.
+The first production adapter is now implemented in code; see
+[retrieval readiness adapter](C16_RETRIEVAL_READINESS_ADAPTER.md). It uses the real
+rebuild worker, not a simulated timer. Database and process acceptance remain
+NOT RUN; implementation is not a claim of production acceptance.

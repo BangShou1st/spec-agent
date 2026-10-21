@@ -9,6 +9,18 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Pure protocol/eligibility tests, also compiled by the independent build. */
 class ActionEligibilityWaitV4Test {
+    @Test void productionReadinessCapabilityUsesExistingV4InvocationAndWaitContracts() throws Exception {
+        var raw=Files.readString(Path.of("../contracts/fixtures/agent-input-v4-wait.json"))
+                .replace("deferred.probe","retrieval.await_generation");
+        var request=prepared(AgentContracts.read(raw,AgentRequestEnvelope.class));
+        var gate=new ActionEligibilityGate("enforced");
+        var invoke=new ActionProposal("INVOKE_CAPABILITY",Map.of("capabilityId","retrieval.await_generation","arguments",Map.of()),
+                UUID.fromString(request.snapshot().snapshotId()),request.snapshot().contextHash(),List.of(),UUID.randomUUID(),request.runId().toString(),List.of());
+        assertThatCode(()->gate.enforce(gate.assess(request,invoke))).doesNotThrowAnyException();
+        assertThatCode(()->gate.enforce(gate.assess(request,wait(request,Map.of("dependencyRef",
+                request.pendingDependencies().dependencies().getFirst().invocationId().toString()))))).doesNotThrowAnyException();
+        assertThat(request.pendingDependencies().dependencies().getFirst().capabilityId()).isEqualTo("retrieval.await_generation");
+    }
     AgentRequestEnvelope fixture() throws Exception {
         return AgentContracts.read(Files.readString(Path.of("../contracts/fixtures/agent-input-v4-wait.json")),
                 AgentRequestEnvelope.class);

@@ -46,6 +46,12 @@ public class ContinuationDispatchService {
     private final UUID workerId;
     private com.specagent.capability.CapabilityInvocationRepository deferredInvocations;
     private WaitDependencyRepository waitSubscriptions;
+    private java.util.List<com.specagent.common.DeferredCompletionRecoveryPort> completionSources=java.util.List.of();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setCompletionSources(java.util.List<com.specagent.common.DeferredCompletionRecoveryPort> sources) {
+        this.completionSources=java.util.List.copyOf(sources);
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     public void setWaitSubscriptions(WaitDependencyRepository subscriptions) { this.waitSubscriptions = subscriptions; }
@@ -150,6 +156,12 @@ public class ContinuationDispatchService {
     private static final int CLAIM_SECONDS = 60;
 
     public void recoverPending(int limit) {
+        for(var source:completionSources) {
+            try { source.recover(limit); }
+            catch(RuntimeException ex) {
+                LOG.warn("Deferred business outcome scan failed; retrying next poll ({})",ex.getClass().getSimpleName());
+            }
+        }
         if (deferredInvocations != null) {
             try {
                 deferredInvocations.expirePending(limit);

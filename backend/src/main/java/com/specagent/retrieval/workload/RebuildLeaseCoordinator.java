@@ -18,10 +18,14 @@ public class RebuildLeaseCoordinator {
     private final TransactionTemplate transactions;
     private final UUID worker=UUID.randomUUID();
     private final int seconds;
+    private RebuildReadiness readiness;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setReadiness(RebuildReadiness readiness) { this.readiness=readiness; }
     public RebuildLeaseCoordinator(NamedParameterJdbcTemplate jdbc,AuthorizationGuard authorization,
             PlatformTransactionManager transactions,@Value("${spec.embedding-settings.rebuild-lease-seconds:120}") int seconds) {
         if(seconds<100 || seconds>300) throw new IllegalArgumentException("Rebuild lease must be 100..300 seconds");
         this.jdbc=jdbc;this.authorization=authorization;this.transactions=new TransactionTemplate(transactions);this.seconds=seconds;
+        this.readiness=new RebuildReadiness(jdbc);
     }
     public Optional<Token> claim() {
         var ids=jdbc.queryForList("""
@@ -73,11 +77,16 @@ public class RebuildLeaseCoordinator {
             var row=owned(token);if(!active(row)) throw stale();
             jdbc.update("UPDATE embedding_rebuilds SET state=:state,total=COALESCE(:total,total),processed=COALESCE(:processed,processed),worker_id=NULL,lease_id=NULL,lease_until=NULL WHERE id=:id",
                     Maps.of("id",token.id(),"state",ready?"READY":"QUEUED","total",total,"processed",processed));
+            if(ready) readiness.record(token.id());
         });
     }
     public boolean fail(Token token,String code) {
         return Boolean.TRUE.equals(transactions.execute(tx->{
-            try {var row=owned(token);failRow(row,code);return true;}catch(IllegalStateException refused){return false;}
+            Map<String,Object> row;
+            try {row=owned(token);}catch(IllegalStateException refused){return false;}
+            // Only stale lease ownership is a no-op. Outcome storage failure must
+            // escape so the business FAILED transition cannot commit without its fact.
+            failRow(row,code);return true;
         }));
     }
     public Token capture(UUID corpus,UUID generation) {
@@ -131,6 +140,7 @@ public class RebuildLeaseCoordinator {
         UUID id=(UUID)row.get("id");invalidateChildren(id);
         jdbc.update("UPDATE embedding_rebuilds SET state='FAILED',error_code=:code,worker_id=NULL,lease_id=NULL,lease_until=NULL WHERE id=:id",Maps.of("id",id,"code",code));
         jdbc.update("UPDATE retrieval_index_generations SET state='FAILED' WHERE id=:id AND state='PREPARING'",Map.of("id",id));
+        readiness.record(id);
     }
     private static IllegalStateException stale() {return new IllegalStateException("STALE_WORKLOAD");}
 }
