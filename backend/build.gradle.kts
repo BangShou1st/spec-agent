@@ -126,6 +126,14 @@ tasks.withType<Test> {
         useJUnitPlatform { excludeTags("database-integration") }
     }
     if (!externalServicesEnabled.get()) useJUnitPlatform { excludeTags("external-service") }
+    if (databaseIntegrationEnabled.get() && name != "testOffline") {
+        // Disabled-bootstrap assertions execute in testOffline with both gates false.
+        filter {
+            excludeTestsMatching("com.specagent.support.DatabaseTestContextGuardTest")
+            excludeTestsMatching("com.specagent.support.DatabaseTestDiscoveryTest")
+            excludeTestsMatching("com.specagent.eval.P3BLiveDatabaseGuardTest")
+        }
+    }
     doFirst {
         if (!databaseIntegrationEnabled.get()) {
             if (name != "testOffline") {
@@ -194,8 +202,6 @@ gradle.taskGraph.whenReady {
 // offline (or dev-brain-occupied) machine cannot satisfy — see testCrossLanguage.
 tasks.named<Test>("test") {
     filter {
-        // This suite verifies disabled bootstrap and must only run in testOffline.
-        excludeTestsMatching("com.specagent.support.DatabaseTestContextGuardTest")
         excludeTestsMatching("com.specagent.eval.EvalLive*")
         excludeTestsMatching("com.specagent.agent.runtime.PythonBrainCrossLanguageIntegrationTest")
     }

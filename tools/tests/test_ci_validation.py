@@ -194,3 +194,13 @@ def test_database_task_cannot_silently_select_a_nonexistent_tag():
     assert 'includeTags("database-integration")' not in selection
     assert 'excludeTestsMatching("com.specagent.eval.EvalLive*")' in selection
     assert 'Live provider tasks require explicit -PexternalServices=true' in build
+
+
+def test_disabled_bootstrap_guards_are_executed_in_the_offline_scope():
+    build = BUILD.read_text(encoding="utf-8")
+    offline = build.split('val auditedOfflineTests = setOf(', 1)[1].split(')', 1)[0]
+    assert '"com.specagent.support.DatabaseTestContextGuardTest"' in offline
+    assert '"com.specagent.eval.P3BLiveDatabaseGuardTest"' in offline
+    assert 'if (databaseIntegrationEnabled.get() && name != "testOffline")' in build
+    assert 'excludeTestsMatching("com.specagent.eval.P3BLiveDatabaseGuardTest")' in build
+    assert 'systemProperty("specagent.database-tests.enabled", "false")' in build
