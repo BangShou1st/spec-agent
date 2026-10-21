@@ -120,6 +120,30 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
+      # The database integration selection starts a REAL Python agent-brain
+      # process (C16RetrievalAwaitGenerationEndToEndTest). Without a Python
+      # runtime on PATH that test fails with "No module named uvicorn", which
+      # is an environment gap, not a behaviour regression. The brain package
+      # has to be installed into the SAME interpreter the test will start, so
+      # the runner's own interpreter is exported explicitly instead of letting
+      # the test resolve an arbitrary "python3" from PATH.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: agent-brain/pyproject.toml
+      - name: Install the brain package for the real-process acceptance test
+        working-directory: agent-brain
+        run: pip install -e .
+      - name: Export the Python interpreter for the real-process acceptance test
+        id: brain-python
+        run: |
+          set -euo pipefail
+          interpreter="$(command -v python3)"
+          echo "interpreter=$interpreter" >> "$GITHUB_OUTPUT"
+          "$interpreter" -c "import uvicorn, spec_agent_brain"
+          echo "### Python brain runtime" >> "$GITHUB_STEP_SUMMARY"
+          echo "Real-process acceptance uses $interpreter" >> "$GITHUB_STEP_SUMMARY"
       - name: Prepare the isolated acceptance database
         id: isolated-db
         env:
@@ -162,6 +186,10 @@ jobs:
           SPEC_AGENT_TEST_DB_PASSWORD: spec_agent_dev
           SPEC_AGENT_TEST_DB_SERVER_ADDRESS: ${{ steps.isolated-db.outputs.address }}
           SPEC_AGENT_TEST_DB_SERVER_PORT: ${{ steps.isolated-db.outputs.port }}
+          # The real-process acceptance test starts the agent-brain with this
+          # interpreter. It is the same one the brain package was installed
+          # into, so the started process cannot miss uvicorn.
+          SPEC_AGENT_GA_TEST_PYTHON: ${{ steps.brain-python.outputs.interpreter }}
         run: bash gradlew test testDatabaseIntegration -PdatabaseIntegration=true
 
       - uses: actions/upload-artifact@v7
