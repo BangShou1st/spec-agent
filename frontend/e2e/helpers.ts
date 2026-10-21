@@ -239,3 +239,24 @@ export async function forkFromNode(page: Page, index: number, label: string): Pr
   await page.getByTestId('fork-submit').click()
   await expect(page.getByTestId('fork-dialog')).toHaveCount(0)
 }
+
+/**
+ * The global assistant's persisted thread and run are scoped to the identity
+ * that wrote them: the store discards a persisted thread whose owner key does
+ * not match the current session identity, so one user can never inherit
+ * another's conversation.
+ *
+ * A fixture that only seeds the thread id therefore restores nothing and the
+ * restore path under test is never reached. This seeds the owner key with the
+ * identity the running backend actually reports, so the restore stays real.
+ */
+export async function seedGaOwnerIdentity(page: Page, request: APIRequestContext): Promise<string> {
+  const response = await request.get('/api/me')
+  expect(response.ok()).toBe(true)
+  const identity = (await response.json()) as { userId: string; orgId: string }
+  const owner = JSON.stringify([identity.userId, identity.orgId])
+  await page.addInitScript((value: string) => {
+    window.localStorage.setItem('spec-agent:global-assistant:owner:v1', value)
+  }, owner)
+  return owner
+}

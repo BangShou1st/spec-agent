@@ -322,6 +322,23 @@ export const useConnectionsStore = defineStore('connections', {
         throw identityError
       }
     },
+    async loadTools(connectionId: string): Promise<void> {
+      const identityEpoch = this.identityEpoch
+      const identityStore = identityScopedStore(this, identityEpoch)
+      try {
+        identityStore.error = null
+        try {
+          identityStore.tools = await privateIdentityWork(identityStore, identityEpoch, () => (listConnectionTools(connectionId)))
+        } catch (err) {
+          if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
+
+          identityStore.error = displayError(err)
+        }
+      } catch (identityError) {
+        if (identityError instanceof PrivateIdentityExpiredError) { return }
+        throw identityError
+      }
+    },
     async loadResources(connectionId: string): Promise<void> {
       const identityEpoch = this.identityEpoch
       const identityStore = identityScopedStore(this, identityEpoch)
