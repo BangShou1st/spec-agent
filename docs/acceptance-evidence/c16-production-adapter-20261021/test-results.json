@@ -1,0 +1,237 @@
+{
+  "root": {
+    "tests": 206,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "classes": [
+      {
+        "name": "com.specagent.agent.action.ActionEligibilityWaitV4Test",
+        "tests": 7,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.agent.action.C16WaitContractTest",
+        "tests": 4,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.agent.decision.AgentBrainArgumentGroundingTest",
+        "tests": 2,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest",
+        "tests": 5,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.agent.runtime.DeferredContinuationOfflineTest",
+        "tests": 6,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.agent.runtime.LegacyBindingMigrationGuardTest",
+        "tests": 6,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.agent.runtime.WaitDecisionExecutionOfflineTest",
+        "tests": 2,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.agent.runtime.WaitDependencyRepositoryOfflineTest",
+        "tests": 6,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.agent.runtime.WaitDependencyServiceOfflineTest",
+        "tests": 8,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.agent.runtime.WaitLifecycleOfflineTest",
+        "tests": 9,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.architecture.AgentBoundaryArchitectureTests",
+        "tests": 14,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.architecture.CapabilitySkillsMcpBoundaryTests",
+        "tests": 6,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.capability.DeferredCapabilityRepositoryTest",
+        "tests": 9,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.capability.DeferredCapabilityRuntimeTest",
+        "tests": 5,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.capability.GuardedCapabilityOrderTest",
+        "tests": 3,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.capability.RebuildWaitCompletionRecoveryOfflineTest",
+        "tests": 10,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.capability.RebuildWaitRepositoryOfflineTest",
+        "tests": 6,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.capability.RetrievalAwaitGenerationOfflineTest",
+        "tests": 17,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.eval.P3BC03NaturalLanguageScenarioTest",
+        "tests": 6,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.eval.P3BGateMeasurementTest",
+        "tests": 6,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.eval.P3BLiveDatabaseGuardTest",
+        "tests": 26,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.model.inference.ModelTargetBindingContractTest",
+        "tests": 4,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.model.inference.RoutingModelInferenceGatewayTest",
+        "tests": 18,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.retrieval.workload.RebuildReadinessOfflineTest",
+        "tests": 8,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.support.DatabaseTestContextGuardTest",
+        "tests": 12,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.support.DatabaseTestDiscoveryTest",
+        "tests": 1,
+        "failures": 0
+      }
+    ]
+  },
+  "independent": {
+    "tests": 110,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "classes": [
+      {
+        "name": "com.specagent.agent.action.ActionEligibilityCharacterizationTest",
+        "tests": 24,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.agent.action.ActionEligibilityEvaluatorTest",
+        "tests": 4,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.agent.action.ActionEligibilityGateTest",
+        "tests": 4,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.agent.action.ActionEligibilityWaitV4Test",
+        "tests": 7,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.agent.action.C16WaitContractTest",
+        "tests": 4,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.agent.decision.AgentBrainArgumentGroundingTest",
+        "tests": 2,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.eval.EvalProjectCleanupTest",
+        "tests": 3,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.eval.P3BC03NaturalLanguageScenarioTest",
+        "tests": 6,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.eval.P3BGateMeasurementTest",
+        "tests": 6,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.eval.P3BLiveDatabaseGuardTest",
+        "tests": 26,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.model.inference.ModelOutputContractTest",
+        "tests": 8,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.model.inference.ModelTargetBindingContractTest",
+        "tests": 4,
+        "failures": 0
+      },
+      {
+        "name": "com.specagent.support.DatabaseTestContextGuardTest",
+        "tests": 12,
+        "failures": 0
+      }
+    ]
+  },
+  "terminalFenceRed": {
+    "tests": 17,
+    "failures": 3,
+    "errors": 0,
+    "skipped": 0,
+    "classes": [
+      {
+        "name": "com.specagent.capability.RetrievalAwaitGenerationOfflineTest",
+        "tests": 17,
+        "failures": 3
+      }
+    ]
+  },
+  "python": {
+    "passed": 507
+  },
+  "contractReplay": {
+    "fixtures": 11,
+    "outcomeMatched": 11,
+    "payloadMismatches": []
+  },
+  "database": "NOT RUN",
+  "crossProcess": "NOT RUN",
+  "e2e": "NOT RUN"
+}
