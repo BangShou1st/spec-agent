@@ -118,6 +118,9 @@ public class ContinuationDispatchService {
             // cancellation inside its rollback-only scope, or endlessly retry a revoked WAIT.
             var permanent = java.util.Set.of(com.specagent.access.AccessReason.RESOURCE_NOT_VISIBLE,
                     com.specagent.access.AccessReason.USER_DISABLED,
+                    com.specagent.access.AccessReason.ORG_DISABLED,
+                    com.specagent.access.AccessReason.NOT_ORG_MEMBER,
+                    com.specagent.access.AccessReason.MEMBERSHIP_DISABLED,
                     com.specagent.access.AccessReason.PROJECT_CAPABILITY_MISSING,
                     com.specagent.access.AccessReason.ORG_CAPABILITY_MISSING);
             if (waitSubscriptions == null || !permanent.contains(denied.reasonCode())) throw denied;

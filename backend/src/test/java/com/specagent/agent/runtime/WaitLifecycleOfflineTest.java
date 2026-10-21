@@ -12,12 +12,20 @@ import static org.mockito.Mockito.*;
 /** Deterministic durable-read simulations with the real coordinator, not process/DB recovery. */
 class WaitLifecycleOfflineTest {
     @Test void permanentRevocationInvalidatesWaitAfterEvaluationTransactionHasFailed() {
+        assertInvalidates(com.specagent.access.AccessReason.RESOURCE_NOT_VISIBLE);
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"NOT_ORG_MEMBER", "MEMBERSHIP_DISABLED", "ORG_DISABLED"})
+    void revokedOrganizationMembershipAlsoStopsWaiting(String reason) {
+        assertInvalidates(reason);
+    }
+    void assertInvalidates(String reason) {
         var checks=mock(ContinuationCheckRepository.class);
         var coordinator=mock(ContinuationCoordinator.class);
         var manager=new LocalTransactions();
         var tx=new org.springframework.transaction.support.TransactionTemplate(manager);
         var subscriptions=mock(WaitDependencyRepository.class);
-        doThrow(com.specagent.access.AccessDeniedException.notVisible("revoked")).when(coordinator).continueIfEligible(any());
+        doThrow(com.specagent.access.AccessDeniedException.forbidden(reason,"revoked")).when(coordinator).continueIfEligible(any());
         when(subscriptions.invalidateDenied(any())).thenReturn(1);
         var dispatcher=new ContinuationDispatchService(checks,coordinator,tx);dispatcher.setWaitSubscriptions(subscriptions);
         UUID run=UUID.randomUUID();
