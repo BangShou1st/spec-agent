@@ -1,12 +1,27 @@
 name: CI
+run-name: CI — ${{ (github.event_name != 'workflow_dispatch' || inputs.full_validation == true) && 'full validation' || 'independent diagnostics' }}
 
 on:
   push:
     branches:
       - main
-      # Active development branch: direct pushes must run the full CI too.
+      # The active branch receives the same explicitly scoped validation.
       - system-bugfix-v1
+      # The business development line is validated by the same scoped run.
+      - dev
   pull_request:
+    # Only the release line and the business line are validated; a pull request
+    # into any other branch must not start a duplicate workflow.
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+    inputs:
+      full_validation:
+        description: 'Run full deterministic validation; false selects independent diagnostics'
+        type: boolean
+        required: true
+        default: true
 
 permissions:
   contents: read
@@ -26,19 +41,75 @@ permissions:
 #   the action runtimes move.
 
 jobs:
+  validation-mode:
+    runs-on: ubuntu-26.04
+    outputs:
+      full: ${{ steps.scope.outputs.full }}
+    steps:
+      - id: scope
+        env:
+          FULL: ${{ github.event_name != 'workflow_dispatch' || inputs.full_validation == true }}
+        run: |
+          echo "full=$FULL" >> "$GITHUB_OUTPUT"
+          echo "### Explicit validation scope" >> "$GITHUB_STEP_SUMMARY"
+          echo "Full validation: $FULL. Push/PR runs execute deterministic integrations; manual false selects independent diagnostics. Skipped jobs never count as passed." >> "$GITHUB_STEP_SUMMARY"
+
+  backend-independent:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Compile and test reviewed real Java sources without production classpath
+        working-directory: backend
+        run: bash gradlew -p independent clean test
+      - name: Record independent dependency graph
+        working-directory: backend
+        run: |
+          bash gradlew -p independent dependencies --configuration testRuntimeClasspath > independent/build/dependencies-testRuntimeClasspath.txt
+          bash gradlew -p independent verificationScope > independent/build/verification-scope.txt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: backend-independent-test-results
+          path: |
+            backend/independent/build/reports/tests/test/
+            backend/independent/build/test-results/test/*.xml
+            backend/independent/build/dependencies-testRuntimeClasspath.txt
+            backend/independent/build/verification-scope.txt
+          if-no-files-found: error
+
+  contracts-static:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      # Replay imports the real Python contracts/decision engine. Install its
+      # declared dependencies rather than relying on the separate brain job.
+      - run: pip install -e './agent-brain[dev]'
+      - name: Deterministic corpus, replay, configuration and tool contracts (no JVM or database)
+        run: python -m pytest tools/tests -q
+
   backend:
+    needs: validation-mode
+    if: needs.validation-mode.outputs.full == 'true'
     runs-on: ubuntu-26.04
     services:
       postgres:
         image: pgvector/pgvector:pg17
         env:
-          POSTGRES_DB: spec_agent_test
+          POSTGRES_DB: postgres
           POSTGRES_USER: spec_agent
           POSTGRES_PASSWORD: spec_agent_dev
         ports:
-          - 5434:5432
+          - 55432:5432
         options: >-
-          --health-cmd "pg_isready -U spec_agent -d spec_agent_test"
+          --health-cmd "pg_isready -U spec_agent -d postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -49,26 +120,77 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
-      - name: Run backend tests with the explicit deterministic test gateway
+      - name: Prepare the isolated acceptance database
+        id: isolated-db
+        env:
+          PGPASSWORD: spec_agent_dev
+          ISOLATED_DB: spec_agent_p3b_live_ci_${{ github.run_id }}_${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          # The integration guard verifies the server-reported endpoint, never the
+          # client-side published port, so the endpoint is read from the server.
+          docker run --rm --network host -e PGPASSWORD="$PGPASSWORD" pgvector/pgvector:pg17 \
+            psql -h 127.0.0.1 -p 55432 -U spec_agent -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE DATABASE $ISOLATED_DB"
+          reported="$(docker run --rm --network host -e PGPASSWORD="$PGPASSWORD" pgvector/pgvector:pg17 \
+            psql -h 127.0.0.1 -p 55432 -U spec_agent -d "$ISOLATED_DB" -tAc \
+            "SELECT concat(coalesce(inet_server_addr()::text,'local'),' ',inet_server_port())")"
+          address="${reported%% *}"; port="${reported##* }"
+          echo "url=jdbc:postgresql://127.0.0.1:55432/$ISOLATED_DB" >> "$GITHUB_OUTPUT"
+          echo "address=$address" >> "$GITHUB_OUTPUT"
+          echo "port=$port" >> "$GITHUB_OUTPUT"
+          echo "### Isolated acceptance database" >> "$GITHUB_STEP_SUMMARY"
+          echo "Database $ISOLATED_DB at the server-reported endpoint $address:$port" >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify published Zen dependency and build the production jar
+        working-directory: backend
+        run: |
+          bash gradlew dependencyInsight --dependency opencode-zen --configuration compileClasspath
+          bash gradlew compileJava bootJar
+      - name: Run the audited offline selection (no database, no live provider)
         working-directory: backend
         env:
-          SPRING_PROFILES_ACTIVE: test
           SPEC_AGENT_MODEL_GATEWAY: fake
-        run: bash gradlew cleanTest test
+          SPEC_AGENT_MODEL_INFERENCE: fake
+        run: bash gradlew cleanTest testOffline
+      - name: Run the database integration selection against the isolated database
+        working-directory: backend
+        env:
+          SPEC_AGENT_MODEL_GATEWAY: fake
+          SPEC_AGENT_MODEL_INFERENCE: fake
+          SPEC_AGENT_TEST_DB_URL: ${{ steps.isolated-db.outputs.url }}
+          SPEC_AGENT_TEST_DB_USERNAME: spec_agent
+          SPEC_AGENT_TEST_DB_PASSWORD: spec_agent_dev
+          SPEC_AGENT_TEST_DB_SERVER_ADDRESS: ${{ steps.isolated-db.outputs.address }}
+          SPEC_AGENT_TEST_DB_SERVER_PORT: ${{ steps.isolated-db.outputs.port }}
+        run: bash gradlew test testDatabaseIntegration -PdatabaseIntegration=true
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: backend-validation-evidence
+          path: |
+            backend/build/test-results/
+            backend/build/reports/tests/
+            backend-e2e.log
+            brain-ci.log
+            frontend/test-results/
+          if-no-files-found: warn
 
   eval-baseline:
+    needs: validation-mode
+    if: needs.validation-mode.outputs.full == 'true'
     runs-on: ubuntu-26.04
     services:
       postgres:
         image: pgvector/pgvector:pg17
         env:
-          POSTGRES_DB: spec_agent_test
+          POSTGRES_DB: postgres
           POSTGRES_USER: spec_agent
           POSTGRES_PASSWORD: spec_agent_dev
         ports:
-          - 5434:5432
+          - 55432:5432
         options: >-
-          --health-cmd "pg_isready -U spec_agent -d spec_agent_test"
+          --health-cmd "pg_isready -U spec_agent -d postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -82,18 +204,51 @@ jobs:
       # Blocking: scenario schema/corpus validation, Layer A, B-fast,
       # production call-budget checks. No live provider, no judge model,
       # no token/cost/latency thresholds.
+      - name: Prepare the isolated acceptance database
+        id: isolated-db
+        env:
+          PGPASSWORD: spec_agent_dev
+          ISOLATED_DB: spec_agent_p3b_live_ci_${{ github.run_id }}_${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          # The integration guard verifies the server-reported endpoint, never the
+          # client-side published port, so the endpoint is read from the server.
+          docker run --rm --network host -e PGPASSWORD="$PGPASSWORD" pgvector/pgvector:pg17 \
+            psql -h 127.0.0.1 -p 55432 -U spec_agent -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE DATABASE $ISOLATED_DB"
+          reported="$(docker run --rm --network host -e PGPASSWORD="$PGPASSWORD" pgvector/pgvector:pg17 \
+            psql -h 127.0.0.1 -p 55432 -U spec_agent -d "$ISOLATED_DB" -tAc \
+            "SELECT concat(coalesce(inet_server_addr()::text,'local'),' ',inet_server_port())")"
+          address="${reported%% *}"; port="${reported##* }"
+          echo "url=jdbc:postgresql://127.0.0.1:55432/$ISOLATED_DB" >> "$GITHUB_OUTPUT"
+          echo "address=$address" >> "$GITHUB_OUTPUT"
+          echo "port=$port" >> "$GITHUB_OUTPUT"
+          echo "### Isolated acceptance database" >> "$GITHUB_STEP_SUMMARY"
+          echo "Database $ISOLATED_DB at the server-reported endpoint $address:$port" >> "$GITHUB_STEP_SUMMARY"
       - name: Run deterministic P2 evaluation harness (B-fast)
         working-directory: backend
         env:
           SPRING_PROFILES_ACTIVE: test
           SPEC_AGENT_MODEL_GATEWAY: fake
-        run: bash gradlew evalBFast
+          SPEC_AGENT_MODEL_INFERENCE: fake
+          SPEC_AGENT_TEST_DB_URL: ${{ steps.isolated-db.outputs.url }}
+          SPEC_AGENT_TEST_DB_USERNAME: spec_agent
+          SPEC_AGENT_TEST_DB_PASSWORD: spec_agent_dev
+          SPEC_AGENT_TEST_DB_SERVER_ADDRESS: ${{ steps.isolated-db.outputs.address }}
+          SPEC_AGENT_TEST_DB_SERVER_PORT: ${{ steps.isolated-db.outputs.port }}
+        run: bash gradlew evalBFast -PdatabaseIntegration=true
       - name: Run deterministic Memory + RAG retrieval gate
         working-directory: backend
         env:
           SPRING_PROFILES_ACTIVE: test
           SPEC_AGENT_MODEL_GATEWAY: fake
-        run: bash gradlew evalRetrievalFast
+          SPEC_AGENT_MODEL_INFERENCE: fake
+          SPEC_AGENT_TEST_DB_URL: ${{ steps.isolated-db.outputs.url }}
+          SPEC_AGENT_TEST_DB_USERNAME: spec_agent
+          SPEC_AGENT_TEST_DB_PASSWORD: spec_agent_dev
+          SPEC_AGENT_TEST_DB_SERVER_ADDRESS: ${{ steps.isolated-db.outputs.address }}
+          SPEC_AGENT_TEST_DB_SERVER_PORT: ${{ steps.isolated-db.outputs.port }}
+        run: bash gradlew evalRetrievalFast -PdatabaseIntegration=true
       - name: Upload baseline artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -107,6 +262,18 @@ jobs:
   # behavior comes from recorded fixtures and fake responses, never a paid
   # provider. Also validates the shared contracts/fixtures corpus on the
   # Python side (test_contracts.py).
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: eval-baseline-validation-evidence
+          path: |
+            backend/build/test-results/
+            backend/build/reports/tests/
+            backend-e2e.log
+            brain-ci.log
+            frontend/test-results/
+          if-no-files-found: warn
+
   brain:
     runs-on: ubuntu-26.04
     steps:
@@ -127,18 +294,20 @@ jobs:
   # a broker-mode agent-brain dials back into the test process's fake
   # model-inference broker, so the round trip never touches a paid provider.
   cross-language:
+    needs: validation-mode
+    if: needs.validation-mode.outputs.full == 'true'
     runs-on: ubuntu-26.04
     services:
       postgres:
         image: pgvector/pgvector:pg17
         env:
-          POSTGRES_DB: spec_agent_test
+          POSTGRES_DB: postgres
           POSTGRES_USER: spec_agent
           POSTGRES_PASSWORD: spec_agent_dev
         ports:
-          - 5434:5432
+          - 55432:5432
         options: >-
-          --health-cmd "pg_isready -U spec_agent -d spec_agent_test"
+          --health-cmd "pg_isready -U spec_agent -d postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -181,18 +350,57 @@ jobs:
             cat ../brain-ci.log
             exit 1
           fi
+      - name: Prepare the isolated acceptance database
+        id: isolated-db
+        env:
+          PGPASSWORD: spec_agent_dev
+          ISOLATED_DB: spec_agent_p3b_live_ci_${{ github.run_id }}_${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          # The integration guard verifies the server-reported endpoint, never the
+          # client-side published port, so the endpoint is read from the server.
+          docker run --rm --network host -e PGPASSWORD="$PGPASSWORD" pgvector/pgvector:pg17 \
+            psql -h 127.0.0.1 -p 55432 -U spec_agent -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE DATABASE $ISOLATED_DB"
+          reported="$(docker run --rm --network host -e PGPASSWORD="$PGPASSWORD" pgvector/pgvector:pg17 \
+            psql -h 127.0.0.1 -p 55432 -U spec_agent -d "$ISOLATED_DB" -tAc \
+            "SELECT concat(coalesce(inet_server_addr()::text,'local'),' ',inet_server_port())")"
+          address="${reported%% *}"; port="${reported##* }"
+          echo "url=jdbc:postgresql://127.0.0.1:55432/$ISOLATED_DB" >> "$GITHUB_OUTPUT"
+          echo "address=$address" >> "$GITHUB_OUTPUT"
+          echo "port=$port" >> "$GITHUB_OUTPUT"
+          echo "### Isolated acceptance database" >> "$GITHUB_STEP_SUMMARY"
+          echo "Database $ISOLATED_DB at the server-reported endpoint $address:$port" >> "$GITHUB_STEP_SUMMARY"
       - name: Run the cross-language contract exit gate
         working-directory: backend
         env:
           SPRING_PROFILES_ACTIVE: test
           SPEC_AGENT_MODEL_GATEWAY: fake
+          SPEC_AGENT_MODEL_INFERENCE: fake
           SPEC_AGENT_CROSS_LANG_PORT: 8099
+          SPEC_AGENT_TEST_DB_URL: ${{ steps.isolated-db.outputs.url }}
+          SPEC_AGENT_TEST_DB_USERNAME: spec_agent
+          SPEC_AGENT_TEST_DB_PASSWORD: spec_agent_dev
+          SPEC_AGENT_TEST_DB_SERVER_ADDRESS: ${{ steps.isolated-db.outputs.address }}
+          SPEC_AGENT_TEST_DB_SERVER_PORT: ${{ steps.isolated-db.outputs.port }}
         run: |
-          if ! bash gradlew testCrossLanguage; then
+          if ! bash gradlew testCrossLanguage -PdatabaseIntegration=true; then
             echo "--- agent-brain log ---"
             cat ../brain-ci.log
             exit 1
           fi
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: cross-language-validation-evidence
+          path: |
+            backend/build/test-results/
+            backend/build/reports/tests/
+            backend-e2e.log
+            brain-ci.log
+            frontend/test-results/
+          if-no-files-found: warn
 
   frontend:
     runs-on: ubuntu-26.04
@@ -217,18 +425,20 @@ jobs:
         run: npm run build
 
   e2e:
+    needs: validation-mode
+    if: needs.validation-mode.outputs.full == 'true'
     runs-on: ubuntu-26.04
     services:
       postgres:
         image: pgvector/pgvector:pg17
         env:
-          POSTGRES_DB: spec_agent_test
+          POSTGRES_DB: postgres
           POSTGRES_USER: spec_agent
           POSTGRES_PASSWORD: spec_agent_dev
         ports:
-          - 5434:5432
+          - 55432:5432
         options: >-
-          --health-cmd "pg_isready -U spec_agent -d spec_agent_test"
+          --health-cmd "pg_isready -U spec_agent -d postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -250,15 +460,42 @@ jobs:
       - name: Install the deterministic Chromium runtime
         working-directory: frontend
         run: npx playwright install chromium
+      - name: Prepare the isolated acceptance database
+        id: isolated-db
+        env:
+          PGPASSWORD: spec_agent_dev
+          ISOLATED_DB: spec_agent_p3b_live_ci_${{ github.run_id }}_${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          # The integration guard verifies the server-reported endpoint, never the
+          # client-side published port, so the endpoint is read from the server.
+          docker run --rm --network host -e PGPASSWORD="$PGPASSWORD" pgvector/pgvector:pg17 \
+            psql -h 127.0.0.1 -p 55432 -U spec_agent -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE DATABASE $ISOLATED_DB"
+          reported="$(docker run --rm --network host -e PGPASSWORD="$PGPASSWORD" pgvector/pgvector:pg17 \
+            psql -h 127.0.0.1 -p 55432 -U spec_agent -d "$ISOLATED_DB" -tAc \
+            "SELECT concat(coalesce(inet_server_addr()::text,'local'),' ',inet_server_port())")"
+          address="${reported%% *}"; port="${reported##* }"
+          echo "url=jdbc:postgresql://127.0.0.1:55432/$ISOLATED_DB" >> "$GITHUB_OUTPUT"
+          echo "address=$address" >> "$GITHUB_OUTPUT"
+          echo "port=$port" >> "$GITHUB_OUTPUT"
+          echo "### Isolated acceptance database" >> "$GITHUB_STEP_SUMMARY"
+          echo "Database $ISOLATED_DB at the server-reported endpoint $address:$port" >> "$GITHUB_STEP_SUMMARY"
       - name: Start backend with the explicit test profile and Fake gateway
         working-directory: backend
         env:
           SPRING_PROFILES_ACTIVE: test
           SPEC_AGENT_MODEL_GATEWAY: fake
+          SPEC_AGENT_MODEL_INFERENCE: fake
           SPEC_AGENT_BRAIN_ENABLED: true
           SPEC_AGENT_BRAIN_WORKER_ENABLED: true
           SERVER_PORT: 8080
-          SPEC_AGENT_DB_PORT: 5434
+          SPRING_DATASOURCE_URL: ${{ steps.isolated-db.outputs.url }}
+          SPRING_DATASOURCE_USERNAME: spec_agent
+          SPRING_DATASOURCE_PASSWORD: spec_agent_dev
+          SPRING_FLYWAY_URL: ${{ steps.isolated-db.outputs.url }}
+          SPRING_FLYWAY_USER: spec_agent
+          SPRING_FLYWAY_PASSWORD: spec_agent_dev
         run: |
           nohup bash gradlew bootRun > ../backend-e2e.log 2>&1 &
           backend_pid=$!
@@ -284,4 +521,32 @@ jobs:
         env:
           SPRING_PROFILES_ACTIVE: test
           SPEC_AGENT_MODEL_GATEWAY: fake
+          SPEC_AGENT_MODEL_INFERENCE: fake
         run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: e2e-validation-evidence
+          path: |
+            backend/build/test-results/
+            backend/build/reports/tests/
+            backend-e2e.log
+            brain-ci.log
+            frontend/test-results/
+          if-no-files-found: warn
+
+  validation-summary:
+    if: always()
+    needs: [validation-mode, frontend, brain, backend-independent, contracts-static, backend, eval-baseline, cross-language, e2e]
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Report executed and skipped scope; preserve real failures
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+          CI_FULL: ${{ needs.validation-mode.outputs.full }}
+        run: python tools/ci/validation_summary.py

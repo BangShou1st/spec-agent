@@ -1,7 +1,7 @@
-import { test, expect } from './helpers'
+import { test, expect, seedGaOwnerIdentity } from './helpers'
 import { readFileSync } from 'node:fs'
 
-test('real web evidence restores sources and verified citations after refresh', async ({ page }) => {
+test('real web evidence restores sources and verified citations after refresh', async ({ page, request }) => {
   const evidence = JSON.parse(readFileSync('../docs/v2/evidence/GLOBAL_ASSISTANT_WEB_INTEGRATION.json', 'utf8'))
   const runId = evidence.events[0].runId
   const threadId = evidence.events[0].payload.threadId
@@ -9,6 +9,9 @@ test('real web evidence restores sources and verified citations after refresh', 
   const events = evidence.events.map((event: any) => ({ ...event, eventId: event.id, threadId }))
   const thread = { threadId, summary: '', summaryVersion: 0, workingStateVersion: 0, createdAt, updatedAt: createdAt }
   const run = { runId, threadId, status: 'COMPLETED', stepCount: 2, startedAt: createdAt, completedAt: createdAt, cancelRequestedAt: null, errorCode: null }
+  // The persisted thread is scoped to the identity that wrote it: without the
+  // owner key the store discards it and the restore path is never reached.
+  await seedGaOwnerIdentity(page, request)
   await page.addInitScript(id => {
     localStorage.setItem('spec-agent:global-assistant:thread:v1', id)
     localStorage.setItem('spec-agent:global-assistant:panel:v1', 'open')

@@ -34,6 +34,7 @@ const state = computed(() => providerCardState(
   isActive.value,
   store.failed,
   store.validating || store.probing,
+  store.rateLimited,
 ))
 const canProbe = computed(() => canManage.value && apiKey.value.trim().length > 0 && !store.probing && !store.saving)
 const showCredentialForm = computed(() => !store.configured || changingCredential.value)

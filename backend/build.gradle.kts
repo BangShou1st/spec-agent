@@ -17,23 +17,10 @@ repositories {
         name = "jitpack"
         url = uri("https://jitpack.io")
     }
-    // 私有生态仓库（GitHub Packages / Nexus）。地址与凭据来自环境或
-    // ~/.gradle/gradle.properties（zenRepoUrl / zenRepoUser / zenRepoToken），绝不写进仓库。
-    val zenRepoUrl = providers.gradleProperty("zenRepoUrl").orNull
-        ?: System.getenv("ZEN_MAVEN_REPO_URL")
-    if (!zenRepoUrl.isNullOrBlank()) {
-        maven {
-            name = "zenEcosystem"
-            url = uri(zenRepoUrl)
-            isAllowInsecureProtocol = zenRepoUrl.startsWith("http://")
-            credentials {
-                username = providers.gradleProperty("zenRepoUser").orNull
-                    ?: System.getenv("ZEN_MAVEN_USER").orEmpty()
-                password = providers.gradleProperty("zenRepoToken").orNull
-                    ?: System.getenv("ZEN_MAVEN_TOKEN").orEmpty()
-            }
-        }
-    }
+    // OpenCode Zen 共享库同样通过 JitPack 公开发布
+    // (com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter:v1.4.2)。
+    // 私有生态仓库(GitHub Packages / Nexus)已经不再发版,消费端也不需要任何 Token:
+    // 曾经按环境变量注入的仓库地址与凭据因此整体移除,依赖解析只剩公开来源。
 }
 
 // Evaluation harness source set: com.specagent.eval (+ com.specagent.trace)
@@ -51,7 +38,7 @@ dependencies {
 }
 
 dependencies {
-    implementation("com.sharedlibs:opencode-zen-spring-boot-starter:1.2.0")
+    implementation("com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter:v1.4.2")
     // Kilo Gateway（第三个模型供应商）客户端 Starter。提供 KiloGatewayClient，
     // 直连 https://ai-gateway.kilo.ai/api/v1，免费模型匿名可用。
     implementation("com.github.BangShou1st.kilo-gateway:kilo-gateway-spring-boot-starter:v0.2.1")
@@ -95,6 +82,20 @@ implementation("io.modelcontextprotocol.sdk:mcp:0.18.4")
     testImplementation(eval.output)
 }
 
+// Deliberately small, reviewed offline set. Expand only after reviewing inheritance,
+// extensions, static initialization and the entire invoked fixture/call chain.
+val auditedOfflineTests = setOf(
+    "com.specagent.model.provider.PublishedZenStarterCompatibilityTest",
+    "com.specagent.eval.P3BLiveDatabaseGuardTest",
+    "com.specagent.support.DatabaseTestContextGuardTest",
+    "com.specagent.model.inference.RoutingModelInferenceGatewayTest",
+    "com.specagent.capability.GuardedCapabilityOrderTest",
+    "com.specagent.architecture.AgentBoundaryArchitectureTests",
+    "com.specagent.architecture.CapabilitySkillsMcpBoundaryTests"
+)
+val databaseIntegrationEnabled = providers.gradleProperty("databaseIntegration").map { it == "true" }.orElse(false)
+val externalServicesEnabled = providers.gradleProperty("externalServices").map { it == "true" }.orElse(false)
+
 tasks.withType<Test> {
     useJUnitPlatform()
     // 第二阶段（身份/权限）给测试 classpath 增加了 Spring Security 与
@@ -106,6 +107,78 @@ tasks.withType<Test> {
     // Each cached integration context owns a JDBC pool and a mode-admission connection.
     // Bound their total below the isolated PostgreSQL limit, including dual API acceptance processes.
     systemProperty("spring.test.context.cache.maxSize", "6")
+    systemProperty("specagent.database-tests.enabled", databaseIntegrationEnabled.get().toString())
+    systemProperty("specagent.external-tests.enabled", externalServicesEnabled.get().toString())
+    if (!databaseIntegrationEnabled.get()) {
+        useJUnitPlatform { excludeTags("database-integration") }
+    }
+    if (!externalServicesEnabled.get()) useJUnitPlatform { excludeTags("external-service") }
+    if (databaseIntegrationEnabled.get() && name != "testOffline") {
+        // Disabled-bootstrap assertions execute in testOffline with both gates false.
+        filter {
+            excludeTestsMatching("com.specagent.support.DatabaseTestContextGuardTest")
+            excludeTestsMatching("com.specagent.support.DatabaseTestDiscoveryTest")
+            excludeTestsMatching("com.specagent.eval.P3BLiveDatabaseGuardTest")
+        }
+    }
+    doFirst {
+        if (!databaseIntegrationEnabled.get()) {
+            if (name != "testOffline") {
+                throw GradleException("Unreviewed test selection: use testOffline. " +
+                    "Database suites require -PdatabaseIntegration=true and isolated target; external suites also require -PexternalServices=true. --offline only controls dependencies.")
+            }
+        }
+    }
+}
+
+tasks.register<Test>("testOffline") {
+    group = "verification"
+    description = "Runs only reviewed pure-rule and mock database/bootstrap guard tests; no real datasource."
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    filter { auditedOfflineTests.forEach { includeTestsMatching(it) } }
+    // This task can never inherit an integration opt-in from the invoking shell/build.
+    systemProperty("specagent.database-tests.enabled", "false")
+    systemProperty("specagent.external-tests.enabled", "false")
+    useJUnitPlatform { excludeTags("database-integration", "external-service") }
+}
+
+tasks.register<Test>("testDatabaseIntegration") {
+    group = "verification"
+    description = "Runs integration-named suites; requires explicit isolated target and opt-in."
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform { excludeTags("external-service") }
+    filter {
+        includeTestsMatching("*IntegrationTest")
+        includeTestsMatching("*AcceptanceTest")
+        includeTestsMatching("*EndToEndTest")
+        excludeTestsMatching("com.specagent.eval.EvalLive*")
+        excludeTestsMatching("com.specagent.agent.runtime.PythonBrainCrossLanguageIntegrationTest")
+    }
+    doFirst {
+        if (!databaseIntegrationEnabled.get()) throw GradleException("Requires -PdatabaseIntegration=true")
+    }
+}
+
+// Reject the whole graph before any task action: task combinations must not
+// turn an explicitly offline invocation into bootRun, a live JavaExec or an
+// integration suite. Test.doFirst above remains a second execution-time gate.
+gradle.taskGraph.whenReady {
+    if (!externalServicesEnabled.get() && allTasks.any { it.name.startsWith("evalLive") }) {
+        throw GradleException("Live provider tasks require explicit -PexternalServices=true")
+    }
+    val offline = tasks.named("testOffline").get()
+    if (hasTask(offline)) {
+        val unsafe = allTasks.filter { it != offline && (it is Test || it is JavaExec) }
+        if (unsafe.isNotEmpty()) throw GradleException(
+            "testOffline cannot be combined with other Test/JavaExec tasks: " + unsafe.joinToString { it.path })
+    }
+    if (!databaseIntegrationEnabled.get()) {
+        val unaudited = allTasks.filterIsInstance<Test>().filter { it != offline }
+        if (unaudited.isNotEmpty()) throw GradleException(
+            "Unreviewed test selection: use testOffline; integration requires -PdatabaseIntegration=true and isolated target")
+    }
 }
 
 // The default `test` task never runs live-provider suites. Live behavior is
@@ -292,7 +365,7 @@ tasks.register<Test>("evalLiveSmoke") {
 // default test task because it requires the external provider and broker.
 tasks.register<Test>("evalLiveP3B") {
     group = "verification"
-    description = "Records real-model P3-B priority scenarios (requires broker + OpenCode access)."
+    description = "Records real-model P3-B priority scenarios (requires broker + the active provider, e.g. Kilo; isolated DB via SPEC_AGENT_EVAL_DB_URL)."
     useJUnitPlatform()
     filter {
         includeTestsMatching("com.specagent.eval.EvalLiveP3BDecisionQualityTest")

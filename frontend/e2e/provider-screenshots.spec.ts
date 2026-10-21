@@ -63,7 +63,13 @@ test.describe('provider settings screenshots', () => {
     })
     await page.route('**/api/v1/settings/custom/discover', async (route) => {
       if (state.customDiscover.failAuth) {
-        await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ code: 'MODEL_PROVIDER_AUTHENTICATION', message: 'The model provider rejected the request configuration' }) })
+        // The real backend contract: an upstream provider that rejects the
+        // credential is a provider failure (503 + MODEL_PROVIDER_AUTHENTICATION).
+        // A 401 is reserved for the user's own session, and answering with one
+        // here would conflate "the upstream refused the key" with "the user
+        // must sign in again" — the latter tears the whole page down and hides
+        // the very error this screenshot is meant to show.
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'MODEL_PROVIDER_AUTHENTICATION', message: 'The model provider rejected the request configuration' }) })
         return
       }
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ models: state.customDiscover.models, manualModel: state.customDiscover.manualModel, endpointPreview: state.customDiscover.endpointPreview }) })

@@ -7,6 +7,7 @@ import {
   endpointPreview,
   formatLabel,
   openRouterState,
+  providerCardState,
   stateLabel,
 } from '@/features/model-settings/presentation/providerPresentation'
 
@@ -39,5 +40,16 @@ describe('provider presentation', () => {
     expect(openRouterState(true, false, false, true)).toBe('invalid')
     expect(stateLabel('configured-unvalidated')).not.toBe('Connected')
     expect(stateLabel('valid-inactive')).not.toBe('Disconnected')
+  })
+})
+
+
+describe('latest provider outcome remains visible', () => {
+  it('shows probe rate limiting even before configuration and on the active provider', () => {
+    expect(providerCardState(false, false, false, false, false, true)).toBe('rate-limited')
+    expect(providerCardState(true, true, true, false, false, true)).toBe('rate-limited')
+  })
+  it('never hides a failed validation behind active or stale rate-limited state', () => {
+    expect(providerCardState(true, true, true, true, false, true)).toBe('invalid')
   })
 })

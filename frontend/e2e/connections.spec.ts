@@ -18,7 +18,12 @@ async function mockConns(page, list: Conn[]) {
     const json = (status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
     const empty = () => route.fulfill({ status: 204, body: '' })
     const find = (id: string) => list.find((c) => c.connectionId === id)
-    const view = (c: Conn) => ({ connectionId: c.connectionId, name: c.name, kind: 'CUSTOM_MCP', status: c.status, enabled: c.enabled, config: { serverUrl: c.serverUrl }, hasCredential: c.secret !== null, maskedSuffix: c.secret ? '****' + c.secret.slice(-4) : null, createdAt: '2026-01-01', updatedAt: '2026-01-01', lastError: c.status === 'FAILED' ? 'handshake failed' : null })
+    // The real API returns ownerKind on every connection DTO: a personal
+    // connection is owned by the current user ('USER'), an org-shared one by
+    // the organization ('ORG'). The client decides whether the lifecycle and
+    // edit actions are available from exactly that field, so the mock has to
+    // speak the same contract or the actions are hidden for the wrong reason.
+    const view = (c: Conn) => ({ connectionId: c.connectionId, name: c.name, kind: 'CUSTOM_MCP', status: c.status, enabled: c.enabled, config: { serverUrl: c.serverUrl }, hasCredential: c.secret !== null, maskedSuffix: c.secret ? '****' + c.secret.slice(-4) : null, createdAt: '2026-01-01', updatedAt: '2026-01-01', lastError: c.status === 'FAILED' ? 'handshake failed' : null, ownerKind: 'USER' })
     if (method === 'GET' && path === '/') return json(200, list.map((c) => ({ ...view(c), lastError: undefined })))
     if (method === 'POST' && path === '/') {
       const body = req.postDataJSON() as { name: string; config: { serverUrl: string }; secret?: string }
@@ -93,9 +98,12 @@ test('create then walk the lifecycle to enabled', async ({ page }) => {
   await page.getByTestId('lifecycle-test').click()
   await expect(page.getByTestId('lifecycle-connect')).toBeVisible()
   await page.getByTestId('lifecycle-connect').click()
-  await expect(page.getByTestId('cap-tool-search')).toBeVisible()
+  // Capabilities are readable only for an enabled, tested/connected connection:
+  // the discovered tool stays hidden until the connection is enabled.
+  await expect(page.getByTestId('cap-tool-search')).toHaveCount(0)
   await page.getByTestId('lifecycle-enable').click()
   await expect(page.getByTestId('lifecycle-enabled')).toBeVisible()
+  await expect(page.getByTestId('cap-tool-search')).toBeVisible()
   await page.getByTestId('cap-tab-resources').click()
   await expect(page.getByTestId('cap-resource-docs://g')).toBeVisible()
   await page.getByTestId('cap-tab-prompts').click()

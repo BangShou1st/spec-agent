@@ -138,7 +138,8 @@ class HttpOpenCodeZenClientShapeTest {
             int sessionCounter = 0xFFF - Integer.parseInt(sessionPayload.substring(9, 12), 16);
             assertThat(sessionCounter).isBetween(0, 0xF);
 
-            String msg = request.msg();
+            assertThat(request.msg()).isNull(); // v1.4.2 no longer sends a request-id header.
+            String msg = OpenCodeZenIds.requestId();
             String msgPayload = msg.substring("msg_".length());
             int msgCounter = Integer.parseInt(msgPayload.substring(9, 12), 16) & 0xFFF;
             // 升序 msg id 的中段就是 (timestamp*0x1000 + counter) 的低 12 位;

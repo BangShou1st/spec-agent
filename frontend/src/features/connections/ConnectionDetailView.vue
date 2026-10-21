@@ -40,9 +40,13 @@ onMounted(load)
 watch(() => props.connectionId, load)
 watch(() => store.detail, detail => {
   if (detail?.connectionId === props.connectionId && canReadConnectionCapabilities(detail)) {
+    // 三类能力在同一个权限判定下被发现:连接一旦变得可读,工具就必须和
+    // 资源、提示词一起被加载,绝不因为漏掉这一路而永远显示「0 个工具」。
+    void store.loadTools(props.connectionId)
     void store.loadResources(props.connectionId)
     void store.loadPrompts(props.connectionId)
   } else {
+    store.tools = []
     store.resources = []
     store.prompts = []
     store.resourceContent = null

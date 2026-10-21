@@ -4,12 +4,23 @@
 
 共享实现由独立仓库 E:/project/shared-libs/opencode-zen 维护（两个模块：
 opencode-zen-spring-boot-autoconfigure 与 opencode-zen-spring-boot-starter；协议与模型规则
-也包含在自动配置模块中，版本 1.2.0）。本项目**不再保存源码快照**：后端以普通依赖
-`com.sharedlibs:opencode-zen-spring-boot-starter` 解析制品（本机 mavenLocal，CI 用私有
-GitHub Packages）；联调时设 `OPENCODE_ZEN_LOCAL` 指向库检出目录，Gradle 用本地源码替换同坐标
+也包含在自动配置模块中，版本 1.4.2）。本项目**不再保存源码快照**：后端以普通依赖
+`com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter` 从公开 JitPack
+解析制品（无需任何凭据）；联调时设 `OPENCODE_ZEN_LOCAL` 指向库检出目录，Gradle 用本地源码替换同坐标
 依赖。请求身份、标识符、保留工具、SSE 帧、模型元数据解析、免费资格规则及免费/付费凭证选择
 以共享库为代码源；本文保留验证结论与排障说明。升级与发布流程见
 docs/OPENCODE_SHARED_COMPONENT.md。
+
+## 当前发布版本与历史记录边界（2026-10-21）
+
+当前消费坐标完整版本为 `com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter:v1.4.2`。
+默认 User-Agent 是 `opencode/latest/2.0.29/cli`，保留工具为 `shell/read`；共享库不再发送
+`x-opencode-request`。两个 session 头仍使用共享库生成的同一 session id。
+
+下文第二节至第六节记录 2026-10-16 及以前的协议实测（例如 1.19 UA、bash 工具和 request 头），
+用于历史排障，不是 v1.4.2 的当前请求模板；当前行为以发布库、应用契约测试为准。
+真实模型调用只有 HTTP 200 且返回有效内容才算成功；429 仅证明收到上游限流响应，
+不证明凭据有效，也不算生成成功，不自动重试。
 
 ## 一、本项目怎么用 zen
 

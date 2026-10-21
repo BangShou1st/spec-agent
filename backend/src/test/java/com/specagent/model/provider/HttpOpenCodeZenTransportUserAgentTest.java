@@ -84,16 +84,11 @@ class HttpOpenCodeZenTransportUserAgentTest {
         assertThat(paths).hasSize(4);
         assertThat(clients).hasSize(4)
                 .allSatisfy(client -> assertThat(client).isEqualTo(OpenCodeZenTransport.CLIENT_ID));
-        assertThat(requests).hasSize(4)
-                .allSatisfy(id -> assertThat(id)
-                        .isNotBlank()
-                        .hasSize(4 + 26)
-                        .startsWith("msg_")
-                        .matches("[0-9a-zA-Z_]+"));
+        // v1.4.2 deliberately omits x-opencode-request on every endpoint.
+        assertThat(requests).hasSize(4).allSatisfy(id -> assertThat(id).isNull());
         assertThat(projects).hasSize(4)
                 .allSatisfy(id -> assertThat(id).isEqualTo(OpenCodeZenTransport.GLOBAL_PROJECT));
-        // 一个会话横跨多个请求:每个请求仍要拿到全新的消息 ID。
-        assertThat(requests).doesNotHaveDuplicates();
+
     }
 
     private void handle(HttpExchange exchange) throws IOException {
