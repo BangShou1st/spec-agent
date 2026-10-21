@@ -51,7 +51,7 @@ dependencies {
 }
 
 dependencies {
-    implementation("com.sharedlibs:opencode-zen-spring-boot-starter:1.2.0")
+    implementation("com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter:v1.4.2")
     // Kilo Gateway（第三个模型供应商）客户端 Starter。提供 KiloGatewayClient，
     // 直连 https://ai-gateway.kilo.ai/api/v1，免费模型匿名可用。
     implementation("com.github.BangShou1st.kilo-gateway:kilo-gateway-spring-boot-starter:v0.2.1")
@@ -98,6 +98,7 @@ implementation("io.modelcontextprotocol.sdk:mcp:0.18.4")
 // Deliberately small, reviewed offline set. Expand only after reviewing inheritance,
 // extensions, static initialization and the entire invoked fixture/call chain.
 val auditedOfflineTests = setOf(
+    "com.specagent.model.provider.PublishedZenStarterCompatibilityTest",
     "com.specagent.eval.P3BLiveDatabaseGuardTest",
     "com.specagent.support.DatabaseTestContextGuardTest",
     "com.specagent.model.inference.RoutingModelInferenceGatewayTest",
@@ -149,10 +150,17 @@ tasks.register<Test>("testOffline") {
 
 tasks.register<Test>("testDatabaseIntegration") {
     group = "verification"
-    description = "Runs tagged database integration tests only; requires explicit isolated target and opt-in."
+    description = "Runs integration-named suites; requires explicit isolated target and opt-in."
     testClassesDirs = sourceSets["test"].output.classesDirs
     classpath = sourceSets["test"].runtimeClasspath
-    useJUnitPlatform { includeTags("database-integration"); excludeTags("external-service") }
+    useJUnitPlatform { excludeTags("external-service") }
+    filter {
+        includeTestsMatching("*IntegrationTest")
+        includeTestsMatching("*AcceptanceTest")
+        includeTestsMatching("*EndToEndTest")
+        excludeTestsMatching("com.specagent.eval.EvalLive*")
+        excludeTestsMatching("com.specagent.agent.runtime.PythonBrainCrossLanguageIntegrationTest")
+    }
     doFirst {
         if (!databaseIntegrationEnabled.get()) throw GradleException("Requires -PdatabaseIntegration=true")
     }
@@ -162,6 +170,9 @@ tasks.register<Test>("testDatabaseIntegration") {
 // turn an explicitly offline invocation into bootRun, a live JavaExec or an
 // integration suite. Test.doFirst above remains a second execution-time gate.
 gradle.taskGraph.whenReady {
+    if (!externalServicesEnabled.get() && allTasks.any { it.name.startsWith("evalLive") }) {
+        throw GradleException("Live provider tasks require explicit -PexternalServices=true")
+    }
     val offline = tasks.named("testOffline").get()
     if (hasTask(offline)) {
         val unsafe = allTasks.filter { it != offline && (it is Test || it is JavaExec) }
@@ -183,6 +194,8 @@ gradle.taskGraph.whenReady {
 // offline (or dev-brain-occupied) machine cannot satisfy — see testCrossLanguage.
 tasks.named<Test>("test") {
     filter {
+        // This suite verifies disabled bootstrap and must only run in testOffline.
+        excludeTestsMatching("com.specagent.support.DatabaseTestContextGuardTest")
         excludeTestsMatching("com.specagent.eval.EvalLive*")
         excludeTestsMatching("com.specagent.agent.runtime.PythonBrainCrossLanguageIntegrationTest")
     }

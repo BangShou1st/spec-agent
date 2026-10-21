@@ -166,7 +166,11 @@ public class OpenCodeZenMetadataCatalog implements OpenCodeZenModelMetadataSourc
         }
         Map<String, OpenCodeZenModelMetadata> byId = new LinkedHashMap<>();
         parsed.get().forEach((id, metadata) -> {
-            byId.put(id, new OpenCodeZenModelMetadata(id, metadata.free(), metadata.retired(),
+            // v1.4.2 distinguishes deprecated from retired. Preserve Spec Agent's
+            // stricter existing admission policy across the dependency migration.
+            boolean deprecated = "deprecated".equalsIgnoreCase(
+                    root.path("opencode").path("models").path(id).path("status").asText());
+            byId.put(id, new OpenCodeZenModelMetadata(id, metadata.free(), metadata.retired() || deprecated,
                     OpenCodeModelProtocol.valueOf(metadata.protocol().name())));
         });
         return new View(true, byId);

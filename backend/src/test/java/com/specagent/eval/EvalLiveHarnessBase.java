@@ -34,6 +34,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * 相同,因为运行失败标记在自己事务中提交。
  */
 @SpringBootTest
+@org.junit.jupiter.api.Tag("external-service")
 @ActiveProfiles("test")
 @org.springframework.context.annotation.Import({EvalProbeCapabilities.Config.class})
 public abstract class EvalLiveHarnessBase {

@@ -18,8 +18,8 @@ def summarize(needs, full):
     for name in INDEPENDENT + EXTERNAL:
         result = needs.get(name, {}).get("result", "missing")
         if name in EXTERNAL and not full and result == "skipped":
-            status = "SKIPPED_EXTERNAL_DEPENDENCY"
-            reason = "Zen compile-time types unavailable; explicitly excluded in independent mode"
+            status = "NOT RUN"
+            reason = "Explicit manual independent diagnostics; full integrations NOT RUN"
         elif result == "success":
             status, reason = "PASS", "Executed successfully (see job logs for coverage)"
             if name in EXTERNAL and not full:

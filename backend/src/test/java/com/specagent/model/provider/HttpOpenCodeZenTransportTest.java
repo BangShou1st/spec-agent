@@ -99,15 +99,15 @@ class HttpOpenCodeZenTransportTest {
         assertThat(payload.path("stream").asBoolean()).isTrue();
         assertThat(payload.path("stream_options").path("include_usage").asBoolean()).isTrue();
         assertThat(payload.path("messages").get(3).path("tool_call_id").asText()).isEqualTo("native-1");
-        // Zen 的免费档要求请求携带完整 CLI 核心工具信封(bash/edit/glob/grep/read);
+        // Zen 的免费档要求请求携带2.x CLI 工具信封(shell/read);
         // 应用已授权的工具排在其前,且保留名绝不重复。
-        assertThat(payload.path("tools").size()).isEqualTo(request.tools().size() + 5);
+        assertThat(payload.path("tools").size()).isEqualTo(request.tools().size() + 2);
         List<String> appended = new ArrayList<>();
-        for (int index = 0; index < 5; index++) {
+        for (int index = 0; index < 2; index++) {
             appended.add(payload.path("tools").get(request.tools().size() + index)
                     .path("function").path("name").asText());
         }
-        assertThat(appended).containsExactly("bash", "edit", "glob", "grep", "read");
+        assertThat(appended).containsExactly("shell", "read");
         assertThat(payload.toString()).doesNotContain(TEST_KEY);
     }
 
@@ -164,7 +164,7 @@ class HttpOpenCodeZenTransportTest {
         assertThat(request.headers().getFirst(OpenCodeZenTransport.CLIENT_HEADER))
                 .isEqualTo(OpenCodeZenTransport.CLIENT_ID);
         assertThat(request.headers().getFirst(OpenCodeZenTransport.REQUEST_HEADER))
-                .isNotBlank().hasSize(4 + 26).startsWith("msg_");
+                .isNull();
         assertThat(request.headers().getFirst(OpenCodeZenTransport.PROJECT_HEADER))
                 .isEqualTo(OpenCodeZenTransport.GLOBAL_PROJECT);
 

@@ -27,7 +27,7 @@ def test_independent_success_reports_external_skip_and_unmeasured_live():
     report, failures = summary.summarize(results(), False)
     assert failures == []
     assert report.count("| PASS |") == 4
-    assert report.count("| SKIPPED_EXTERNAL_DEPENDENCY |") == 4
+    assert report.count("| NOT RUN |") == 4
     assert "NOT_MEASURED" in report
 
 
@@ -79,15 +79,15 @@ def test_pr_trigger_and_always_running_summary_remain_enabled():
     assert "needs: [validation-mode, frontend, brain, backend-independent, contracts-static, backend, eval-baseline, cross-language, e2e]" in workflow
 
 
-def test_workflow_keeps_production_dependency_and_explicit_manual_full_mode():
+def test_workflow_uses_public_dependency_and_defaults_to_full_validation():
     workflow = WORKFLOW.read_text(encoding="utf-8")
     for job in summary.EXTERNAL:
         assert f"  {job}:\n    needs: validation-mode\n    if: needs.validation-mode.outputs.full == 'true'" in workflow
     assert "continue-on-error" not in workflow
-    assert "default: false" in workflow
-    assert "github.event_name == 'workflow_dispatch' && inputs.full_validation == true" in workflow
+    assert "default: true" in workflow
+    assert "github.event_name != 'workflow_dispatch' || inputs.full_validation == true" in workflow
     build = BUILD.read_text(encoding="utf-8")
-    assert 'implementation("com.sharedlibs:opencode-zen-spring-boot-starter:1.2.0")' in build
+    assert 'implementation("com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter:v1.4.2")' in build
     assert "skipZenStarter" not in build
 
 
@@ -126,7 +126,7 @@ def test_no_unreviewed_wide_test_selection_remains_in_the_workflow():
     assert "gradlew cleanTest test\n" not in workflow
     assert not re.search(r"gradlew\s+cleanTest\s+test\s*$", workflow, re.M)
     assert "gradlew cleanTest testOffline" in workflow
-    assert "gradlew testDatabaseIntegration -PdatabaseIntegration=true" in workflow
+    assert "gradlew test testDatabaseIntegration -PdatabaseIntegration=true" in workflow
 
 
 def test_every_database_backed_selection_opts_in_explicitly():
@@ -168,3 +168,29 @@ def test_the_isolated_target_is_enforced_before_any_context_starts():
     assert "EvalLiveIsolatedDatabase" in text
     assert "verifyBeforeContext" in text
     assert (ROOT / "backend/src/test/resources/META-INF/spring.factories").is_file()
+
+
+def test_zen_resolves_public_release_without_local_maven_or_source_override_in_ci():
+    build = BUILD.read_text(encoding="utf-8")
+    workflow = workflow_text()
+    assert 'url = uri("https://jitpack.io")' in build
+    assert "mavenLocal()" not in build
+    assert 'implementation("com.sharedlibs:opencode-zen' not in build
+    assert "OPENCODE_ZEN_LOCAL" not in workflow
+    assert "dependencyInsight --dependency opencode-zen --configuration compileClasspath" in workflow
+    assert "gradlew compileJava bootJar" in workflow
+    assert "5434" not in workflow
+    assert "spec_agent_test" not in workflow
+    assert "DROP DATABASE" not in workflow
+    assert "github.run_id" in workflow and "github.run_attempt" in workflow
+    assert "SPRING_FLYWAY_URL: ${{ steps.isolated-db.outputs.url }}" in workflow
+    assert "-PexternalServices=true" not in workflow
+
+
+def test_database_task_cannot_silently_select_a_nonexistent_tag():
+    build = BUILD.read_text(encoding="utf-8")
+    selection = build.split('tasks.register<Test>("testDatabaseIntegration")', 1)[1].split('// Reject the whole graph', 1)[0]
+    assert 'includeTestsMatching("*IntegrationTest")' in selection
+    assert 'includeTags("database-integration")' not in selection
+    assert 'excludeTestsMatching("com.specagent.eval.EvalLive*")' in selection
+    assert 'Live provider tasks require explicit -PexternalServices=true' in build
