@@ -1,0 +1,37 @@
+[
+  {
+    "path": "backend/src/main/resources/db/migration/V98__agent_run_model_binding.sql",
+    "sha256_normalized": "393b9ffd37d4063bb66c3b019d39b22b38c67e053f4e74ac25cb5add9e5cede1",
+    "unchanged": true
+  },
+  {
+    "path": "backend/src/main/resources/db/migration/V99__legacy_run_model_binding_fail_closed.sql",
+    "sha256_normalized": "fddcd23d863962ab89ebb56f715930fa20a665a836a044dfaedf636b9fd94bba",
+    "unchanged": true
+  },
+  {
+    "path": "backend/src/main/resources/db/migration/V100__protect_existing_run_model_binding.sql",
+    "sha256_normalized": "c212d7468fae6c14809563e0fe9d957a3dc576cabda301ea21486c537a323ef3",
+    "unchanged": true
+  },
+  {
+    "path": "backend/src/main/resources/db/migration/V101__deferred_capability_deadline.sql",
+    "sha256_normalized": "aa77074e3cd10d90d7a2f80428781aa95d16269e41cbcabccd8e12ea1504669b",
+    "unchanged": true
+  },
+  {
+    "path": "agent-brain/src/spec_agent_brain/prompts/decision.py",
+    "sha256_normalized": "f0fc4c177d02c7780d6b4b0fcab625e2db44d23c486a6ec2230a4acfa9ce88a7",
+    "unchanged": true
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/LegacyBindingMigrationGuard.java",
+    "sha256_normalized": "885e1e51ce0161c43ab21021c0b9a698d2320019c325b8a546b2d04ad4c9e293",
+    "unchanged": true
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/AgentRunModelBindingRepository.java",
+    "sha256_normalized": "14e92c443ee6a4cceb977c6e62fc035ba27bb8d7495e69345df73b7919e62072",
+    "unchanged": true
+  }
+]

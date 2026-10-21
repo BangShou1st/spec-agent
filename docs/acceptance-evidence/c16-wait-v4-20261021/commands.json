@@ -1,0 +1,153 @@
+{
+  "environment": {
+    "Java": "OPENCODE_ZEN_LOCAL cleared per command process only; audited allowlist, no DB/external execution opt-in",
+    "Python": "PYTHONPATH=E:/project/spec-agent/agent-brain/src; PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 for pytest"
+  },
+  "commands": [
+    {
+      "cwd": "E:/project/spec-agent",
+      "command": ".\\backend\\gradlew.bat -p backend testOffline --offline --console=plain --dry-run",
+      "logs": [
+        "root-task-graph.log"
+      ],
+      "expected_status": "PASS"
+    },
+    {
+      "cwd": "E:/project/spec-agent",
+      "command": ".\\backend\\gradlew.bat -p backend testOffline --tests com.specagent.agent.action.ActionEligibilityWaitV4Test --tests com.specagent.agent.runtime.WaitDependencyServiceOfflineTest --tests com.specagent.agent.runtime.WaitDependencyRepositoryOfflineTest --offline --console=plain",
+      "logs": [
+        "java-prototype-red.log",
+        "java-green.log"
+      ],
+      "expected_status": "red then green"
+    },
+    {
+      "cwd": "E:/project/spec-agent",
+      "command": ".\\backend\\gradlew.bat -p backend testOffline --tests com.specagent.agent.runtime.WaitLifecycleOfflineTest --offline --console=plain",
+      "logs": [
+        "revocation-red.log",
+        "membership-red.log",
+        "post-membership-commit.log"
+      ],
+      "expected_status": "red then green"
+    },
+    {
+      "cwd": "E:/project/spec-agent",
+      "command": ".\\backend\\gradlew.bat -p backend testOffline --tests com.specagent.agent.action.ActionEligibilityWaitV4Test --offline --console=plain",
+      "logs": [
+        "null-extension-red.log",
+        "post-fix-commit-regression.log"
+      ],
+      "expected_status": "red then green"
+    },
+    {
+      "cwd": "E:/project/spec-agent",
+      "command": ".\\backend\\gradlew.bat -p backend testOffline bootJar --offline --console=plain",
+      "logs": [
+        "root-full.log",
+        "root-final.log",
+        "root-final-verified.log",
+        "root-null-final.log",
+        "root-membership-final.log"
+      ],
+      "expected_status": "PASS"
+    },
+    {
+      "cwd": "E:/project/spec-agent",
+      "command": ".\\backend\\gradlew.bat -p backend testOffline --offline --console=plain",
+      "logs": [
+        "post-commit-full.log",
+        "post-fix-full.log"
+      ],
+      "expected_status": "PASS"
+    },
+    {
+      "cwd": "E:/project/spec-agent",
+      "command": ".\\backend\\gradlew.bat -p backend testOffline --tests com.specagent.agent.action.ActionEligibilityWaitV4Test --tests com.specagent.agent.runtime.WaitDependencyServiceOfflineTest --tests com.specagent.agent.runtime.WaitDependencyRepositoryOfflineTest --tests com.specagent.agent.runtime.WaitLifecycleOfflineTest --tests com.specagent.agent.runtime.WaitDecisionExecutionOfflineTest --offline --console=plain",
+      "logs": [
+        "post-commit-regression.log"
+      ],
+      "expected_status": "PASS"
+    },
+    {
+      "cwd": "E:/project/spec-agent",
+      "command": ".\\backend\\gradlew.bat -p backend/independent clean test verificationScope --offline --console=plain",
+      "logs": [
+        "independent-full.log"
+      ],
+      "expected_status": "PASS"
+    },
+    {
+      "cwd": "E:/project/spec-agent",
+      "command": ".\\backend\\gradlew.bat -p backend/independent test verificationScope --offline --console=plain",
+      "logs": [
+        "independent-final.log",
+        "independent-final-verified.log",
+        "independent-null-final.log"
+      ],
+      "expected_status": "PASS"
+    },
+    {
+      "cwd": "E:/project/spec-agent",
+      "command": "agent-brain/.venv/Scripts/python.exe -m pytest agent-brain/tests/test_c16_wait_v4.py -q",
+      "logs": [
+        "python-prototype-red.log",
+        "python-red.log",
+        "python-green.log"
+      ],
+      "expected_status": "red then green"
+    },
+    {
+      "cwd": "E:/project/spec-agent",
+      "command": "agent-brain/.venv/Scripts/python.exe -m pytest agent-brain/tests tools/tests -q",
+      "logs": [
+        "python-full.log",
+        "python-final.log",
+        "python-final-verified.log",
+        "python-golden-final.log",
+        "python-null-final.log"
+      ],
+      "expected_status": "PASS"
+    },
+    {
+      "cwd": "E:/project/spec-agent",
+      "command": "agent-brain/.venv/Scripts/python.exe tools/p3b/evidence_audit.py",
+      "logs": [
+        "historical-evidence.json"
+      ],
+      "expected_status": "PASS"
+    },
+    {
+      "cwd": "E:/project/spec-agent",
+      "command": "agent-brain/.venv/Scripts/python.exe tools/p3b/p3b_decision_replay.py --output docs/acceptance-evidence/c16-wait-v4-20261021/contract-replay.json",
+      "logs": [
+        "replay.log"
+      ],
+      "expected_status": "PASS"
+    },
+    {
+      "cwd": "E:/project/spec-agent/backend",
+      "command": ".\\gradlew.bat test --offline --console=plain --dry-run",
+      "logs": [
+        "reject-root-test.log"
+      ],
+      "expected_status": "exit 1: intended rejection"
+    },
+    {
+      "cwd": "E:/project/spec-agent/backend",
+      "command": ".\\gradlew.bat testOffline bootRun -PdatabaseIntegration=true --offline --console=plain --dry-run",
+      "logs": [
+        "reject-offline-bootrun.log"
+      ],
+      "expected_status": "exit 1: intended rejection"
+    },
+    {
+      "cwd": "E:/project/spec-agent/backend",
+      "command": ".\\gradlew.bat testOffline evalLive -PdatabaseIntegration=true -PexternalServices=true --offline --console=plain --dry-run",
+      "logs": [
+        "reject-offline-live.log"
+      ],
+      "expected_status": "exit 1: intended rejection"
+    }
+  ]
+}
