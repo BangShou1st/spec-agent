@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.specagent.eval.P3BLiveDatabaseGuardTest" tests="26" skipped="0" failures="0" errors="0" timestamp="2026-10-21T03:27:01" hostname="榜首" time="0.412">
+  <properties/>
+  <testcase name="verifyTargetDatabaseIsolationRefusesNonLiveEvalDatabase()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.148"/>
+  <testcase name="verifyTargetDatabaseIsolationRefusesMissingOrBlankUrl()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.002"/>
+  <testcase name="verifyTargetDatabaseIsolationRefusesForbiddenDatabase()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.002"/>
+  <testcase name="seedingAWrongDatabaseChangesZeroRows()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.002"/>
+  <testcase name="validateTargetDatabaseUrlStaticRefusesUndeterminableDatabaseName()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.002"/>
+  <testcase name="validateTargetDatabaseUrlStaticRefusesNonLiveEvalDatabase()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.001"/>
+  <testcase name="aHistoricalNonLiveEvalDatabaseIsRefusedToo()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.001"/>
+  <testcase name="validateTargetDatabaseUrlStaticAcceptsDesignatedLiveDatabase()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.001"/>
+  <testcase name="anUndeterminableIdentityIsRefused()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.002"/>
+  <testcase name="preflightRequiresExplicitCredentialsAndEndpointBeforeConnecting()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.041"/>
+  <testcase name="verifyTargetDatabaseIsolationRefusesUndeterminableIdentity()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.002"/>
+  <testcase name="seedingWithAMismatchedConfiguredNameChangesZeroRows()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.003"/>
+  <testcase name="ordinaryDevelopmentAndTestDatabasesAreRefused()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.001"/>
+  <testcase name="preflightStaticFailureNeverOpensConnection()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.001"/>
+  <testcase name="aConfiguredNameThatDoesNotMatchTheRealConnectionIsRefused()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.002"/>
+  <testcase name="preflightChecksDatabaseAndSameNameServerDriftAndClosesResources()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.011"/>
+  <testcase name="preflightConnectionFailureIsClosedWithoutLeakingDriverDetails()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.003"/>
+  <testcase name="validateTargetDatabaseUrlStaticRefusesForbiddenDatabases()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.001"/>
+  <testcase name="verifyTargetDatabaseIsolationAcceptsMatchingLiveDatabase()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.007"/>
+  <testcase name="unauthorizedPlainSpringBootstrapFailsBeforeDynamicPropertiesAndBeans()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.163"/>
+  <testcase name="onlyADesignatedLiveEvaluationDatabaseIsAccepted()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.001"/>
+  <testcase name="validateTargetDatabaseUrlStaticRefusesMissingOrBlank()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.001"/>
+  <testcase name="databaseNameIsParsedFromTheJdbcUrl()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.0"/>
+  <testcase name="invalidDynamicPropertyTargetRejectsWithoutAnyJdbcConnection()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.001"/>
+  <testcase name="anUnresolvedConfiguredDatabaseNameIsRefused()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.001"/>
+  <testcase name="verifyTargetDatabaseIsolationRefusesMismatchedConnection()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

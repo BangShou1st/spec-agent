@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.specagent.agent.action.C16WaitContractTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-10-21T03:25:31" hostname="榜首" time="0.061">
+  <properties/>
+  <testcase name="naturalLanguageOrAResultStatusCannotManufacturePendingEvidence()" classname="com.specagent.agent.action.C16WaitContractTest" time="0.004"/>
+  <testcase name="legacyWireVersionsRejectInjectedPendingDependencies()" classname="com.specagent.agent.action.C16WaitContractTest" time="0.031"/>
+  <testcase name="deferredCompletionUsesExistingObservationWireButPendingRemainsHostOwned()" classname="com.specagent.agent.action.C16WaitContractTest" time="0.02"/>
+  <testcase name="shadowRecordsWaitVetoWhileOnlyEnforcedModeThrows()" classname="com.specagent.agent.action.C16WaitContractTest" time="0.004"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

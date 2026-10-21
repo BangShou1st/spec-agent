@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.specagent.model.inference.RoutingModelInferenceGatewayTest" tests="18" skipped="0" failures="0" errors="0" timestamp="2026-10-21T03:27:02" hostname="榜首" time="0.756">
+  <properties/>
+  <testcase name="frozenTargetDrivesProviderAndModelWithoutASecondRead()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.305"/>
+  <testcase name="openRouterRoutesOnlyToTheOpenRouterDelegate()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.004"/>
+  <testcase name="runWithIncompleteRuntimeSnapshotFailsClosedBeforeProviderGateway()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.006"/>
+  <testcase name="evictedPausedRunAndNewGatewayStillCannotSilentlyRebind()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.246"/>
+  <testcase name="newRunMayUseTheNewlySelectedModel()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.012"/>
+  <testcase name="streamingUsesTheFrozenTargetModel()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.051"/>
+  <testcase name="refusedDurableBindingStopsBeforeAnyProviderCall()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.042"/>
+  <testcase name="sameRunFailsClosedWhenProviderAndModelDriftBetweenCalls()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.005"/>
+  <testcase name="frozenRunFailsClosedWhenTheTargetBecomesUnresolvable()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.005"/>
+  <testcase name="kiloRoutesOnlyToTheKiloDelegate()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.003"/>
+  <testcase name="failedDurableBindingDoesNotFallBackToMemoryOrRetry()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.005"/>
+  <testcase name="freezeIsPerRunAndDoesNotLeakAcrossRuns()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.004"/>
+  <testcase name="delegateFailurePropagatesWithoutFallbackOrRetry()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.032"/>
+  <testcase name="sameRunFailsClosedWhenOnlyTheModelDrifts()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.005"/>
+  <testcase name="customRoutesOnlyToTheCustomDelegate()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.005"/>
+  <testcase name="streamingFollowsTheSameActiveProviderRouting()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.003"/>
+  <testcase name="openCodeZenRoutesOnlyToTheOpenCodeDelegate()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.002"/>
+  <testcase name="concurrentFirstCallsCannotBindOneRunToTwoDifferentTargets()" classname="com.specagent.model.inference.RoutingModelInferenceGatewayTest" time="0.011"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

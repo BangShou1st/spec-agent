@@ -1,0 +1,7 @@
+worktree E:/project/spec-agent
+HEAD 9f85ff5a7adb0614fc08e167ebc73c8b572d45fc
+branch refs/heads/dev
+
+worktree E:/project/spec-agent-ci-review
+HEAD 400ac62be3a6518f649e652b4634c2adf0de75e5
+branch refs/heads/codex/main-ci-independent

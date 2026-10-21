@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.specagent.agent.runtime.DeferredContinuationOfflineTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-10-21T03:29:01" hostname="榜首" time="0.191">
+  <properties/>
+  <testcase name="dependencyWakeupCannotBeLostWhenParentTerminalizationIsNotYetVisible()" classname="com.specagent.agent.runtime.DeferredContinuationOfflineTest" time="0.003"/>
+  <testcase name="timeoutBatchFailureDoesNotStarveExistingContinuationChecks()" classname="com.specagent.agent.runtime.DeferredContinuationOfflineTest" time="0.162"/>
+  <testcase name="registeredPendingParksEvenWhenAnotherInvocationHasCompleted()" classname="com.specagent.agent.runtime.DeferredContinuationOfflineTest" time="0.009"/>
+  <testcase name="oldRunningCrashWindowNeverClaimsToBeRecoverablePending()" classname="com.specagent.agent.runtime.DeferredContinuationOfflineTest" time="0.003"/>
+  <testcase name="completionOrTimeoutCreatesAChildAndRedeliveryReturnsTheSameChild()" classname="com.specagent.agent.runtime.DeferredContinuationOfflineTest" time="0.006"/>
+  <testcase name="failedOwnerCannotBeReactivatedByALateCompletion()" classname="com.specagent.agent.runtime.DeferredContinuationOfflineTest" time="0.001"/>
+  <system-out><![CDATA[11:29:02.081 [Test worker] WARN com.specagent.agent.runtime.ContinuationDispatchService -- Deferred capability timeout scan failed; retrying next poll (IllegalStateException)
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

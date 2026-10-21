@@ -1,0 +1,11 @@
+Starting a Gradle Daemon, 1 incompatible Daemon could not be reused, use --status for details
+:compileJava SKIPPED
+:processResources SKIPPED
+:classes SKIPPED
+:compileTestJava SKIPPED
+:processTestResources SKIPPED
+:testClasses SKIPPED
+:test SKIPPED
+:verificationScope SKIPPED
+
+BUILD SUCCESSFUL in 5s

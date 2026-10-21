@@ -1,0 +1,24 @@
+[
+  {
+    "path": "backend/src/main/resources/db/migration/V98__agent_run_model_binding.sql",
+    "sha256": "393b9ffd37d4063bb66c3b019d39b22b38c67e053f4e74ac25cb5add9e5cede1",
+    "same_normalized_bytes_as_HEAD": true
+  },
+  {
+    "path": "backend/src/main/resources/db/migration/V99__legacy_run_model_binding_fail_closed.sql",
+    "sha256": "fddcd23d863962ab89ebb56f715930fa20a665a836a044dfaedf636b9fd94bba",
+    "same_normalized_bytes_as_HEAD": true
+  },
+  {
+    "versions_98_to_101": [
+      98,
+      99,
+      100,
+      101
+    ],
+    "duplicate_versions": false
+  },
+  {
+    "existing_fixture_changes": []
+  }
+]
