@@ -7,6 +7,21 @@
 
 ## 1. Protocol versions
 
+C16 adds `agent-input.v4` / `agent-decision.v4` decisions in enforced mode when
+its Host dependency port is installed. V4 requires the eligibility mask and a root
+`pendingDependencies` extension: `version: pending-dependencies.v1`,
+run/snapshot/contextHash/project/route/anchor identity, up to twenty `dependencies`
+(invocationId, ownerRunId, capabilityId, ISO-8601 deadline), and up to one
+`completedResults` observation for a resumed subscriber. V102 freezes this per run,
+without modifying graph snapshots. V2/V3 reject the new field.
+
+V4 WAIT payload is exactly `{ "dependencyRef": "<projected invocation UUID>" }`.
+Empty lists, invented/foreign references, cross-scope projections, duplicates and
+untyped references fail closed. Completed results are external evidence and do
+not expand the graph snapshot's allowed source refs. Response version and
+eligibility evidence must match the request. Execution/lifecycle contract:
+[C16 WAIT V4](../docs/v2/C16_WAIT_V4.md).
+
 | Contract | Version |
 |---|---|
 | Request envelope (Spring → Python) | `agent-input.v2` |

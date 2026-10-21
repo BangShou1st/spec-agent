@@ -118,6 +118,11 @@ public class CapabilityInvocationRepository {
      * 按创建顺序返回一次运行拥有的全部调用记录。仅作为续跑资格判断的增量读取,
      * 不影响 claim/complete 的语义。
      */
+    public Optional<CapabilityInvocationRecord> findById(UUID id) {
+        return jdbcTemplate.query("SELECT * FROM capability_invocations WHERE id = :id",
+                Maps.of("id", id), rowMapper).stream().findFirst();
+    }
+
     public List<CapabilityInvocationRecord> findByRunId(UUID runId) {
         String sql = "SELECT * FROM capability_invocations "
                 + "WHERE run_id = :runId ORDER BY created_at";

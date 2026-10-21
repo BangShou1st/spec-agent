@@ -21,12 +21,13 @@ from ..contracts.decisions import (
     ActionProposal,
     AgentV2ResponseEnvelope,
     AgentV3ResponseEnvelope,
+    AgentV4ResponseEnvelope,
     ModelDecisionOutput,
     ObservationView,
     UsageView,
 )
-from ..contracts.inputs import AgentV2RequestEnvelope, AgentV3RequestEnvelope
-from ..contracts.protocol import DECISION_PROTOCOL_VERSION, DECISION_PROTOCOL_VERSION_V3
+from ..contracts.inputs import AgentV2RequestEnvelope, AgentV3RequestEnvelope, AgentV4RequestEnvelope
+from ..contracts.protocol import DECISION_PROTOCOL_VERSION, DECISION_PROTOCOL_VERSION_V3, DECISION_PROTOCOL_VERSION_V4
 from ..model_client import ChatMessage, ModelClient
 from ..prompts import decision as decision_prompt
 
@@ -140,10 +141,10 @@ def handle_decision(
         model_calls = 2
         output = _validate_output(completion.content, request)
 
-    response_type = (AgentV3ResponseEnvelope
+    response_type = (AgentV4ResponseEnvelope if isinstance(request, AgentV4RequestEnvelope) else AgentV3ResponseEnvelope
                      if isinstance(request, AgentV3RequestEnvelope)
                      else AgentV2ResponseEnvelope)
-    response_version = (DECISION_PROTOCOL_VERSION_V3
+    response_version = (DECISION_PROTOCOL_VERSION_V4 if isinstance(request, AgentV4RequestEnvelope) else DECISION_PROTOCOL_VERSION_V3
                         if isinstance(request, AgentV3RequestEnvelope)
                         else DECISION_PROTOCOL_VERSION)
 
@@ -206,6 +207,11 @@ def _render_model_input(
     payload = json.loads(rendered)
     payload["actionEligibility"] = request.action_eligibility.model_dump(
         mode="json", by_alias=True)
+    if isinstance(request, AgentV4RequestEnvelope):
+        payload["pendingDependencies"] = request.pending_dependencies.model_dump(mode="json", by_alias=True)
+        payload["waitPayloadSchema"] = {"type": "object", "required": ["dependencyRef"],
+                                      "properties": {"dependencyRef": {"enum": [str(d.invocation_id) for d in request.pending_dependencies.dependencies]}},
+                                      "additionalProperties": False}
     return json.dumps(payload, ensure_ascii=False)
 
 
@@ -461,6 +467,12 @@ def _check_source_refs(output: ModelDecisionOutput, request: AgentV2RequestEnvel
 
 def _check_eligibility_action(output: ModelDecisionOutput,
                               request: AgentV3RequestEnvelope) -> None:
+    if isinstance(request, AgentV4RequestEnvelope) and output.action.action_family == "WAIT":
+        payload = output.action.payload
+        allowed = {str(d.invocation_id) for d in request.pending_dependencies.dependencies}
+        if (set(payload) != {"dependencyRef"} or not isinstance(payload.get("dependencyRef"), str)
+                or payload["dependencyRef"] not in allowed):
+            raise ActionIneligibleBrainError("WAIT requires a projected dependencyRef")
     if output.action.action_family not in request.action_eligibility.eligible_families:
         raise ActionIneligibleBrainError(
             "model selected an action outside the Runtime eligibility mask")

@@ -1,6 +1,9 @@
 # Deferred capability foundation and migration boundary
 
-This implementation is a Host-side foundation, not a completed C16 WAIT product feature.
+The original implementation below is the V2/V3 Host-side foundation.
+The subsequent [C16 WAIT V4 implementation](C16_WAIT_V4.md) adds durable run-owned
+dependency projections and subscriptions. Production deferred adapters and real
+database/E2E qualification are still outstanding.
 There is no production deferred adapter or public completion endpoint yet. V2/shadow
 WAIT remains a legacy no-op; V3/enforced WAIT remains ineligible without a versioned
 dependency projection. Do not enable WAIT merely because these runtime tests pass.
@@ -97,10 +100,10 @@ automatic external-job resubmission. A disabled worker does not run recovery sca
 
 V2/V3 snapshots expose only completed observations. PENDING is kept Host-owned;
 Java and Python reject it as a completed observation. Shared completion fixtures
-round-trip SUCCEEDED/FAILED in both languages. A future versioned pending-dependency
-projection, model WAIT selection, executor subscription and event-to-WAIT identity
-are still required for the full C16 model action. They are not silently added to
-the frozen wire format in this change.
+round-trip SUCCEEDED/FAILED in both languages. The separate V4 pending-dependency
+projection, WAIT selection, fenced subscription and event-to-WAIT identity are
+implemented in C16_WAIT_V4.md. They are not added to frozen V2/V3 wire formats.
+The external producer and database/process qualification remain open.
 
 ## Required isolated-database acceptance (all NOT RUN)
 

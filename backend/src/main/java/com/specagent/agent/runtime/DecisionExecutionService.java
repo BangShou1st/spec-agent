@@ -65,6 +65,10 @@ public class DecisionExecutionService {
     private final AgentTracePort semanticTraceRecorder;
     private final RunProgressRecorder progressRecorder;
 
+    private WaitDependencyService waitDependencies;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setWaitDependencies(WaitDependencyService dependencies) { this.waitDependencies = dependencies; }
+
     public DecisionExecutionService(AgentDecisionEngine decisionEngine,
                                     AdvisorPolicyEngine policyEngine,
                                     ActionExecutor actionExecutor,
@@ -226,6 +230,16 @@ public class DecisionExecutionService {
         boolean graphMutation = family == ActionFamily.CREATE_NODE
                 || family == ActionFamily.REQUEST_USER_INPUT;
         ActionResult execResult;
+        if (family == ActionFamily.WAIT && envelope.pendingDependencies() != null) {
+            if (!actionEligibilityGate.isEnforced() || waitDependencies == null)
+                throw new IllegalStateException("WAIT_V4_HOST_REQUIRED");
+            final String waitTrace = appendTrace(trace, "waiting_dependency", traceSeparator);
+            guarded(() -> {
+                waitDependencies.subscribe(envelope, proposal);
+                terminalizationService.completeWithCheck(runId, AgentRunStatus.COMPLETED, waitTrace);
+            });
+            return new DecisionExecutionResult(runId, null, null, "waiting_dependency", waitTrace);
+        }
         if (graphMutation) {
             final String gateTrace = trace;
             execResult = transactionTemplate.execute(tx -> {
@@ -248,8 +262,9 @@ public class DecisionExecutionService {
         } else {
             execResult = actionExecutor.execute(proposal, execContext.withDeferredAllowed(
                     actionEligibilityGate.isEnforced()
-                            && com.specagent.agent.protocol.AgentProtocol.INPUT_PROTOCOL_VERSION_V3
-                                    .equals(envelope.protocolVersion())));
+                            && (com.specagent.agent.protocol.AgentProtocol.INPUT_PROTOCOL_VERSION_V3
+                                    .equals(envelope.protocolVersion()) || com.specagent.agent.protocol.AgentProtocol.INPUT_PROTOCOL_VERSION_V4
+                                    .equals(envelope.protocolVersion()))));
             trace = appendTrace(trace, "completed", traceSeparator);
             Map<String, Object> payload = new HashMap<>();
             payload.put("actionFamily", proposal.actionFamily());

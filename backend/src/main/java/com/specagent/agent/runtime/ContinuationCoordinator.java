@@ -51,6 +51,9 @@ public class ContinuationCoordinator {
     private final NodeRepository nodeRepository;
     private final LoopProperties loopProperties;
     private final RunService runService;
+    private WaitDependencyRepository waitDependencies;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setWaitDependencies(WaitDependencyRepository dependencies) { this.waitDependencies = dependencies; }
 
     public ContinuationCoordinator(AgentRunService agentRunService,
                                    AgentRunRepository agentRunRepository,
@@ -139,6 +142,16 @@ public class ContinuationCoordinator {
         if (events.stream().anyMatch(ContinuationCoordinator::isRespondMessage)) {
             return ContinuationDecision.of(runId, ContinuationVerdict.TERMINAL_RESPONSE,
                     "run emitted a response message");
+        }
+        if (waitDependencies != null) {
+            var waiting = waitDependencies.state(runId);
+            if (waiting.isPresent()) {
+                return switch (waiting.get()) {
+                    case "WAITING" -> ContinuationDecision.of(runId, ContinuationVerdict.PARKED_DEPENDENCY, "WAIT subscription pending");
+                    case "READY" -> ContinuationDecision.of(runId, ContinuationVerdict.EXECUTED_NEW_OBSERVATION, "WAIT dependency settled");
+                    default -> ContinuationDecision.of(runId, ContinuationVerdict.NO_EFFECT, "WAIT subscription invalidated");
+                };
+            }
         }
         if (invocationRepository.findByRunId(run.id()).stream()
                 .anyMatch(record -> record.status() == CapabilityResult.Status.PENDING)) {

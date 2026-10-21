@@ -301,9 +301,10 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
     private AgentResponseEnvelope decisionResponse(AgentRequestEnvelope request,
                                                    ObservationView observation,
                                                    ActionProposal proposal) {
-        if (AgentProtocol.INPUT_PROTOCOL_VERSION_V3.equals(request.protocolVersion())) {
+        if (request.actionEligibility() != null) {
             return new AgentResponseEnvelope(
-                    AgentProtocol.DECISION_PROTOCOL_VERSION_V3,
+                    AgentProtocol.INPUT_PROTOCOL_VERSION_V4.equals(request.protocolVersion())
+                            ? AgentProtocol.DECISION_PROTOCOL_VERSION_V4 : AgentProtocol.DECISION_PROTOCOL_VERSION_V3,
                     request.runId(), null, observation, proposal,
                     new UsageView(1, List.of()), Map.of(),
                     request.actionEligibility().version(),

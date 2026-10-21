@@ -134,14 +134,20 @@ public final class AgentBrainResponseValidator {
         validateObservation(response.observation());
         validateProposal(request, response.actionProposal());
         validateEligibilityContract(request, response);
+        if (request.pendingDependencies() != null)
+            new com.specagent.agent.action.ActionEligibilityValidator().validateSelection(
+                    request, response.actionProposal(), request.actionEligibility());
         validateConflictAction(request, response);
     }
 
     private static void validateEligibilityContract(AgentRequestEnvelope request,
                                                     AgentResponseEnvelope response) {
-        boolean requestV3 = AgentProtocol.INPUT_PROTOCOL_VERSION_V3
+        boolean requestV4 = AgentProtocol.INPUT_PROTOCOL_VERSION_V4.equals(request.protocolVersion());
+        boolean responseV4 = AgentProtocol.DECISION_PROTOCOL_VERSION_V4.equals(response.protocolVersion());
+        if (requestV4 != responseV4) throw new AgentContractException("V4 response version mismatch");
+        boolean requestV3 = requestV4 || AgentProtocol.INPUT_PROTOCOL_VERSION_V3
                 .equals(request.protocolVersion());
-        boolean responseV3 = AgentProtocol.DECISION_PROTOCOL_VERSION_V3
+        boolean responseV3 = responseV4 || AgentProtocol.DECISION_PROTOCOL_VERSION_V3
                 .equals(response.protocolVersion());
         if (requestV3 != responseV3) {
             throw new AgentContractException(

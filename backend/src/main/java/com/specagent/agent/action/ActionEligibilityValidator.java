@@ -60,8 +60,15 @@ public final class ActionEligibilityValidator {
             case CREATE_NODE -> validateCreateNode(request, proposal.payload());
             case REQUEST_USER_INPUT -> validateRequestUserInput(request, proposal.payload());
             case INVOKE_CAPABILITY -> validateVisibleCapability(request, proposal.payload());
+            case WAIT -> {
+                var pending = request.pendingDependencies();
+                Object ref = proposal.payload().get("dependencyRef");
+                if (pending == null || proposal.payload().size() != 1 || !(ref instanceof String)
+                        || pending.dependencies().stream().noneMatch(d -> d.invocationId().toString().equals(ref)))
+                    reject(ActionEligibilityReasonCode.NO_PENDING_DEPENDENCY);
+            }
             case UPDATE_NODE, CONNECT_NODE, CREATE_ROUTE, RESPOND_TO_USER,
-                 GENERATE_ARTIFACT, WAIT -> {
+                 GENERATE_ARTIFACT -> {
                 // 这些动作族尚无额外的载荷相关资格不变量。
             }
         }

@@ -113,7 +113,12 @@ val auditedOfflineTests = setOf(
     "com.specagent.agent.runtime.DeferredContinuationOfflineTest",
     "com.specagent.capability.DeferredCapabilityRuntimeTest",
     "com.specagent.capability.DeferredCapabilityRepositoryTest",
-    "com.specagent.capability.GuardedCapabilityOrderTest"
+    "com.specagent.capability.GuardedCapabilityOrderTest",
+    "com.specagent.agent.action.ActionEligibilityWaitV4Test",
+    "com.specagent.agent.runtime.WaitDependencyServiceOfflineTest",
+    "com.specagent.agent.runtime.WaitDependencyRepositoryOfflineTest",
+    "com.specagent.agent.runtime.WaitLifecycleOfflineTest",
+    "com.specagent.agent.runtime.WaitDecisionExecutionOfflineTest"
 )
 val databaseIntegrationEnabled = providers.gradleProperty("databaseIntegration").map { it == "true" }.orElse(false)
 val externalServicesEnabled = providers.gradleProperty("externalServices").map { it == "true" }.orElse(false)

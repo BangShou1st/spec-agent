@@ -45,6 +45,10 @@ public class ContinuationDispatchService {
      */
     private final UUID workerId;
     private com.specagent.capability.CapabilityInvocationRepository deferredInvocations;
+    private WaitDependencyRepository waitSubscriptions;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setWaitSubscriptions(WaitDependencyRepository subscriptions) { this.waitSubscriptions = subscriptions; }
 
     @org.springframework.beans.factory.annotation.Autowired
     public void setDeferredInvocations(com.specagent.capability.CapabilityInvocationRepository repository) {
@@ -104,10 +108,27 @@ public class ContinuationDispatchService {
      * 公共路径只能靠时序才能触发的确切 ABA 交错(代数 1 在途时请求代数 2)。
      */
     void process(ContinuationCheck check) {
-        transactionTemplate.executeWithoutResult(status -> {
-            coordinator.continueIfEligible(check.runId());
-            checkRepository.markProcessed(check.runId(), check.generation());
-        });
+        try {
+            transactionTemplate.executeWithoutResult(status -> {
+                coordinator.continueIfEligible(check.runId());
+                checkRepository.markProcessed(check.runId(), check.generation());
+            });
+        } catch (com.specagent.access.AccessDeniedException denied) {
+            // The evaluation transaction has already rolled back. Do not persist a
+            // cancellation inside its rollback-only scope, or endlessly retry a revoked WAIT.
+            var permanent = java.util.Set.of(com.specagent.access.AccessReason.RESOURCE_NOT_VISIBLE,
+                    com.specagent.access.AccessReason.USER_DISABLED,
+                    com.specagent.access.AccessReason.PROJECT_CAPABILITY_MISSING,
+                    com.specagent.access.AccessReason.ORG_CAPABILITY_MISSING);
+            if (waitSubscriptions == null || !permanent.contains(denied.reasonCode())) throw denied;
+            var cancellation = new TransactionTemplate(java.util.Objects.requireNonNull(
+                    transactionTemplate.getTransactionManager(), "WAIT cancellation requires a transaction manager"));
+            cancellation.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            cancellation.executeWithoutResult(status -> {
+                if (waitSubscriptions.invalidateDenied(check.runId()) != 1) throw denied;
+                checkRepository.markProcessed(check.runId(), check.generation());
+            });
+        }
     }
 
     /**

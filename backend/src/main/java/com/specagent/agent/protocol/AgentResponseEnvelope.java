@@ -29,7 +29,8 @@ public record AgentResponseEnvelope(String protocolVersion,
 
     public AgentResponseEnvelope {
         boolean v2 = AgentProtocol.DECISION_PROTOCOL_VERSION_V2.equals(protocolVersion);
-        boolean v3 = AgentProtocol.DECISION_PROTOCOL_VERSION_V3.equals(protocolVersion);
+        boolean v3 = AgentProtocol.DECISION_PROTOCOL_VERSION_V3.equals(protocolVersion)
+                || AgentProtocol.DECISION_PROTOCOL_VERSION_V4.equals(protocolVersion);
         if (!v2 && !v3) {
             throw new AgentContractException(
                     "Unknown response protocol version: " + protocolVersion);
