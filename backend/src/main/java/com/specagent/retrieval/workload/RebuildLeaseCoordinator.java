@@ -18,14 +18,41 @@ public class RebuildLeaseCoordinator {
     private final TransactionTemplate transactions;
     private final UUID worker=UUID.randomUUID();
     private final int seconds;
+    /** 本实例当前持有的租约:续期只针对这些行,且按 (id,epoch,lease,worker) 围栏。 */
+    private final java.util.Map<UUID,Token> held=new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.ScheduledExecutorService heartbeat;
+    private final int maxAttempts;
     private RebuildReadiness readiness;
     @org.springframework.beans.factory.annotation.Autowired
     public void setReadiness(RebuildReadiness readiness) { this.readiness=readiness; }
     public RebuildLeaseCoordinator(NamedParameterJdbcTemplate jdbc,AuthorizationGuard authorization,
-            PlatformTransactionManager transactions,@Value("${spec.embedding-settings.rebuild-lease-seconds:120}") int seconds) {
+            PlatformTransactionManager transactions,@Value("${spec.embedding-settings.rebuild-lease-seconds:120}") int seconds,
+            @Value("${spec.embedding-settings.rebuild-max-attempts:3}") int maxAttempts,
+            @Value("${spec.embedding-settings.rebuild-lease-heartbeat-ms:0}") int heartbeatMs) {
         if(seconds<100 || seconds>300) throw new IllegalArgumentException("Rebuild lease must be 100..300 seconds");
+        if(maxAttempts<1 || maxAttempts>20) throw new IllegalArgumentException("Rebuild max attempts must be 1..20");
         this.jdbc=jdbc;this.authorization=authorization;this.transactions=new TransactionTemplate(transactions);this.seconds=seconds;
+        this.maxAttempts=maxAttempts;
         this.readiness=new RebuildReadiness(jdbc);
+        // 一次重建的合法最长耗时(split 30s + index 90s)与默认租约同量级:没有续租
+        // 的话,一个只是慢但仍然存活的 worker 会丢租约并被重复执行。心跳只续本进程
+        // 持有的租约;进程死亡则心跳停止,租约照常过期并被接管。
+        int period=heartbeatMs>0?heartbeatMs:Math.max(10_000,seconds*1000/3);
+        this.heartbeat=java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r->{
+            Thread t=new Thread(r,"rebuild-lease-heartbeat");t.setDaemon(true);return t;});
+        this.heartbeat.scheduleAtFixedRate(this::renewHeldLeases,period,period,java.util.concurrent.TimeUnit.MILLISECONDS);
+    }
+    /** 续期:只延长本实例仍持有的、且身份完全一致的租约。 */
+    private void renewHeldLeases() {
+        for(var token:held.values()) {
+            try {
+                jdbc.update("UPDATE embedding_rebuilds SET lease_until=clock_timestamp()+make_interval(secs=>:seconds)"
+                                + " WHERE id=:id AND state='RUNNING' AND execution_epoch=:epoch AND lease_id=:lease AND worker_id=:worker",
+                        Maps.of("id",token.id(),"epoch",token.epoch(),"lease",token.lease(),"worker",token.worker(),"seconds",seconds));
+            } catch (RuntimeException unavailable) {
+                // 续期失败不改变所有权:租约会照常过期并被其他 worker 接管。
+            }
+        }
     }
     public Optional<Token> claim() {
         var ids=jdbc.queryForList("""
@@ -51,7 +78,7 @@ public class RebuildLeaseCoordinator {
                         Maps.of("id",id,"epoch",epoch,"worker",worker,"lease",lease,"seconds",seconds));
                 return new Token(id,epoch,lease,worker,(UUID)row.get("org_id"),(UUID)row.get("corpus_id"),(String)row.get("profile_id"));
             });
-            if(token!=null) return Optional.of(token);
+            if(token!=null) { held.put(token.id(),token); return Optional.of(token); }
         }
         return Optional.empty();
     }
@@ -65,6 +92,10 @@ public class RebuildLeaseCoordinator {
                 if(rows.isEmpty()) return false;
                 var row=rows.getFirst();invalidateChildren(id);
                 if(!active(row)) failRow(row,"STALE_SCOPE_GRANT");
+                else if(((Number)row.get("execution_epoch")).longValue()>=maxAttempts)
+                    // 租约过期的重建不会无限重排队:超过最大尝试次数后按失败收口,
+                    // 让失败可观察,而不是让同一份工作被无限重做。
+                    failRow(row,"REBUILD_LEASE_EXPIRED");
                 else jdbc.update("UPDATE embedding_rebuilds SET state='QUEUED',worker_id=NULL,lease_id=NULL,lease_until=NULL,error_code='REBUILD_LEASE_EXPIRED' WHERE id=:id",Map.of("id",id));
                 return true;
             });
@@ -73,6 +104,7 @@ public class RebuildLeaseCoordinator {
         return count;
     }
     public void finish(Token token,Integer total,Integer processed,boolean ready) {
+        held.remove(token.id());
         transactions.executeWithoutResult(tx->{
             var row=owned(token);if(!active(row)) throw stale();
             jdbc.update("UPDATE embedding_rebuilds SET state=:state,total=COALESCE(:total,total),processed=COALESCE(:processed,processed),worker_id=NULL,lease_id=NULL,lease_until=NULL WHERE id=:id",
@@ -81,6 +113,7 @@ public class RebuildLeaseCoordinator {
         });
     }
     public boolean fail(Token token,String code) {
+        held.remove(token.id());
         return Boolean.TRUE.equals(transactions.execute(tx->{
             Map<String,Object> row;
             try {row=owned(token);}catch(IllegalStateException refused){return false;}
