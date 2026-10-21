@@ -1,7 +1,7 @@
 # OpenCode Shared Component
 
 Status: maintained in its own repository and consumed as a published Gradle dependency from public JitPack
-Date: 2026-10-16
+Date: 2026-10-21
 
 ## Layout
 
@@ -44,7 +44,7 @@ arbitrary string is rejected locally instead of being answered upstream with `40
 `OpenCodeZenProtocolPolicy.DEFAULT_BASE_URL` is the canonical inference base
 `https://opencode.ai/inference/v1`; the legacy `https://opencode.ai/zen/v1` is exposed separately as
 `LEGACY_DISCOVERY_BASE_URL` for model-catalogue discovery only. `applyRequiredChatEnvelope`
-attaches the full CLI core tool envelope (`bash, edit, glob, grep, read`), which the free tier
+attaches the v1.4.2 CLI tool envelope (`shell, read`), which the free tier
 requires: a body without it is rejected with `403 FreeTierError`.
 
 The model list contains free and paid Chat models. The UI's 仅免费 control is only a filter. Free

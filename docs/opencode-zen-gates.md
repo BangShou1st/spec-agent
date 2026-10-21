@@ -11,6 +11,17 @@ opencode-zen-spring-boot-autoconfigure 与 opencode-zen-spring-boot-starter；�
 以共享库为代码源；本文保留验证结论与排障说明。升级与发布流程见
 docs/OPENCODE_SHARED_COMPONENT.md。
 
+## 当前发布版本与历史记录边界（2026-10-21）
+
+当前消费坐标完整版本为 `com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter:v1.4.2`。
+默认 User-Agent 是 `opencode/latest/2.0.29/cli`，保留工具为 `shell/read`；共享库不再发送
+`x-opencode-request`。两个 session 头仍使用共享库生成的同一 session id。
+
+下文第二节至第六节记录 2026-10-16 及以前的协议实测（例如 1.19 UA、bash 工具和 request 头），
+用于历史排障，不是 v1.4.2 的当前请求模板；当前行为以发布库、应用契约测试为准。
+真实模型调用只有 HTTP 200 且返回有效内容才算成功；429 仅证明收到上游限流响应，
+不证明凭据有效，也不算生成成功，不自动重试。
+
 ## 一、本项目怎么用 zen
 
 后端 **直连** `https://opencode.ai/inference/v1`（默认 `DIRECT`，不走 18991 本地代理，不走 7897 Clash；`spec.agent.model.opencode.proxy` 未显式设置时永远是 `HttpClient.Builder.NO_PROXY`，见 `HttpOpenCodeZenTransport` 构造器与 `proxySelectorFor`）。
