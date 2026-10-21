@@ -1,0 +1,8 @@
+{
+  "invocationId": "11111111-2222-3333-4444-555555555555",
+  "capabilityId": "deferred.probe",
+  "status": "SUCCEEDED",
+  "content": {"summary": "registered external job completed"},
+  "sourceRefs": [],
+  "provenance": {"evidenceClass": "EXTERNAL_EVIDENCE"}
+}

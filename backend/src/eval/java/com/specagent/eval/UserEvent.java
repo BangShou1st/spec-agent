@@ -2,6 +2,8 @@ package com.specagent.eval;
 
 import com.specagent.agent.protocol.AgentEvent;
 
+import java.util.List;
+
 /**
  * 文件名:UserEvent.java
  *
@@ -27,11 +29,39 @@ public sealed interface UserEvent
      * 与 {@link AnswerTip} 的唯一差别是文本来源:种子渲染产出占位串,而真实
      * 模型评测必须让 STATE_UPDATE 看到用户实际会写的中文回答,否则"理解得
      * 对不对"就无从谈起。
+     *
+     * <p>{@code freeTexts} 是一组**语义等价、措辞不同**的字面回答:变体的
+     * {@code paraphraseIndex} 选中其中一条,因此 base 与 holdout 各自看到真实
+     * 但不同的用户回答。只要一条文本时行为与旧的单串构造完全一致。
      */
-    record AnswerTipText(String freeText,
+    record AnswerTipText(List<String> freeTexts,
                          AgentEvent.PersistenceIntent persistenceIntent) implements UserEvent {
+
+        public AnswerTipText {
+            if (freeTexts == null || freeTexts.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "AnswerTipText requires at least one literal answer text");
+            }
+            freeTexts = List.copyOf(freeTexts);
+        }
+
+        /** 旧的单串构造:一条文本,所有变体看到同一句。 */
         public AnswerTipText(String freeText) {
-            this(freeText, null);
+            this(List.of(freeText), null);
+        }
+
+        public AnswerTipText(String freeText, AgentEvent.PersistenceIntent persistenceIntent) {
+            this(List.of(freeText), persistenceIntent);
+        }
+
+        /** 一组语义等价、措辞不同的字面回答(base/holdout 各取一条)。 */
+        public AnswerTipText(List<String> freeTexts) {
+            this(freeTexts, null);
+        }
+
+        /** 按变体的改写索引选择字面回答(取模)。 */
+        public String freeText(int paraphraseIndex) {
+            return freeTexts.get(Math.floorMod(paraphraseIndex, freeTexts.size()));
         }
     }
 
@@ -49,7 +79,7 @@ public sealed interface UserEvent
                     + answer.persistenceIntent() + ")";
         }
         if (event instanceof AnswerTipText answerText) {
-            return "answer-tip-text(" + answerText.freeText() + ";intent="
+            return "answer-tip-text(" + String.join("|", answerText.freeTexts()) + ";intent="
                     + answerText.persistenceIntent() + ")";
         }
         if (event instanceof DivergentAnswer divergent) {

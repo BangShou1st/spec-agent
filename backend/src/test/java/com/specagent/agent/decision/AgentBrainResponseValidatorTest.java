@@ -89,6 +89,33 @@ class AgentBrainResponseValidatorTest {
     }
 
     @Test
+    void openRequestUserInputWithEmptyOptionsPassesStrictJavaValidation() throws Exception {
+        AgentRequestEnvelope request = request();
+        AgentResponseEnvelope baseline = AgentContracts.read(
+                fixture("decision-response-valid.json"), AgentResponseEnvelope.class);
+        ActionProposal original = baseline.actionProposal();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("kind", "INTERACTION");
+        payload.put("questionText", "你希望查找当前项目中哪一件事的历史讨论？");
+        payload.put("purpose", "需要确定具体检索对象，才能准确查找相关记录。");
+        payload.put("options", List.of());
+        payload.put("allowFreeAnswer", true);
+        payload.put("allowMultiSelect", false);
+        AgentResponseEnvelope response = new AgentResponseEnvelope(
+                baseline.protocolVersion(), baseline.runId(), baseline.stateUpdate(),
+                baseline.observation(), new ActionProposal(
+                        "REQUEST_USER_INPUT", payload, original.baseContextSnapshotId(),
+                        original.baseContextHash(), original.sourceRefs(), original.proposalId(),
+                        original.idempotencyKey(), original.anchorRefs()),
+                baseline.usage(), baseline.diagnostics());
+
+        assertThatCode(() -> AgentBrainResponseValidator.validateDecision(request, response))
+                .doesNotThrowAnyException();
+        assertThat(response.actionProposal().payload().get("options")).isEqualTo(List.of());
+        assertThat(response.actionProposal().sourceRefs()).isEqualTo(original.sourceRefs());
+    }
+
+    @Test
     void missingCreateNodeKindDefaultsToInteractionAtWireAndExecutorBoundaries() throws Exception {
         JsonNode boundary = boundaryCase("CREATE_NODE_MISSING_KIND_DEFAULTS_TO_INTERACTION");
         assertThat(boundary.path("wireContract").asText()).isEqualTo("ACCEPTED");

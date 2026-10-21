@@ -66,7 +66,9 @@ public final class AgentBrainResponseValidator {
                                         AgentArtifactResponse response) {
         if (!request.runId().equals(response.runId())) {
             throw new AgentContractException(
-                    "Response runId does not match the request: " + response.runId());
+                    "Response runId does not match the request",
+                    "JAVA_RESPONSE_CONTRACT_INVALID", "runId", "uuid", "uuid",
+                    "AgentBrainResponseValidator");
         }
         if (response.usage() != null && request.decisionBudget() != null) {
             int calls = response.usage().modelCalls();
@@ -132,14 +134,20 @@ public final class AgentBrainResponseValidator {
         validateObservation(response.observation());
         validateProposal(request, response.actionProposal());
         validateEligibilityContract(request, response);
+        if (request.pendingDependencies() != null)
+            new com.specagent.agent.action.ActionEligibilityValidator().validateSelection(
+                    request, response.actionProposal(), request.actionEligibility());
         validateConflictAction(request, response);
     }
 
     private static void validateEligibilityContract(AgentRequestEnvelope request,
                                                     AgentResponseEnvelope response) {
-        boolean requestV3 = AgentProtocol.INPUT_PROTOCOL_VERSION_V3
+        boolean requestV4 = AgentProtocol.INPUT_PROTOCOL_VERSION_V4.equals(request.protocolVersion());
+        boolean responseV4 = AgentProtocol.DECISION_PROTOCOL_VERSION_V4.equals(response.protocolVersion());
+        if (requestV4 != responseV4) throw new AgentContractException("V4 response version mismatch");
+        boolean requestV3 = requestV4 || AgentProtocol.INPUT_PROTOCOL_VERSION_V3
                 .equals(request.protocolVersion());
-        boolean responseV3 = AgentProtocol.DECISION_PROTOCOL_VERSION_V3
+        boolean responseV3 = responseV4 || AgentProtocol.DECISION_PROTOCOL_VERSION_V3
                 .equals(response.protocolVersion());
         if (requestV3 != responseV3) {
             throw new AgentContractException(
@@ -170,7 +178,9 @@ public final class AgentBrainResponseValidator {
                                        AgentResponseEnvelope response) {
         if (!request.runId().equals(response.runId())) {
             throw new AgentContractException(
-                    "Response runId does not match the request: " + response.runId());
+                    "Response runId does not match the request",
+                    "JAVA_RESPONSE_CONTRACT_INVALID", "runId", "uuid", "uuid",
+                    "AgentBrainResponseValidator");
         }
         if (response.usage() != null && request.decisionBudget() != null) {
             int calls = response.usage().modelCalls();
@@ -286,13 +296,23 @@ public final class AgentBrainResponseValidator {
             throw new AgentContractException("INVOKE_CAPABILITY arguments must be an object");
         }
         for (Object value : argumentMap.values()) {
-            if (value instanceof String candidate
-                    && REF_PREFIXES.stream().anyMatch(candidate::startsWith)
-                    && !snapshot.allowedSourceRefs().contains(candidate)) {
-                throw new AgentContractException(
-                        "INVOKE_CAPABILITY argument ref outside the allowed snapshot refs: "
-                                + candidate);
-            }
+            validateArgumentRef(value, snapshot);
+        }
+    }
+
+    private static void validateArgumentRef(Object value, AgentInputSnapshot snapshot) {
+        if (value instanceof String candidate
+                && REF_PREFIXES.stream().anyMatch(candidate::startsWith)
+                && !snapshot.allowedSourceRefs().contains(candidate)) {
+            throw new AgentContractException(
+                    "INVOKE_CAPABILITY argument ref outside the allowed snapshot refs",
+                    "JAVA_RESPONSE_CONTRACT_INVALID", "actionProposal.payload.arguments",
+                    "allowed source reference", "string", "AgentBrainResponseValidator");
+        }
+        if (value instanceof Map<?, ?> nested) {
+            nested.values().forEach(item -> validateArgumentRef(item, snapshot));
+        } else if (value instanceof List<?> nested) {
+            nested.forEach(item -> validateArgumentRef(item, snapshot));
         }
     }
 
@@ -422,7 +442,11 @@ public final class AgentBrainResponseValidator {
 
     private static void requireNonBlank(String name, String value) {
         if (value == null || value.isBlank()) {
-            throw new AgentContractException(name + " must be a non-blank string");
+            throw new AgentContractException(name + " must be a non-blank string",
+                    "JAVA_RESPONSE_CONTRACT_INVALID",
+                    "actionProposal.payload." + name,
+                    "string", value == null ? "null" : "string",
+                    "AgentBrainResponseValidator");
         }
     }
 
@@ -430,6 +454,20 @@ public final class AgentBrainResponseValidator {
         if (value instanceof String text) {
             return text;
         }
-        throw new AgentContractException(name + " must be a string");
+        throw new AgentContractException(name + " must be a string",
+                "JAVA_RESPONSE_CONTRACT_INVALID",
+                "actionProposal.payload." + name,
+                "string", safeRuntimeType(value), "AgentBrainResponseValidator");
+    }
+
+    private static String safeRuntimeType(Object value) {
+        if (value == null) return "null";
+        if (value instanceof Boolean) return "boolean";
+        if (value instanceof String) return "string";
+        if (value instanceof Integer || value instanceof Long) return "integer";
+        if (value instanceof Number) return "number";
+        if (value instanceof Map<?, ?>) return "object";
+        if (value instanceof List<?>) return "array";
+        return "unknown";
     }
 }

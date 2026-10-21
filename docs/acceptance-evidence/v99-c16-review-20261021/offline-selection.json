@@ -1,0 +1,98 @@
+[
+  {
+    "class": "com.specagent.eval.P3BLiveDatabaseGuardTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\eval\\P3BLiveDatabaseGuardTest.java",
+    "extends": [],
+    "annotations": []
+  },
+  {
+    "class": "com.specagent.eval.P3BC03NaturalLanguageScenarioTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\eval\\P3BC03NaturalLanguageScenarioTest.java",
+    "extends": [],
+    "annotations": []
+  },
+  {
+    "class": "com.specagent.eval.P3BGateMeasurementTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\eval\\P3BGateMeasurementTest.java",
+    "extends": [],
+    "annotations": []
+  },
+  {
+    "class": "com.specagent.support.DatabaseTestContextGuardTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\support\\DatabaseTestContextGuardTest.java",
+    "extends": [],
+    "annotations": [
+      "SpringBootTest",
+      "SpringBootTest",
+      "SpringBootTest"
+    ]
+  },
+  {
+    "class": "com.specagent.support.DatabaseTestDiscoveryTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\support\\DatabaseTestDiscoveryTest.java",
+    "extends": [],
+    "annotations": []
+  },
+  {
+    "class": "com.specagent.model.inference.RoutingModelInferenceGatewayTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\model\\inference\\RoutingModelInferenceGatewayTest.java",
+    "extends": [],
+    "annotations": [
+      "ExtendWith"
+    ]
+  },
+  {
+    "class": "com.specagent.model.inference.ModelTargetBindingContractTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\model\\inference\\ModelTargetBindingContractTest.java",
+    "extends": [],
+    "annotations": []
+  },
+  {
+    "class": "com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\agent\\runtime\\AgentRunModelBindingRepositoryOfflineTest.java",
+    "extends": [],
+    "annotations": []
+  },
+  {
+    "class": "com.specagent.agent.decision.AgentBrainArgumentGroundingTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\agent\\decision\\AgentBrainArgumentGroundingTest.java",
+    "extends": [],
+    "annotations": []
+  },
+  {
+    "class": "com.specagent.agent.action.C16WaitContractTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\agent\\action\\C16WaitContractTest.java",
+    "extends": [],
+    "annotations": []
+  },
+  {
+    "class": "com.specagent.agent.runtime.LegacyBindingMigrationGuardTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\agent\\runtime\\LegacyBindingMigrationGuardTest.java",
+    "extends": [],
+    "annotations": []
+  },
+  {
+    "class": "com.specagent.agent.runtime.DeferredContinuationOfflineTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\agent\\runtime\\DeferredContinuationOfflineTest.java",
+    "extends": [],
+    "annotations": []
+  },
+  {
+    "class": "com.specagent.capability.DeferredCapabilityRuntimeTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\capability\\DeferredCapabilityRuntimeTest.java",
+    "extends": [],
+    "annotations": []
+  },
+  {
+    "class": "com.specagent.capability.DeferredCapabilityRepositoryTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\capability\\DeferredCapabilityRepositoryTest.java",
+    "extends": [],
+    "annotations": []
+  },
+  {
+    "class": "com.specagent.capability.GuardedCapabilityOrderTest",
+    "file": "backend\\src\\test\\java\\com\\specagent\\capability\\GuardedCapabilityOrderTest.java",
+    "extends": [],
+    "annotations": []
+  }
+]

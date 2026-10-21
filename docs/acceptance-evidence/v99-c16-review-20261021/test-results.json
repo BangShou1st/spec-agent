@@ -1,0 +1,48 @@
+{
+  "root": {
+    "status": "PASS",
+    "tests": 113,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "independent": {
+    "status": "PASS",
+    "tests": 103,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "python": {
+    "status": "PASS",
+    "tests": 489,
+    "failures": 0,
+    "skipped": 0
+  },
+  "initial_red": {
+    "tests": 14,
+    "failures": 3,
+    "errors": 0,
+    "skipped": 0
+  },
+  "timeout_red": {
+    "tests": 6,
+    "failures": 1,
+    "errors": 0,
+    "skipped": 0
+  },
+  "replay": {
+    "fixtureCount": 11,
+    "outcomeMatched": 11,
+    "actionMatched": 11,
+    "payloadMismatches": []
+  },
+  "historical_C03": "REJECT",
+  "post_commit_key_regression": {
+    "status": "PASS",
+    "tests": 35,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+}

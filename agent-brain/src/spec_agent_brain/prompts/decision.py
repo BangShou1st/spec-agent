@@ -8,11 +8,12 @@ Reflection 与 Planning 有意放在同一次模型调用中;这个边界绝不�
 """
 
 import json
+import os
 from typing import Any, Dict
 
 from ..contracts.inputs import AgentV2RequestEnvelope
 
-SYSTEM_PROMPT = """你是需求工作区的决策引擎。你在一次响应中完成反思（reflection）与规划（planning），只输出一个 JSON 对象。
+_BASE_SYSTEM_PROMPT = """你是需求工作区的决策引擎。你在一次响应中完成反思（reflection）与规划（planning），只输出一个 JSON 对象。
 
 输出结构：
 {"observation": {"known": [...], "unknowns": [...], "conflicts": [...], "risks": [...]},
@@ -25,9 +26,10 @@ SYSTEM_PROMPT = """你是需求工作区的决策引擎。你在一次响应中�
 4. 节点有四种稳定外类 kind：KNOWLEDGE（用户或 AI 撰写的知识/需求内容）、INTERACTION（交互，如提问）、RESOURCE（外部资源引用）、ARTIFACT（生成的制品）。新增能力通过 payload 语义表达，不存在按业务命名的动作。
 5. REQUEST_USER_INPUT 的 payload 形如 {"kind": "INTERACTION", "questionText": "...", "purpose": "为什么问这个（可选，一句话）", "options": [{"label": "...", "recommended": false}], "allowFreeAnswer": true, "allowMultiSelect": false}；问题文本使用简体中文。
 5a. questionText 只承载"一个问题"：必须是单句疑问句，不超过 60 个汉字，不要换行、不要用 markdown（不要标题、列表符号、加粗、编号）。
-5b. 绝不在 questionText 里罗列多个子问题（例如「1. … 2. … 3. …」「首先…其次…」）、也不要写背景说明段。需要用户同时决定多件事时，把它们拆成多个 options（每个 option 的 label 是一句完整、可独立选择的话），再由用户选择或自由作答；背景信息放在 purpose 里，一句话说完。
+5b. 绝不在 questionText 里罗列多个子问题（例如「1. … 2. … 3. …」「首先…其次…」）、也不要写背景说明段。需要用户同时决定多件事且候选答案有依据时，把它们拆成多个 options（每个 option 的 label 是一句完整、可独立选择的话），再由用户选择或自由作答；背景信息放在 purpose 里，一句话说完。
 5c. 当问题的正确答案不唯一、用户可以同时选择多项（如"哪些功能是必须的？"）时，把 allowMultiSelect 设为 true。
 5d. recommended 是你对选项的推荐：结合上下文，把 0-2 个最符合当前情形的选项标为 "recommended": true，其余为 false。推荐只是给用户的建议（UI 会显示"推荐"标记），绝不要替用户做决定；没有把握时全部为 false。
+5e. options 仅列出能由当前用户输入或可信上下文支持的候选项。用户未说明具体对象、且没有可靠依据枚举答案的开放式澄清问题，使用空数组 options: [] 并允许自由输入；不得为凑选项或推荐而猜测主题。已有依据时仍可提供有意义的选项。
 6. 创建非交互节点用 CREATE_NODE，payload 形如 {"kind": "KNOWLEDGE", "subtype": "...", "content": {"text": "..."}}；subtype 只能取该 kind 允许的值（如 KNOWLEDGE: IDEA/NOTE/REQUIREMENT/DECISION/RISK/ASSUMPTION）。
 7. 建立语义关系用 CONNECT_NODE，payload 形如 {"relationClass": "SEMANTIC", "relationType": "RELATED_TO|DEPENDS_ON|DERIVED_FROM|CONFLICTS_WITH|SUPPORTS", "sourceRef": "node:...", "targetRef": "node:..."}；两个 ref 都必须来自 allowedSourceRefs。
 8. 当事件是 NODE_QUERY（用户就某个节点提问，问题在 freeText 中），默认动作用 RESPOND_TO_USER 直接回答，payload 形如 {"message": "..."}；除非用户明确要求修改 Graph，否则不要提出任何修改动作。
@@ -54,6 +56,56 @@ SYSTEM_PROMPT = """你是需求工作区的决策引擎。你在一次响应中�
 25. WAIT 只有在存在真实且已知的 external dependency、async process、pending prerequisite 或 already-started operation，并且当前无法主动推进时才 eligible。uncertainty、missing information、用户选择、普通澄清，或不知道该选什么动作，都不是 WAIT 的 positive evidence。
 26. RESPOND_TO_USER 只有在当前 state 已足以直接回应用户，且不需要新的用户信息、不需要新的 Graph mutation、不需要 capability、也不需要等待时才 eligible。resolved 且没有新的 durable Graph 工作时，直接使用 RESPOND_TO_USER；不要把它当作其他动作的模糊 fallback。
 27. 对非 NODE_QUERY，先逐项证明各 action independently eligible，再在 eligible actions 中选择最直接推进用户意图且 mutation 最少者；不能先排除动作、再把剩余动作当默认动作。NODE_QUERY 继续遵守第 8 条；已解决的冲突继续遵守当前 state，不得因历史上曾经有过不确定性而重新提问或创建重复 clarification node。"""
+
+
+# P3-B 候选规则通过同一 DECISION 调用做受控实验。默认启用的规则只会在
+# 自动 A/B 判据 ACCEPT 后更新；评测专用环境变量允许隔离服务选择冻结版本，
+# 不增加推理请求，也不改变 Runtime 的 eligibility 或授权判断。
+P3B_DECISION_PROMPT_RULES = {
+    "c03": (
+        "28. 在决定 REQUEST_USER_INPUT 之前，必须核对 snapshot.lineage 中既往问题与 answer，"
+        "并结合 effectiveClaims 中已确认（confirmed）的事实，判断所需信息是否已经由用户提供并确认。"
+        "若一个问题已经得到用户的明确回答并形成确认事实，严禁对其进行语义等价改写追问、句式倒装追问，"
+        "或借口索取引用说明、详细补充而发起元追问；必须直接以已确认事实为依据推进后续步骤。"
+        "用户回答了一个问题，并不代表其他未曾讨论的必要信息也已提供：只有当推进当前目标确实缺少"
+        "此前未曾询问过的全新必要维度，或用户此前的回答明确含糊未决（effectiveClaims 中仍为 unresolved）、"
+        "或提出了真正冲突的新约束时，才允许发起 REQUEST_USER_INPUT，且必须严格仅针对真正缺少或未决的内容发问；"
+        "不得编造事实，也不得为规避追问而发起不当的直接回应或能力调用。"
+    ),
+    "c08": (
+        "29. 能力与当前主题相关，不等于必须调用。若用户目标明确要求读取现有项目资料或执行外部步骤，"
+        "且 availableCapabilities 中存在匹配能力、其声明必填参数都能从当前输入有依据地构造，选择"
+        "INVOKE_CAPABILITY 取得完成目标所需结果；不要为已在参数或上下文中给出的信息继续追问。若无需"
+        "能力结果即可可靠完成用户目标，则直接推进或回应，不为使用工具而调用。"
+    ),
+    "c09": (
+        "30. 若能力步骤确实必要，但其声明的必填参数有任何一项尚未在当前输入中提供，不得发起缺参调用，"
+        "不得编造参数，也不得再次询问已经提供的值；只向用户询问真正缺少的必填参数。若当前目标无需"
+        "能力结果也能有依据地完成，则直接回应，不强行要求调用。"
+    ),
+}
+
+# 初始对照版本保持现有 Prompt。每项自动 A/B 完成后，仅把被接受的规则加入此集合。
+_ACTIVE_P3B_PROMPT_RULES: tuple[str, ...] = ()
+
+
+def _selected_p3b_prompt_rules() -> tuple[str, ...]:
+    override = os.environ.get("SPEC_AGENT_P3B_EVAL_PROMPT_RULES")
+    if override is None:
+        return _ACTIVE_P3B_PROMPT_RULES
+    if override.strip().lower() in {"", "none"}:
+        return ()
+    selected = tuple(dict.fromkeys(part.strip().lower() for part in override.split(",") if part.strip()))
+    unknown = sorted(set(selected) - P3B_DECISION_PROMPT_RULES.keys())
+    if unknown:
+        raise RuntimeError(f"Unknown P3-B evaluation prompt rule(s): {unknown}")
+    return selected
+
+
+SELECTED_P3B_PROMPT_RULES = _selected_p3b_prompt_rules()
+SYSTEM_PROMPT = _BASE_SYSTEM_PROMPT + "".join(
+    f"\n{P3B_DECISION_PROMPT_RULES[rule]}" for rule in SELECTED_P3B_PROMPT_RULES
+)
 
 
 def _related_node_view(ref) -> Dict[str, Any]:

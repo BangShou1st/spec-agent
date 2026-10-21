@@ -2,6 +2,8 @@ package com.specagent.agent.runtime;
 
 import com.specagent.agent.decision.AgentBrainUnavailableException;
 import com.specagent.agent.decision.BrainFailureCode;
+import com.specagent.agent.decision.ModelContractDiagnostic;
+import com.specagent.agent.decision.ModelResponseContractException;
 
 import java.util.Map;
 import com.specagent.workspace.graph.GraphRuleViolationException;
@@ -64,6 +66,9 @@ public final class RunFailureReasons {
     public static String reasonCode(RuntimeException failure) {
         if (failure instanceof com.specagent.agent.snapshot.FrozenSourceAuthorizationRefusedException)
             return FROZEN_INPUT_SOURCE_NOT_AUTHORIZED;
+        if (failure instanceof ModelResponseContractException) {
+            return BrainFailureCode.MODEL_CONTRACT_VIOLATION.reasonCode();
+        }
         if (failure instanceof AgentBrainUnavailableException brain) {
             return brain.failureCode().reasonCode();
         }
@@ -99,16 +104,45 @@ public final class RunFailureReasons {
     /** 仅为"回答不完整"失败附加安全的恢复定位信息。 */
     public static Map<String, Object> payload(RuntimeException failure) {
         String reason = reasonCode(failure);
-        if (!(failure instanceof IncompleteAnswerCycleException incomplete)
-                || incomplete.answerId() == null
-                || incomplete.routeId() == null
-                || incomplete.nodeId() == null) {
-            return payload(reason);
+        Map<String, Object> payload = new java.util.LinkedHashMap<>(payload(reason));
+        ModelContractDiagnostic diagnostic = diagnosticOf(failure);
+        if (diagnostic != null) {
+            payload.put("contractDiagnostic", diagnosticPayload(diagnostic));
         }
-        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>(payload(reason));
-        payload.put("recoveryAnswerId", incomplete.answerId().toString());
-        payload.put("recoveryRouteId", incomplete.routeId().toString());
-        payload.put("recoveryNodeId", incomplete.nodeId().toString());
+        if (failure instanceof IncompleteAnswerCycleException incomplete
+                && incomplete.answerId() != null
+                && incomplete.routeId() != null
+                && incomplete.nodeId() != null) {
+            payload.put("recoveryAnswerId", incomplete.answerId().toString());
+            payload.put("recoveryRouteId", incomplete.routeId().toString());
+            payload.put("recoveryNodeId", incomplete.nodeId().toString());
+        }
         return Map.copyOf(payload);
+    }
+
+    private static ModelContractDiagnostic diagnosticOf(RuntimeException failure) {
+        if (failure instanceof ModelResponseContractException response) {
+            return response.diagnostic();
+        }
+        if (failure instanceof AgentBrainUnavailableException brain) {
+            return brain.diagnostic();
+        }
+        return null;
+    }
+
+    private static Map<String, Object> diagnosticPayload(ModelContractDiagnostic diagnostic) {
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("diagnosticId", diagnostic.diagnosticId());
+        result.put("stage", diagnostic.stage());
+        result.put("validatorId", diagnostic.validatorId());
+        result.put("machineCode", diagnostic.machineCode());
+        result.put("fieldPath", diagnostic.fieldPath());
+        result.put("expectedType", diagnostic.expectedType());
+        result.put("actualType", diagnostic.actualType());
+        result.put("boundary", diagnostic.boundary());
+        result.put("javaWireValidatorEntered", diagnostic.javaWireValidatorEntered());
+        result.put("executorReached", diagnostic.executorReached());
+        result.put("sourceExceptionType", diagnostic.sourceExceptionType());
+        return result;
     }
 }

@@ -1,0 +1,119 @@
+> Task :clean
+
+> Task :compileJava
+注: E:\project\spec-agent\backend\src\main\java\com\specagent\agent\protocol\AgentContracts.java使用或覆盖了已过时的 API。
+注: 有关详细信息, 请使用 -Xlint:deprecation 重新编译。
+
+> Task :processResources NO-SOURCE
+> Task :classes
+
+> Task :compileTestJava
+注: E:\project\spec-agent\backend\src\test\java\com\specagent\eval\P3BLiveDatabaseGuardTest.java使用了未经检查或不安全的操作。
+注: 有关详细信息, 请使用 -Xlint:unchecked 重新编译。
+
+> Task :processTestResources
+> Task :testClasses
+Java HotSpot(TM) 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+> Task :test
+
+> Task :verificationScope
+main: 61 Java source files
+src/main/java/com/specagent/agent/action/ActionEligibilityEvaluator.java
+src/main/java/com/specagent/agent/action/ActionEligibilityGate.java
+src/main/java/com/specagent/agent/action/ActionEligibilityValidator.java
+src/main/java/com/specagent/agent/decision/AgentBrainResponseValidator.java
+src/main/java/com/specagent/agent/decision/AgentDecisionEngine.java
+src/main/java/com/specagent/agent/decision/DeterministicEngineFaultPlan.java
+src/main/java/com/specagent/agent/decision/LocalDeterministicDecisionEngine.java
+src/main/java/com/specagent/agent/protocol/ActionEligibility.java
+src/main/java/com/specagent/agent/protocol/ActionEligibilityConstraint.java
+src/main/java/com/specagent/agent/protocol/ActionEligibilityReasonCode.java
+src/main/java/com/specagent/agent/protocol/ActionFamily.java
+src/main/java/com/specagent/agent/protocol/ActionIneligibleException.java
+src/main/java/com/specagent/agent/protocol/ActionProposal.java
+src/main/java/com/specagent/agent/protocol/AgentArtifactResponse.java
+src/main/java/com/specagent/agent/protocol/AgentContractException.java
+src/main/java/com/specagent/agent/protocol/AgentContracts.java
+src/main/java/com/specagent/agent/protocol/AgentEvent.java
+src/main/java/com/specagent/agent/protocol/AgentInputSnapshot.java
+src/main/java/com/specagent/agent/protocol/AgentProtocol.java
+src/main/java/com/specagent/agent/protocol/AgentRequestEnvelope.java
+src/main/java/com/specagent/agent/protocol/AgentResponseEnvelope.java
+src/main/java/com/specagent/agent/protocol/AnswerView.java
+src/main/java/com/specagent/agent/protocol/AutonomyInputs.java
+src/main/java/com/specagent/agent/protocol/AvailableSkillView.java
+src/main/java/com/specagent/agent/protocol/CapabilityDescriptor.java
+src/main/java/com/specagent/agent/protocol/CapabilityResultView.java
+src/main/java/com/specagent/agent/protocol/ClaimView.java
+src/main/java/com/specagent/agent/protocol/ClaimVocabulary.java
+src/main/java/com/specagent/agent/protocol/DecisionBudget.java
+src/main/java/com/specagent/agent/protocol/LineageEntry.java
+src/main/java/com/specagent/agent/protocol/ModelContractException.java
+src/main/java/com/specagent/agent/protocol/NodeBodyView.java
+src/main/java/com/specagent/agent/protocol/NodeView.java
+src/main/java/com/specagent/agent/protocol/ObservationView.java
+src/main/java/com/specagent/agent/protocol/OptionView.java
+src/main/java/com/specagent/agent/protocol/PatchView.java
+src/main/java/com/specagent/agent/protocol/ProposedClaim.java
+src/main/java/com/specagent/agent/protocol/RelatedNodeRef.java
+src/main/java/com/specagent/agent/protocol/RelationView.java
+src/main/java/com/specagent/agent/protocol/RouteContextView.java
+src/main/java/com/specagent/agent/protocol/SkillCatalogView.java
+src/main/java/com/specagent/agent/protocol/SnapshotMetadata.java
+src/main/java/com/specagent/agent/protocol/StateUpdateResult.java
+src/main/java/com/specagent/agent/protocol/UsageView.java
+src/main/java/com/specagent/agent/protocol/UserRequiredSkillView.java
+src/main/java/com/specagent/common/Hashes.java
+src/main/java/com/specagent/common/InMemoryRunModelBindingPort.java
+src/main/java/com/specagent/common/Json.java
+src/main/java/com/specagent/common/RunModelBindingPort.java
+src/main/java/com/specagent/model/contract/ActiveModelTargetPort.java
+src/main/java/com/specagent/model/contract/ModelInferenceMessage.java
+src/main/java/com/specagent/model/contract/ModelInferenceRequest.java
+src/main/java/com/specagent/model/contract/ModelOutputContract.java
+src/main/java/com/specagent/model/contract/RuntimeCustomSettings.java
+src/main/java/com/specagent/model/contract/RuntimeKiloSettings.java
+src/main/java/com/specagent/model/contract/RuntimeOpenCodeSettings.java
+src/main/java/com/specagent/model/contract/RuntimeOpenRouterSettings.java
+src/main/java/com/specagent/retrieval/MemoryAuthority.java
+src/main/java/com/specagent/retrieval/RetrievalScope.java
+src/main/java/com/specagent/retrieval/RetrievalSourceKind.java
+src/main/java/com/specagent/retrieval/RetrievedContextItem.java
+test: 34 Java source files
+src/eval/java/com/specagent/eval/BrainClaim.java
+src/eval/java/com/specagent/eval/BrainDecision.java
+src/eval/java/com/specagent/eval/BrainScript.java
+src/eval/java/com/specagent/eval/CallBudget.java
+src/eval/java/com/specagent/eval/CapabilitySpec.java
+src/eval/java/com/specagent/eval/EvalLiveIsolatedDatabase.java
+src/eval/java/com/specagent/eval/ExpectSpec.java
+src/eval/java/com/specagent/eval/FocusContextSpec.java
+src/eval/java/com/specagent/eval/GivenSpec.java
+src/eval/java/com/specagent/eval/GraphStep.java
+src/eval/java/com/specagent/eval/PropertyCheck.java
+src/eval/java/com/specagent/eval/ResourceSpec.java
+src/eval/java/com/specagent/eval/RouteContextSpec.java
+src/eval/java/com/specagent/eval/ScenarioDefinition.java
+src/eval/java/com/specagent/eval/UserEvent.java
+src/eval/java/com/specagent/eval/VariantSpec.java
+src/test/java/com/specagent/agent/action/ActionEligibilityCharacterizationTest.java
+src/test/java/com/specagent/agent/action/ActionEligibilityEvaluatorTest.java
+src/test/java/com/specagent/agent/action/ActionEligibilityGateTest.java
+src/test/java/com/specagent/agent/action/C16WaitContractTest.java
+src/test/java/com/specagent/agent/decision/AgentBrainArgumentGroundingTest.java
+src/test/java/com/specagent/eval/EvalCleanupFailureHandler.java
+src/test/java/com/specagent/eval/EvalProjectCleanup.java
+src/test/java/com/specagent/eval/EvalProjectCleanupTest.java
+src/test/java/com/specagent/eval/P3BC03NaturalLanguageScenarioTest.java
+src/test/java/com/specagent/eval/P3BC03NaturalLanguageScenarios.java
+src/test/java/com/specagent/eval/P3BCorpus.java
+src/test/java/com/specagent/eval/P3BDecisionQuality.java
+src/test/java/com/specagent/eval/P3BGateMeasurementTest.java
+src/test/java/com/specagent/eval/P3BLiveDatabaseGuardTest.java
+src/test/java/com/specagent/model/inference/ModelOutputContractTest.java
+src/test/java/com/specagent/model/inference/ModelTargetBindingContractTest.java
+src/test/java/com/specagent/support/DatabaseTestContextGuard.java
+src/test/java/com/specagent/support/DatabaseTestContextGuardTest.java
+
+BUILD SUCCESSFUL in 18s
+6 actionable tasks: 6 executed

@@ -1,0 +1,70 @@
+{
+  "artifact_schema": "p3b-c09-live-semantic-decision.v1",
+  "scorer": "existing p3b-c09-rule-judge.v1",
+  "assessor_entrypoint": "_assess_c09_attempt()",
+  "decision_entrypoint": "_decide_c09()",
+  "scoring_source_sha256": "87e15be2e66cc8314667eeef03eb007fc9a54903465dc14f80e9a1d859aa2321",
+  "judge_model_calls": 0,
+  "arm_a": {
+    "attempts": {
+      "base": {
+        "action": null,
+        "question_text": null,
+        "capability_calls": 0,
+        "model_requests": 2,
+        "provider_failures": 0,
+        "provider_retries": 0,
+        "failure_classification": "MODEL_PROTOCOL_VIOLATION",
+        "source_reference_audit": {
+          "source_refs_allowed": "NOT_MEASURED",
+          "invalidated_source_reference_used": "NOT_MEASURED",
+          "invalidated_source_ref_count": 0,
+          "status": "NOT_MEASURED",
+          "anchor_ref_count": 0,
+          "source_ref_count": 0
+        }
+      },
+      "holdout": {
+        "action": "RESPOND_TO_USER",
+        "question_text": null,
+        "capability_calls": 0,
+        "model_requests": 2,
+        "provider_failures": 0,
+        "provider_retries": 0,
+        "failure_classification": "NONE",
+        "source_reference_audit": {
+          "invalidated_source_ref_count": 0,
+          "source_refs_allowed": true,
+          "source_ref_manifest_sha256": "e17caad6b1a6e762a539a1341e6279eda747ee7ca0c52dfd1407189e4dc60e8b",
+          "source_ref_count": 1,
+          "status": "DETERMINISTIC_VERIFIED",
+          "anchor_ref_count": 0,
+          "invalidated_source_reference_used": false
+        }
+      }
+    },
+    "automatic_assessments": {
+      "base": {
+        "status": "UNRESOLVED",
+        "structure_status": "UNRESOLVED",
+        "reason": "action_not_measured"
+      },
+      "holdout": {
+        "status": "INCORRECT",
+        "structure_status": "FAIL",
+        "reason": "action_outside_frozen_acceptable_set"
+      }
+    }
+  },
+  "arm_b": {
+    "status": "NOT_RUN_AFTER_STOP_CONDITION",
+    "attempts": {}
+  },
+  "decision": {
+    "status": "INCONCLUSIVE",
+    "evidence": {
+      "reason": "A/B arm missing"
+    }
+  },
+  "overall_status": "INCONCLUSIVE"
+}

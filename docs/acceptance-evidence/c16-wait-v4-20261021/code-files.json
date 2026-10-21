@@ -1,0 +1,142 @@
+[
+  {
+    "path": "agent-brain/src/spec_agent_brain/contracts/decisions.py",
+    "sha256": "12ea5c8446a3f09d29375a57167f42a7c1ef40c32e149fd6910691cbcc956930"
+  },
+  {
+    "path": "agent-brain/src/spec_agent_brain/contracts/inputs.py",
+    "sha256": "bd4138c083ffd8bec72335a0dd9e60fa27a0b1c5c1b92d0729926b673c3e4a17"
+  },
+  {
+    "path": "agent-brain/src/spec_agent_brain/contracts/protocol.py",
+    "sha256": "c0a2c44df418a4d6fea9d901f383681de41a1b26ef0798eddd16f043a366b295"
+  },
+  {
+    "path": "agent-brain/src/spec_agent_brain/decision/engine.py",
+    "sha256": "2b107ff19d4e57d9f1c024248b639e9a79ce5c8bb1f45f78ea270e0069f0eae4"
+  },
+  {
+    "path": "agent-brain/tests/test_c16_wait_v4.py",
+    "sha256": "acb756026764e3816dfbea119789de4220e4e082b084c69cde4e575ee76d7a3f"
+  },
+  {
+    "path": "backend/build.gradle.kts",
+    "sha256": "909286d4705375dd1184c56a2f9cfd9444d1326a55d3d568fc0ed8b1f7914a5b"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/action/ActionEligibilityDependencyPort.java",
+    "sha256": "abbfcd8a3eefa36b539ea95cd397a7d63c74c2c1bcc91afaf82e94821083124c"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/action/ActionEligibilityEvaluator.java",
+    "sha256": "670ed6a0eadfaf0efc5b0fa2cf5faa9f718af404023de7774a7544493ac97169"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/action/ActionEligibilityGate.java",
+    "sha256": "b2566a4aef3c43064cc5bebb9fcded0bf19042b000526168ca911b8c05a69b15"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/action/ActionEligibilityValidator.java",
+    "sha256": "e70dd88eb41466748c99efaa56674e70beef770ca37cd0d5998284c1d5c918a8"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/decision/AgentBrainResponseValidator.java",
+    "sha256": "e159cc165b69d180c37f385c447ddcb09cedd1cbd25af88005a2c23ca109c1f6"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/decision/LocalDeterministicDecisionEngine.java",
+    "sha256": "b17a077da2acc3c30a3977b660cbc92ed1564b0ece57b6de97d0ccc396103d57"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/protocol/AgentContracts.java",
+    "sha256": "8fd2b2bd60a59a6e126505796a0cdf7348968d6496caf05be5282edd9e2269db"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/protocol/AgentProtocol.java",
+    "sha256": "a27cf3f1c78cee9ad805fb49a2cf7d393c08f380b78d3178fb3593a7ca22ef9c"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/protocol/AgentRequestEnvelope.java",
+    "sha256": "1dfe6fa76e2916f1d0a98b0e1fc01583fd68016b1f8140be99fa93b9aab2279a"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/protocol/AgentResponseEnvelope.java",
+    "sha256": "3f455eb517f3c3208f7d4505588013d9da9c96185c5218802c1d9ac77f08b432"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/protocol/PendingDependencyProjection.java",
+    "sha256": "e2c0c28e763069e980287d7fc4c749bb854e80ee076d2fd3ce4747e2fc8afb8a"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/ContinuationCheckRepository.java",
+    "sha256": "99edda6694922958e4e04f45b81a2b408774df8a87e3d39d370995a92cffa321"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/ContinuationCoordinator.java",
+    "sha256": "df7fd5c30340d391b5dcf198f75d3bd3a075a0e5f75710ee9132a0cd3fcce027"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/ContinuationDispatchService.java",
+    "sha256": "0e6ecb46016bac044faa9e38d5351b59c05a6676770be7a930860f6a572e899f"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/DecisionExecutionService.java",
+    "sha256": "44205386e16820335bec38c388fefc1c9e24b2929b53deb508792e2092091fd5"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/WaitDependencyRepository.java",
+    "sha256": "9aa6a04f7eb1f7a13fee66e6fd0ea3b724f08355c9a96f451b6274378917d549"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/WaitDependencyService.java",
+    "sha256": "2785ae249ea4cf657334e33757480597cb3b2a33a64456f8d1b27a4e73807c67"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/capability/CapabilityInvocationRepository.java",
+    "sha256": "a77d7ba4025e9af8535b34d1afc66e6cc6cb48dcabbb613dc9ae1e1893d43ef5"
+  },
+  {
+    "path": "backend/src/main/resources/db/migration/V102__wait_dependency_subscriptions.sql",
+    "sha256": "b07304f35e2d921cdfc18465e2a5776c112f3bd9cf3695da702cac6c3f912736"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/agent/action/ActionEligibilityWaitV4Test.java",
+    "sha256": "709e8ea3a7d08f5d7ba747982b01ae70782f71b61bf499b8460be66d3b801c8e"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/agent/runtime/WaitDecisionExecutionOfflineTest.java",
+    "sha256": "03c7965912794f8d8f140b4be23731fbb5367f3c526f0d4ecad6397176bc9692"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/agent/runtime/WaitDependencyRepositoryOfflineTest.java",
+    "sha256": "57e85371f24fde54af4cffcc82c250863ba0fbcf2017c07cc8800740fa7657ad"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/agent/runtime/WaitDependencyServiceOfflineTest.java",
+    "sha256": "ca56ee795021be5186f7b77c4fbc151849ae7770a7e0dbfedf154467f298c8ff"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/agent/runtime/WaitLifecycleOfflineTest.java",
+    "sha256": "8e998194d23ef8c153edcb3dbc96524cf1a5d8c2f43d877bf8f64f08e191874f"
+  },
+  {
+    "path": "contracts/README.md",
+    "sha256": "aaca0e0a0a268086d5f78df1ec74cee6e8745fbe31f3f03523d98fb06b5c2150"
+  },
+  {
+    "path": "contracts/fixtures/agent-input-v4-wait.json",
+    "sha256": "6332f177004810a52873c0b8b1cdb644e788a5342866fd8480821dbb5ee04ec9"
+  },
+  {
+    "path": "docs/v2/C16_WAIT_V4.md",
+    "sha256": "e45079ce222c9c86bc5f52c5a30677c5b6628ad02c6f726478e8c3a36d431e88"
+  },
+  {
+    "path": "docs/v2/DEFERRED_CAPABILITY_CONTRACT.md",
+    "sha256": "1d5ac3c1f27166f8171f2bb907f25b8880c3252ae31e6597ea450d2362f588f2"
+  },
+  {
+    "path": "docs/v2/README.md",
+    "sha256": "3a3ca4b25cf66f0880c886b26fd4521dee891bef47d3433ecfd01bfb73b7e829"
+  }
+]

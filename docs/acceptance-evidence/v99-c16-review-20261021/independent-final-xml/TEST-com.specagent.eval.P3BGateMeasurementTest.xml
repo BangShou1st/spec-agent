@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.specagent.eval.P3BGateMeasurementTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-10-21T03:25:31" hostname="榜首" time="0.017">
+  <properties/>
+  <testcase name="unknownGateCannotDiluteFalseNegativeDenominator()" classname="com.specagent.eval.P3BGateMeasurementTest" time="0.012"/>
+  <testcase name="knownGapsRemainVisibleButCannotOffsetMeasuredVetoDenominator()" classname="com.specagent.eval.P3BGateMeasurementTest" time="0.001"/>
+  <testcase name="unknownGateCannotDiluteFalsePositiveDenominator()" classname="com.specagent.eval.P3BGateMeasurementTest" time="0.001"/>
+  <testcase name="absentGatesLeaveZeroDenominatorsAndUnmeasuredQuality()" classname="com.specagent.eval.P3BGateMeasurementTest" time="0.001"/>
+  <testcase name="infrastructureAndSemanticOnlyCasesNeverEnterGateErrorDenominators()" classname="com.specagent.eval.P3BGateMeasurementTest" time="0.001"/>
+  <testcase name="measuredCorrectAndIncorrectGatesBothRemainInTheirDenominators()" classname="com.specagent.eval.P3BGateMeasurementTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

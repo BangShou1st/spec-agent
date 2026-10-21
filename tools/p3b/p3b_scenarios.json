@@ -240,7 +240,7 @@
         {"action": "WAIT", "reason": "不存在真实外部依赖"}
       ],
       "payloadConditions": ["只就真正未决的一项发问", "已确认的条件与例外不得被重问"],
-      "expectedNextCycle": "产生一个 INTERACTION 问题节点后链停靠",
+      "expectedNextCycle": "产生一个 INTERACTION 问题节点后链停靠（PARKED_USER_INPUT）",
       "labelProvenance": "AI-authored candidate label",
       "labelReview": "PENDING_HUMAN_REVIEW",
       "deterministicSurface": "GATE_PASS_EXPECTED",
@@ -261,7 +261,7 @@
         {"action": "CREATE_NODE", "reason": "未经用户授权代为权衡，不得静默替用户做决定"}
       ],
       "payloadConditions": ["observation.conflicts 必须如实列出互斥 claim", "问题必须让用户在互斥目标间做明确取舍"],
-      "expectedNextCycle": "产生一个 INTERACTION 问题节点后链停靠",
+      "expectedNextCycle": "产生一个 INTERACTION 问题节点后链停靠（PARKED_USER_INPUT）",
       "labelProvenance": "AI-authored candidate label",
       "labelReview": "PENDING_HUMAN_REVIEW",
       "deterministicSurface": "GATE_PASS_EXPECTED",

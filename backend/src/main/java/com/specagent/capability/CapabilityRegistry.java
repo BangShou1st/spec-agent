@@ -128,6 +128,8 @@ public class CapabilityRegistry {
     }
 
     public void requireAuthorizedRecordedResult(CapabilityInvocationRecord result) {
+        if(adaptersById.get(result.capabilityId()) instanceof DeferredCapabilityAdapter deferred)
+            deferred.requireAuthorizedCompletion(result);
         for(CapabilityProvider provider:providers) {
             if(provider.canHandle(result.capabilityId()) && provider instanceof RecordedResultAuthorization guard)
                 guard.requireAuthorizedResult(result);
@@ -135,7 +137,7 @@ public class CapabilityRegistry {
     }
 
     public boolean hasRecordedResultAuthorization(String capabilityId) {
-        return providers.stream().anyMatch(provider -> provider.canHandle(capabilityId)
+        return adaptersById.get(capabilityId) instanceof DeferredCapabilityAdapter || providers.stream().anyMatch(provider -> provider.canHandle(capabilityId)
                 && provider instanceof RecordedResultAuthorization);
     }
 

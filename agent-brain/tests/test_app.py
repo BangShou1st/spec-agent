@@ -5,12 +5,15 @@
 
 import copy
 import json
+import logging
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from spec_agent_brain.app import create_app
+from spec_agent_brain.decision import BrainContractError, ModelOutputContractError
+from spec_agent_brain.decision.engine import ContractDiagnostic
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "contracts" / "fixtures"
 
@@ -82,6 +85,57 @@ def test_decisions_endpoint_returns_valid_envelope_with_fake_model(settings):
     assert body["actionProposal"]["baseContextSnapshotId"] == \
         payload["snapshot"]["snapshotId"]
     assert body["actionProposal"]["baseContextHash"] == payload["snapshot"]["contextHash"]
+
+
+def test_model_contract_failure_returns_safe_structured_diagnostic(settings, monkeypatch, caplog):
+    diagnostic = ContractDiagnostic(
+        diagnostic_id="c44e8c96-f2b8-45c2-a0d2-8df16842cc78",
+        stage="brain.model_output_validation",
+        validator_id="ModelDecisionOutput",
+        machine_code="MODEL_OUTPUT_SCHEMA_INVALID",
+        field_path="action.payload.questionText",
+        expected_type="string",
+        actual_type="object",
+        source_exception_type="ValidationError",
+    )
+
+    def fail(*_args, **_kwargs):
+        raise ModelOutputContractError("PRIVATE_MODEL_TEXT_MUST_NOT_ESCAPE", diagnostic)
+
+    monkeypatch.setattr("spec_agent_brain.app.handle_decision", fail)
+    caplog.set_level(logging.WARNING, logger="spec_agent_brain")
+    response = _client(settings).post(
+        "/v1/decisions", json=_request_payload(),
+        headers={"X-Spec-Agent-Internal-Token": "test-secret"})
+
+    assert response.status_code == 502
+    body = response.json()
+    assert body["detail"] == "brain_failure:ModelOutputContractError"
+    assert body["contractDiagnostic"]["machineCode"] == "MODEL_OUTPUT_SCHEMA_INVALID"
+    assert body["contractDiagnostic"]["fieldPath"] == "action.payload.questionText"
+    assert body["contractDiagnostic"]["expectedType"] == "string"
+    assert body["contractDiagnostic"]["actualType"] == "object"
+    assert "PRIVATE_MODEL_TEXT_MUST_NOT_ESCAPE" not in response.text
+    assert "PRIVATE_MODEL_TEXT_MUST_NOT_ESCAPE" not in caplog.text
+
+
+def test_unclassified_brain_contract_failure_keeps_unknown_status(settings, monkeypatch, caplog):
+    def fail(*_args, **_kwargs):
+        raise BrainContractError("PRIVATE_BRAIN_DETAILS_MUST_NOT_ESCAPE")
+
+    monkeypatch.setattr("spec_agent_brain.app.handle_decision", fail)
+    caplog.set_level(logging.WARNING, logger="spec_agent_brain")
+    response = _client(settings).post(
+        "/v1/decisions", json=_request_payload(),
+        headers={"X-Spec-Agent-Internal-Token": "test-secret"})
+
+    assert response.status_code == 502
+    body = response.json()
+    assert body["detail"] == "brain_failure:BrainContractError"
+    assert body["diagnosticStatus"] == "UNKNOWN"
+    assert "contractDiagnostic" not in body
+    assert "PRIVATE_BRAIN_DETAILS_MUST_NOT_ESCAPE" not in response.text
+    assert "PRIVATE_BRAIN_DETAILS_MUST_NOT_ESCAPE" not in caplog.text
 
 
 def test_decisions_endpoint_supports_strict_v3_eligibility_contract(settings):

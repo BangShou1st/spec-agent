@@ -65,6 +65,10 @@ public class DecisionExecutionService {
     private final AgentTracePort semanticTraceRecorder;
     private final RunProgressRecorder progressRecorder;
 
+    private WaitDependencyService waitDependencies;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setWaitDependencies(WaitDependencyService dependencies) { this.waitDependencies = dependencies; }
+
     public DecisionExecutionService(AgentDecisionEngine decisionEngine,
                                     AdvisorPolicyEngine policyEngine,
                                     ActionExecutor actionExecutor,
@@ -134,8 +138,20 @@ public class DecisionExecutionService {
         guarded(() -> eventService.append(runId, AgentRunPhase.DECIDING, "DECISION_STARTED",
                 decisionStartedPayload));
         AgentResponseEnvelope decision;
+        ActionProposal proposal;
+        ActionEligibilityGate.Assessment eligibilityAssessment = null;
         try {
             decision = decisionEngine.runDecision(envelope);
+            // 资格裁决必须发生在 wire 校验之前:V4 请求的响应校验会重复执行资格
+            // 校验并先行抛出 ActionIneligibleException,那样门禁就永远没有机会
+            // 记录这次裁决的证据。门禁先裁决并留证,wire 校验随后照旧 fail-closed,
+            // 拒绝的家族与原因码完全一致。
+            proposal = decision.actionProposal();
+            if (proposal != null) {
+                eligibilityAssessment = actionEligibilityGate.assess(envelope, proposal);
+                semanticTraceRecorder.captureActionEligibility(
+                        runId, envelope, decision, eligibilityAssessment);
+            }
             AgentBrainResponseValidator.validateDecision(envelope, decision);
             semanticTraceRecorder.captureDecisionOutput(decision);
         } catch (RuntimeException ex) {
@@ -147,11 +163,11 @@ public class DecisionExecutionService {
         // 执行(短事务内先取 task 锁;数据库仍是最终权威),绝不让迟到结果落地。
         executionFence.assertOwnership();
 
-        ActionProposal proposal = decision.actionProposal();
-        ActionEligibilityGate.Assessment eligibilityAssessment =
-                actionEligibilityGate.assess(envelope, proposal);
-        semanticTraceRecorder.captureActionEligibility(
-                runId, envelope, decision, eligibilityAssessment);
+        if (eligibilityAssessment == null) {
+            eligibilityAssessment = actionEligibilityGate.assess(envelope, proposal);
+            semanticTraceRecorder.captureActionEligibility(
+                    runId, envelope, decision, eligibilityAssessment);
+        }
         actionEligibilityGate.enforce(eligibilityAssessment);
         guarded(() -> {
             eventService.append(runId, AgentRunPhase.PROPOSAL_CREATED, "PROPOSAL_CREATED", Map.of(
@@ -226,6 +242,16 @@ public class DecisionExecutionService {
         boolean graphMutation = family == ActionFamily.CREATE_NODE
                 || family == ActionFamily.REQUEST_USER_INPUT;
         ActionResult execResult;
+        if (family == ActionFamily.WAIT && envelope.pendingDependencies() != null) {
+            if (!actionEligibilityGate.isEnforced() || waitDependencies == null)
+                throw new IllegalStateException("WAIT_V4_HOST_REQUIRED");
+            final String waitTrace = appendTrace(trace, "waiting_dependency", traceSeparator);
+            guarded(() -> {
+                waitDependencies.subscribe(envelope, proposal);
+                terminalizationService.completeWithCheck(runId, AgentRunStatus.COMPLETED, waitTrace);
+            });
+            return new DecisionExecutionResult(runId, null, null, "waiting_dependency", waitTrace);
+        }
         if (graphMutation) {
             final String gateTrace = trace;
             execResult = transactionTemplate.execute(tx -> {
@@ -246,7 +272,11 @@ public class DecisionExecutionService {
             });
             trace = appendTrace(trace, "completed", traceSeparator);
         } else {
-            execResult = actionExecutor.execute(proposal, execContext);
+            execResult = actionExecutor.execute(proposal, execContext.withDeferredAllowed(
+                    actionEligibilityGate.isEnforced()
+                            && (com.specagent.agent.protocol.AgentProtocol.INPUT_PROTOCOL_VERSION_V3
+                                    .equals(envelope.protocolVersion()) || com.specagent.agent.protocol.AgentProtocol.INPUT_PROTOCOL_VERSION_V4
+                                    .equals(envelope.protocolVersion()))));
             trace = appendTrace(trace, "completed", traceSeparator);
             Map<String, Object> payload = new HashMap<>();
             payload.put("actionFamily", proposal.actionFamily());

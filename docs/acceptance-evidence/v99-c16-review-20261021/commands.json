@@ -1,0 +1,88 @@
+{
+  "environment": {
+    "Java": "OPENCODE_ZEN_LOCAL cleared only for each process",
+    "Python": "PYTHONPATH=E:/project/spec-agent/agent-brain/src; PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 for pytest"
+  },
+  "commands": [
+    {
+      "cwd": "backend",
+      "command": ".\\gradlew.bat testOffline --offline --console=plain --dry-run",
+      "log": "root-task-graph.log"
+    },
+    {
+      "cwd": "backend",
+      "command": ".\\gradlew.bat -p independent test verificationScope --offline --console=plain --dry-run",
+      "log": "independent-task-graph.log"
+    },
+    {
+      "cwd": "backend",
+      "command": ".\\gradlew.bat testOffline --tests com.specagent.agent.runtime.DeferredContinuationOfflineTest --tests com.specagent.capability.DeferredCapabilityRepositoryTest --offline --console=plain",
+      "logs": [
+        "regression-red.log",
+        "regression-green.log"
+      ]
+    },
+    {
+      "cwd": "backend",
+      "command": ".\\gradlew.bat testOffline --tests com.specagent.agent.runtime.DeferredContinuationOfflineTest --offline --console=plain",
+      "log": "timeout-isolation-red.log"
+    },
+    {
+      "cwd": "backend",
+      "command": ".\\gradlew.bat testOffline bootJar --offline --console=plain",
+      "logs": [
+        "root-final.log",
+        "root-final-verified.log"
+      ]
+    },
+    {
+      "cwd": "backend",
+      "command": ".\\gradlew.bat -p independent clean test verificationScope --offline --console=plain",
+      "log": "independent-final.log"
+    },
+    {
+      "cwd": "backend",
+      "command": ".\\gradlew.bat testOffline --tests com.specagent.agent.runtime.LegacyBindingMigrationGuardTest --tests com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest --tests com.specagent.agent.runtime.DeferredContinuationOfflineTest --tests com.specagent.capability.DeferredCapabilityRepositoryTest --tests com.specagent.capability.DeferredCapabilityRuntimeTest --tests com.specagent.agent.action.C16WaitContractTest --offline --console=plain",
+      "log": "post-commit-key-regression.log"
+    },
+    {
+      "cwd": ".",
+      "command": "agent-brain/.venv/Scripts/python.exe -m pytest agent-brain/tests tools/tests -q",
+      "log": "python-final.log"
+    },
+    {
+      "cwd": ".",
+      "command": "agent-brain/.venv/Scripts/python.exe tools/p3b/evidence_audit.py",
+      "output": "historical-evidence.json"
+    },
+    {
+      "cwd": ".",
+      "command": "agent-brain/.venv/Scripts/python.exe tools/p3b/p3b_decision_replay.py --output docs/acceptance-evidence/v99-c16-review-20261021/contract-replay.json",
+      "log": "replay.log"
+    },
+    {
+      "cwd": "backend",
+      "command": ".\\gradlew.bat test --offline --console=plain --dry-run",
+      "log": "reject-root-test.log",
+      "expected_exit": 1
+    },
+    {
+      "cwd": "backend",
+      "command": ".\\gradlew.bat testOffline bootRun -PdatabaseIntegration=true --offline --console=plain --dry-run",
+      "log": "reject-offline-bootrun.log",
+      "expected_exit": 1
+    },
+    {
+      "cwd": "backend",
+      "command": ".\\gradlew.bat testOffline test -PdatabaseIntegration=true --offline --console=plain --dry-run",
+      "log": "reject-offline-other-test.log",
+      "expected_exit": 1
+    },
+    {
+      "cwd": "backend",
+      "command": ".\\gradlew.bat testOffline evalLive -PdatabaseIntegration=true -PexternalServices=true --offline --console=plain --dry-run",
+      "log": "reject-offline-live.log",
+      "expected_exit": 1
+    }
+  ]
+}

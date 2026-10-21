@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.specagent.agent.action.ActionEligibilityCharacterizationTest" tests="24" skipped="0" failures="0" errors="0" timestamp="2026-10-21T03:25:30" hostname="榜首" time="0.559">
+  <properties/>
+  <testcase name="rejectsCapabilityArgumentWithUngroundedReference()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.43"/>
+  <testcase name="rejectsWaitWithoutRuntimeOwnedPendingDependency()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.006"/>
+  <testcase name="rejectsCapabilityInvocationMissingAJsonSchemaRequiredArgument()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.005"/>
+  <testcase name="jsonSchemaRequiredDoesNotDependOnAPropertiesKeyword()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.011"/>
+  <testcase name="rejectsCapabilityInvocationWhoseRequiredArgumentIsExplicitlyNull()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.004"/>
+  <testcase name="rejectsDecisionThatDuplicatesConfirmedClaim()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.006"/>
+  <testcase name="allowsLegitimateNonStringRequiredArgumentsIncludingZeroAndFalse()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.004"/>
+  <testcase name="allowsOrdinaryNoteCreationWhileConflictIsUnresolved()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.015"/>
+  <testcase name="rejectsCapabilityThatIsNotVisibleInSnapshot()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.002"/>
+  <testcase name="rejectsDecisionWithoutRuntimeOwnedTypedPersistenceIntent()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.003"/>
+  <testcase name="allowsVisibleReadOnlyCapabilityWhileConflictIsUnresolved()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.003"/>
+  <testcase name="acceptsDecisionWithRuntimeOwnedTypedPersistenceIntent()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.003"/>
+  <testcase name="rejectsCreateNodeNoteThatDuplicatesCurrentAnswer()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.002"/>
+  <testcase name="allowsNewNonDecisionNodeThatDoesNotDuplicateDurableState()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.004"/>
+  <testcase name="allowsCapabilityInvocationWhenTheDeclaredRequiredArgumentIsPresent()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.005"/>
+  <testcase name="allowsMissingOptionalArgumentWhileTheRequiredArgumentIsPresent()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.004"/>
+  <testcase name="rejectsCapabilityInvocationWhoseRequiredArgumentIsBlank()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.004"/>
+  <testcase name="rejectsRepeatingAnAlreadyAnsweredQuestion()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.004"/>
+  <testcase name="rejectsNoteThatWrapsCurrentAnswerInBoilerplate()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.002"/>
+  <testcase name="rejectsCapabilityRouteRefOutsideAllowedSourceRefs()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.002"/>
+  <testcase name="fakeEngineDoesNotInventAnInvocationWhenRootRequiredQueryHasNoPropertyDefinition()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.014"/>
+  <testcase name="allowsVisibleGroundedCapabilityWithoutGrantingExecutionAuthority()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.003"/>
+  <testcase name="allowsCapabilityThatDeclaresNoRequiredArguments()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.002"/>
+  <testcase name="rejectsCapabilityInvocationMissingACompactDeclaredRequiredArgument()" classname="com.specagent.agent.action.ActionEligibilityCharacterizationTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

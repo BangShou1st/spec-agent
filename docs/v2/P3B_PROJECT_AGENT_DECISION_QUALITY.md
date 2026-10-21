@@ -1,8 +1,8 @@
 # P3-B 项目 Agent 需求澄清与决策质量优化
 
 状态：**P3-B 四项审查问题已修复；Python / Java 回放及同一隔离库连续两次全量回归通过。
-真实模型语义成绩仍为 BLOCKED：官方路径上的首个请求以 AUTHENTICATION / HTTP 502 失败，
-没有产生可评分决策。最终运行数据见 §11。**
+真实模型语义成绩：2026-10-18 已通过 Kilo Provider 打通真实链路并产出 10 个可评分尝试
+（详见 §12），但语句级语义结论仍待人工复核；OpenCode 路径此前以 AUTHENTICATION / HTTP 502 失败。**
 
 本轮只处理 **项目 Agent（Workspace / Graph Reasoning Agent）** 的三类核心判断：
 何时追问、何时调用工具、何时结束或回应。未新增第二套 Planner、未引入多 Agent 辩论、
@@ -400,3 +400,192 @@ Ollama 未用于推理或 embedding；这些场景不需要向量检索。本轮
 四项评测/测试缺陷均已关闭，代码层回归通过。由于候选标签仍待人工审核，且真实模型试验被认证错误阻断，**可以签收四项工程修复与确定性基线；不能签收真实模型语义质量达标**。目前没有已知测试失败作为合并阻塞；真实模型认证和标签人工审核仍是语义验收的未决项。
 
 本轮交付分支、提交、远端状态及审查链接以最终交付消息中核对的 Git 状态为准。
+
+---
+
+## 12. 2026-10-18 Kilo P3-B Live：真实模型决策质量 + Run 级模型冻结
+
+本节是 2026-10-18 的最终记录。目标是把 P3-B 从"工程基线"推进到"真实 Project Agent
+决策质量证据"，并在同一轮内确认并关闭 Project Agent 的模型冻结缺口。**本轮没有修改
+DECISION Prompt、没有修改任何 oracle / 冻结评测集、没有增加模型调用预算。**
+
+真实链路（未改成直连替身）：`Java Host → Python Project Agent Brain → Java Internal
+Model Broker → Provider Gateway (Kilo)`。提供商为**当前全局激活**的 Kilo（隔离库里显式
+置为 `KILO`），模型为**明确固定的免费模型 ID**（不使用 `kilo-auto/free` 等动态路由模型）。
+隔离数据库 `spec_agent_p3b_live_20261018`（与用户开发库 `spec_agent`、`spec_agent_test`
+不同）；**用户开发库的激活模型设置未被改动**。评测档 `action-eligibility.mode=shadow`
+（测试档默认；生产默认仍为 `enforced`，未改动），故门禁只记录裁决、不改变行为——本节的
+"执行成功率"是 shadow 档下的行为事实。
+
+### 12.1 Kilo 真实模型调用是否到达 DECISION
+
+**到达。** 首个真实尝试即完成完整回答周期：`STATE_UPDATE` 推理成功
+（broker `MODEL_INFERENCE`，`inference.STATE_UPDATE=2187ms`），随后发出 `DECISION`
+推理请求；Python 侧 `stateUpdates=1 / decisions=1`。因此 Java Host → Python Brain →
+Java broker → Kilo 的**整条链路真实可用**，`DECISION` 边界确实被触达。
+
+该尝试的 `DECISION` 被上游以 HTTP 429 `RATE_LIMITED` 拒绝（未产出决策）。直接对上游
+做了一次最小诊断探测后确认这是**模型专属**限流，而非 IP 全局限流：同一时刻
+`poolside/laguna-s-2.1:free` 返回 429、`cohere/north-mini-code:free` 返回 200。
+
+### 12.2 真实尝试的场景、模型、请求次数、失败类别、原始动作、门禁裁决、最终动作
+
+分四次**显式**配置运行（每次都在运行前显式指定固定模型与场景集合；**没有**在运行中
+自动重试或自动换模型——第一次确认为模型专属 429 后，才在下一轮**显式**改选可用的固定
+模型并单独记录，两次运行彼此独立、不混算）。逐次机器可读记录：
+[tools/p3b/p3b_live_run1_poolside_20261018.json](file:///e:/project/spec-agent/tools/p3b/p3b_live_run1_poolside_20261018.json)、
+[run2](file:///e:/project/spec-agent/tools/p3b/p3b_live_run2_cohere_20261018.json)、
+[run3](file:///e:/project/spec-agent/tools/p3b/p3b_live_run3_c13c15c09_20261018.json)、
+[run4](file:///e:/project/spec-agent/tools/p3b/p3b_live_run4_c09_20261018.json)。
+
+| 运行 | 模型 | 场景（声明） | 尝试 | 请求 | 停止原因 | 失败类别 |
+|---|---|---|---|---|---|---|
+| 1 | poolside/laguna-s-2.1:free | C03/C07/C13/C15/C08/C09 | 1 | 2 | 上游 429 | RATE_LIMITED×1 |
+| 2 | cohere/north-mini-code:free | 同上 | 6 | 12 | 未分类失败 | NONE×5, UNKNOWN×1 |
+| 3 | cohere/north-mini-code:free | C13/C15/C09 | 4 | 8 | 未分类失败 | NONE×3, UNKNOWN×1 |
+| 4 | cohere/north-mini-code:free | C09 | 2 | 4 | 无 | NONE×2 |
+
+逐尝试明细（场景/变体 | 模型原始选择 | 门禁 | 最终动作 | 执行结果 | 归因）:
+
+| 尝试 | modelSelectedAction | eligibility | accepted/executed | 结果 |
+|---|---|---|---|---|
+| C03/base | RESPOND_TO_USER | PASSED | RESPOND_TO_USER | completed |
+| C03/holdout | REQUEST_USER_INPUT | PASSED | REQUEST_USER_INPUT | completed（改写重复追问） |
+| C07/base | RESPOND_TO_USER | PASSED | RESPOND_TO_USER | completed |
+| C07/holdout | REQUEST_USER_INPUT | PASSED | REQUEST_USER_INPUT | completed |
+| C08/base | REQUEST_USER_INPUT | PASSED | REQUEST_USER_INPUT | completed |
+| C08/holdout | NOT_MEASURED | UNKNOWN | NOT_MEASURED | failed（brain /v1/decisions） |
+| C13/base | RESPOND_TO_USER | PASSED | RESPOND_TO_USER | completed |
+| C13/holdout | REQUEST_USER_INPUT | PASSED | REQUEST_USER_INPUT | completed |
+| C15/base | REQUEST_USER_INPUT | PASSED | REQUEST_USER_INPUT | completed |
+| C15/holdout | NOT_MEASURED | UNKNOWN | NOT_MEASURED | failed（brain /v1/decisions） |
+| C09/base | RESPOND_TO_USER | PASSED | RESPOND_TO_USER | completed |
+| C09/holdout | REQUEST_USER_INPUT | PASSED | REQUEST_USER_INPUT | completed |
+
+合计**真实生产模型请求 26 次**（run1 2 + run2 12 + run3 8 + run4 4），另有 2 次
+上游最小诊断探测；**未超过每次运行的上限，也未在任何失败上自动重试**。
+
+### 12.3 三组指标及分母（原始模型选择 / 门禁 / 执行独立统计）
+
+**测量口径修正**：模型选择准确率以 `DECISION_OUTPUT.normalized_output.actionFamily`
+（回退 `ACTION_ELIGIBILITY.selected_action`）为**原始模型选择**依据；`accepted_action` 是
+被 Java 运行时接受的动作；`executed_action` 只在该动作确实跑到终态/待审批时才非空。
+`NOT_MEASURED` 绝不按正确或错误填充。指标实现见
+[P3BDecisionQuality.java](file:///e:/project/spec-agent/backend/src/test/java/com/specagent/eval/P3BDecisionQuality.java)。
+
+| 指标 | 数值 | 分母 | 说明 |
+|---|---|---|---|
+| 模型选择准确率（原始选择落在 acceptable 集合） | **0.60** | 10 | 6/10；C03/holdout、C08/base、C09/base、C13/holdout 未命中 |
+| 门禁准确率 | **不具现场判别力**（1/1 与 0/2） | 1（run2） | 见 §12.3.1：真实模型常不提出 oracle 预设的动作，oracle 的门禁期望随之不适用 |
+| 执行成功率 | **1.00** | 10 | 10/10 被接受的动作都跑到终态 |
+| Payload 有效性 | **1.00** | 10 | 0 次契约违约 |
+| 不必要能力调用（C07） | **0** | 2 | 真实模型未调用 `memory.search` |
+| 改写重复追问（C03） | **1** | 2 | holdout 仍就已答问题发问 |
+| 语句级语义（C13/C15 正文是否越界） | **PENDING_HUMAN_REVIEW** | — | 见 §12.5 |
+
+#### 12.3.1 门禁准确率为何在 live 下不具判别力
+
+shadow 档只记录裁决；而真实模型未必提出 oracle 设定动作：C09 的 oracle 期望 `VETO`
+（缺必填参数的能力调用），真实模型却选择 `RESPOND_TO_USER`，因此门禁**正确地** `PASSED`
+——这不是门禁缺陷，而是**oracle 的门禁期望对"模型没有提出该动作"的情形不适用**。
+门禁本身的正确性由确定性测试覆盖（`P3BEnforcedCapabilityNecessityTest`、
+`ActionEligibilityCharacterizationTest`、`P3BDecisionQualityTest` 的 8/8 → 0/8 false
+positive 不变式），**不以 live 门禁率冒充**。C08/C09 的现场结论是：门禁**没有**误伤
+必要的工具调用（未否决），但真实模型**自己选择不调用**——这是模型侧问题，不是门禁问题。
+
+### 12.4 Project Agent 是否存在模型漂移（本轮已确认并关闭）
+
+**确认存在可达路径。** [RoutingModelInferenceGateway.java](file:///e:/project/spec-agent/backend/src/main/java/com/specagent/model/provider/RoutingModelInferenceGateway.java)
+每次推理都经 `ActiveProviderPort.activeProvider()` 重新读取激活提供商；各提供商网关
+（如 [KiloInferenceGateway.java](file:///e:/project/spec-agent/backend/src/main/java/com/specagent/model/provider/KiloInferenceGateway.java)）
+每次推理都经 `requireRuntimeSettings()` 重新读取选中模型。因此同一个 Run 的
+`STATE_UPDATE` 与 `DECISION` 之间若发生设置切换，两次推理会使用**不同提供商/模型**。
+确定性证明（离线、无网络）：
+[RoutingModelInferenceGatewayTest.java](file:///e:/project/spec-agent/backend/src/test/java/com/specagent/model/inference/RoutingModelInferenceGatewayTest.java)
+的 `sameRunFailsClosedWhenProviderAndModelDriftBetweenCalls`——同一 `runId` 首次
+`STATE_UPDATE` 冻结（OpenCode+model-a），随后切换为 Kilo+model-b，第二次 `DECISION`
+以 `MODEL_BINDING_MISMATCH` **失败关闭**，且**未**委派给新提供商、未重试。
+
+**最小修复（本轮实现）**：在权威路由边界做 **Run 级模型冻结**——同一 `runId` 首次推理
+冻结 `(provider, model)`，之后该 run 每次推理都必须一致；一旦漂移即失败关闭，**绝不自动
+换模型、绝不重试、绝不重定向**。新增只读端口
+[ActiveModelTargetPort.java](file:///e:/project/spec-agent/backend/src/main/java/com/specagent/model/contract/ActiveModelTargetPort.java)
+与实现 [ActiveModelTargetService.java](file:///e:/project/spec-agent/backend/src/main/java/com/specagent/modelsettings/ActiveModelTargetService.java)
+（从**与该提供商网关完全相同**的运行时设置端口读模型，保证"冻结读取"与"网关实际使用"
+同源）。**未新增独立模型选择系统；未修改 GA 已验证的冻结机制。**
+
+**已知限制（如实记录）**：冻结表按进程内存有界保存（LRU，容量 4096），是"同一进程内同一
+Run 不得混用模型"的最薄保障；本轮评估全部在单一执行器进程内完成，故足够。若将来支持
+多实例执行同一 Run，应改为把冻结对持久化到 run 记录——**本轮不做**。
+
+### 12.5 语义评审（C03/C07/C13/C15 的实际表现）
+
+- **C07（相关但不必要）**：base/holdout 均**未调用能力**（`capability_calls=0`），
+  实际表现与"相关≠必须"的期望一致——不必要调用未发生。
+- **C03（改写后的重复追问）**：base 直接回应（未重复追问）；**holdout 仍就已答问题
+  发问**（`REQUEST_USER_INPUT`），`unresolved_semantic_error_signal=true`。这是本次
+  **唯一稳定复现的语义错误**。
+- **C13（作废来源）**：base 直接回应，response 的 `sourceRefs` 只引用**当前**节点/答案，
+  **未**引用被作废的来源；正文内容与格式正常。holdout 再次就已答问题发问，且正文出现
+  乱码文本（"说明患由你提历的内容…"）——**模型输出质量问题**。
+- **C15（无项目证据支持的回答）**：base 选择**追问澄清**而非编造结论（`REQUEST_USER_INPUT`），
+  与"无依据时不得断言"的期望一致；holdout 在 brain 侧解析失败，未产出决策。
+- C13/C15 的"正文是否越界 / 是否编造"属**语句级判断**，且 `ACTION_ELIGIBILITY` 层
+  没有确定性判据（oracle 记 `NO_DETERMINISTIC_SURFACE`）。本节结论标注
+  **PENDING_HUMAN_REVIEW**，**不据此修改 DECISION Prompt**。
+
+### 12.6 候选标签待人工审核事项
+
+- 18 场景 × 2 变体的 `acceptableActions` / 门禁期望仍为 **AI 候选标签**，
+  `humanReviewStatus=PENDING_HUMAN_REVIEW`（见
+  [p3b_scenarios.json](file:///e:/project/spec-agent/tools/p3b/p3b_scenarios.json)）。
+  **原始候选标签未被改动**，oracle 未按模型输出回填。
+- 需人工复核：C03/C13 holdout 的"是否构成重复追问"、C13/C15 的"正文是否越界/编造"、
+  C08/C09 的"模型选择 RUI 是否应记为不可接受"（现场模型未提出 oracle 设定动作）。
+
+### 12.7 全部回归测试结果
+
+| 套件 | 命令 | 结果 |
+|---|---|---|
+| P3-B 确定性基线（Java） | `test --tests com.specagent.eval.P3BDecisionQualityTest` | **通过**（1 方法；含新增模型选择/门禁/执行三组指标） |
+| P3-B 强制档位行为证据 | `test --tests com.specagent.eval.P3BEnforcedCapabilityNecessityTest` | **通过** |
+| 模型路由与 Run 冻结 | `test --tests com.specagent.model.inference.RoutingModelInferenceGatewayTest` | **通过**（含 3 条新增冻结用例） |
+| ArchUnit 边界 | `test --tests com.specagent.architecture.*` | **通过**（新增端口/服务未破坏边界） |
+| Live 守卫 | `test --tests com.specagent.eval.LiveExecutionGuardTest` | **通过** |
+| 既有 Agent 评测 | `evalBFast` | **112 tests / 0 failed / 0 errors / 0 skipped**（23 suites） |
+| Python Brain | `agent-brain> .venv/Scripts/python -m pytest -q` | **246 passed**（1 条既有 Starlette/AnyIO 告警） |
+| 评测工具 | `.venv/Scripts/python -m pytest tools/tests -q` | **135 passed** |
+| 后端确定性全量 | `testNonLive`（隔离库 `spec_agent_test`）第一次 | **2146 tests / 0 failed / 0 errors / 36 skipped**（342 suites） |
+| 后端确定性全量（同库复跑核查清理） | `testNonLive --rerun` 第二次 | **2146 tests / 0 failed / 0 errors / 36 skipped**；复跑后 `CONTINUE_CYCLE` 残留 = 0 |
+
+### 12.8 下一轮应针对哪些真实错误优化 Prompt
+
+以下都来自**本轮真实模型输出**，不是猜测：
+
+1. **改写后的重复追问（C03/holdout 稳定复现）**：模型对"已答问题换措辞"仍会发起
+   `REQUEST_USER_INPUT`。Prompt 应强化"同一 blocker 已解析即不得再发问"的判据，
+   并显式要求先比对**语义等价**而非字面。
+2. **该调用能力时过度追问（C08/base、C09/base）**：模型在需要一次有依据的能力调用时
+   选择 `RESPOND_TO_USER`/`REQUEST_USER_INPUT`，导致必要的工具调用未被发起
+   （门禁并未误伤——是模型没提）。Prompt 应强化"仅当存在必须执行的外部步骤时才调用"的
+   正向判据，避免把"相关但不必要"的过度保守**泛化**到"必要也不调用"。
+3. **Brain 侧无法解析模型输出（C08/holdout、C15/holdout，各 2 次）**：
+   两次请求的模型调用**都成功**（`successful_model_requests=2, failed=0`），却在
+   `/v1/decisions` 处以 `AgentBrainUnavailableException` 失败——即模型产出**形状/契约不合规**
+   且现有分类器**无法观测**（记 `UNKNOWN_FAILURE`，非 INFRA）。下一轮优先级：
+   先把 brain 侧契约失败**类型化可观测**（区分"模型输出违约"与"网络故障"），再谈 Prompt。
+4. **输出质量/格式（C13/holdout 乱码文本）**：属模型自身质量，Prompt 可通过结构化约束
+   与语言一致性要求缓解，但**不应**用启发式掩盖。
+
+**本轮未改 Prompt、未改预算、未改冻结评测集**：以上是下一轮的依据，不是本轮的改动。
+
+### 12.9 交付与 Git
+
+- 变更：生产侧 Run 级模型冻结（1 处路由 + 1 端口 + 1 服务）；评测侧 P3-B metrics 加强、
+  live 套件 Kilo 化 + 隔离库 + 按请求归因、harness provider-neutral 化；证据 JSON 4 份。
+- 不新建长期分支、不 force push、不改 main、不提交密钥或用户数据。
+- 冻结证据（`contracts/fixtures/*`、既有 `docs/v2/evidence/*`、oracle JSON）**未改写**。
+
+**签收范围**：可以签收——真实 Kilo 链路打通并到达 DECISION、Run 级模型冻结缺口确认并
+关闭、三组指标口径修正且有分母、回归全绿。**不能签收**——真实模型语义质量达标
+（语句级结论待人工复核；C13/C15 正文边界未由人工确认）。

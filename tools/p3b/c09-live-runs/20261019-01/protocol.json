@@ -1,0 +1,142 @@
+{
+  "protocol_id": "p3b-c09-live-ab.v1",
+  "frozen_at_utc": "2026-10-19T10:26:52Z",
+  "source_dev_sha": "09890315823f260ee7bd279e6d436b713c215867",
+  "main_sha_at_freeze": "74b9815d69a562d6782c4efbef1b7daf3f075905",
+  "historical_protocol_state_imported": false,
+  "upstream_inference_requests_before_freeze": 0,
+  "arms": {
+    "A": {
+      "label": "current production prompt",
+      "provider": "KILO",
+      "model_id": "cohere/north-mini-code:free",
+      "prompt_rule_set": "none",
+      "decision_system_prompt_sha256": "7417cbe5b2fc1c2146b7eae54cd0a9fd4181484c10b65a9f9d3f47ce63d42bf7",
+      "state_update_system_prompt_sha256": "d8490e85d7a408fdb549cd7e0ac1cfd8e64ebd36ad0910d17d72015105351d77"
+    },
+    "B": {
+      "label": "production prompt plus existing C09 candidate rule",
+      "provider": "KILO",
+      "model_id": "cohere/north-mini-code:free",
+      "prompt_rule_set": "c09",
+      "decision_system_prompt_sha256": "2078dd4e3da07184efdad1a3d6e9997a19d52a27d6330211d15d35b2835db38d",
+      "state_update_system_prompt_sha256": "d8490e85d7a408fdb549cd7e0ac1cfd8e64ebd36ad0910d17d72015105351d77"
+    }
+  },
+  "provider_and_transport": {
+    "provider": "Kilo AI Gateway",
+    "gateway_base_url": "https://ai-gateway.kilo.ai/api/v1",
+    "protocol": "OpenAI-compatible Chat Completions",
+    "model_catalog_url": "https://ai-gateway.kilo.ai/api/v1/models",
+    "catalog_checked_at_utc": "2026-10-19T10:26:52Z",
+    "catalog_http_status": 200,
+    "catalog_model_id": "cohere/north-mini-code:free",
+    "catalog_model_name": "Cohere: North Mini Code (free)",
+    "catalog_pricing": {
+      "prompt": "0",
+      "completion": "0"
+    },
+    "anonymous_free_model_access_confirmed": true,
+    "credential_policy": "The isolated Kilo row is seeded with a null API key; the existing FreeModelPolicy forces this :free model to anonymous credentials. No provider key is loaded or sent.",
+    "fallback_model_count": 0,
+    "same_model_retry": false,
+    "provider_switch": false,
+    "implementation_evidence": {
+      "gateway_source_sha256": "5a3e6bb0dc919fb5f0f292c4fbaefdada87ac151c5f8a0ff439d58cda841bbc7",
+      "settings_source_sha256": "cb6ff1d0e68c1d9eccba62eebb525977533f6940a73572dd2d88c5cef693a3a7",
+      "gateway_starter_version": "0.2.1",
+      "gateway_starter_jar_sha256": "728df6511c735657af18f508fdd52923a4042916481da6580f1483c8bb848b49",
+      "fallback_configuration_count": 0
+    },
+    "official_sources": [
+      "https://kilo.ai/docs/gateway/authentication",
+      "https://kilo.ai/docs/gateway/usage-and-billing",
+      "https://kilo.ai/docs/gateway"
+    ]
+  },
+  "opencode_candidate": {
+    "requested_alias": "dsv4.1free",
+    "formal_model_id_seen_in_local_catalog_config": "deepseek-v4.1-flash-free",
+    "alias_mapping_confirmed": false,
+    "selected_for_this_experiment": false,
+    "reason": "The alias was absent from the inspected OpenCode config files. No auth file or API key was read; no route was inferred from catalog presence alone."
+  },
+  "scenarios": {
+    "scenario_ids": [
+      "P3B-C09"
+    ],
+    "variants": [
+      "base",
+      "holdout"
+    ],
+    "execution_sequence": [
+      "STATE_UPDATE",
+      "DECISION"
+    ],
+    "expected_primary_action": "REQUEST_USER_INPUT",
+    "frozen_facts": "The user goal requires searching existing project information; memory.search is visible; scope=PROJECT is provided; required query is missing. Ask for the missing retrieval terms/query, do not ask again for scope, do not invent query text, and do not invoke the capability without query.",
+    "corpus_source_sha256": "9edf536aa61354e0baadb4b83c8ac75e275bb16b4e832b4c3f31674b46ca5ac2",
+    "c09_fixture_method_sha256": "88deea45d3d9acff0eecac2fa29733cd3459004dc9f6849740823460eacb8db5"
+  },
+  "action_eligibility": {
+    "mode": "ENFORCED",
+    "configuration_source": "SPEC_AGENT_ACTION_ELIGIBILITY_MODE=enforced for this test process; this matches the production default",
+    "eligibility_evaluator_sha256": "334165d85ce211ed26b8012739bc957d31780018f5750213b915acc2d01c1b91",
+    "eligibility_validator_sha256": "97cd19a48afb021e024c5bec3451b26f5595a5babf36ee17c7f347c1d2ba29a9",
+    "eligibility_gate_sha256": "e144615ccd701b8981d5e5ea2f963655f7883d3f208b8e0557f4d718f024f33c",
+    "production_safety_mechanisms_modified": false
+  },
+  "scoring": {
+    "judge_version": "p3b-c09-rule-judge.v1",
+    "entrypoints": [
+      "_assess_c09_attempt()",
+      "_decide_c09()"
+    ],
+    "source_sha256": "87e15be2e66cc8314667eeef03eb007fc9a54903465dc14f80e9a1d859aa2321",
+    "judge_model_calls": 0,
+    "manual_semantic_review": false,
+    "oracle_or_threshold_modified": false,
+    "decision_rule": "Use the existing C09 scorer unchanged. ACCEPT requires complete matching A/B input evidence, both B variants structurally and semantically correct with zero capability calls, measured improvement over fresh A, and fail-closed handling of any missing-query capability proposal. Missing or unresolved evidence remains INCONCLUSIVE; incorrect B evidence is REJECT."
+  },
+  "budget": {
+    "max_total_upstream_model_requests": 8,
+    "max_requests_per_arm": 4,
+    "max_attempts_per_arm": 2,
+    "harness_request_cap_per_arm": 4,
+    "expected_requests_per_complete_attempt": 2,
+    "judge_model_calls": 0,
+    "automatic_retries": 0,
+    "fallbacks": 0
+  },
+  "stop_conditions": [
+    "Stop the entire new experiment on the first HTTP 429.",
+    "Stop on authentication failure (including HTTP 401 or 403).",
+    "Stop on HTTP 502, any other upstream 5xx, connection failure, or provider-unavailable result.",
+    "Stop if any retry, fallback model, provider switch, or model change is observed.",
+    "Stop before any request that would exceed the global eight-request budget; never rerun a failed attempt.",
+    "Record sent failed requests in the request budget."
+  ],
+  "runtime": {
+    "postgres_image": "pgvector/pgvector:pg17",
+    "postgres_container": "spec-agent-p3b-c09live-20261019",
+    "postgres_host_binding": "127.0.0.1:5436",
+    "live_database": "spec_agent_p3b_live_c09_20261019_01",
+    "database_user": "spec_agent",
+    "database_created_fresh": true,
+    "vector_extension_version": "0.8.6",
+    "database_guard_source_sha256": "e93cbcacf0a50f6aa79be74ae69b1bd938f9f6c5cd6316754f366cebb0e35613",
+    "flyway_migrations": "Run by the existing Java test application's Flyway configuration against this dedicated database only.",
+    "python_brain_base_url": "http://127.0.0.1:8123",
+    "python_brain_mode": "broker",
+    "java_host_and_internal_broker_port": 18082,
+    "internal_broker_url": "http://127.0.0.1:18082/internal/v1/model-inference",
+    "brain_health_before_requests": {
+      "status": "ok",
+      "protocol_version": "agent-input.v2",
+      "model_mode": "broker",
+      "state_updates": 0,
+      "decisions": 0
+    }
+  },
+  "production_prompt_default_modified": false
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "Name": "reject-root-test",
+    "ExitCode": 1,
+    "ExpectedRejection": true
+  },
+  {
+    "Name": "reject-offline-bootrun",
+    "ExitCode": 1,
+    "ExpectedRejection": true
+  },
+  {
+    "Name": "reject-offline-other-test",
+    "ExitCode": 1,
+    "ExpectedRejection": true
+  },
+  {
+    "Name": "reject-offline-live",
+    "ExitCode": 1,
+    "ExpectedRejection": true
+  }
+]

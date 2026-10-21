@@ -208,6 +208,12 @@ public class ScriptedBrain implements AgentDecisionEngine, BrainScriptInstaller 
     }
 
     private String responseProtocolVersion(AgentRequestEnvelope request) {
+        // The response contract must mirror the request contract exactly: the
+        // validator rejects a V4 request answered with v2, and a v2 response may
+        // not carry eligibility selection fields at all.
+        if (AgentProtocol.INPUT_PROTOCOL_VERSION_V4.equals(request.protocolVersion())) {
+            return AgentProtocol.DECISION_PROTOCOL_VERSION_V4;
+        }
         return AgentProtocol.INPUT_PROTOCOL_VERSION_V3.equals(request.protocolVersion())
                 ? AgentProtocol.DECISION_PROTOCOL_VERSION_V3
                 : AgentProtocol.DECISION_PROTOCOL_VERSION;

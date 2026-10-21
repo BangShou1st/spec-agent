@@ -1,0 +1,95 @@
+{
+  "java": {
+    "root-final-xml": {
+      "tests": 144,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "independent-final-xml": {
+      "tests": 109,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "post-commit-xml": {
+      "tests": 28,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "post-fix-commit-xml": {
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "post-membership-xml": {
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "java-red-xml": {
+      "tests": 17,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    "revocation-red-xml": {
+      "tests": 5,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    "null-extension-red-xml": {
+      "tests": 6,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    "membership-red-xml": {
+      "tests": 9,
+      "failures": 3,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "python": {
+    "tests": 506,
+    "failures": 0,
+    "skipped": 0
+  },
+  "python_valid_red": {
+    "tests": 16,
+    "failures": 2,
+    "passed": 14
+  },
+  "replay": {
+    "fixtureCount": 11,
+    "outcomeMatched": 11,
+    "actionMatched": 11,
+    "payloadMismatches": []
+  },
+  "C03": "REJECT",
+  "bootJar": "PASS (local cache only)",
+  "database_migrations": "NOT RUN",
+  "real_transaction_races": "NOT RUN",
+  "cross_process_recovery": "NOT RUN",
+  "real_adapter_and_E2E": "NOT RUN",
+  "historical_audit": {
+    "status": "PASS",
+    "input_sha256": {
+      "tools/p3b/p3b_live_run1_poolside_20261018.json": "40f0961a57a1c6399ef2dabd6fd9f8e73ceb9ba6b13b6aac021a6a1951eb8500",
+      "tools/p3b/p3b_live_run2_cohere_20261018.json": "fa66aa44fa5aed0ebc586d2c332cddab67ca7d65cfb63d34b9efd262ea8d8ab5",
+      "tools/p3b/p3b_live_run3_c13c15c09_20261018.json": "49a14d3f9fd09f563b0152fb192b054400258af985f69115f90231d47ece9eb9",
+      "tools/p3b/p3b_live_run4_c09_20261018.json": "c285c098e3f966952d1f5b48baca6f85c70e58a3ae6a4c272e7f3a4a0a65a32b",
+      "tools/p3b/c03-live-runs/gemini-lite-20261020/c03_a.json": "04904967d92a1ab05d1a04cf098cfc745824fa61520cb738042a49b3d32a6114",
+      "tools/p3b/c03-live-runs/gemini-lite-20261020/c03_a.json.attempts.jsonl": "066bcf0dadf7e3eed46d26927744bdeeac47578844f49e4b4a1d3333e97c6413",
+      "tools/p3b/c03-live-runs/gemini-lite-20261020/c03_b.json": "c7d0df727f1ab242b7aa8e2e27c027e2c4088aa2858f9c4d38a4f1d6390d8fa0",
+      "tools/p3b/c03-live-runs/gemini-lite-20261020/c03_b.json.attempts.jsonl": "a8bb07696042f3441b1af62da44069d681a69e77a98f11a74c000a45275bef9e",
+      "tools/p3b/c03-live-runs/gemini-lite-20261020/c03_ab_decision.json": "60738f8bbef347a78ed1d3953473b3da6707261b6f2f4ba14432e24b89cde0b5",
+      "tools/p3b/c03-live-runs/gemini-lite-20261020/c03_ab_decision_p3bae3_recheck_v2.json": "272d7813b16bacb736e7675428a9353c9ba5bc3ec337ba3fae2a0be9371faabf"
+    }
+  }
+}

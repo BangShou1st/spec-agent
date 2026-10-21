@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.specagent.support.DatabaseTestContextGuardTest" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-10-21T03:27:02" hostname="榜首" time="0.3">
+  <properties/>
+  <testcase name="enclosingExternalServiceTagCannotBeBypassedByNestedTest()" classname="com.specagent.support.DatabaseTestContextGuardTest" time="0.039"/>
+  <testcase name="enclosingSpringConfigurationCannotBypassDisabledGate()" classname="com.specagent.support.DatabaseTestContextGuardTest" time="0.005"/>
+  <testcase name="explicitOverrideDoesNotInheritEnclosingSpringConfiguration()" classname="com.specagent.support.DatabaseTestContextGuardTest" time="0.003"/>
+  <testcase name="explicitOptInWithMissingOrSharedTargetNeverRequestsConnection()" classname="com.specagent.support.DatabaseTestContextGuardTest" time="0.017"/>
+  <testcase name="missingOrNonExactOptInFailsClosed()" classname="com.specagent.support.DatabaseTestContextGuardTest" time="0.001"/>
+  <testcase name="registeredFactoryRejectsBeforeDynamicPropertiesAndApplicationBeans()" classname="com.specagent.support.DatabaseTestContextGuardTest" time="0.016"/>
+  <testcase name="databaseOptInDoesNotAuthorizeExternalServices()" classname="com.specagent.support.DatabaseTestContextGuardTest" time="0.005"/>
+  <testcase name="datasourceAndIndependentFlywayDriftFailBeforeApplicationBeans()" classname="com.specagent.support.DatabaseTestContextGuardTest" time="0.127"/>
+  <testcase name="plainComposedAndHierarchicalSpringEntrypointsRejectBeforeSideEffects()" classname="com.specagent.support.DatabaseTestContextGuardTest" time="0.015"/>
+  <testcase name="matchingMockTargetAllowsOnlyExplicitLocalBeans()" classname="com.specagent.support.DatabaseTestContextGuardTest" time="0.032"/>
+  <testcase name="explicitOptInAndVerifiedMockIdentityProducePinnedTarget()" classname="com.specagent.support.DatabaseTestContextGuardTest" time="0.004"/>
+  <testcase name="disabledGateDoesNotReadEnvironmentOrRequestAnyConnection()" classname="com.specagent.support.DatabaseTestContextGuardTest" time="0.028"/>
+  <system-out><![CDATA[11:27:03.108 [Test worker] WARN org.springframework.context.support.GenericApplicationContext -- Exception encountered during context initialization - cancelling refresh attempt: java.lang.IllegalStateException: Database test datasource/Flyway target drift; refusing initialization
+11:27:03.113 [Test worker] WARN org.springframework.context.support.GenericApplicationContext -- Exception encountered during context initialization - cancelling refresh attempt: java.lang.IllegalStateException: Database test datasource/Flyway target drift; refusing initialization
+11:27:03.115 [Test worker] WARN org.springframework.context.support.GenericApplicationContext -- Exception encountered during context initialization - cancelling refresh attempt: java.lang.IllegalStateException: Database test datasource/Flyway target drift; refusing initialization
+11:27:03.117 [Test worker] WARN org.springframework.context.support.GenericApplicationContext -- Exception encountered during context initialization - cancelling refresh attempt: java.lang.IllegalStateException: Database test datasource/Flyway target drift; refusing initialization
+11:27:03.117 [Test worker] WARN org.springframework.context.support.GenericApplicationContext -- Exception encountered during context initialization - cancelling refresh attempt: java.lang.IllegalStateException: Database test datasource/Flyway target drift; refusing initialization
+11:27:03.118 [Test worker] WARN org.springframework.context.support.GenericApplicationContext -- Exception encountered during context initialization - cancelling refresh attempt: java.lang.IllegalStateException: Database test datasource/Flyway target drift; refusing initialization
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

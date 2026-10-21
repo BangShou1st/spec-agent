@@ -2,10 +2,14 @@ package com.specagent.workspace.graph;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.common.Ids;
+import com.specagent.agent.action.ActionExecutionContext;
+import com.specagent.agent.action.ProposalActionExecutor;
+import com.specagent.agent.protocol.ActionProposal;
 import com.specagent.workspace.node.Node;
 import com.specagent.workspace.node.NodeOption;
 import com.specagent.workspace.node.NodeRepository;
 import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.patch.AnswerPatchService;
 import com.specagent.workspace.project.Project;
 import com.specagent.workspace.project.ProjectService;
 import com.specagent.workspace.graph.GraphWorkspaceView;
@@ -25,10 +29,12 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.sql.DataSource;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -62,7 +68,11 @@ class GraphWorkspaceApiIntegrationTest {
     @Autowired
     private com.specagent.workspace.answer.AnswerService answerService;
     @Autowired
+    private AnswerPatchService answerPatchService;
+    @Autowired
     private NodeRepository nodeRepository;
+    @Autowired
+    private ProposalActionExecutor proposalActionExecutor;
     @Autowired
     private DataSource dataSource;
 
@@ -92,6 +102,40 @@ class GraphWorkspaceApiIntegrationTest {
                 .andExpect(jsonPath("$.answers[0].nodeId").value(root.id().toString()))
                 .andExpect(jsonPath("$.answers[0].selectedOptionId").value(option.id().toString()))
                 .andExpect(jsonPath("$.answers[0].freeText").value("answer text"));
+    }
+
+    @Test
+    void emptyOptionQuestionCreatedByAgentIsReturnedByGraphApi() throws Exception {
+        Project project = projectService.createProject("Free text clarification API project");
+        UUID routeId = project.activeRouteId();
+        Node root = nodeService.createRootNode(project.id(), routeId,
+                "要查找哪件事？", null, List.of(), true);
+        var answer = answerService.finalizeAnswer(project.id(), routeId, root.id(), null,
+                "我还没告诉你是哪件事", "user");
+        answerPatchService.save(project.id(), routeId, root.id(), answer.id(), List.of(), null);
+
+        Map<String, Object> payload = Map.of(
+                "kind", "INTERACTION",
+                "questionText", "你希望查找当前项目中哪一件事的历史讨论？",
+                "purpose", "需要确定具体检索对象，才能准确查找相关记录。",
+                "options", List.of(),
+                "allowFreeAnswer", true,
+                "allowMultiSelect", false);
+        ActionProposal proposal = new ActionProposal(
+                "REQUEST_USER_INPUT", payload, UUID.randomUUID(), "a".repeat(64),
+                List.of(), UUID.randomUUID(), UUID.randomUUID().toString(), List.of());
+        var result = proposalActionExecutor.execute(proposal,
+                new ActionExecutionContext(UUID.randomUUID(), project.id(), routeId,
+                        UUID.randomUUID(), root.id(), null, null));
+
+        assertThat(nodeRepository.findById(result.producedNodeId())).isPresent();
+        mockMvc.perform(get("/api/v1/projects/{projectId}/graph", project.id()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nodes[1].question")
+                        .value("你希望查找当前项目中哪一件事的历史讨论？"))
+                .andExpect(jsonPath("$.nodes[1].options", hasSize(0)))
+                .andExpect(jsonPath("$.nodes[1].allowFreeAnswer").value(true))
+                .andExpect(jsonPath("$.nodes[1].allowMultiSelect").value(false));
     }
 
     @Test

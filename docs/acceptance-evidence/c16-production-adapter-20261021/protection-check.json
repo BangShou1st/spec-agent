@@ -1,0 +1,42 @@
+{
+  "protectedCount": 627,
+  "changed": [],
+  "priorMigrationsUnchanged": {
+    "backend/src/main/resources/db/migration/V98__agent_run_model_binding.sql": true,
+    "backend/src/main/resources/db/migration/V99__legacy_run_model_binding_fail_closed.sql": true,
+    "backend/src/main/resources/db/migration/V100__protect_existing_run_model_binding.sql": true,
+    "backend/src/main/resources/db/migration/V101__deferred_capability_deadline.sql": true,
+    "backend/src/main/resources/db/migration/V102__wait_dependency_subscriptions.sql": true
+  },
+  "migrationTail": [
+    [
+      97,
+      "V97__ga_execution_provider_neutral.sql"
+    ],
+    [
+      98,
+      "V98__agent_run_model_binding.sql"
+    ],
+    [
+      99,
+      "V99__legacy_run_model_binding_fail_closed.sql"
+    ],
+    [
+      100,
+      "V100__protect_existing_run_model_binding.sql"
+    ],
+    [
+      101,
+      "V101__deferred_capability_deadline.sql"
+    ],
+    [
+      102,
+      "V102__wait_dependency_subscriptions.sql"
+    ],
+    [
+      103,
+      "V103__retrieval_generation_wait.sql"
+    ]
+  ],
+  "baseHead": "8fb328b9ddfe1a00e5f56e90eb1a250b9fd80872"
+}

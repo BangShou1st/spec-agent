@@ -1,0 +1,12 @@
+:compileJava SKIPPED
+:processResources SKIPPED
+:classes SKIPPED
+:compileEvalJava SKIPPED
+:processEvalResources SKIPPED
+:evalClasses SKIPPED
+:compileTestJava SKIPPED
+:processTestResources SKIPPED
+:testClasses SKIPPED
+:testDatabaseIntegration SKIPPED
+
+BUILD SUCCESSFUL in 957ms

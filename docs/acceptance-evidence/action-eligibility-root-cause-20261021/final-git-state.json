@@ -1,0 +1,97 @@
+{
+  "captured_at": "2026-10-21T17:22:30.1189639+08:00",
+  "branch": "dev",
+  "head_before_round": "24ab2210e0977c9800bdecf49232c8f5da318612",
+  "head_after_round": "8108eefe519db8a311e4936d67c7a269434734ef",
+  "round_commits": [
+    {
+      "sha": "c31953b",
+      "subject": "fix(agent): decide eligibility before the wire check and scope the WAIT to the carried snapshot",
+      "files": [
+        "backend/src/main/java/com/specagent/agent/runtime/DecisionExecutionService.java",
+        "backend/src/main/java/com/specagent/agent/runtime/WaitDependencyRepository.java"
+      ]
+    },
+    {
+      "sha": "a6cde1c",
+      "subject": "fix(agent): close a continuation check whose owner run is not terminal yet",
+      "files": [
+        "backend/src/main/java/com/specagent/agent/runtime/ContinuationCoordinator.java",
+        "backend/src/main/java/com/specagent/agent/runtime/ContinuationVerdict.java"
+      ]
+    },
+    {
+      "sha": "1586a1a",
+      "subject": "fix(retrieval): renew the rebuild lease and bound expired re-queues",
+      "files": [
+        "backend/src/main/java/com/specagent/retrieval/workload/RebuildLeaseCoordinator.java"
+      ]
+    },
+    {
+      "sha": "abd444a",
+      "subject": "test(agent): cover the eligibility scope, the continuation owner and the rebuild lease",
+      "files": [
+        "backend/src/test/java/com/specagent/eval/ScriptedBrain.java",
+        "backend/src/test/java/com/specagent/agent/runtime/WaitScopeAcceptanceTest.java",
+        "backend/src/test/java/com/specagent/agent/runtime/ContinuationOwnerPendingAcceptanceTest.java",
+        "backend/src/test/java/com/specagent/retrieval/workload/RebuildLeaseAcceptanceTest.java",
+        "backend/src/test/java/com/specagent/retrieval/RebuildLeaseIntegrationTest.java",
+        "backend/src/test/java/com/specagent/retrieval/workload/RebuildReadinessOfflineTest.java"
+      ]
+    },
+    {
+      "sha": "8108eef",
+      "subject": "docs(eligibility): record the root cause, the baseline re-check and the two P2 fixes",
+      "files": [
+        "docs/acceptance-evidence/action-eligibility-root-cause-20261021/delivery.md",
+        "docs/acceptance-evidence/action-eligibility-root-cause-20261021/raw-evidence.zip"
+      ]
+    }
+  ],
+  "baseline_recheck": {
+    "after this round": "9/9 PASS",
+    "24ab221": "9/9 FAIL (spec_agent_p3b_live_iso20261021)",
+    "ede535e": "9/9 PASS (spec_agent_p3b_live_base20261021)",
+    "ce16b77": "9/9 FAIL (spec_agent_p3b_live_v4regr20261021) - the regression point",
+    "method": "detached git worktree at a historical commit + its own freshly migrated database inside the isolated server",
+    "worktrees_removed": true
+  },
+  "verification": {
+    "python suites (agent-brain/tests + tools/tests)": "PASS - 507 passed",
+    "audited offline suite (testOffline)": "PASS",
+    "database integration suite (forced re-run after commit)": "PASS - 94 tests / 22 classes, 0 failures, 0 errors, 0 skipped",
+    "independent build (backend/independent clean test verificationScope)": "PASS",
+    "C16 acceptance classes (12 tests) and V98-V103 migration acceptance (8 tests)": "PASS - included in the 94"
+  },
+  "protected_state": {
+    "C03, production prompts, cross-project rules": "unchanged",
+    "pre-existing user deletion (not staged, not committed)": "tools/structured-output-probes/qwen25-7b-schema-20261020/report.md",
+    "V98-V103 migrations": "unchanged",
+    "main, PR #19, dev push": "untouched",
+    "forbidden_actions_not_used": [
+      "git add -A",
+      "git reset --hard",
+      "git clean -fd",
+      "force push",
+      "push dev",
+      "modify main",
+      "merge PR #19"
+    ],
+    "pre-existing untracked evidence folders and agent-brain/uv.lock": "untouched",
+    "previous round P0 fixes": "still present (RebuildWaitRepository column name, ContinuationCoordinator persisted actor)"
+  },
+  "isolated_environment": {
+    "volume": "spec-agent-iso-20261021-pgdata",
+    "container": "spec-agent-iso-20261021-postgres",
+    "server_reported_endpoint": "172.19.0.2/32:5432",
+    "databases": "spec_agent_p3b_live_iso20261021 (+8 scenario DBs), spec_agent_p3b_live_base20261021 (baseline), spec_agent_p3b_live_v4regr20261021 (regression point)",
+    "network": "spec-agent-iso-20261021-net",
+    "client_binding": "127.0.0.1:55432",
+    "container_port": 5432,
+    "forbidden_entrypoints_untouched": [
+      "localhost:5434",
+      "spec_agent_test",
+      "spec-agent-postgres container and volume"
+    ]
+  }
+}

@@ -29,10 +29,18 @@ public class CapabilityInvocationRepository {
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final Json json;
     private final RowMapper<CapabilityInvocationRecord> rowMapper;
+    private final com.specagent.common.CapabilityCompletionPort completions;
 
     public CapabilityInvocationRepository(NamedParameterJdbcTemplate jdbcTemplate, Json json) {
+        this(jdbcTemplate, json, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CapabilityInvocationRepository(NamedParameterJdbcTemplate jdbcTemplate, Json json,
+            com.specagent.common.CapabilityCompletionPort completions) {
         this.jdbcTemplate = jdbcTemplate;
         this.json = json;
+        this.completions = completions;
         this.rowMapper = (rs, rowNum) -> new CapabilityInvocationRecord(
                 rs.getObject("id", UUID.class),
                 rs.getString("invocation_key"),
@@ -85,11 +93,13 @@ public class CapabilityInvocationRepository {
                 "arguments",json.write(invocation.arguments())),Boolean.class));
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public void complete(UUID id, CapabilityResult result) {
+        requireTerminalResult(id, result);
         String sql = """
                 UPDATE capability_invocations
                 SET status = :status, result = CAST(:result AS jsonb), completed_at = :completedAt
-                WHERE id = :id
+                WHERE id = :id AND status = 'RUNNING'
                 """;
         jdbcTemplate.update(sql, Maps.of(
                 "id", id,
@@ -108,17 +118,22 @@ public class CapabilityInvocationRepository {
      * 按创建顺序返回一次运行拥有的全部调用记录。仅作为续跑资格判断的增量读取,
      * 不影响 claim/complete 的语义。
      */
+    public Optional<CapabilityInvocationRecord> findById(UUID id) {
+        return jdbcTemplate.query("SELECT * FROM capability_invocations WHERE id = :id",
+                Maps.of("id", id), rowMapper).stream().findFirst();
+    }
+
     public List<CapabilityInvocationRecord> findByRunId(UUID runId) {
         String sql = "SELECT * FROM capability_invocations "
                 + "WHERE run_id = :runId ORDER BY created_at";
         return jdbcTemplate.query(sql, Maps.of("runId", runId), rowMapper);
     }
 
-    /** 项目最近已完成(非 RUNNING)的调用记录,数量有界,供观测使用。 */
+    /** Only terminal observations enter frozen Brain snapshots; pending jobs stay host-owned. */
     public List<CapabilityInvocationRecord> findRecentCompleted(UUID projectId, int limit) {
         String sql = """
                 SELECT * FROM capability_invocations
-                WHERE project_id = :projectId AND status <> 'RUNNING'
+                WHERE project_id = :projectId AND status IN ('SUCCEEDED', 'FAILED', 'REPLAYED')
                 ORDER BY created_at DESC
                 LIMIT :limit
                 """;
@@ -135,5 +150,68 @@ public class CapabilityInvocationRepository {
                 "sourceRefs", result.sourceRefs(),
                 "provenance", result.provenance(),
                 "warnings", result.warnings());
+    }
+
+    /** Register only an explicitly submitted external job. Deadline is chosen by its adapter. */
+    public boolean markPending(UUID id, CapabilityResult result, long timeoutSeconds) {
+        if (id == null || result == null || !id.equals(result.invocationId()) || result.status() != CapabilityResult.Status.PENDING
+                || timeoutSeconds < 1 || timeoutSeconds > 86400) {
+            throw new IllegalArgumentException("Invalid deferred capability registration");
+        }
+        return jdbcTemplate.update("""
+                UPDATE capability_invocations
+                   SET status = 'PENDING', result = CAST(:result AS jsonb),
+                       pending_deadline = statement_timestamp() + make_interval(secs => :seconds)
+                 WHERE id = :id AND status = 'RUNNING'
+                """, Maps.of("id", id, "result", json.write(resultMap(result)),
+                "seconds", timeoutSeconds)) == 1;
+    }
+
+    /** The result transition and durable continuation wake-up share one transaction. */
+    @org.springframework.transaction.annotation.Transactional
+    public boolean completePending(UUID id, CapabilityResult result) {
+        requireTerminalResult(id, result);
+        int changed = jdbcTemplate.update("""
+                UPDATE capability_invocations
+                   SET status = :status, result = CAST(:result AS jsonb), completed_at = clock_timestamp()
+                 WHERE id = :id AND status = 'PENDING' AND pending_deadline > clock_timestamp()
+                """, Maps.of("id", id, "status", result.status().name(),
+                "result", json.write(resultMap(result))));
+        if (changed == 1) requestContinuation(id);
+        return changed == 1;
+    }
+
+    /** Bounded SKIP LOCKED scan: concurrent timeouts/completions have one row winner.
+     * Persisted deadlines survive restart; no adapter or model is retried by this scan.
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public int expirePending(int limit) {
+        if (limit < 1 || limit > 1000) throw new IllegalArgumentException("Invalid scan limit");
+        List<UUID> ids = jdbcTemplate.query("""
+                UPDATE capability_invocations SET status = 'FAILED', completed_at = clock_timestamp(),
+                    result = jsonb_build_object('content', jsonb_build_object('reason', 'DEPENDENCY_TIMEOUT'),
+                                               'sourceRefs', '[]'::jsonb, 'provenance', '{}'::jsonb,
+                                               'warnings', '[]'::jsonb)
+                 WHERE id IN (SELECT id FROM capability_invocations
+                    WHERE status = 'PENDING' AND pending_deadline <= clock_timestamp()
+                    ORDER BY pending_deadline, id LIMIT :limit FOR UPDATE SKIP LOCKED)
+                   AND status = 'PENDING' AND pending_deadline <= clock_timestamp()
+                RETURNING id
+                """, Maps.of("limit", limit), (rs, n) -> rs.getObject("id", UUID.class));
+        ids.forEach(this::requestContinuation);
+        return ids.size();
+    }
+
+    private void requestContinuation(UUID invocationId) {
+        if (completions == null) throw new IllegalStateException("Deferred completion Host port is required");
+        completions.completed(invocationId);
+    }
+
+    private static void requireTerminalResult(UUID id, CapabilityResult result) {
+        if (id == null || result == null || !id.equals(result.invocationId())
+                || (result.status() != CapabilityResult.Status.SUCCEEDED
+                    && result.status() != CapabilityResult.Status.FAILED)) {
+            throw new IllegalArgumentException("Expected an owned terminal capability result");
+        }
     }
 }

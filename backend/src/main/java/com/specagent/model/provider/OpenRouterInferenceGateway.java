@@ -51,11 +51,30 @@ public class OpenRouterInferenceGateway implements ModelInferenceGateway {
     @Override
     public ModelInferenceResponse complete(ModelInferenceRequest request) {
         RuntimeOpenRouterSettings s = settings.requireRuntimeSettings();
+        return doComplete(request, s.selectedModel(), s.apiKey());
+    }
+
+    /**
+     * 用调用方已解析的<b>冻结目标模型</b>发起请求(路由网关专用)。凭据仍从运行时
+     * 设置读取,但模型 id 只使用传入值——本次请求内绝不重新读取所选模型。
+     */
+    public ModelInferenceResponse complete(ModelInferenceRequest request, String selectedModel) {
+        RuntimeOpenRouterSettings s = settings.requireRuntimeSettings();
+        return doComplete(request, selectedModel, s.apiKey());
+    }
+
+    /** 使用路由目标解析产生的同一份凭据/模型快照,避免请求中途重新读设置。 */
+    public ModelInferenceResponse complete(ModelInferenceRequest request, RuntimeOpenRouterSettings settings) {
+        return doComplete(request, settings.selectedModel(), settings.apiKey());
+    }
+
+    private ModelInferenceResponse doComplete(ModelInferenceRequest request,
+                                              String selectedModel, String apiKey) {
         ProtocolAdapter adapter = registry.require(CustomApiFormat.CHAT_COMPLETIONS);
         String endpoint = OpenRouterGatewaySupport.BASE_URL + "/chat/completions";
-        Map<String, Object> body = adapter.buildRequestBody(request, s.selectedModel());
+        Map<String, Object> body = adapter.buildRequestBody(request, selectedModel);
         ProviderHttpSupport.HttpResult result = ProviderHttpSupport.postJson(
-                client, mapper, endpoint, authHeaders(s.apiKey()),
+                client, mapper, endpoint, authHeaders(apiKey),
                 body, ProviderHttpSupport.INFERENCE_TIMEOUT, "openrouter");
         return adapter.parseNonStreamResponse(result.json(), "openrouter");
     }
@@ -63,12 +82,31 @@ public class OpenRouterInferenceGateway implements ModelInferenceGateway {
     @Override
     public ModelInferenceResponse completeStreaming(ModelInferenceRequest request, FragmentListener listener) {
         RuntimeOpenRouterSettings s = settings.requireRuntimeSettings();
+        return doCompleteStreaming(request, listener, s.selectedModel(), s.apiKey());
+    }
+
+    /** 流式版本的冻结目标重载;语义与 {@link #complete(ModelInferenceRequest, String)} 相同。 */
+    public ModelInferenceResponse completeStreaming(ModelInferenceRequest request,
+                                                    FragmentListener listener, String selectedModel) {
+        RuntimeOpenRouterSettings s = settings.requireRuntimeSettings();
+        return doCompleteStreaming(request, listener, selectedModel, s.apiKey());
+    }
+
+    /** 流式路由使用同一份运行时快照。 */
+    public ModelInferenceResponse completeStreaming(ModelInferenceRequest request,
+            FragmentListener listener, RuntimeOpenRouterSettings settings) {
+        return doCompleteStreaming(request, listener, settings.selectedModel(), settings.apiKey());
+    }
+
+    private ModelInferenceResponse doCompleteStreaming(ModelInferenceRequest request,
+                                                       FragmentListener listener,
+                                                       String selectedModel, String apiKey) {
         ProtocolAdapter adapter = registry.require(CustomApiFormat.CHAT_COMPLETIONS);
         String endpoint = OpenRouterGatewaySupport.BASE_URL + "/chat/completions";
-        Map<String, Object> body = new LinkedHashMap<>(adapter.buildRequestBody(request, s.selectedModel()));
+        Map<String, Object> body = new LinkedHashMap<>(adapter.buildRequestBody(request, selectedModel));
         body.put("stream", true);
         String aggregated = ProviderHttpSupport.postSse(client, mapper, endpoint,
-                authHeaders(s.apiKey()), body, adapter, "openrouter", listener);
+                authHeaders(apiKey), body, adapter, "openrouter", listener);
         if (aggregated == null || aggregated.isBlank()) {
             throw ModelProviderException.invalidResponse("openrouter", "OpenRouter returned empty stream");
         }

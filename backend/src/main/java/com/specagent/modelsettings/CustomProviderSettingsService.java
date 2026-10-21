@@ -243,7 +243,8 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
     public RuntimeCustomSettings requireRuntimeSettings() {
         CustomProviderSettings s = requireStored();
         requireActivatable();
-        return new RuntimeCustomSettings(s.apiFormat(), s.baseUrl(), s.apiKey(), s.selectedModel());
+        return new RuntimeCustomSettings(s.apiFormat(), s.baseUrl(), s.apiKey(), s.selectedModel(),
+                s.configRevision());
     }
 
     /** 供控制器使用的端点预览,避免控制器直接依赖 model 包。 */

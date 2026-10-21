@@ -1,0 +1,13 @@
+Starting a Gradle Daemon (subsequent builds will be faster)
+:compileJava SKIPPED
+:processResources SKIPPED
+:classes SKIPPED
+:compileEvalJava SKIPPED
+:processEvalResources SKIPPED
+:evalClasses SKIPPED
+:compileTestJava SKIPPED
+:processTestResources SKIPPED
+:testClasses SKIPPED
+:testOffline SKIPPED
+
+BUILD SUCCESSFUL in 6s

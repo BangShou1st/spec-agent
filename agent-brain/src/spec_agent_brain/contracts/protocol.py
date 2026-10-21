@@ -9,6 +9,8 @@
 INPUT_PROTOCOL_VERSION = "agent-input.v2"
 DECISION_PROTOCOL_VERSION = "agent-decision.v2"
 INPUT_PROTOCOL_VERSION_V3 = "agent-input.v3"
+INPUT_PROTOCOL_VERSION_V4 = "agent-input.v4"
+DECISION_PROTOCOL_VERSION_V4 = "agent-decision.v4"
 DECISION_PROTOCOL_VERSION_V3 = "agent-decision.v3"
 ACTION_ELIGIBILITY_VERSION = "action-eligibility.v1"
 ARTIFACT_PROTOCOL_VERSION = "agent-artifact.v1"

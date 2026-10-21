@@ -1,0 +1,2987 @@
+[
+  {
+    "path": "agent-brain/src/spec_agent_brain/contracts/inputs.py",
+    "exists": true,
+    "sha256": "1e6fe7b65341edcdb119c590249e18f0d4bc84587b3c720d1a71a6ad2e82083b"
+  },
+  {
+    "path": "agent-brain/tests/test_c16_wait_contract.py",
+    "exists": true,
+    "sha256": "7623515b8580f4ff3161ca03fd30bd1dae9eb5dd7f4c4cd21a18461eff299863"
+  },
+  {
+    "path": "agent-brain/uv.lock",
+    "exists": true,
+    "sha256": "d0a1c2d87efc0315ab37c1d75a33b50a2cc59125e3abc286d627fd70f1cf1371"
+  },
+  {
+    "path": "backend/build.gradle.kts",
+    "exists": true,
+    "sha256": "73c761a8439bbc166ea15f5227bec8ab3c6f5b8342f0ae7cc36143e03cd74f40"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/action/ActionEligibilityGate.java",
+    "exists": true,
+    "sha256": "3e5bef781978c86c0811cfa987a10703826260c4a89314abda1ba88e419b9b8a"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/action/ActionExecutionContext.java",
+    "exists": true,
+    "sha256": "529c8aa7729b751a764d5ba0decd00702d626b465d55540f7a6189e43fe0c7c2"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/action/ProposalActionExecutor.java",
+    "exists": true,
+    "sha256": "0b3ee384163643a4e8b9cc1f1bd9caec0f124aeba6b8d029e251a7181f72e190"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/protocol/CapabilityResultView.java",
+    "exists": true,
+    "sha256": "c70ec9dfc63c92bbd5fc60d6c6148f166d50154ff055ce2c70cfc386208ec44c"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/AgentRunModelBindingRepository.java",
+    "exists": true,
+    "sha256": "5f2834ff15c9ff08db16cf55d3f2eee5902413633513b8ae9d6aba06ca06ed69"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/ContinuationCheckRepository.java",
+    "exists": true,
+    "sha256": "f051a63a5c5a030199a2723a188da5eb50432ca85428b671b0f1cacb31f67420"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/ContinuationCoordinator.java",
+    "exists": true,
+    "sha256": "914c254c753e0601b6af483a18634be22921b6375022e891f560d556a072f6f6"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/ContinuationDispatchService.java",
+    "exists": true,
+    "sha256": "12c9719c0567ad7e8c090be08160d8d6b1948895adb9b55582b9eb75ead9d38b"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/ContinuationVerdict.java",
+    "exists": true,
+    "sha256": "4cea2137a6133a632678ae2df0079fb0f7d870ad3ee745e1bc09f2a4f342335c"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/DecisionExecutionService.java",
+    "exists": true,
+    "sha256": "33e483b86b1d02617927739c1a497392f8cba9a10cf906efbd31993bd72063be"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/LegacyBindingMigrationGuard.java",
+    "exists": true,
+    "sha256": "885e1e51ce0161c43ab21021c0b9a698d2320019c325b8a546b2d04ad4c9e293"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/capability/CapabilityInvocationRepository.java",
+    "exists": true,
+    "sha256": "d1774efe60022dac59930c539345ac26bb731f3698ad5a07672cf95b7dbe4bcb"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/capability/CapabilityResult.java",
+    "exists": true,
+    "sha256": "7a4a6baefa829977242931cd15dafd919555203f3ec84295452301faf638f870"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/capability/CapabilityRuntime.java",
+    "exists": true,
+    "sha256": "abcacaa16bf4f9df820beb2f3745d5dae6a373a0841a1cf2172a4c62ec48a523"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/capability/DeferredCapabilityAdapter.java",
+    "exists": true,
+    "sha256": "b72fe4f975743f674befaf2c69d5ccaee39e0e686c3df191195b4984b2e9a33e"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/common/CapabilityCompletionPort.java",
+    "exists": true,
+    "sha256": "6f8092b37d0e817ebd2264b5eeaf80b30ba1d2ccf2f2bf94e18a038d3d130481"
+  },
+  {
+    "path": "backend/src/main/resources/db/migration/V100__protect_existing_run_model_binding.sql",
+    "exists": true,
+    "sha256": "c212d7468fae6c14809563e0fe9d957a3dc576cabda301ea21486c537a323ef3"
+  },
+  {
+    "path": "backend/src/main/resources/db/migration/V101__deferred_capability_deadline.sql",
+    "exists": true,
+    "sha256": "aa77074e3cd10d90d7a2f80428781aa95d16269e41cbcabccd8e12ea1504669b"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/agent/action/C16WaitContractTest.java",
+    "exists": true,
+    "sha256": "b31e19461a34b4d38d955f72a07a018ff18d3122d6bf26b8b6629ed88acf474f"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/agent/runtime/AgentRunModelBindingRepositoryOfflineTest.java",
+    "exists": true,
+    "sha256": "f88e23ea9fc7f0f3f29acccba7543d7e660d2bb47cc9dba6dc57e4653f4ca796"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/agent/runtime/DeferredContinuationOfflineTest.java",
+    "exists": true,
+    "sha256": "60757e498aa9227eec167c9a50266b736d9328bfe74a994a4543c761bdf1a8d7"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/agent/runtime/LegacyBindingMigrationGuardTest.java",
+    "exists": true,
+    "sha256": "ce04efbf3328528526fbfdca15f6700cc1677c15500025016c1ef079e91824fb"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/capability/DeferredCapabilityRepositoryTest.java",
+    "exists": true,
+    "sha256": "1ddd6cbbcf5a6f29d770e0e098bf798f4412f37e2ae1a8ba7bf342466a6d177c"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/capability/DeferredCapabilityRuntimeTest.java",
+    "exists": true,
+    "sha256": "077f1845df774a43636cc12961abcc869150577e012fee326e5f7d5af80adb55"
+  },
+  {
+    "path": "contracts/fixtures/deferred-capability-completed-observation.json",
+    "exists": true,
+    "sha256": "58e2b5c946bb20ee250d8f60bc9c589240646c71d830b2bb3459a867d9d312a4"
+  },
+  {
+    "path": "docs/P3B_AE4_DATABASE_INCIDENT_REVIEW.md",
+    "exists": true,
+    "sha256": "edf515c2eed71eda9175329b99afc4a549a39ee16aa2a15d5244b2e2f750cd98"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/ci-diff-stat.txt",
+    "exists": true,
+    "sha256": "75e3e4176d4adac231cf3dfab3aa90d43d87b54ecedae48aaae64a4db0fa6d80"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/ci-diff.patch",
+    "exists": true,
+    "sha256": "51b05faff3c2bdfb082605ea42bc3383942cb347ed7d0174779a04263fb9059d"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-diff.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/artifacts.json",
+    "exists": true,
+    "sha256": "0dded2046f2272d01dc421874231064254caab495e600a93cbd8b8b653aaa737"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/final-diff.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/initial-diff.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/initial-hashes.json",
+    "exists": true,
+    "sha256": "d0c5d22a380c81ed1662c713ae8eb950fdc61e4a650a7478aa82e9a2fabdbfd1"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/initial-status.txt",
+    "exists": true,
+    "sha256": "302273d19e2c04acb7df7f7b850901208263bb0e1b2a7c0625ddb8528a9ee10b"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/inline-comments.json",
+    "exists": true,
+    "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/offline-audit.json",
+    "exists": true,
+    "sha256": "c49af8622aa71af6865abb7d19b6749ecae4842992f7019785895c0b9ca2397f"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/offline_audit.py",
+    "exists": true,
+    "sha256": "0c6bb0a15e47ea695a0ed3822ea366f9b0aa6e5fd7f058b36fc813896875989d"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/dependencies-testRuntimeClasspath.txt",
+    "exists": true,
+    "sha256": "b0354613a58efbabbd8e1720f74a393169bf856df4716d57cde358ca6a989516"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityCharacterizationTest.html",
+    "exists": true,
+    "sha256": "8851597f0c0d0a85b7bb40584df36e30367d1a3a1ea9ed2b4f766a9f9954f8a9"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityEvaluatorTest.html",
+    "exists": true,
+    "sha256": "4f4b861e37973efdd3e8c2ae9ef0f9c8ef9ab0290701ee32cbf51e2177d6bdf3"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityGateTest.html",
+    "exists": true,
+    "sha256": "b480e53315725240b82295053a1897bd0c63f08707f122a295988a7acb9137ca"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/classes/com.specagent.model.inference.ModelOutputContractTest.html",
+    "exists": true,
+    "sha256": "cf0d88301c6d65b4c8ecca374b032cdb66d5dd7ebd2b070dbb52d268f81a016f"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/css/base-style.css",
+    "exists": true,
+    "sha256": "a10a4ef75ca2601b44bfdaf3112a5854f6376f68d7cbaf6958286f04488d293b"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/css/style.css",
+    "exists": true,
+    "sha256": "61866908fd7eb09c79e96239f69db2e8cc5c6526cdb308eba0535ed2a0f6a263"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/index.html",
+    "exists": true,
+    "sha256": "7bd84959cadf24144f7faa85c6d07e6fe4bb74b59dbfdd0f0d4f1cab3eb08305"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/js/report.js",
+    "exists": true,
+    "sha256": "fc89c6d002d18f4662065c9887b2cda8f8486f2737d4ad0f2fdeac0ad58a44dc"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/packages/com.specagent.agent.action.html",
+    "exists": true,
+    "sha256": "8bc644a3c1beb82784d9aacdeb6fcbd46c7c8f38cd066809e3f3d19f654ffdc9"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/packages/com.specagent.model.inference.html",
+    "exists": true,
+    "sha256": "c9575be8691e9e58283d558cbc1394e3a518e1b13996f8238a1cfc990ef2824c"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "cf76894455b626c8658593511f869ea1b9796502031fa30034a4edb2846ac3fa"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "a5710746271b9c0c7069b96dab0097c36aa843514c59209b6584b00f9d7fb23b"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "d621773279f58f217d6003dc62f06beec77d8ac3b80d673813e0eb6045e513c5"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/test-results/test/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "62bc7eed0e6fe2499b1d71ea6c301d12d34ee09b0d74827d8ce8ae823fa6e5ea"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/verification-scope.txt",
+    "exists": true,
+    "sha256": "c1980687d2414495e4ea85353f686eda190283b51e89337ff3290874bad51ce3"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr.diff",
+    "exists": true,
+    "sha256": "5f0a8c96202a5d3505efb05298d068ecfd342700d2a2d5120c05fcc64172c089"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr.json",
+    "exists": true,
+    "sha256": "069b12e401060a164478a4d6866efc5140305fa13106492dc90c71eef5d17ad7"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/protection-check.json",
+    "exists": true,
+    "sha256": "575d76d46b1da8c5f1638fb2d3d718e2c50e36cc99a89887fb07ece24b91cd9b"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/protection.json",
+    "exists": true,
+    "sha256": "6c4d0046dcf60aff72710450f228c3a931bbe128fcb46d37cc38599ce9c20b45"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-review/review.md",
+    "exists": true,
+    "sha256": "e92e75525615511cbb839fb486b27bbfee5c928cdcb70c933344620d4bbb412a"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-staged.patch",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-status-all.txt",
+    "exists": true,
+    "sha256": "5d59364471138f298bb1e91e70a1570e66d79b92e9904f5ea991094e7da888c8"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/final-status.txt",
+    "exists": true,
+    "sha256": "784cb3690c9d14be95e58fa52d19797f4e47ad38bbc71a8870401117f7c646b3"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/git-graph.txt",
+    "exists": true,
+    "sha256": "9e8befea78095aa38217558e129b7a2326f111197cadf0feaa9d204c3d58d564"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/dependencies-testRuntimeClasspath.txt",
+    "exists": true,
+    "sha256": "9777c01ca700eb004ee3f92f2629c5c6bf667be8b1c89fec302a3e0263cee411"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityCharacterizationTest.html",
+    "exists": true,
+    "sha256": "992bf914a24553f1685f05c654bbc4e94d7a2dec3291c880aee340146fefbdc0"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityEvaluatorTest.html",
+    "exists": true,
+    "sha256": "c66dbf04de3decd72f856276f8160e5b94b9e377e4b1aa304221e0c2cca416bb"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityGateTest.html",
+    "exists": true,
+    "sha256": "aed37d2367ae82073ec8dae65c54a287765745da29cb9b7e16d86829a64507e2"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/classes/com.specagent.model.inference.ModelOutputContractTest.html",
+    "exists": true,
+    "sha256": "b095af8a218634aa03f7ab3af814ed4c64d20d60bbe9d5c2c2461285c4f3207d"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/css/base-style.css",
+    "exists": true,
+    "sha256": "a10a4ef75ca2601b44bfdaf3112a5854f6376f68d7cbaf6958286f04488d293b"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/css/style.css",
+    "exists": true,
+    "sha256": "61866908fd7eb09c79e96239f69db2e8cc5c6526cdb308eba0535ed2a0f6a263"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/index.html",
+    "exists": true,
+    "sha256": "d291fc7e5e7d7d38985a31c6698d08f6f8b57058fc48a9dfbeb3e9d1856005a0"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/js/report.js",
+    "exists": true,
+    "sha256": "fc89c6d002d18f4662065c9887b2cda8f8486f2737d4ad0f2fdeac0ad58a44dc"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/packages/com.specagent.agent.action.html",
+    "exists": true,
+    "sha256": "444479756b3dd2d15797eeae04c6cc90ccadec90abf7fe1afea218e6c4663fc9"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/packages/com.specagent.model.inference.html",
+    "exists": true,
+    "sha256": "5ad4d1f59455a3b55edcd0cbccae784442f2b0e674358294a25bcf9eb93d82a2"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "b7ecd303dafd9246a2001312742eeb93d3c9359e8bc5f4ebf787691254548c0b"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "2a40962a3fec83ea07e6b490f5d7fcf95390e6f74a14a651515ca04b4584c114"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "e9b5b46de8ce9677acb54f538ce5b1439d71a56fd7c12297949f68e0cf591db8"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/test-results/test/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "51169d2f9caf036a942b0cbaca2eb92342d7e0831dd9e8ac4e73214dca9478e8"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/historical-java/verification-scope.txt",
+    "exists": true,
+    "sha256": "c1980687d2414495e4ea85353f686eda190283b51e89337ff3290874bad51ce3"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/initial-diff.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/initial-hashes.json",
+    "exists": true,
+    "sha256": "9a5593f1e1dfd853a3cebe4f8992c57b920b716ddae59bbc5e71e10ee645e7e9"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/initial-staged.patch",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/initial-status.txt",
+    "exists": true,
+    "sha256": "8398660064785c4b87c2ba95d7b069bc3110803b3daf1f72a2ef4018361feffc"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/local-dependencies.txt",
+    "exists": true,
+    "sha256": "cf7a13b88fcc953c9536b1ed3fe0568c26d0829099678a101908e8aae0db1301"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/local-java/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "2d716d4463ed3d134425f6c21a00a9830be776ca766b1fde3ec012d8d73df7ee"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/local-java/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "902811ba37f1dcfb8ee2c07dcaf1ddc4b785118c580058faabaa420d4c83d61f"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/local-java/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "2432998225029cd6fff9177513c44f3a839bc497bfce84caa373ba3c0c1ddce0"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/local-java/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "f7b57b40fadbf25e47bf026b413db0a7bedfa74f0105b2a4e3e22466cba52deb"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/local-java/binary/output.bin",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/local-java/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/local-java/binary/results.bin",
+    "exists": true,
+    "sha256": "945de48fe8e0abd43c907e9d8e5b814e21f5f63b6feafea440e07ce72307610b"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/main-active-rules.json",
+    "exists": true,
+    "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/main-protection.json",
+    "exists": true,
+    "sha256": "6c4d0046dcf60aff72710450f228c3a931bbe128fcb46d37cc38599ce9c20b45"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-body.md",
+    "exists": true,
+    "sha256": "a1389ac3b92d1b0a6103abf32b40df5ba65f248fcbfbaf643315ec5c8e372fa0"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-final.json",
+    "exists": true,
+    "sha256": "8451f5f1dbb3d2e35e52d6651c6928722d0bec94a33f9dc4759f6d6a453ca9ab"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/dependencies-testRuntimeClasspath.txt",
+    "exists": true,
+    "sha256": "b0354613a58efbabbd8e1720f74a393169bf856df4716d57cde358ca6a989516"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityCharacterizationTest.html",
+    "exists": true,
+    "sha256": "8851597f0c0d0a85b7bb40584df36e30367d1a3a1ea9ed2b4f766a9f9954f8a9"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityEvaluatorTest.html",
+    "exists": true,
+    "sha256": "4f4b861e37973efdd3e8c2ae9ef0f9c8ef9ab0290701ee32cbf51e2177d6bdf3"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityGateTest.html",
+    "exists": true,
+    "sha256": "b480e53315725240b82295053a1897bd0c63f08707f122a295988a7acb9137ca"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/classes/com.specagent.model.inference.ModelOutputContractTest.html",
+    "exists": true,
+    "sha256": "cf0d88301c6d65b4c8ecca374b032cdb66d5dd7ebd2b070dbb52d268f81a016f"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/css/base-style.css",
+    "exists": true,
+    "sha256": "a10a4ef75ca2601b44bfdaf3112a5854f6376f68d7cbaf6958286f04488d293b"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/css/style.css",
+    "exists": true,
+    "sha256": "61866908fd7eb09c79e96239f69db2e8cc5c6526cdb308eba0535ed2a0f6a263"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/index.html",
+    "exists": true,
+    "sha256": "7bd84959cadf24144f7faa85c6d07e6fe4bb74b59dbfdd0f0d4f1cab3eb08305"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/js/report.js",
+    "exists": true,
+    "sha256": "fc89c6d002d18f4662065c9887b2cda8f8486f2737d4ad0f2fdeac0ad58a44dc"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/packages/com.specagent.agent.action.html",
+    "exists": true,
+    "sha256": "8bc644a3c1beb82784d9aacdeb6fcbd46c7c8f38cd066809e3f3d19f654ffdc9"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/packages/com.specagent.model.inference.html",
+    "exists": true,
+    "sha256": "c9575be8691e9e58283d558cbc1394e3a518e1b13996f8238a1cfc990ef2824c"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "cf76894455b626c8658593511f869ea1b9796502031fa30034a4edb2846ac3fa"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "a5710746271b9c0c7069b96dab0097c36aa843514c59209b6584b00f9d7fb23b"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "d621773279f58f217d6003dc62f06beec77d8ac3b80d673813e0eb6045e513c5"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/test-results/test/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "62bc7eed0e6fe2499b1d71ea6c301d12d34ee09b0d74827d8ce8ae823fa6e5ea"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-java/verification-scope.txt",
+    "exists": true,
+    "sha256": "c1980687d2414495e4ea85353f686eda190283b51e89337ff3290874bad51ce3"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/pr-run.json",
+    "exists": true,
+    "sha256": "34298fdb856b1d79e8709d3d0cfe3c4b3b43e92e00873db8c55d4876020f1aae"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/protected-files-check.json",
+    "exists": true,
+    "sha256": "1839284e3e0dba8a86da36cbf25904c1eaac3fae3f34ce33db9faa7fd8f5e7a5"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/review.md",
+    "exists": true,
+    "sha256": "078aeb0547e45259d58a64ddba0db6b479475964e260f84a4452ba678e2909fa"
+  },
+  {
+    "path": "docs/acceptance-evidence/ci-pr-review-20261021/rulesets.json",
+    "exists": true,
+    "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/authorization-checklist-hash.json",
+    "exists": true,
+    "sha256": "b1ecaf97c809056a11606689878ecf3e9db618fe8349dc7f0740478bb3a606ec"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/before.json",
+    "exists": true,
+    "sha256": "d08906ea9cca318403d7bc622b957032431ea441d48f04a5b5d3bc4c43411fba"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/ci-initial-staged.patch",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/ci-initial.patch",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/contract-replay.json",
+    "exists": true,
+    "sha256": "762f0dd09c20ee527149f3f7e08dc1b5fb22b7b99d7f76fdbb83e3c2a0f16107"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/delivery.md",
+    "exists": true,
+    "sha256": "ca33397529ccbc5146e5b0773d1990f2d2c3f06abeefa1b5bf366e89fe3da42a"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/dev-initial-staged.patch",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/dev-initial.patch",
+    "exists": true,
+    "sha256": "fae13c30c5013abfd53126d2277c06c36d56044388cdbbe184db5777eb2bd727"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/final-branches.txt",
+    "exists": true,
+    "sha256": "4ee6b0288981e97663532041ab127036feac4f3e30230c8e1302709f084b0dab"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/final-status.txt",
+    "exists": true,
+    "sha256": "6eeae2508566151997816aff296312ea38e997dda548b057723cb7989ecd08af"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/final-worktrees.txt",
+    "exists": true,
+    "sha256": "49c2be350c70f32e051d412d1606b9aafff115882e07f01e02ee417376e314e8"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/graph-after.txt",
+    "exists": true,
+    "sha256": "d5314d5bb3c258a9cb07b3057f454269d9ead42150eeb93dfbd0dfa836f37268"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/graph-before.txt",
+    "exists": true,
+    "sha256": "ad5a931e237c708fbf81f600aafd6b030b334190ae930b43a8cdd175d87404f4"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/historical-evidence.json",
+    "exists": true,
+    "sha256": "5cfcc1c645d2d95cf88b5d1f4ab05112606b6176744bdd6f66ea7a650b215ee2"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/independent-xml/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "e66779f030e72e4028656869519c33103d45130afd13550c33941719b46fd659"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/independent-xml/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "d464dd2250f4a2cc2c8bc7aa87e38470db8edbf78f375bac95f998cf776b5b16"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/independent-xml/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "788b550d20754e6c2d136eae58fbd026789aab173c7cff3665e7d8534132b4d8"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/independent-xml/TEST-com.specagent.agent.action.C16WaitContractTest.xml",
+    "exists": true,
+    "sha256": "c080a242af5d333acb3a81839959e1a1ed12a6b12c5f8aaf93ba4a1604c70708"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/independent-xml/TEST-com.specagent.agent.decision.AgentBrainArgumentGroundingTest.xml",
+    "exists": true,
+    "sha256": "ee5029e00f1b3aa127f79fa8f8b1b914fa065bf9095656c708bb9768df443e8e"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/independent-xml/TEST-com.specagent.eval.EvalProjectCleanupTest.xml",
+    "exists": true,
+    "sha256": "22b3ad6d6c50161e8f7b1e065a3fbb7e2a8ff8a11ffb446081fa353f18a6ae0f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/independent-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "86dc03f87fd6b10c5c692eb73f2556f0dc29444b8e8556560ffd41b99b722f0b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/independent-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "6429f3cf31443c5c744df1298f61278cdcd9f1515ea88ddbf9f79a94d3364986"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/independent-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "b8ebf06de6de2ee2b3b2c64a2c4048f4ee51d45f9b658b8a0a4e9a401835a473"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/independent-xml/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "67b4bd15deb8922bf5f3231e494c6fec461a2469741d5c1759b91d2b4da4b561"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/independent-xml/TEST-com.specagent.model.inference.ModelTargetBindingContractTest.xml",
+    "exists": true,
+    "sha256": "f6d34d8914a9262a38885b6df0e16d79a3fe428271af0d23c363889abf47e802"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/independent-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "3e842fa8ab418cc5d45a29a19d8d82f83446a373b6ac6269a3e138637d5af117"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/integrated-files.txt",
+    "exists": true,
+    "sha256": "d71a21ca5cef4040bc71677e3ca74146fdba1a7333e51b111457837bd69a1857"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/integrated.patch",
+    "exists": true,
+    "sha256": "219db7515f95c2c16aa918d67d4b8137e9a10ccd54e86622e6e836a84578a757"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/agent-brain/uv.lock",
+    "exists": true,
+    "sha256": "d0a1c2d87efc0315ab37c1d75a33b50a2cc59125e3abc286d627fd70f1cf1371"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/P3B_AE4_DATABASE_INCIDENT_REVIEW.md",
+    "exists": true,
+    "sha256": "edf515c2eed71eda9175329b99afc4a549a39ee16aa2a15d5244b2e2f750cd98"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/ci-diff-stat.txt",
+    "exists": true,
+    "sha256": "75e3e4176d4adac231cf3dfab3aa90d43d87b54ecedae48aaae64a4db0fa6d80"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/ci-diff.patch",
+    "exists": true,
+    "sha256": "51b05faff3c2bdfb082605ea42bc3383942cb347ed7d0174779a04263fb9059d"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-diff.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/artifacts.json",
+    "exists": true,
+    "sha256": "0dded2046f2272d01dc421874231064254caab495e600a93cbd8b8b653aaa737"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/final-diff.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/initial-diff.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/initial-hashes.json",
+    "exists": true,
+    "sha256": "d0c5d22a380c81ed1662c713ae8eb950fdc61e4a650a7478aa82e9a2fabdbfd1"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/initial-status.txt",
+    "exists": true,
+    "sha256": "302273d19e2c04acb7df7f7b850901208263bb0e1b2a7c0625ddb8528a9ee10b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/inline-comments.json",
+    "exists": true,
+    "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/offline-audit.json",
+    "exists": true,
+    "sha256": "c49af8622aa71af6865abb7d19b6749ecae4842992f7019785895c0b9ca2397f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/offline_audit.py",
+    "exists": true,
+    "sha256": "0c6bb0a15e47ea695a0ed3822ea366f9b0aa6e5fd7f058b36fc813896875989d"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/dependencies-testRuntimeClasspath.txt",
+    "exists": true,
+    "sha256": "b0354613a58efbabbd8e1720f74a393169bf856df4716d57cde358ca6a989516"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityCharacterizationTest.html",
+    "exists": true,
+    "sha256": "8851597f0c0d0a85b7bb40584df36e30367d1a3a1ea9ed2b4f766a9f9954f8a9"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityEvaluatorTest.html",
+    "exists": true,
+    "sha256": "4f4b861e37973efdd3e8c2ae9ef0f9c8ef9ab0290701ee32cbf51e2177d6bdf3"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityGateTest.html",
+    "exists": true,
+    "sha256": "b480e53315725240b82295053a1897bd0c63f08707f122a295988a7acb9137ca"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/classes/com.specagent.model.inference.ModelOutputContractTest.html",
+    "exists": true,
+    "sha256": "cf0d88301c6d65b4c8ecca374b032cdb66d5dd7ebd2b070dbb52d268f81a016f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/css/base-style.css",
+    "exists": true,
+    "sha256": "a10a4ef75ca2601b44bfdaf3112a5854f6376f68d7cbaf6958286f04488d293b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/css/style.css",
+    "exists": true,
+    "sha256": "61866908fd7eb09c79e96239f69db2e8cc5c6526cdb308eba0535ed2a0f6a263"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/index.html",
+    "exists": true,
+    "sha256": "7bd84959cadf24144f7faa85c6d07e6fe4bb74b59dbfdd0f0d4f1cab3eb08305"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/js/report.js",
+    "exists": true,
+    "sha256": "fc89c6d002d18f4662065c9887b2cda8f8486f2737d4ad0f2fdeac0ad58a44dc"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/packages/com.specagent.agent.action.html",
+    "exists": true,
+    "sha256": "8bc644a3c1beb82784d9aacdeb6fcbd46c7c8f38cd066809e3f3d19f654ffdc9"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/reports/tests/test/packages/com.specagent.model.inference.html",
+    "exists": true,
+    "sha256": "c9575be8691e9e58283d558cbc1394e3a518e1b13996f8238a1cfc990ef2824c"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "cf76894455b626c8658593511f869ea1b9796502031fa30034a4edb2846ac3fa"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "a5710746271b9c0c7069b96dab0097c36aa843514c59209b6584b00f9d7fb23b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "d621773279f58f217d6003dc62f06beec77d8ac3b80d673813e0eb6045e513c5"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/test-results/test/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "62bc7eed0e6fe2499b1d71ea6c301d12d34ee09b0d74827d8ce8ae823fa6e5ea"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr-java/verification-scope.txt",
+    "exists": true,
+    "sha256": "c1980687d2414495e4ea85353f686eda190283b51e89337ff3290874bad51ce3"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr.diff",
+    "exists": true,
+    "sha256": "5f0a8c96202a5d3505efb05298d068ecfd342700d2a2d5120c05fcc64172c089"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/pr.json",
+    "exists": true,
+    "sha256": "069b12e401060a164478a4d6866efc5140305fa13106492dc90c71eef5d17ad7"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/protection-check.json",
+    "exists": true,
+    "sha256": "575d76d46b1da8c5f1638fb2d3d718e2c50e36cc99a89887fb07ece24b91cd9b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/protection.json",
+    "exists": true,
+    "sha256": "6c4d0046dcf60aff72710450f228c3a931bbe128fcb46d37cc38599ce9c20b45"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-review/review.md",
+    "exists": true,
+    "sha256": "e92e75525615511cbb839fb486b27bbfee5c928cdcb70c933344620d4bbb412a"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-staged.patch",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-status-all.txt",
+    "exists": true,
+    "sha256": "5d59364471138f298bb1e91e70a1570e66d79b92e9904f5ea991094e7da888c8"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/final-status.txt",
+    "exists": true,
+    "sha256": "784cb3690c9d14be95e58fa52d19797f4e47ad38bbc71a8870401117f7c646b3"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/git-graph.txt",
+    "exists": true,
+    "sha256": "9e8befea78095aa38217558e129b7a2326f111197cadf0feaa9d204c3d58d564"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/dependencies-testRuntimeClasspath.txt",
+    "exists": true,
+    "sha256": "9777c01ca700eb004ee3f92f2629c5c6bf667be8b1c89fec302a3e0263cee411"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityCharacterizationTest.html",
+    "exists": true,
+    "sha256": "992bf914a24553f1685f05c654bbc4e94d7a2dec3291c880aee340146fefbdc0"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityEvaluatorTest.html",
+    "exists": true,
+    "sha256": "c66dbf04de3decd72f856276f8160e5b94b9e377e4b1aa304221e0c2cca416bb"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityGateTest.html",
+    "exists": true,
+    "sha256": "aed37d2367ae82073ec8dae65c54a287765745da29cb9b7e16d86829a64507e2"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/classes/com.specagent.model.inference.ModelOutputContractTest.html",
+    "exists": true,
+    "sha256": "b095af8a218634aa03f7ab3af814ed4c64d20d60bbe9d5c2c2461285c4f3207d"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/css/base-style.css",
+    "exists": true,
+    "sha256": "a10a4ef75ca2601b44bfdaf3112a5854f6376f68d7cbaf6958286f04488d293b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/css/style.css",
+    "exists": true,
+    "sha256": "61866908fd7eb09c79e96239f69db2e8cc5c6526cdb308eba0535ed2a0f6a263"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/index.html",
+    "exists": true,
+    "sha256": "d291fc7e5e7d7d38985a31c6698d08f6f8b57058fc48a9dfbeb3e9d1856005a0"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/js/report.js",
+    "exists": true,
+    "sha256": "fc89c6d002d18f4662065c9887b2cda8f8486f2737d4ad0f2fdeac0ad58a44dc"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/packages/com.specagent.agent.action.html",
+    "exists": true,
+    "sha256": "444479756b3dd2d15797eeae04c6cc90ccadec90abf7fe1afea218e6c4663fc9"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/reports/tests/test/packages/com.specagent.model.inference.html",
+    "exists": true,
+    "sha256": "5ad4d1f59455a3b55edcd0cbccae784442f2b0e674358294a25bcf9eb93d82a2"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "b7ecd303dafd9246a2001312742eeb93d3c9359e8bc5f4ebf787691254548c0b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "2a40962a3fec83ea07e6b490f5d7fcf95390e6f74a14a651515ca04b4584c114"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "e9b5b46de8ce9677acb54f538ce5b1439d71a56fd7c12297949f68e0cf591db8"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/test-results/test/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "51169d2f9caf036a942b0cbaca2eb92342d7e0831dd9e8ac4e73214dca9478e8"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/historical-java/verification-scope.txt",
+    "exists": true,
+    "sha256": "c1980687d2414495e4ea85353f686eda190283b51e89337ff3290874bad51ce3"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/initial-diff.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/initial-hashes.json",
+    "exists": true,
+    "sha256": "9a5593f1e1dfd853a3cebe4f8992c57b920b716ddae59bbc5e71e10ee645e7e9"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/initial-staged.patch",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/initial-status.txt",
+    "exists": true,
+    "sha256": "8398660064785c4b87c2ba95d7b069bc3110803b3daf1f72a2ef4018361feffc"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/local-dependencies.txt",
+    "exists": true,
+    "sha256": "cf7a13b88fcc953c9536b1ed3fe0568c26d0829099678a101908e8aae0db1301"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/local-java/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "2d716d4463ed3d134425f6c21a00a9830be776ca766b1fde3ec012d8d73df7ee"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/local-java/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "902811ba37f1dcfb8ee2c07dcaf1ddc4b785118c580058faabaa420d4c83d61f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/local-java/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "2432998225029cd6fff9177513c44f3a839bc497bfce84caa373ba3c0c1ddce0"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/local-java/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "f7b57b40fadbf25e47bf026b413db0a7bedfa74f0105b2a4e3e22466cba52deb"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/local-java/binary/output.bin",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/local-java/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/local-java/binary/results.bin",
+    "exists": true,
+    "sha256": "945de48fe8e0abd43c907e9d8e5b814e21f5f63b6feafea440e07ce72307610b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/main-active-rules.json",
+    "exists": true,
+    "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/main-protection.json",
+    "exists": true,
+    "sha256": "6c4d0046dcf60aff72710450f228c3a931bbe128fcb46d37cc38599ce9c20b45"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-body.md",
+    "exists": true,
+    "sha256": "a1389ac3b92d1b0a6103abf32b40df5ba65f248fcbfbaf643315ec5c8e372fa0"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-final.json",
+    "exists": true,
+    "sha256": "8451f5f1dbb3d2e35e52d6651c6928722d0bec94a33f9dc4759f6d6a453ca9ab"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/dependencies-testRuntimeClasspath.txt",
+    "exists": true,
+    "sha256": "b0354613a58efbabbd8e1720f74a393169bf856df4716d57cde358ca6a989516"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityCharacterizationTest.html",
+    "exists": true,
+    "sha256": "8851597f0c0d0a85b7bb40584df36e30367d1a3a1ea9ed2b4f766a9f9954f8a9"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityEvaluatorTest.html",
+    "exists": true,
+    "sha256": "4f4b861e37973efdd3e8c2ae9ef0f9c8ef9ab0290701ee32cbf51e2177d6bdf3"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/classes/com.specagent.agent.action.ActionEligibilityGateTest.html",
+    "exists": true,
+    "sha256": "b480e53315725240b82295053a1897bd0c63f08707f122a295988a7acb9137ca"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/classes/com.specagent.model.inference.ModelOutputContractTest.html",
+    "exists": true,
+    "sha256": "cf0d88301c6d65b4c8ecca374b032cdb66d5dd7ebd2b070dbb52d268f81a016f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/css/base-style.css",
+    "exists": true,
+    "sha256": "a10a4ef75ca2601b44bfdaf3112a5854f6376f68d7cbaf6958286f04488d293b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/css/style.css",
+    "exists": true,
+    "sha256": "61866908fd7eb09c79e96239f69db2e8cc5c6526cdb308eba0535ed2a0f6a263"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/index.html",
+    "exists": true,
+    "sha256": "7bd84959cadf24144f7faa85c6d07e6fe4bb74b59dbfdd0f0d4f1cab3eb08305"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/js/report.js",
+    "exists": true,
+    "sha256": "fc89c6d002d18f4662065c9887b2cda8f8486f2737d4ad0f2fdeac0ad58a44dc"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/packages/com.specagent.agent.action.html",
+    "exists": true,
+    "sha256": "8bc644a3c1beb82784d9aacdeb6fcbd46c7c8f38cd066809e3f3d19f654ffdc9"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/reports/tests/test/packages/com.specagent.model.inference.html",
+    "exists": true,
+    "sha256": "c9575be8691e9e58283d558cbc1394e3a518e1b13996f8238a1cfc990ef2824c"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "cf76894455b626c8658593511f869ea1b9796502031fa30034a4edb2846ac3fa"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "a5710746271b9c0c7069b96dab0097c36aa843514c59209b6584b00f9d7fb23b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/test-results/test/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "d621773279f58f217d6003dc62f06beec77d8ac3b80d673813e0eb6045e513c5"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/test-results/test/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "62bc7eed0e6fe2499b1d71ea6c301d12d34ee09b0d74827d8ce8ae823fa6e5ea"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-java/verification-scope.txt",
+    "exists": true,
+    "sha256": "c1980687d2414495e4ea85353f686eda190283b51e89337ff3290874bad51ce3"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/pr-run.json",
+    "exists": true,
+    "sha256": "34298fdb856b1d79e8709d3d0cfe3c4b3b43e92e00873db8c55d4876020f1aae"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/protected-files-check.json",
+    "exists": true,
+    "sha256": "1839284e3e0dba8a86da36cbf25904c1eaac3fae3f34ce33db9faa7fd8f5e7a5"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/review.md",
+    "exists": true,
+    "sha256": "078aeb0547e45259d58a64ddba0db6b479475964e260f84a4452ba678e2909fa"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/ci-pr-review-20261021/rulesets.json",
+    "exists": true,
+    "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "8e982847a0f3292a63ea4caf251e3fe69849feea9b9c3eb9edb44f97d33febcc"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "f5635592cf53cc51b8d5c9a0887f427fed26398f3c2bc632322973a88e5cec0e"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "2c4fabefd793083f95cf75f780bb0f8934fbab0067db43f41ad445dcddffd1ab"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/code-evidence-index.txt",
+    "exists": true,
+    "sha256": "88b0f453e376e6f2f645607c2e6f28990f21d32c28b1e3d9e37f6997d4f1316b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/current-full-diff.patch",
+    "exists": true,
+    "sha256": "79352fd0030049d9e8e42e97990005a770b5a46d2d7e3572fb3c5bea58efa389"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/final-git-state.txt",
+    "exists": true,
+    "sha256": "e96d68b88e8c8e37e56ab30cdfaed2c94b6823528673221735353d021ad13768"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/final-verification.json",
+    "exists": true,
+    "sha256": "60df316aa9253045c04994b181b436e1563570be841a59f1fbfaeb7d6822d017"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/historical-c03-xml-metadata.json",
+    "exists": true,
+    "sha256": "5c1a41ae246d12690548b1c525230e0c7d1a5599f06725e878b03ce43fc91f34"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/initial-diff.patch",
+    "exists": true,
+    "sha256": "63636c73edc362f73d119389a12f1afb74a5e1ad891c6ef320e860696a60d54c"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/initial-sha256.json",
+    "exists": true,
+    "sha256": "647c7cd3058d3f83ceca34a58194deb6c25630e61d3120cf74c48bc6514c1e61"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/initial-staged-diff.patch",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/initial-status.txt",
+    "exists": true,
+    "sha256": "9671233f60066678dd407ee38a3da7258ef6dc7bfba4765973f0da26a85a571b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/offline-test-summary.json",
+    "exists": true,
+    "sha256": "da053506e277f033d7a1b8888df48cc4048e760b9c33ebab6f70fe661700b86e"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/p3bae4-only.patch",
+    "exists": true,
+    "sha256": "2d6388911aaf11f5106b0454d6ed2a1f1db9e3a63d2a561e78f0f8d733e6db26"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/prior-TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "90a3e2c2d0db56cea5ad80ba61a41f9e504902391393f3d0f7d794bfa651779b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/prior-TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "f58844abf2beca44b5d288d542adc2227070f10b6fec795f2a76424c682a41cd"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/p3bae4/protected-files-check.json",
+    "exists": true,
+    "sha256": "3250d36eceed08fdb0f6e779b20c72f8c6ac6c99a428422b79450f71cd5ab783"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/changes.patch",
+    "exists": true,
+    "sha256": "cb618df4642c726f4f787f8a5a88dc8e72333cd480e086c4e19392e65536e3f3"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/final-diff.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/final-git-state.json",
+    "exists": true,
+    "sha256": "9a8f6d4e6ae5c557f600faa09be69f0439ae002fba168f26fa85431ec2df354c"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/historical-evidence-audit.json",
+    "exists": true,
+    "sha256": "5cfcc1c645d2d95cf88b5d1f4ab05112606b6176744bdd6f66ea7a650b215ee2"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "82c8903422a2f442c6516b4277fbaf68e24a2f4d8e7a98e83584039f2d98bf9e"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "4dc5ab3bca6594978e63fd2dc43a58d998a7390fcc37ef0737de4a1e892286f4"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "c99da7c2b2ca4ab3795799ed903c36f63d31100e539ac5d64b4af25e592663f4"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.eval.EvalProjectCleanupTest.xml",
+    "exists": true,
+    "sha256": "c421b043bfeecd6961a7dd63cb6dbb2abeed5e573711cc33005bfaef40fbbf9e"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "91cfd5ee8615d6262715bc1c8182a942bf528754ca1efe74505ed49d7a33e66d"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "2d7575cb1a15cde70308195cd2519aa9e137d7e8c6990590cd3baf3bf3fffcb4"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "83bbce49d793e2505b30e6a73bc74905a84881917d01b115c36b35e31b58ed2a"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "0dc682ec4c16fd7d32ebbc7d8902280d4636a3c8d1a8e32945d0e8f6975e70e2"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "75d98aadfa3b31460262c35c03ee8380025121697d785595d6b9ec756088d402"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "bbc5656c39800d17db2e70015a1a3dc6839f8b03ddd147e5a83ee9483fdaf80c"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "6151b970c03571c1ed0840c9ca43ccd82cee3d40653ef55b6d84f4d236ed9ddc"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "b744093c0ba85389e8fb523e5952a38d99472a6ad2c12e768f24abe2fd7a9fbf"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/initial-diff.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/initial-hashes.json",
+    "exists": true,
+    "sha256": "38d2c3ab0a1a58f2db170581e46259623f12017cf8f5c331cb46df8e922d8f4b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/initial-status.txt",
+    "exists": true,
+    "sha256": "11d7a1d9d79d99702d350d499c4910cda59f6d91c40b625ab8fea914cccc197d"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/isolation-status-before-commit.txt",
+    "exists": true,
+    "sha256": "d168cd657b8bade0f55b5fc1f4762d2ca044fd70a83d25ab92d4311831a795cd"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/nested-guard-red-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "530d80909c2afffe30ca59c1d9be8b0a9f8ef7de4c228a6631b884ccd37f403f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/nested-guard-red-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "1afb0ad83ad39ed13be690f9e0ce96dfe4533cbc177259c7b27e364b38dec4dc"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/nested-guard-red-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "3677db7a06f04f5ca352f3157948295a9e41f24f8ee5e6d9727afa504ead7834"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/nested-guard-red-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "2d278889f65a17fa17b7b3214a9611233b29592efa1520a0287ef9333269d221"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/nested-guard-red.patch",
+    "exists": true,
+    "sha256": "cf18c997a8c0164d96a7be8fc55b3525cb086d1d175b6c3116da4d8cdc88b8e3"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/offline-verification.json",
+    "exists": true,
+    "sha256": "2788b70bb156ee1f540a54750d95dcaf5577f5859b5da2b5229d0034b7a3540c"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/p3b-replay.json",
+    "exists": true,
+    "sha256": "762f0dd09c20ee527149f3f7e08dc1b5fb22b7b99d7f76fdbb83e3c2a0f16107"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/protected-files-check.json",
+    "exists": true,
+    "sha256": "dbc43845501aa8c172cb5692bad50e2b9e2e7b6c1cc010f9b7a47a2e06ca35d7"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "40015a8e5a87a704e328f5141a2857134eca070011fc6610541b6d57500ffd49"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "2aaa1b0b432b94a84d8c6f9f934e83a499cf5f8ec6afaba0d34c6ddf55ff76cc"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "e10b08231819a44ff192deb76f7ef252b8f92585c714ec69d4fb186c47b9e226"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/TEST-com.specagent.model.inference.RoutingModelInferenceGatewayTest.xml",
+    "exists": true,
+    "sha256": "997dcb350edb964964dc683c9bb63478360912a328c2e01f1f1af98d7dfc3c3d"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "e691c9a5805b99efbd2f1f0bcec632ee575743655dca4760fb0403beb4037efb"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/TEST-com.specagent.support.DatabaseTestDiscoveryTest.xml",
+    "exists": true,
+    "sha256": "f8b53f7947279fc5f18f8bfb4c326026d4c29fe523b4284c19cc89663ee887d2"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "749892d61367fe8d9c9989c9f0ad79d13482b10bb74704bca8fa0b983b9e2649"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "953c2b39af461885345e0d667e8da8d285796f4c1548ab790edce722d6af6a13"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "18362a95840d12d8141d1df6c6447372618c9716f321b7710c243de8ced6282d"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/authorization-checklist-hash.json",
+    "exists": true,
+    "sha256": "9443f50c799045e6ad61a7295f7d4684c8f50c6b4cb2df8217c71f2b50826fd2"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/binding-red-xml/TEST-com.specagent.model.inference.ModelTargetBindingContractTest.xml",
+    "exists": true,
+    "sha256": "f0d8c08a8bc3eea6e26809a5903667a2d3b6ac34bd7c227f52be504364486926"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/binding-red-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/binding-red-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/binding-red-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "989f83323702cae8446bd0e2d9aa429d0cce0f3cd6dfad04c4f5c7cf4ca01a30"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/changes.patch",
+    "exists": true,
+    "sha256": "a9bc0bd836dee4f8cc3166f158c656b598db02d99cbd37d9910fbc3edb0778ad"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/contract-replay.json",
+    "exists": true,
+    "sha256": "762f0dd09c20ee527149f3f7e08dc1b5fb22b7b99d7f76fdbb83e3c2a0f16107"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/dev-final.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/dev-initial-hashes.json",
+    "exists": true,
+    "sha256": "a868e53f9b070383fc683ed039004df18a90440c600652eda5d49ff313799f0a"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/dev-initial-status.txt",
+    "exists": true,
+    "sha256": "8c2fadae0c919022f5f03c58017ffb21820719bedc91a17872804cee301ef689"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/dev-initial.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/final-git-state.json",
+    "exists": true,
+    "sha256": "6b8f6f8cd227029db52a3d39a7a8ecfe33f5fb215ef165a6fe27f5fab5b93839"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/historical-evidence.json",
+    "exists": true,
+    "sha256": "5cfcc1c645d2d95cf88b5d1f4ab05112606b6176744bdd6f66ea7a650b215ee2"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/host-grounding-red-xml/TEST-com.specagent.agent.decision.AgentBrainArgumentGroundingTest.xml",
+    "exists": true,
+    "sha256": "00318f880da64d7bed0e867bb227b7df7d906ed2292314ef5886948fe0e36a67"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/host-grounding-red-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/host-grounding-red-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/host-grounding-red-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "44b0c15bd407b61047be910d822776ef697faba3574131b700ac2cf4e3fd658a"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "11f3a7201131e65649724500dcd23d3616da164913d4fa52afe0df3d4be16a99"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "64c80b0c7b2e8356ed5b9dd4684deef5b736a29fa763202cd3d5d23b8dac483f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "f00f57e4b800d3bd732cad7aae622d804fc11300374fc01685907d0dae975a80"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.agent.action.C16WaitContractTest.xml",
+    "exists": true,
+    "sha256": "18a7861768023733f06387a4fc0f5761f37f0cd64d9bfec373a23ce395e46f13"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.agent.decision.AgentBrainArgumentGroundingTest.xml",
+    "exists": true,
+    "sha256": "713dd00440f0649f39d0e4cdfab6263220a9a840024bc22e0b6555c5736f973f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.eval.EvalProjectCleanupTest.xml",
+    "exists": true,
+    "sha256": "a7e89151d1956fea3293217c023bafb932794287ff3033cc7865265a4bbc34c9"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "6ce886478f4a98326508de719d6be840720411acb2f0e9594fad3aa9929df359"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "3fbbfaa6010bccaf42ed333e43978c0baae1ad52f318ab84585ccd151a824db1"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "6cb8bff141c761020bd9fc39dc42b5fda6a44bbdd28e247ac78dc00ecb208233"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "c7e3f148bc6f81b415b51406814b0c189e57733916ca7e614c4116f7845ca2f1"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.model.inference.ModelTargetBindingContractTest.xml",
+    "exists": true,
+    "sha256": "58da7cbe9ec5811a833fb9e3c01104b18b7466771a12538a23bf6ab3aef5468e"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "e0955cb88842f78faed4350150c1097c790d35b6e753fabae61481bce1ed028b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "ab4edea1f3f44efac9d44e40633de4de7e211abc083a279197541c3bd7c596aa"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "c20195c00c461c352171742c069b636f2b76cd600aebfa5b44eff4a50093802e"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "49e2f49f79d4cf845e1acf91e38b6a600dc4ecc6cc2b2a75d43261414f34a909"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/protected-files-check.json",
+    "exists": true,
+    "sha256": "644a0577b43478bb8214b6406b41c4289d9c993305805e651ae1baf6f9b72c39"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/required-schema-red-xml/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "36f87eb6a0d445ae8802005116f49975191ded15782d4672b04f73cc6a026658"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/required-schema-red-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/required-schema-red-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/required-schema-red-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "708ea26eb15e2ddc3dd2e4a02d260c63a9ac279fbb796ebda86b331dee654377"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/risk-initial-status.txt",
+    "exists": true,
+    "sha256": "b1282f1faef4b2a8400e7671c133f708664346af516cd58d409ea9c89ddf74d0"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.agent.action.C16WaitContractTest.xml",
+    "exists": true,
+    "sha256": "20ccdd36afc0ef3cbc9fa1d518eb00b9a5672a12d1a6af95b150634f37314e7f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.agent.decision.AgentBrainArgumentGroundingTest.xml",
+    "exists": true,
+    "sha256": "8fc1b8cb7d77425f4fe8a317ce30244e0dee6ab904c7767b5af50781e94e63c5"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest.xml",
+    "exists": true,
+    "sha256": "6d7c67d79b96e6ffa71cde36dbb05f2c11b5162e2ddf4253cd4d1e2a0d8119a0"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "b3d677428efd1a75200ca8d65f9c43a969efc4dc5a35e7ea92e094b16490b64f"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "164c3bf45872658159afdc21a0fc465ebce6a6d93ede29672e808f541ff83c32"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "13d6fd8721e178e1607f33f5be33de6ced189562f4ed04715b66bb4d584d4738"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.model.inference.ModelTargetBindingContractTest.xml",
+    "exists": true,
+    "sha256": "7f35d13f49ed9d8056077fa59d51927d07b26888c881b647f51ca136c682e790"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.model.inference.RoutingModelInferenceGatewayTest.xml",
+    "exists": true,
+    "sha256": "05ae9a71062a321dcea92b3cf67aab7419bf54b0668f780c018886d9a81979d0"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "727150f95151dea8e723a83f96d508cab528a9e309c5a9a962626b0e51488c0a"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.support.DatabaseTestDiscoveryTest.xml",
+    "exists": true,
+    "sha256": "52a8c42ffcb6d5dbc12967ec8fed769d7285fd20a62ae6d9f45c983ae9bbb2d5"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-77-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "22b90c33713e11218cebc7c5da314e1946f43c409411163f31157efafdce4da6"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-77-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "fb3cc9a718fd561ff10f37ca68e32d4e024d3fac26371a5d82b320576ea2c4b2"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-77-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "30e394cbbe0d001daa406029b0a8667653bf3076d70f6d8320ee51da55e4558b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.agent.action.C16WaitContractTest.xml",
+    "exists": true,
+    "sha256": "514db606f6e790e0c1c28fa58fd00e6632aba9aa94cd110648dfe74b068e9c30"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.agent.decision.AgentBrainArgumentGroundingTest.xml",
+    "exists": true,
+    "sha256": "d47e6de1545daf7f8314d49b05a097f880f7c33114315f4ce990a699cbed8dee"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest.xml",
+    "exists": true,
+    "sha256": "4eb782ab9fd04b68cea970de6067ac219cc43c6c8914ccd3a20f75702c1ff9c1"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "27be7e21f7e61cd0b65c1848e1ba13c4ef1216601d89b3aa43fbcef9b67cc6e2"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "29bb0bf770c9beb94c2630385c874afdcfb9bf95a1e349708c62b757b0358d75"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "31b37c68ba7719cce01df45af0c7348acce86d92a33e0adf3ea7310f57dee6c3"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.model.inference.ModelTargetBindingContractTest.xml",
+    "exists": true,
+    "sha256": "bd6406777eaa97d7737e3b2cd2faf95342aede10b984e9d950f75f096e8706e7"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.model.inference.RoutingModelInferenceGatewayTest.xml",
+    "exists": true,
+    "sha256": "69532e5619af162fe9b46bd9b7fca2c55fa1f24ad910cf0b16ed735428c2ed77"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "72d6e4c23d50fa40b9602dc2eb228add5a3477b03e9479ad9c1b225660c5d2bd"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.support.DatabaseTestDiscoveryTest.xml",
+    "exists": true,
+    "sha256": "951e77d9878d1ce1e147fefd30e38ebe866dfdd2c7ab3da54019c46a2b02f642"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-final-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "97a1ae00107032234b36706b60b129f93ecd40c1b8434fa6cde810aa04327840"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-final-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "ace117078790484cd1e62e44e883c2d6bb48ad6b8a76e90f8d1c1815f80a4904"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/root-final-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "104512bbf9eed66ab78c2535e7ad94fede27440a4fbdeb1287956d33ec296f19"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/dev/docs/acceptance-evidence/risk-followup-20261021/verification.json",
+    "exists": true,
+    "sha256": "283c980637229b937e89dea47873d9b21e2f3a8fa93d4423f968638eb40a5b0e"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-files/risk/docs/acceptance-evidence/risk-closure-20261021/database-audit-authorization-checklist.md",
+    "exists": true,
+    "sha256": "86b1808c596e30b85969de56186c0d9bd8e7548cf611085b404b105ea94233ae"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/original-risk-database-audit-authorization-checklist.md",
+    "exists": true,
+    "sha256": "86b1808c596e30b85969de56186c0d9bd8e7548cf611085b404b105ea94233ae"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/pr19-readonly-state.json",
+    "exists": true,
+    "sha256": "77f80c211a2fe6a2a69f94897cadff31e11992c1efa236ff3081469ba931b0bf"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/protected-files-check.json",
+    "exists": true,
+    "sha256": "f628430c5002c0165fa67a9959234df84ea270d63aa44eccea0e0c8c5ccb3c8a"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/retired-risk-archive-manifest.json",
+    "exists": true,
+    "sha256": "49b56f5b16cb22792f75ca184425cbfc55ac7fa25444783139f2a80f2e6a801b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/retired-risk-worktree-untracked-and-ignored.zip",
+    "exists": true,
+    "sha256": "0f0497b6d8781cb36ad5bc7a45506f4dc640a3f51187be7fc3be763e343b1041"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/risk-initial-staged.patch",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/risk-initial.patch",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/root-offline-xml/TEST-com.specagent.agent.action.C16WaitContractTest.xml",
+    "exists": true,
+    "sha256": "215d94395356d5d84a928070e71b20576552e33c28c1018fd9ca087b97c7cbae"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/root-offline-xml/TEST-com.specagent.agent.decision.AgentBrainArgumentGroundingTest.xml",
+    "exists": true,
+    "sha256": "f94afc4fbdacb466b2cf2d7bd4fb94909ba76839e8307926cb5f94b099836634"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/root-offline-xml/TEST-com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest.xml",
+    "exists": true,
+    "sha256": "eba9468201e4f85f31a313e77471b20153e3fd8573e56723fcbcae559f45c719"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/root-offline-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "7e08184b360149734feba6a29e5c0a2ede352c9a481e7e1520aa338b5fc4cbc4"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/root-offline-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "63418b7949bef3a761c9f9d54d241375a27a6378f067a486cc2d0d61147ea063"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/root-offline-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "5c1dccfcf8541942aecac5c055191d47058ef87c0c9f541c44b843a9afdbd1c3"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/root-offline-xml/TEST-com.specagent.model.inference.ModelTargetBindingContractTest.xml",
+    "exists": true,
+    "sha256": "6b7822b19060a6179457ae5c5fb34130d7fc95dac88618c65504c6294a75805b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/root-offline-xml/TEST-com.specagent.model.inference.RoutingModelInferenceGatewayTest.xml",
+    "exists": true,
+    "sha256": "f6b73e0b7ed004f7cf2f1e6707409d6565d26b9485a3253638803c6b882f6f79"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/root-offline-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "087b32d088b45f9953df9400d4a97f7d2eca1734dda896058091840b628c28d5"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/root-offline-xml/TEST-com.specagent.support.DatabaseTestDiscoveryTest.xml",
+    "exists": true,
+    "sha256": "73d6305b711f1dab2e132db67b9abd572e320dd4fd68a7b05e279017c8414aa8"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/test-results.json",
+    "exists": true,
+    "sha256": "0e56c6521357d2bcf47e67a0cd021acdb150123b00720871ab4e8e0256088f2b"
+  },
+  {
+    "path": "docs/acceptance-evidence/dev-integration-20261021/verification.json",
+    "exists": true,
+    "sha256": "283c980637229b937e89dea47873d9b21e2f3a8fa93d4423f968638eb40a5b0e"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "8e982847a0f3292a63ea4caf251e3fe69849feea9b9c3eb9edb44f97d33febcc"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "f5635592cf53cc51b8d5c9a0887f427fed26398f3c2bc632322973a88e5cec0e"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "2c4fabefd793083f95cf75f780bb0f8934fbab0067db43f41ad445dcddffd1ab"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/code-evidence-index.txt",
+    "exists": true,
+    "sha256": "88b0f453e376e6f2f645607c2e6f28990f21d32c28b1e3d9e37f6997d4f1316b"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/current-full-diff.patch",
+    "exists": true,
+    "sha256": "79352fd0030049d9e8e42e97990005a770b5a46d2d7e3572fb3c5bea58efa389"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/final-git-state.txt",
+    "exists": true,
+    "sha256": "e96d68b88e8c8e37e56ab30cdfaed2c94b6823528673221735353d021ad13768"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/final-verification.json",
+    "exists": true,
+    "sha256": "60df316aa9253045c04994b181b436e1563570be841a59f1fbfaeb7d6822d017"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/historical-c03-xml-metadata.json",
+    "exists": true,
+    "sha256": "5c1a41ae246d12690548b1c525230e0c7d1a5599f06725e878b03ce43fc91f34"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/initial-diff.patch",
+    "exists": true,
+    "sha256": "63636c73edc362f73d119389a12f1afb74a5e1ad891c6ef320e860696a60d54c"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/initial-sha256.json",
+    "exists": true,
+    "sha256": "647c7cd3058d3f83ceca34a58194deb6c25630e61d3120cf74c48bc6514c1e61"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/initial-staged-diff.patch",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/initial-status.txt",
+    "exists": true,
+    "sha256": "9671233f60066678dd407ee38a3da7258ef6dc7bfba4765973f0da26a85a571b"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/offline-test-summary.json",
+    "exists": true,
+    "sha256": "da053506e277f033d7a1b8888df48cc4048e760b9c33ebab6f70fe661700b86e"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/p3bae4-only.patch",
+    "exists": true,
+    "sha256": "2d6388911aaf11f5106b0454d6ed2a1f1db9e3a63d2a561e78f0f8d733e6db26"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/prior-TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "90a3e2c2d0db56cea5ad80ba61a41f9e504902391393f3d0f7d794bfa651779b"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/prior-TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "f58844abf2beca44b5d288d542adc2227070f10b6fec795f2a76424c682a41cd"
+  },
+  {
+    "path": "docs/acceptance-evidence/p3bae4/protected-files-check.json",
+    "exists": true,
+    "sha256": "3250d36eceed08fdb0f6e779b20c72f8c6ac6c99a428422b79450f71cd5ab783"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/changes.patch",
+    "exists": true,
+    "sha256": "cb618df4642c726f4f787f8a5a88dc8e72333cd480e086c4e19392e65536e3f3"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/database-audit-authorization-checklist.md",
+    "exists": true,
+    "sha256": "86b1808c596e30b85969de56186c0d9bd8e7548cf611085b404b105ea94233ae"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/final-diff.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/final-git-state.json",
+    "exists": true,
+    "sha256": "9a8f6d4e6ae5c557f600faa09be69f0439ae002fba168f26fa85431ec2df354c"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/historical-evidence-audit.json",
+    "exists": true,
+    "sha256": "5cfcc1c645d2d95cf88b5d1f4ab05112606b6176744bdd6f66ea7a650b215ee2"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "82c8903422a2f442c6516b4277fbaf68e24a2f4d8e7a98e83584039f2d98bf9e"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "4dc5ab3bca6594978e63fd2dc43a58d998a7390fcc37ef0737de4a1e892286f4"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "c99da7c2b2ca4ab3795799ed903c36f63d31100e539ac5d64b4af25e592663f4"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.eval.EvalProjectCleanupTest.xml",
+    "exists": true,
+    "sha256": "c421b043bfeecd6961a7dd63cb6dbb2abeed5e573711cc33005bfaef40fbbf9e"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "91cfd5ee8615d6262715bc1c8182a942bf528754ca1efe74505ed49d7a33e66d"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "2d7575cb1a15cde70308195cd2519aa9e137d7e8c6990590cd3baf3bf3fffcb4"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "83bbce49d793e2505b30e6a73bc74905a84881917d01b115c36b35e31b58ed2a"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "0dc682ec4c16fd7d32ebbc7d8902280d4636a3c8d1a8e32945d0e8f6975e70e2"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "75d98aadfa3b31460262c35c03ee8380025121697d785595d6b9ec756088d402"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "bbc5656c39800d17db2e70015a1a3dc6839f8b03ddd147e5a83ee9483fdaf80c"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "6151b970c03571c1ed0840c9ca43ccd82cee3d40653ef55b6d84f4d236ed9ddc"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/independent-final-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "b744093c0ba85389e8fb523e5952a38d99472a6ad2c12e768f24abe2fd7a9fbf"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/initial-diff.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/initial-hashes.json",
+    "exists": true,
+    "sha256": "38d2c3ab0a1a58f2db170581e46259623f12017cf8f5c331cb46df8e922d8f4b"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/initial-status.txt",
+    "exists": true,
+    "sha256": "11d7a1d9d79d99702d350d499c4910cda59f6d91c40b625ab8fea914cccc197d"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/isolation-status-before-commit.txt",
+    "exists": true,
+    "sha256": "d168cd657b8bade0f55b5fc1f4762d2ca044fd70a83d25ab92d4311831a795cd"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/nested-guard-red-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "530d80909c2afffe30ca59c1d9be8b0a9f8ef7de4c228a6631b884ccd37f403f"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/nested-guard-red-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "1afb0ad83ad39ed13be690f9e0ce96dfe4533cbc177259c7b27e364b38dec4dc"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/nested-guard-red-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "3677db7a06f04f5ca352f3157948295a9e41f24f8ee5e6d9727afa504ead7834"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/nested-guard-red-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "2d278889f65a17fa17b7b3214a9611233b29592efa1520a0287ef9333269d221"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/nested-guard-red.patch",
+    "exists": true,
+    "sha256": "cf18c997a8c0164d96a7be8fc55b3525cb086d1d175b6c3116da4d8cdc88b8e3"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/offline-verification.json",
+    "exists": true,
+    "sha256": "2788b70bb156ee1f540a54750d95dcaf5577f5859b5da2b5229d0034b7a3540c"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/p3b-replay.json",
+    "exists": true,
+    "sha256": "762f0dd09c20ee527149f3f7e08dc1b5fb22b7b99d7f76fdbb83e3c2a0f16107"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/protected-files-check.json",
+    "exists": true,
+    "sha256": "dbc43845501aa8c172cb5692bad50e2b9e2e7b6c1cc010f9b7a47a2e06ca35d7"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "40015a8e5a87a704e328f5141a2857134eca070011fc6610541b6d57500ffd49"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "2aaa1b0b432b94a84d8c6f9f934e83a499cf5f8ec6afaba0d34c6ddf55ff76cc"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "e10b08231819a44ff192deb76f7ef252b8f92585c714ec69d4fb186c47b9e226"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/TEST-com.specagent.model.inference.RoutingModelInferenceGatewayTest.xml",
+    "exists": true,
+    "sha256": "997dcb350edb964964dc683c9bb63478360912a328c2e01f1f1af98d7dfc3c3d"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "e691c9a5805b99efbd2f1f0bcec632ee575743655dca4760fb0403beb4037efb"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/TEST-com.specagent.support.DatabaseTestDiscoveryTest.xml",
+    "exists": true,
+    "sha256": "f8b53f7947279fc5f18f8bfb4c326026d4c29fe523b4284c19cc89663ee887d2"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "749892d61367fe8d9c9989c9f0ad79d13482b10bb74704bca8fa0b983b9e2649"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "953c2b39af461885345e0d667e8da8d285796f4c1548ab790edce722d6af6a13"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-closure-20261021/root-offline-final-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "18362a95840d12d8141d1df6c6447372618c9716f321b7710c243de8ced6282d"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/authorization-checklist-hash.json",
+    "exists": true,
+    "sha256": "9443f50c799045e6ad61a7295f7d4684c8f50c6b4cb2df8217c71f2b50826fd2"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/binding-red-xml/TEST-com.specagent.model.inference.ModelTargetBindingContractTest.xml",
+    "exists": true,
+    "sha256": "f0d8c08a8bc3eea6e26809a5903667a2d3b6ac34bd7c227f52be504364486926"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/binding-red-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/binding-red-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/binding-red-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "989f83323702cae8446bd0e2d9aa429d0cce0f3cd6dfad04c4f5c7cf4ca01a30"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/changes.patch",
+    "exists": true,
+    "sha256": "a9bc0bd836dee4f8cc3166f158c656b598db02d99cbd37d9910fbc3edb0778ad"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/contract-replay.json",
+    "exists": true,
+    "sha256": "762f0dd09c20ee527149f3f7e08dc1b5fb22b7b99d7f76fdbb83e3c2a0f16107"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/dev-final.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/dev-initial-hashes.json",
+    "exists": true,
+    "sha256": "a868e53f9b070383fc683ed039004df18a90440c600652eda5d49ff313799f0a"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/dev-initial-status.txt",
+    "exists": true,
+    "sha256": "8c2fadae0c919022f5f03c58017ffb21820719bedc91a17872804cee301ef689"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/dev-initial.patch",
+    "exists": true,
+    "sha256": "96c2e7c25bc38534b62eb9751c4501a3d6870d9ebf2eaeac0b78bfd187b3e17f"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/final-git-state.json",
+    "exists": true,
+    "sha256": "6b8f6f8cd227029db52a3d39a7a8ecfe33f5fb215ef165a6fe27f5fab5b93839"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/historical-evidence.json",
+    "exists": true,
+    "sha256": "5cfcc1c645d2d95cf88b5d1f4ab05112606b6176744bdd6f66ea7a650b215ee2"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/host-grounding-red-xml/TEST-com.specagent.agent.decision.AgentBrainArgumentGroundingTest.xml",
+    "exists": true,
+    "sha256": "00318f880da64d7bed0e867bb227b7df7d906ed2292314ef5886948fe0e36a67"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/host-grounding-red-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/host-grounding-red-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/host-grounding-red-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "44b0c15bd407b61047be910d822776ef697faba3574131b700ac2cf4e3fd658a"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "11f3a7201131e65649724500dcd23d3616da164913d4fa52afe0df3d4be16a99"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "64c80b0c7b2e8356ed5b9dd4684deef5b736a29fa763202cd3d5d23b8dac483f"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "f00f57e4b800d3bd732cad7aae622d804fc11300374fc01685907d0dae975a80"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.agent.action.C16WaitContractTest.xml",
+    "exists": true,
+    "sha256": "18a7861768023733f06387a4fc0f5761f37f0cd64d9bfec373a23ce395e46f13"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.agent.decision.AgentBrainArgumentGroundingTest.xml",
+    "exists": true,
+    "sha256": "713dd00440f0649f39d0e4cdfab6263220a9a840024bc22e0b6555c5736f973f"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.eval.EvalProjectCleanupTest.xml",
+    "exists": true,
+    "sha256": "a7e89151d1956fea3293217c023bafb932794287ff3033cc7865265a4bbc34c9"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "6ce886478f4a98326508de719d6be840720411acb2f0e9594fad3aa9929df359"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "3fbbfaa6010bccaf42ed333e43978c0baae1ad52f318ab84585ccd151a824db1"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "6cb8bff141c761020bd9fc39dc42b5fda6a44bbdd28e247ac78dc00ecb208233"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "c7e3f148bc6f81b415b51406814b0c189e57733916ca7e614c4116f7845ca2f1"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.model.inference.ModelTargetBindingContractTest.xml",
+    "exists": true,
+    "sha256": "58da7cbe9ec5811a833fb9e3c01104b18b7466771a12538a23bf6ab3aef5468e"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "e0955cb88842f78faed4350150c1097c790d35b6e753fabae61481bce1ed028b"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "ab4edea1f3f44efac9d44e40633de4de7e211abc083a279197541c3bd7c596aa"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "c20195c00c461c352171742c069b636f2b76cd600aebfa5b44eff4a50093802e"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/independent-final-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "49e2f49f79d4cf845e1acf91e38b6a600dc4ecc6cc2b2a75d43261414f34a909"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/protected-files-check.json",
+    "exists": true,
+    "sha256": "644a0577b43478bb8214b6406b41c4289d9c993305805e651ae1baf6f9b72c39"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/required-schema-red-xml/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "36f87eb6a0d445ae8802005116f49975191ded15782d4672b04f73cc6a026658"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/required-schema-red-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/required-schema-red-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/required-schema-red-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "708ea26eb15e2ddc3dd2e4a02d260c63a9ac279fbb796ebda86b331dee654377"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/risk-initial-status.txt",
+    "exists": true,
+    "sha256": "b1282f1faef4b2a8400e7671c133f708664346af516cd58d409ea9c89ddf74d0"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.agent.action.C16WaitContractTest.xml",
+    "exists": true,
+    "sha256": "20ccdd36afc0ef3cbc9fa1d518eb00b9a5672a12d1a6af95b150634f37314e7f"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.agent.decision.AgentBrainArgumentGroundingTest.xml",
+    "exists": true,
+    "sha256": "8fc1b8cb7d77425f4fe8a317ce30244e0dee6ab904c7767b5af50781e94e63c5"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest.xml",
+    "exists": true,
+    "sha256": "6d7c67d79b96e6ffa71cde36dbb05f2c11b5162e2ddf4253cd4d1e2a0d8119a0"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "b3d677428efd1a75200ca8d65f9c43a969efc4dc5a35e7ea92e094b16490b64f"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "164c3bf45872658159afdc21a0fc465ebce6a6d93ede29672e808f541ff83c32"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "13d6fd8721e178e1607f33f5be33de6ced189562f4ed04715b66bb4d584d4738"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.model.inference.ModelTargetBindingContractTest.xml",
+    "exists": true,
+    "sha256": "7f35d13f49ed9d8056077fa59d51927d07b26888c881b647f51ca136c682e790"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.model.inference.RoutingModelInferenceGatewayTest.xml",
+    "exists": true,
+    "sha256": "05ae9a71062a321dcea92b3cf67aab7419bf54b0668f780c018886d9a81979d0"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "727150f95151dea8e723a83f96d508cab528a9e309c5a9a962626b0e51488c0a"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-77-xml/TEST-com.specagent.support.DatabaseTestDiscoveryTest.xml",
+    "exists": true,
+    "sha256": "52a8c42ffcb6d5dbc12967ec8fed769d7285fd20a62ae6d9f45c983ae9bbb2d5"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-77-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "22b90c33713e11218cebc7c5da314e1946f43c409411163f31157efafdce4da6"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-77-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "fb3cc9a718fd561ff10f37ca68e32d4e024d3fac26371a5d82b320576ea2c4b2"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-77-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "30e394cbbe0d001daa406029b0a8667653bf3076d70f6d8320ee51da55e4558b"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.agent.action.C16WaitContractTest.xml",
+    "exists": true,
+    "sha256": "514db606f6e790e0c1c28fa58fd00e6632aba9aa94cd110648dfe74b068e9c30"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.agent.decision.AgentBrainArgumentGroundingTest.xml",
+    "exists": true,
+    "sha256": "d47e6de1545daf7f8314d49b05a097f880f7c33114315f4ce990a699cbed8dee"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest.xml",
+    "exists": true,
+    "sha256": "4eb782ab9fd04b68cea970de6067ac219cc43c6c8914ccd3a20f75702c1ff9c1"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "27be7e21f7e61cd0b65c1848e1ba13c4ef1216601d89b3aa43fbcef9b67cc6e2"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "29bb0bf770c9beb94c2630385c874afdcfb9bf95a1e349708c62b757b0358d75"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "31b37c68ba7719cce01df45af0c7348acce86d92a33e0adf3ea7310f57dee6c3"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.model.inference.ModelTargetBindingContractTest.xml",
+    "exists": true,
+    "sha256": "bd6406777eaa97d7737e3b2cd2faf95342aede10b984e9d950f75f096e8706e7"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.model.inference.RoutingModelInferenceGatewayTest.xml",
+    "exists": true,
+    "sha256": "69532e5619af162fe9b46bd9b7fca2c55fa1f24ad910cf0b16ed735428c2ed77"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "72d6e4c23d50fa40b9602dc2eb228add5a3477b03e9479ad9c1b225660c5d2bd"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-final-xml/TEST-com.specagent.support.DatabaseTestDiscoveryTest.xml",
+    "exists": true,
+    "sha256": "951e77d9878d1ce1e147fefd30e38ebe866dfdd2c7ab3da54019c46a2b02f642"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-final-xml/binary/output.bin",
+    "exists": true,
+    "sha256": "97a1ae00107032234b36706b60b129f93ecd40c1b8434fa6cde810aa04327840"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-final-xml/binary/output.bin.idx",
+    "exists": true,
+    "sha256": "ace117078790484cd1e62e44e883c2d6bb48ad6b8a76e90f8d1c1815f80a4904"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/root-final-xml/binary/results.bin",
+    "exists": true,
+    "sha256": "104512bbf9eed66ab78c2535e7ad94fede27440a4fbdeb1287956d33ec296f19"
+  },
+  {
+    "path": "docs/acceptance-evidence/risk-followup-20261021/verification.json",
+    "exists": true,
+    "sha256": "283c980637229b937e89dea47873d9b21e2f3a8fa93d4423f968638eb40a5b0e"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/before.json",
+    "exists": true,
+    "sha256": "bdaff85b056296aa9817ac8327b11de7073b1688b4f153d457fad66ee3170420"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files.json",
+    "exists": true,
+    "sha256": "1f533d18a63ffd54fb41e4b6f7bbefb2a70001853ab2646f2f7eae85ae021e79"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files.txt",
+    "exists": true,
+    "sha256": "ea7732725d5edc893a5339538ea2a86053a29087d86bd9e963c7ae80b6a5dbf7"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/agent-brain/src/spec_agent_brain/contracts/inputs.py",
+    "exists": true,
+    "sha256": "1e6fe7b65341edcdb119c590249e18f0d4bc84587b3c720d1a71a6ad2e82083b"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/agent-brain/tests/test_c16_wait_contract.py",
+    "exists": true,
+    "sha256": "7623515b8580f4ff3161ca03fd30bd1dae9eb5dd7f4c4cd21a18461eff299863"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/build.gradle.kts",
+    "exists": true,
+    "sha256": "73c761a8439bbc166ea15f5227bec8ab3c6f5b8342f0ae7cc36143e03cd74f40"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/agent/action/ActionEligibilityGate.java",
+    "exists": true,
+    "sha256": "3e5bef781978c86c0811cfa987a10703826260c4a89314abda1ba88e419b9b8a"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/agent/action/ActionExecutionContext.java",
+    "exists": true,
+    "sha256": "529c8aa7729b751a764d5ba0decd00702d626b465d55540f7a6189e43fe0c7c2"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/agent/action/ProposalActionExecutor.java",
+    "exists": true,
+    "sha256": "0b3ee384163643a4e8b9cc1f1bd9caec0f124aeba6b8d029e251a7181f72e190"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/agent/protocol/CapabilityResultView.java",
+    "exists": true,
+    "sha256": "c70ec9dfc63c92bbd5fc60d6c6148f166d50154ff055ce2c70cfc386208ec44c"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/agent/runtime/AgentRunModelBindingRepository.java",
+    "exists": true,
+    "sha256": "5f2834ff15c9ff08db16cf55d3f2eee5902413633513b8ae9d6aba06ca06ed69"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/agent/runtime/ContinuationCheckRepository.java",
+    "exists": true,
+    "sha256": "f051a63a5c5a030199a2723a188da5eb50432ca85428b671b0f1cacb31f67420"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/agent/runtime/ContinuationCoordinator.java",
+    "exists": true,
+    "sha256": "914c254c753e0601b6af483a18634be22921b6375022e891f560d556a072f6f6"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/agent/runtime/ContinuationDispatchService.java",
+    "exists": true,
+    "sha256": "12c9719c0567ad7e8c090be08160d8d6b1948895adb9b55582b9eb75ead9d38b"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/agent/runtime/ContinuationVerdict.java",
+    "exists": true,
+    "sha256": "4cea2137a6133a632678ae2df0079fb0f7d870ad3ee745e1bc09f2a4f342335c"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/agent/runtime/DecisionExecutionService.java",
+    "exists": true,
+    "sha256": "33e483b86b1d02617927739c1a497392f8cba9a10cf906efbd31993bd72063be"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/agent/runtime/LegacyBindingMigrationGuard.java",
+    "exists": true,
+    "sha256": "885e1e51ce0161c43ab21021c0b9a698d2320019c325b8a546b2d04ad4c9e293"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/capability/CapabilityInvocationRepository.java",
+    "exists": true,
+    "sha256": "d1774efe60022dac59930c539345ac26bb731f3698ad5a07672cf95b7dbe4bcb"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/capability/CapabilityResult.java",
+    "exists": true,
+    "sha256": "7a4a6baefa829977242931cd15dafd919555203f3ec84295452301faf638f870"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/capability/CapabilityRuntime.java",
+    "exists": true,
+    "sha256": "abcacaa16bf4f9df820beb2f3745d5dae6a373a0841a1cf2172a4c62ec48a523"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/capability/DeferredCapabilityAdapter.java",
+    "exists": true,
+    "sha256": "b72fe4f975743f674befaf2c69d5ccaee39e0e686c3df191195b4984b2e9a33e"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/java/com/specagent/common/CapabilityCompletionPort.java",
+    "exists": true,
+    "sha256": "6f8092b37d0e817ebd2264b5eeaf80b30ba1d2ccf2f2bf94e18a038d3d130481"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/resources/db/migration/V100__protect_existing_run_model_binding.sql",
+    "exists": true,
+    "sha256": "c212d7468fae6c14809563e0fe9d957a3dc576cabda301ea21486c537a323ef3"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/main/resources/db/migration/V101__deferred_capability_deadline.sql",
+    "exists": true,
+    "sha256": "aa77074e3cd10d90d7a2f80428781aa95d16269e41cbcabccd8e12ea1504669b"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/test/java/com/specagent/agent/action/C16WaitContractTest.java",
+    "exists": true,
+    "sha256": "b31e19461a34b4d38d955f72a07a018ff18d3122d6bf26b8b6629ed88acf474f"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/test/java/com/specagent/agent/runtime/AgentRunModelBindingRepositoryOfflineTest.java",
+    "exists": true,
+    "sha256": "f88e23ea9fc7f0f3f29acccba7543d7e660d2bb47cc9dba6dc57e4653f4ca796"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/test/java/com/specagent/agent/runtime/DeferredContinuationOfflineTest.java",
+    "exists": true,
+    "sha256": "60757e498aa9227eec167c9a50266b736d9328bfe74a994a4543c761bdf1a8d7"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/test/java/com/specagent/agent/runtime/LegacyBindingMigrationGuardTest.java",
+    "exists": true,
+    "sha256": "ce04efbf3328528526fbfdca15f6700cc1677c15500025016c1ef079e91824fb"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/test/java/com/specagent/capability/DeferredCapabilityRepositoryTest.java",
+    "exists": true,
+    "sha256": "1ddd6cbbcf5a6f29d770e0e098bf798f4412f37e2ae1a8ba7bf342466a6d177c"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/backend/src/test/java/com/specagent/capability/DeferredCapabilityRuntimeTest.java",
+    "exists": true,
+    "sha256": "077f1845df774a43636cc12961abcc869150577e012fee326e5f7d5af80adb55"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/contracts/fixtures/deferred-capability-completed-observation.json",
+    "exists": true,
+    "sha256": "58e2b5c946bb20ee250d8f60bc9c589240646c71d830b2bb3459a867d9d312a4"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changed-files/docs/v2/DEFERRED_CAPABILITY_CONTRACT.md",
+    "exists": true,
+    "sha256": "9895ce5934d64bc0a449450549ce02687662e472c71514ea9c72f77125e386bb"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/changes.patch",
+    "exists": true,
+    "sha256": "2ade55f0871a16df4dc612ef3452dbc5d948588ad37686c5f96c1f17c666f4ba"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/contract-replay.json",
+    "exists": true,
+    "sha256": "762f0dd09c20ee527149f3f7e08dc1b5fb22b7b99d7f76fdbb83e3c2a0f16107"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/delivery.md",
+    "exists": true,
+    "sha256": "b411f45f574d180e92bb8b4f0228c6ef4fae0ed4e2889a6b24ae3b60bb0410b1"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/final-branches.txt",
+    "exists": true,
+    "sha256": "de2397d35856689a53654a7a902422b8b01998133cddbf3a8dd4b64c08abfa6f"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/final-status.txt",
+    "exists": true,
+    "sha256": "e6da40aa2ddf57e1592ac649943450651980f47d1796a6379aaa74face4cb110"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/final-worktrees.txt",
+    "exists": true,
+    "sha256": "762cf6d68c6c5f034233e3a69e87cbcf270e36c8321117d27fea3472e53c516a"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/historical-evidence.json",
+    "exists": true,
+    "sha256": "5cfcc1c645d2d95cf88b5d1f4ab05112606b6176744bdd6f66ea7a650b215ee2"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "c72eb9cb246d9769f201f0962b655801ee9e8e438011b7fdab858cf40e5a8722"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "473e731933f309a5e48de6d1453a46dd9b1dd98f37245bdc4b4e6b4e486bb807"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-final-xml/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "41a2ed5fe7d5c517f7c3b12f72bfea5d6cb260d77a56b16a97858846f75eaa84"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-final-xml/TEST-com.specagent.agent.action.C16WaitContractTest.xml",
+    "exists": true,
+    "sha256": "d9afffa1fb6a267fc2e13c8bc5a1ca5fa0b032e823c27e20b6f9076937429c0e"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-final-xml/TEST-com.specagent.agent.decision.AgentBrainArgumentGroundingTest.xml",
+    "exists": true,
+    "sha256": "54002795bed007bc960ea0cf13a94fccbb39f2594d09ae47f0b5ca6cbf182729"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-final-xml/TEST-com.specagent.eval.EvalProjectCleanupTest.xml",
+    "exists": true,
+    "sha256": "206961bc08278ae3b3e60514df17fa5af9c0411c0f2b72a72b9c6c46cec0a52d"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-final-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "15fa5942073fe70abbd5b22137d8b2e654aedf36f2d3a5e99e3620aa166a87d6"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-final-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "217f0b69794df1b486c1d404dac1bae67ac96b6e1486a1ee016c0e511943b4b1"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-final-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "f4a99403cbf771a96f720ea0c38d84423fd8d55447e20714b1ee025ceb72d755"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-final-xml/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "7eebae25dffde68cc5751ff944f40a841a046ca1a63313fdb4b45e45541d8aba"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-final-xml/TEST-com.specagent.model.inference.ModelTargetBindingContractTest.xml",
+    "exists": true,
+    "sha256": "b46e7e289ac17d9ed4dd04208812de2e4990c0e4eb89dea84755942e9fea3d53"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-final-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "2e662d41bddaaa0b267e471194849a489164ab664435c82a9ba8a8fc579d86f0"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-totals.json",
+    "exists": true,
+    "sha256": "51ada86ff87e1dc015e7461e971e655c478135273a10c56b7ecbb2afd349f025"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-xml/TEST-com.specagent.agent.action.ActionEligibilityCharacterizationTest.xml",
+    "exists": true,
+    "sha256": "c72eb9cb246d9769f201f0962b655801ee9e8e438011b7fdab858cf40e5a8722"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-xml/TEST-com.specagent.agent.action.ActionEligibilityEvaluatorTest.xml",
+    "exists": true,
+    "sha256": "473e731933f309a5e48de6d1453a46dd9b1dd98f37245bdc4b4e6b4e486bb807"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-xml/TEST-com.specagent.agent.action.ActionEligibilityGateTest.xml",
+    "exists": true,
+    "sha256": "41a2ed5fe7d5c517f7c3b12f72bfea5d6cb260d77a56b16a97858846f75eaa84"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-xml/TEST-com.specagent.agent.action.C16WaitContractTest.xml",
+    "exists": true,
+    "sha256": "d9afffa1fb6a267fc2e13c8bc5a1ca5fa0b032e823c27e20b6f9076937429c0e"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-xml/TEST-com.specagent.agent.decision.AgentBrainArgumentGroundingTest.xml",
+    "exists": true,
+    "sha256": "54002795bed007bc960ea0cf13a94fccbb39f2594d09ae47f0b5ca6cbf182729"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-xml/TEST-com.specagent.eval.EvalProjectCleanupTest.xml",
+    "exists": true,
+    "sha256": "206961bc08278ae3b3e60514df17fa5af9c0411c0f2b72a72b9c6c46cec0a52d"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "15fa5942073fe70abbd5b22137d8b2e654aedf36f2d3a5e99e3620aa166a87d6"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "217f0b69794df1b486c1d404dac1bae67ac96b6e1486a1ee016c0e511943b4b1"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "f4a99403cbf771a96f720ea0c38d84423fd8d55447e20714b1ee025ceb72d755"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-xml/TEST-com.specagent.model.inference.ModelOutputContractTest.xml",
+    "exists": true,
+    "sha256": "7eebae25dffde68cc5751ff944f40a841a046ca1a63313fdb4b45e45541d8aba"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-xml/TEST-com.specagent.model.inference.ModelTargetBindingContractTest.xml",
+    "exists": true,
+    "sha256": "b46e7e289ac17d9ed4dd04208812de2e4990c0e4eb89dea84755942e9fea3d53"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/independent-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "2e662d41bddaaa0b267e471194849a489164ab664435c82a9ba8a8fc579d86f0"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/initial-status.txt",
+    "exists": true,
+    "sha256": "2d0902502d4a9c376986abfd20b0ab551c03876c157a2f8f5c8043a5002468be"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/initial.patch",
+    "exists": true,
+    "sha256": "fae13c30c5013abfd53126d2277c06c36d56044388cdbbe184db5777eb2bd727"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/protected-files-check.json",
+    "exists": true,
+    "sha256": "5b37840b83d822895135f0278d183e2c3b3ca8e372a81310be2fc1eca8c2957a"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/release-evidence.json",
+    "exists": true,
+    "sha256": "789a96d12e32dda1bdf1242ac6b36a69eb0779c442868a099c028c9a8e7890d6"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-totals.json",
+    "exists": true,
+    "sha256": "f7678827aeb557dd9bd36de10df707e0066c73acbb511799f4755b5ccf71d5bc"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.agent.action.C16WaitContractTest.xml",
+    "exists": true,
+    "sha256": "c9e86b67dcd295eb598527fc8bd2aa4d5a51738f7827c2144e5f0c1fa2384b16"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.agent.decision.AgentBrainArgumentGroundingTest.xml",
+    "exists": true,
+    "sha256": "61a3277afe3919f49a4ecfedf862e72550174c0b0ea169b95b289df2e48f8ef8"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest.xml",
+    "exists": true,
+    "sha256": "7ddfd14e19428f6e7e3831d38a283a40f8d4ffd298692c44bff86a81a6e610dc"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.agent.runtime.DeferredContinuationOfflineTest.xml",
+    "exists": true,
+    "sha256": "2cadcc71672e5b1fa9a686deed372149a648250c7c5e0e2402e33f7df1ce6b97"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.agent.runtime.LegacyBindingMigrationGuardTest.xml",
+    "exists": true,
+    "sha256": "9b0e615906dccf295ca3993e877510a48f18e37cfa29219b4e6d34a62f663a00"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.capability.DeferredCapabilityRepositoryTest.xml",
+    "exists": true,
+    "sha256": "45c937f68674afddee4940b95ff608c6feccea12ccc0b38739e974497586d9e6"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.capability.DeferredCapabilityRuntimeTest.xml",
+    "exists": true,
+    "sha256": "8c158d0e0fab52b18aec5bb1fa391cb737e1b72432d95a3fce12eb1659334d7d"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.capability.GuardedCapabilityOrderTest.xml",
+    "exists": true,
+    "sha256": "bbed44c21d5280b8662b64dc2c0dbfbb0f952d8746257e082f2d4c9192a5a9b0"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "e3f0a92aeb98603be6a2ffb3adb924aff0a1b4cfe92ce4d0f42f949870ba4d3b"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "6906ad5cbfe67c5925a7484b83cbf62f8387a33aea8c745bf6e339057a55fc7f"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "59667faa5fe086dfc9f395c859e8227007129dff9fce1760cb9a5c036b0b4f03"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.model.inference.ModelTargetBindingContractTest.xml",
+    "exists": true,
+    "sha256": "fa5421aaa463c60c0d2fa8671f06ba49e064981583bef409f944707ef0fc7572"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.model.inference.RoutingModelInferenceGatewayTest.xml",
+    "exists": true,
+    "sha256": "da0852c95e0ee8e1a23b6d4eb6db1a002feb82ab5e4bfbae4a7f404c201c86ab"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "36bfea56b5a6b0e02eccd0df1972ec27850084852024132406120854eec2b4ff"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root-first-xml/TEST-com.specagent.support.DatabaseTestDiscoveryTest.xml",
+    "exists": true,
+    "sha256": "58f4a590928324492cef1ff8e2abd9867241c776685ae93baf434a00793d7505"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.agent.action.C16WaitContractTest.xml",
+    "exists": true,
+    "sha256": "13183c2b634c70ba4daad7178d259414ca5e656bf2a1ea51f603b85ebdbcfaa0"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.agent.decision.AgentBrainArgumentGroundingTest.xml",
+    "exists": true,
+    "sha256": "83b076832d657ef64e2bf1978f74f6daa77cc567c37b85c358bf0bd72fa2f2c9"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest.xml",
+    "exists": true,
+    "sha256": "125b38741e954f9629930818d012c93110f0444245fd4a6b268966d632ff1b49"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.agent.runtime.DeferredContinuationOfflineTest.xml",
+    "exists": true,
+    "sha256": "4bd0c1a570bbcb698cc99735fd27e16f874f98bd456a706a626422a24569b1b7"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.agent.runtime.LegacyBindingMigrationGuardTest.xml",
+    "exists": true,
+    "sha256": "61462fdb955994299ead8ab999a26456f1d4eb2440a3f54a5a3faeb335b53201"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.capability.DeferredCapabilityRepositoryTest.xml",
+    "exists": true,
+    "sha256": "643010879a6a5b0c4e4bfdce1d6182983612298ce8d04bdb98b40c9013ea9543"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.capability.DeferredCapabilityRuntimeTest.xml",
+    "exists": true,
+    "sha256": "e83633251607d9db136c58b97e39d219c3638e5b8d1548c833b8ce473b58a394"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.capability.GuardedCapabilityOrderTest.xml",
+    "exists": true,
+    "sha256": "039031282ce8da72e0f634c3659e73f1dee451cee7a08cdad03e56471cfc137a"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.eval.P3BC03NaturalLanguageScenarioTest.xml",
+    "exists": true,
+    "sha256": "640be00c240caa73b9a17b332646b88c9469ce61f677efbe045d19c5718d7f59"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.eval.P3BGateMeasurementTest.xml",
+    "exists": true,
+    "sha256": "73e2afd061f7d086b34226e74384626d3777a7f091a33375ab0d35d3e1e46765"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.eval.P3BLiveDatabaseGuardTest.xml",
+    "exists": true,
+    "sha256": "cb34f532e708c10f5ebdb79c65bf3d9c6ef63f81de1eb90ae7d84d7dc320aeae"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.model.inference.ModelTargetBindingContractTest.xml",
+    "exists": true,
+    "sha256": "9b7a112eeabbcf262440b58defe7bffbf6675bdabdcc2d42767dd27246945de2"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.model.inference.RoutingModelInferenceGatewayTest.xml",
+    "exists": true,
+    "sha256": "ab665a44c1967891d542a0ab828e3b85366ef51ed0f26837748c4ff15e72fc97"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.support.DatabaseTestContextGuardTest.xml",
+    "exists": true,
+    "sha256": "96c93bd9207cf443ab5600c1dde303d985e3359a3f237263f500222e5833ba38"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/root_offline-final-xml/TEST-com.specagent.support.DatabaseTestDiscoveryTest.xml",
+    "exists": true,
+    "sha256": "96840e19b81c47ac8bc67ed989261c543146c9c10d508cbaafe49940f866bd97"
+  },
+  {
+    "path": "docs/acceptance-evidence/v99-c16-dev-20261021/test-results.json",
+    "exists": true,
+    "sha256": "31b522ab7909ca02be468b34e5039a0a6bb0bb91f72a28a512b061bfd838f046"
+  },
+  {
+    "path": "docs/v2/DEFERRED_CAPABILITY_CONTRACT.md",
+    "exists": true,
+    "sha256": "9895ce5934d64bc0a449450549ce02687662e472c71514ea9c72f77125e386bb"
+  },
+  {
+    "path": "tools/structured-output-probes/qwen25-7b-schema-20261020/report.md",
+    "exists": false,
+    "sha256": null
+  }
+]

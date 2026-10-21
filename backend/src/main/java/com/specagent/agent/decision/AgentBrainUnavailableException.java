@@ -13,20 +13,33 @@ package com.specagent.agent.decision;
 public class AgentBrainUnavailableException extends RuntimeException {
 
     private final BrainFailureCode failureCode;
+    private final ModelContractDiagnostic diagnostic;
 
     public AgentBrainUnavailableException(String message, Throwable cause) {
-        this(message, cause, BrainFailureCode.BRAIN_UNAVAILABLE);
+        this(message, cause, BrainFailureCode.BRAIN_UNAVAILABLE, null);
     }
 
     public AgentBrainUnavailableException(String message, Throwable cause,
                                           BrainFailureCode failureCode) {
+        this(message, cause, failureCode, null);
+    }
+
+    public AgentBrainUnavailableException(String message, Throwable cause,
+                                          BrainFailureCode failureCode,
+                                          ModelContractDiagnostic diagnostic) {
         super(message, cause);
         this.failureCode = failureCode == null
                 ? BrainFailureCode.BRAIN_UNAVAILABLE : failureCode;
+        this.diagnostic = diagnostic;
     }
 
     /** 本次失败的归类原因;永不为 null。 */
     public BrainFailureCode failureCode() {
         return failureCode;
+    }
+
+    /** Optional structured diagnosis; absent means no detailed cause was proven. */
+    public ModelContractDiagnostic diagnostic() {
+        return diagnostic;
     }
 }

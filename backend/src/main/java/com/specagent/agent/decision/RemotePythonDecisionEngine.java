@@ -1,6 +1,5 @@
 package com.specagent.agent.decision;
 
-import com.specagent.agent.decision.RemotePythonDecisionEngine;
 import com.specagent.agent.protocol.ActionEligibilityReasonCode;
 
 import com.specagent.agent.broker.AgentBrainProperties;
@@ -18,11 +17,13 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.HttpStatusCodeException;
-import com.specagent.agent.protocol.ActionEligibilityReasonCode;
 import com.specagent.agent.protocol.ActionIneligibleException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.net.SocketTimeoutException;
 import java.util.concurrent.TimeoutException;
+import java.util.UUID;
 
 /**
  * 文件名:RemotePythonDecisionEngine.java
@@ -41,11 +42,11 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
     /** Brain 的类型化 detail 前缀:{@code brain_failure:<ErrorType>}。 */
     static final String BRAIN_FAILURE_MARKER = "brain_failure:";
 
-    /** 表示"模型输出违反了契约"的 Brain 错误类型。 */
-    private static final java.util.List<String> BRAIN_CONTRACT_ERROR_TYPES = java.util.List.of(
-            "Contract",
-            "AmbiguousSourceRefs",
-            "ConflictSurfacing");
+    private static final ObjectMapper FAILURE_JSON = new ObjectMapper();
+    private static final java.util.Set<String> MODEL_OUTPUT_DIAGNOSTIC_CODES = java.util.Set.of(
+            "MODEL_OUTPUT_INVALID_JSON", "MODEL_OUTPUT_SCHEMA_INVALID",
+            "MODEL_OUTPUT_AMBIGUOUS_SOURCE_REFS", "MODEL_OUTPUT_UNGROUNDED_REFERENCE",
+            "MODEL_OUTPUT_CONFLICT_NOT_SURFACED");
 
     private final RestClient restClient;
     private com.specagent.agent.broker.WorkspaceRpcGrants grants;
@@ -98,18 +99,28 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
             throw new AgentBrainUnavailableException(
                     "Agent brain returned an empty response: /v1/artifacts", null);
         }
-        AgentArtifactResponse response =
-                AgentContracts.read(responseJson, AgentArtifactResponse.class);
-        AgentBrainResponseValidator.validateArtifact(request, response);
+        AgentArtifactResponse response;
+        try {
+            response = AgentContracts.read(responseJson, AgentArtifactResponse.class);
+        } catch (com.specagent.agent.protocol.AgentContractException ex) {
+            throw responseContractFailure(ex, true);
+        }
+        try {
+            AgentBrainResponseValidator.validateArtifact(request, response);
+        } catch (com.specagent.agent.protocol.AgentContractException ex) {
+            throw responseContractFailure(ex, false);
+        }
         return response;
     }
 
     /** 类型化的 5xx/409 失败:失败码取自 Brain 自己的 detail。 */
     private static AgentBrainUnavailableException brainFailure(
             String path, HttpStatusCodeException ex) {
+        String responseBody = ex.getResponseBodyAsString();
+        BrainFailureCode code = classifyBrainFailureDetail(responseBody);
         return new AgentBrainUnavailableException(
                 "Agent brain call failed: " + path, ex,
-                classifyBrainFailureDetail(ex.getResponseBodyAsString()));
+                code, modelContractDiagnostic(responseBody, code));
     }
 
     /**
@@ -135,33 +146,97 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
      * 历史的不透明失败码,引擎绝不臆造一个无法证实的成因。
      */
     static BrainFailureCode classifyBrainFailureDetail(String responseBody) {
-        if (responseBody == null) {
-            return BrainFailureCode.BRAIN_UNAVAILABLE;
-        }
-        int marker = responseBody.indexOf(BRAIN_FAILURE_MARKER);
-        if (marker < 0) {
-            return BrainFailureCode.BRAIN_UNAVAILABLE;
-        }
-        String errorType = responseBody.substring(marker + BRAIN_FAILURE_MARKER.length())
-                .split("[^A-Za-z0-9_]", 2)[0];
-        if (errorType.contains("UngroundedReference")) {
+        FailureDetail detail = parseFailureDetail(responseBody);
+        if (detail == null) return BrainFailureCode.BRAIN_UNAVAILABLE;
+        if ("UngroundedReferenceError".equals(detail.errorType())) {
             return BrainFailureCode.MODEL_UNGROUNDED_REFERENCE;
         }
-        if (errorType.contains("ModelClientError")) {
+        if ("ModelClientError".equals(detail.errorType())) {
             return BrainFailureCode.MODEL_PROVIDER_FAILURE;
         }
-        if (errorType.contains("BrokerTimeoutError")) {
+        if ("BrokerTimeoutError".equals(detail.errorType())) {
             return BrainFailureCode.BRAIN_TIMEOUT;
         }
-        // 对 Brain 自身输出契约错误类型的显式白名单:只归类 Brain 真正可能
-        // 抛出的类型,这样 Brain 侧改名或新增类型只会退化为不透明失败码,
-        // 而不会得到错误的诊断。
-        for (String contractError : BRAIN_CONTRACT_ERROR_TYPES) {
-            if (errorType.contains(contractError)) {
-                return BrainFailureCode.MODEL_CONTRACT_VIOLATION;
-            }
+        if ("ModelOutputContractError".equals(detail.errorType())) {
+            return compatibleModelDiagnostic(detail.errorType(), detail.machineCode())
+                    ? BrainFailureCode.MODEL_CONTRACT_VIOLATION
+                    : BrainFailureCode.BRAIN_UNAVAILABLE;
+        }
+        if ("AmbiguousSourceRefsError".equals(detail.errorType())
+                || "ConflictSurfacingError".equals(detail.errorType())) {
+            return BrainFailureCode.MODEL_CONTRACT_VIOLATION;
         }
         return BrainFailureCode.BRAIN_UNAVAILABLE;
+    }
+
+    private static ModelContractDiagnostic modelContractDiagnostic(
+            String body, BrainFailureCode code) {
+        if (code != BrainFailureCode.MODEL_CONTRACT_VIOLATION
+                && code != BrainFailureCode.MODEL_UNGROUNDED_REFERENCE) return null;
+        FailureDetail detail = parseFailureDetail(body);
+        if (detail == null || detail.diagnostic() == null) return null;
+        JsonNode diagnostic = detail.diagnostic();
+        String machineCode = text(diagnostic, "machineCode");
+        if (!compatibleModelDiagnostic(detail.errorType(), machineCode)) return null;
+        return new ModelContractDiagnostic(
+                text(diagnostic, "diagnosticId"),
+                text(diagnostic, "stage"),
+                text(diagnostic, "validatorId"),
+                machineCode,
+                text(diagnostic, "fieldPath"),
+                text(diagnostic, "expectedType"),
+                text(diagnostic, "actualType"),
+                text(diagnostic, "boundary"),
+                nullableBoolean(diagnostic, "javaWireValidatorEntered"),
+                nullableBoolean(diagnostic, "executorReached"),
+                text(diagnostic, "sourceExceptionType"));
+    }
+
+    private static FailureDetail parseFailureDetail(String body) {
+        if (body == null || body.isBlank()) return null;
+        try {
+            JsonNode root = FAILURE_JSON.readTree(body);
+            JsonNode detail = root == null ? null : root.get("detail");
+            if (detail != null && detail.isObject()) {
+                if (!"brain_failure".equals(text(detail, "marker"))) return null;
+                JsonNode diagnostic = detail.get("diagnostic");
+                if (diagnostic == null || !diagnostic.isObject()) {
+                    diagnostic = root.get("contractDiagnostic");
+                }
+                return new FailureDetail(text(detail, "errorType"),
+                        diagnostic != null && diagnostic.isObject() ? diagnostic : null,
+                        text(diagnostic, "machineCode"));
+            }
+            if (detail != null && detail.isTextual()) {
+                String legacy = detail.asText();
+                int marker = legacy.indexOf(BRAIN_FAILURE_MARKER);
+                if (marker < 0) return null;
+                String errorType = legacy.substring(marker + BRAIN_FAILURE_MARKER.length())
+                        .split("[^A-Za-z0-9_]", 2)[0];
+                JsonNode diagnostic = root.get("contractDiagnostic");
+                return errorType.isBlank() ? null : new FailureDetail(errorType,
+                        diagnostic != null && diagnostic.isObject() ? diagnostic : null,
+                        text(diagnostic, "machineCode"));
+            }
+        } catch (Exception ignored) {
+            // Unreadable or incompatible failures remain opaque.
+        }
+        return null;
+    }
+
+    private static String text(JsonNode node, String name) {
+        if (node == null) return null;
+        JsonNode value = node.get(name);
+        return value != null && value.isTextual() ? value.asText() : null;
+    }
+
+    private static Boolean nullableBoolean(JsonNode node, String name) {
+        if (node == null) return null;
+        JsonNode value = node.get(name);
+        return value != null && value.isBoolean() ? value.booleanValue() : null;
+    }
+
+    private record FailureDetail(String errorType, JsonNode diagnostic, String machineCode) {
     }
 
     private static boolean isTimeout(Throwable failure) {
@@ -211,15 +286,66 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
             throw new AgentBrainUnavailableException(
                     "Agent brain returned an empty response: " + path, null);
         }
-        AgentResponseEnvelope response =
-                AgentContracts.read(responseJson, AgentResponseEnvelope.class);
+        AgentResponseEnvelope response;
+        try {
+            response = AgentContracts.read(responseJson, AgentResponseEnvelope.class);
+        } catch (com.specagent.agent.protocol.AgentContractException ex) {
+            throw responseContractFailure(ex, true);
+        }
         if (stateUpdate) {
-            AgentBrainResponseValidator.validateStateUpdate(request, response);
+            try {
+                AgentBrainResponseValidator.validateStateUpdate(request, response);
+            } catch (com.specagent.agent.protocol.AgentContractException ex) {
+                throw responseContractFailure(ex, false);
+            }
         } else {
-            AgentBrainResponseValidator.validateDecision(request, response);
+            try {
+                AgentBrainResponseValidator.validateDecision(request, response);
+            } catch (com.specagent.agent.protocol.AgentContractException ex) {
+                throw responseContractFailure(ex, false);
+            }
         }
         return response;
     }
+
+    private static ModelResponseContractException responseContractFailure(
+            com.specagent.agent.protocol.AgentContractException failure, boolean wire) {
+        String boundary = wire ? "JAVA_WIRE" : "JAVA_RESPONSE_VALIDATOR";
+        String stage = wire ? "java.response_wire_validation"
+                : "java.response_contract_validation";
+        String code = failure.diagnosticCode();
+        if (code == null || code.isBlank()) {
+            code = wire ? "JAVA_WIRE_CONTRACT_INVALID" : "JAVA_RESPONSE_CONTRACT_INVALID";
+        }
+        String path = failure.fieldPath();
+        String validator = failure.validatorId();
+        if (validator == null || validator.isBlank()) {
+            validator = wire ? "AgentContracts.read" : "AgentBrainResponseValidator";
+        }
+        ModelContractDiagnostic diagnostic = new ModelContractDiagnostic(
+                failure.diagnosticId(), stage, validator, code, path,
+                failure.expectedType(), failure.actualType(), boundary,
+                true, false, failure.sourceExceptionType() == null
+                        ? failure.getClass().getSimpleName() : failure.sourceExceptionType());
+        return new ModelResponseContractException(diagnostic);
+    }
+
+    private static boolean compatibleModelDiagnostic(String errorType, String machineCode) {
+        if (errorType == null || machineCode == null
+                || !MODEL_OUTPUT_DIAGNOSTIC_CODES.contains(machineCode)) return false;
+        return switch (errorType) {
+            case "ModelOutputContractError" -> machineCode.equals("MODEL_OUTPUT_INVALID_JSON")
+                    || machineCode.equals("MODEL_OUTPUT_SCHEMA_INVALID");
+            case "AmbiguousSourceRefsError" ->
+                    machineCode.equals("MODEL_OUTPUT_AMBIGUOUS_SOURCE_REFS");
+            case "UngroundedReferenceError" ->
+                    machineCode.equals("MODEL_OUTPUT_UNGROUNDED_REFERENCE");
+            case "ConflictSurfacingError" ->
+                    machineCode.equals("MODEL_OUTPUT_CONFLICT_NOT_SURFACED");
+            default -> false;
+        };
+    }
+
     private com.specagent.agent.broker.WorkspaceRpcGrants.Ticket issue(AgentRequestEnvelope request,String type,int maximum) {
         if(grants==null) throw new IllegalStateException("Workspace RPC grant issuer is required");
         return grants.issue(request.runId(),type,maximum,java.time.Duration.ofSeconds(Math.min(180,Math.max(1,readTimeout+5))),request.snapshot());

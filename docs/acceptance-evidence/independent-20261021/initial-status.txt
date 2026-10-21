@@ -1,0 +1,23 @@
+ M backend/build.gradle.kts
+ M backend/src/eval/java/com/specagent/eval/EvalLiveIsolatedDatabase.java
+ M backend/src/test/java/com/specagent/eval/EvalHarnessBase.java
+ M backend/src/test/java/com/specagent/eval/EvalLiveHarnessBase.java
+ M backend/src/test/java/com/specagent/eval/EvalLiveP3BDecisionQualityTest.java
+ M backend/src/test/java/com/specagent/eval/P3BC03NaturalLanguageScenarioTest.java
+ M backend/src/test/java/com/specagent/eval/P3BLiveDatabaseGuardTest.java
+ M backend/src/test/java/com/specagent/modelsettings/GeminiCustomProviderSettingsVerificationTest.java
+ M tools/p3b/p3b_semantic_ab.py
+ D tools/structured-output-probes/qwen25-7b-schema-20261020/report.md
+ M tools/tests/test_p3b_semantic_ab.py
+?? agent-brain/uv.lock
+?? backend/src/test/java/com/specagent/eval/P3BC03NaturalLanguageScenarioDatabaseIntegrationTest.java
+?? backend/src/test/java/com/specagent/support/DatabaseTestContextGuard.java
+?? backend/src/test/java/com/specagent/support/DatabaseTestContextGuardTest.java
+?? backend/src/test/java/com/specagent/support/DatabaseTestDiscoveryTest.java
+?? backend/src/test/resources/META-INF/
+?? docs/P3B_AE4_DATABASE_INCIDENT_REVIEW.md
+?? docs/acceptance-evidence/
+?? tools/p3b/c03-live-runs/gemini-lite-20261020/c03_ab_decision_p3bae3_recheck_v2.json
+?? tools/p3b/c03-live-runs/gemini-lite-20261020/c03_ab_decision_p3bae_recheck.json
+?? tools/p3b/c03-live-runs/gemini-lite-20261020/p3bae3_review_v2.md
+?? tools/tests/test_p3b_mirror_contract.py

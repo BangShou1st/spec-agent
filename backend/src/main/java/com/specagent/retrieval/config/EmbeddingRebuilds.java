@@ -24,6 +24,9 @@ public class EmbeddingRebuilds {
     private final com.specagent.access.AuthorizationGuard authorization;
     private final com.specagent.access.OrganizationConfigurationScope scope;
     private final com.specagent.retrieval.workload.RebuildLeaseCoordinator leases;
+    private com.specagent.retrieval.workload.RebuildReadiness readiness;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setReadiness(com.specagent.retrieval.workload.RebuildReadiness readiness) { this.readiness=readiness; }
     public EmbeddingRebuilds(JdbcTemplate jdbc,EmbeddingSettings settings,RetrievalIndexJobs jobs,RetrievalStore store,
             RetrievalSourceJobs sources,HelpCorpusJobs help,BrainConnectionSettings connection,
             @Value("${spec.global-assistant.brain-base-url:http://127.0.0.1:8101}") String gaOrigin,
@@ -33,6 +36,8 @@ public class EmbeddingRebuilds {
         this.jdbc=jdbc; this.settings=settings; this.jobs=jobs; this.store=store; this.enabled=enabled;
         this.authorization=authorization;this.scope=scope;
         this.leases=leases;
+        this.readiness=new com.specagent.retrieval.workload.RebuildReadiness(
+                new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(jdbc));
         BrainConnectionSettings ga=new BrainConnectionSettings() {
             public String getBaseUrl() { return gaOrigin; }
             public String getInternalSecret() { return connection.getInternalSecret(); }
@@ -78,7 +83,9 @@ public class EmbeddingRebuilds {
         if(rows.size()!=1) throw new IllegalStateException("REBUILD_NOT_READY");
         if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM embedding_rebuilds WHERE corpus_id=? AND state IN ('QUEUED','RUNNING','READY'))",Boolean.class,rows.getFirst().get("corpus_id")))) throw new IllegalStateException("REBUILD_ALREADY_RUNNING");
         jdbc.update("UPDATE retrieval_index_generations SET state='PREPARING' WHERE id=? AND state='FAILED'",generation);
-        jdbc.update("UPDATE embedding_rebuilds SET state='QUEUED',error_code=NULL WHERE id=?",generation);
+        // Preserve a pre-upgrade FAILED fact before starting the next attempt.
+        readiness.record(generation);
+        jdbc.update("UPDATE embedding_rebuilds SET state='QUEUED',error_code=NULL,readiness_revision=readiness_revision+1 WHERE id=?",generation);
         return view();
     }
     @Transactional public Map<String,Object> activate(UUID generation) {
@@ -97,6 +104,7 @@ public class EmbeddingRebuilds {
                 rows.getFirst().get("corpus_id"),generation);
         jdbc.update("UPDATE retrieval_index_generations SET state='DISCARDED' WHERE id=? AND state='PREPARING'",generation);
         jdbc.update("UPDATE embedding_rebuilds SET state='DISCARDED',error_code=NULL WHERE id=?",generation);
+        readiness.record(generation);
         return view();
     }
     private UUID authorize(UUID corpus) {

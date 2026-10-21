@@ -1,0 +1,6 @@
+
+> Task :dependencyInsight
+No dependencies matching given input were found in configuration ':testRuntimeClasspath'
+
+BUILD SUCCESSFUL in 628ms
+1 actionable task: 1 executed

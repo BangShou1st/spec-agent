@@ -3,6 +3,9 @@ package com.specagent.agent.runtime;
 import com.specagent.agent.runtime.AgentRun;
 import com.specagent.agent.runtime.AgentRunService;
 import com.specagent.agent.runtime.AgentRunStatus;
+import com.specagent.agent.action.ActionExecutionContext;
+import com.specagent.agent.action.ProposalActionExecutor;
+import com.specagent.agent.protocol.ActionProposal;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
@@ -10,6 +13,7 @@ import com.specagent.workspace.answer.Answer;
 import com.specagent.workspace.answer.AnswerService;
 import com.specagent.workspace.node.Node;
 import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.patch.AnswerPatchService;
 import com.specagent.workspace.project.Project;
 import com.specagent.workspace.project.ProjectService;
 import com.specagent.workspace.route.Route;
@@ -46,6 +50,8 @@ class AnswerCycleIntegrationTest {
     @Autowired private RunWorker worker;
     @Autowired private AgentRunService agentRunService;
     @Autowired private AnswerService answerService;
+    @Autowired private AnswerPatchService answerPatchService;
+    @Autowired private ProposalActionExecutor proposalActionExecutor;
     @Autowired private AgentRunEventService eventService;
     @Autowired private RouteRepository routeRepository;
 
@@ -63,6 +69,11 @@ class AnswerCycleIntegrationTest {
 
     @Test
     void answerCycleCreatesNodeWithTwoProviderCalls() {
+        // 当前根节点没有任何预设选项;用户只能通过自由文本提交回答。
+        assertThat(rootNode.options()).isEmpty();
+        assertThat(rootNode.allowFreeAnswer()).isTrue();
+        assertThat(rootNode.allowMultiSelect()).isFalse();
+
         // 1. 入队答题循环 run。
         UUID runId = runService.createQueuedRunWithInput(
                 project.id(), "ANSWER_TIP", rootNode.id(),
@@ -100,6 +111,45 @@ class AnswerCycleIntegrationTest {
                 route.id(), List.of(rootNode.id()));
         assertThat(answers).hasSize(1);
         assertThat(answers.get(0).freeText()).isEqualTo("明确首要目标");
+    }
+
+    @Test
+    void agentCreatedQuestionWithNoOptionsAcceptsFreeTextInAnswerCycle() {
+        Answer parentAnswer = answerService.finalizeAnswer(project.id(), route.id(), rootNode.id(),
+                null, "我需要 Agent 先问清楚具体对象", "test-user");
+        answerPatchService.save(project.id(), route.id(), rootNode.id(), parentAnswer.id(),
+                List.of(), null);
+
+        ActionProposal proposal = new ActionProposal(
+                "REQUEST_USER_INPUT", Map.of(
+                        "kind", "INTERACTION",
+                        "questionText", "你希望查找当前项目中哪一件事的历史讨论？",
+                        "purpose", "需要确定具体检索对象，才能准确查找相关记录。",
+                        "options", List.of(),
+                        "allowFreeAnswer", true,
+                        "allowMultiSelect", false),
+                UUID.randomUUID(), "a".repeat(64), List.of(), UUID.randomUUID(),
+                UUID.randomUUID().toString(), List.of());
+        var action = proposalActionExecutor.execute(proposal,
+                new ActionExecutionContext(UUID.randomUUID(), project.id(), route.id(),
+                        UUID.randomUUID(), rootNode.id(), null, null));
+        Node question = nodeService.getNode(action.producedNodeId()).orElseThrow();
+        assertThat(question.options()).isEmpty();
+        assertThat(question.allowFreeAnswer()).isTrue();
+        assertThat(question.allowMultiSelect()).isFalse();
+
+        UUID runId = runService.createQueuedRunWithInput(project.id(), "ANSWER_TIP",
+                question.id(), null, "查找周四讨论的离线同步冲突", null);
+        AgentRun claimed = runService.claimNextAnswerCycle().orElseThrow();
+        worker.executeRun(claimed);
+
+        assertThat(agentRunService.getRun(runId).orElseThrow().status())
+                .isEqualTo(AgentRunStatus.COMPLETED);
+        List<Answer> answers = answerService.findAnswersForRouteAndNodeIds(
+                route.id(), List.of(question.id()));
+        assertThat(answers).hasSize(1);
+        assertThat(answers.get(0).selectedOptionId()).isNull();
+        assertThat(answers.get(0).freeText()).isEqualTo("查找周四讨论的离线同步冲突");
     }
 
     @Test
