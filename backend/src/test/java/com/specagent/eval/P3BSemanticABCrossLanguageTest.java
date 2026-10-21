@@ -104,20 +104,6 @@ class P3BSemanticABCrossLanguageTest {
     }
 
     private static String pythonExecutable(Path root) {
-        String configured = System.getenv("SPEC_AGENT_P3B_EVAL_PYTHON");
-        if (configured == null || configured.isBlank()) {
-            configured = System.getenv("SPEC_AGENT_GA_TEST_PYTHON");
-        }
-        if (configured != null && !configured.isBlank()) {
-            Path path = Path.of(configured);
-            Path rootRelative = path.isAbsolute() ? path : root.resolve(path).normalize();
-            if (Files.isRegularFile(rootRelative)) return rootRelative.toString();
-            Path cwdRelative = path.isAbsolute() ? path
-                    : Path.of(System.getProperty("user.dir")).resolve(path).normalize();
-            if (Files.isRegularFile(cwdRelative)) return cwdRelative.toString();
-            return configured;
-        }
-        Path defaultPython = root.resolve("agent-brain/.venv/Scripts/python.exe");
-        return Files.isRegularFile(defaultPython) ? defaultPython.toString() : "python";
+        return com.specagent.testing.PythonExecutable.locate(root);
     }
 }
