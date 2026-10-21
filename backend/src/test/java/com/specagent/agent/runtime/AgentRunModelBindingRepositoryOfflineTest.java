@@ -9,6 +9,26 @@ import static org.mockito.Mockito.*;
 
 /** Mockito only: verifies input refusal before JDBC, not PostgreSQL transaction semantics. */
 class AgentRunModelBindingRepositoryOfflineTest {
+    @Test void bindingSqlWhitelistsRealNonterminalStatesAndNeverReplacesAnExistingDigest() {
+        var jdbc = mock(NamedParameterJdbcTemplate.class);
+        new AgentRunModelBindingRepository(jdbc).bindOrVerify(UUID.randomUUID(), "a".repeat(64));
+        var sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(jdbc).update(sql.capture(), org.mockito.ArgumentMatchers.<String, Object>anyMap());
+        assertThat(sql.getValue()).contains(
+                "status IN ('created', 'running', 'context_built', 'model_called', 'reflected', 'persisted')",
+                "COALESCE(model_binding_fingerprint, :fingerprint)",
+                "OR model_binding_fingerprint = :fingerprint")
+                .doesNotContain("awaiting_approval");
+    }
+
+    @Test void approvalSuccessorHasAnIndependentBindingAndCannotChangeItsOrigin() {
+        var bindings = new com.specagent.common.InMemoryRunModelBindingPort();
+        UUID origin = UUID.randomUUID(), successor = UUID.randomUUID();
+        assertThat(bindings.bindOrVerify(origin, "a".repeat(64))).isTrue();
+        assertThat(bindings.bindOrVerify(successor, "b".repeat(64))).isTrue();
+        assertThat(bindings.bindOrVerify(origin, "b".repeat(64))).isFalse();
+        assertThat(bindings.bindOrVerify(origin, "a".repeat(64))).isTrue();
+    }
     @Test void invalidFingerprintAndMissingRunNeverReachJdbc() {
         var jdbc = mock(NamedParameterJdbcTemplate.class);
         var bindings = new AgentRunModelBindingRepository(jdbc);

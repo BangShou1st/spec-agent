@@ -22,7 +22,7 @@ public class AgentRunModelBindingRepository implements RunModelBindingPort {
                 UPDATE agent_runs
                    SET model_binding_fingerprint = COALESCE(model_binding_fingerprint, :fingerprint)
                  WHERE id = :runId
-                   AND status NOT IN ('completed', 'failed')
+                   AND status IN ('created', 'running', 'context_built', 'model_called', 'reflected', 'persisted')
                    AND (model_binding_fingerprint IS NULL
                         OR model_binding_fingerprint = :fingerprint)
                 """;
