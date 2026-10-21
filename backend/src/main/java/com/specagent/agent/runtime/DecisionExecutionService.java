@@ -138,8 +138,20 @@ public class DecisionExecutionService {
         guarded(() -> eventService.append(runId, AgentRunPhase.DECIDING, "DECISION_STARTED",
                 decisionStartedPayload));
         AgentResponseEnvelope decision;
+        ActionProposal proposal;
+        ActionEligibilityGate.Assessment eligibilityAssessment = null;
         try {
             decision = decisionEngine.runDecision(envelope);
+            // 资格裁决必须发生在 wire 校验之前:V4 请求的响应校验会重复执行资格
+            // 校验并先行抛出 ActionIneligibleException,那样门禁就永远没有机会
+            // 记录这次裁决的证据。门禁先裁决并留证,wire 校验随后照旧 fail-closed,
+            // 拒绝的家族与原因码完全一致。
+            proposal = decision.actionProposal();
+            if (proposal != null) {
+                eligibilityAssessment = actionEligibilityGate.assess(envelope, proposal);
+                semanticTraceRecorder.captureActionEligibility(
+                        runId, envelope, decision, eligibilityAssessment);
+            }
             AgentBrainResponseValidator.validateDecision(envelope, decision);
             semanticTraceRecorder.captureDecisionOutput(decision);
         } catch (RuntimeException ex) {
@@ -151,11 +163,11 @@ public class DecisionExecutionService {
         // 执行(短事务内先取 task 锁;数据库仍是最终权威),绝不让迟到结果落地。
         executionFence.assertOwnership();
 
-        ActionProposal proposal = decision.actionProposal();
-        ActionEligibilityGate.Assessment eligibilityAssessment =
-                actionEligibilityGate.assess(envelope, proposal);
-        semanticTraceRecorder.captureActionEligibility(
-                runId, envelope, decision, eligibilityAssessment);
+        if (eligibilityAssessment == null) {
+            eligibilityAssessment = actionEligibilityGate.assess(envelope, proposal);
+            semanticTraceRecorder.captureActionEligibility(
+                    runId, envelope, decision, eligibilityAssessment);
+        }
         actionEligibilityGate.enforce(eligibilityAssessment);
         guarded(() -> {
             eventService.append(runId, AgentRunPhase.PROPOSAL_CREATED, "PROPOSAL_CREATED", Map.of(

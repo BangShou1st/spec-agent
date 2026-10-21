@@ -15,10 +15,16 @@ public class WaitDependencyRepository {
 
     public void requireScope(AgentRequestEnvelope request) {
         var s = request.snapshot();
+        // 范围必须钉在**请求实际携带的那份快照**上:回答周期的 DECISION 按设计使用
+        // 事后(post-state)快照,它不是 run 当前挂载的 context_snapshot_id。把连接
+        // 条件写成 c.id = r.context_snapshot_id 会让这类合法请求永远无法匹配,
+        // 从而在 enforced 档下拒绝整个回答周期的决策。
+        // 其余约束一律保留且不放宽:同一 project、同一 route、快照 tip 等于请求
+        // anchor、快照存储的 context_hash 等于请求携带的 hash、run 仍是非终态。
         if (!Boolean.TRUE.equals(jdbc.queryForObject("""
-                SELECT EXISTS(SELECT 1 FROM agent_runs r JOIN context_snapshots c ON c.id = r.context_snapshot_id
+                SELECT EXISTS(SELECT 1 FROM agent_runs r JOIN context_snapshots c ON c.id = CAST(:snapshot AS uuid)
                   WHERE r.id = :run AND r.project_id = :project AND c.project_id = r.project_id
-                    AND c.id = :snapshot AND c.context_hash = :hash
+                    AND c.context_hash = :hash
                     AND r.route_id IS NOT DISTINCT FROM CAST(:route AS uuid)
                     AND c.route_id IS NOT DISTINCT FROM r.route_id
                     AND c.tip_node_id IS NOT DISTINCT FROM CAST(:anchor AS uuid)
