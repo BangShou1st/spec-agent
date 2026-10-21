@@ -15,6 +15,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Exercises the published starter's real auto-configuration without HTTP or a datasource. */
 class PublishedZenStarterCompatibilityTest {
     @Test
+    void applicationDefaultUsesThePublishedProtocolGeneration() throws Exception {
+        assertThat(java.nio.file.Files.readString(java.nio.file.Path.of("src/main/resources/application.yml")))
+                .contains("user-agent: ${SPEC_AGENT_MODEL_USER_AGENT:" + OpenCodeZenProtocolPolicy.USER_AGENT + "}");
+    }
+
+    @Test
     void publishedStarterAutoConfiguresTheFactoryAndBuildsRequestsWithoutNetwork() {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(OpenCodeZenAutoConfiguration.class))

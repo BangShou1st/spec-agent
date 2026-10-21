@@ -28,14 +28,14 @@ def test_independent_success_reports_external_skip_and_unmeasured_live():
     assert failures == []
     assert report.count("| PASS |") == 4
     assert report.count("| NOT RUN |") == 4
-    assert "NOT_MEASURED" in report
+    assert "Live provider suites: SKIPPED_EXTERNAL_DEPENDENCY" in report
 
 
 def test_real_failure_cancellation_missing_or_unexpected_skip_never_passes():
     for full in (False, True):
         for name in summary.INDEPENDENT + summary.EXTERNAL:
-            for result, status in (("failure", "FAIL"), ("cancelled", "CANCELLED"),
-                                   ("skipped", "UNEXPECTED_SKIP"), ("missing", "MISSING")):
+            for result, status in (("failure", "FAIL"), ("cancelled", "BLOCKED"),
+                                   ("skipped", "NOT RUN"), ("missing", "NOT RUN")):
                 if not full and name in summary.EXTERNAL and result == "skipped":
                     continue
                 needs = results(full)

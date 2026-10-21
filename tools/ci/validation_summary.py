@@ -25,8 +25,8 @@ def summarize(needs, full):
             if name in EXTERNAL and not full:
                 failures.append(name + ": external job ran in independent mode")
         else:
-            status = {"failure": "FAIL", "cancelled": "CANCELLED",
-                      "skipped": "UNEXPECTED_SKIP", "missing": "MISSING"}.get(result, "INVALID")
+            status = {"failure": "FAIL", "cancelled": "BLOCKED",
+                      "skipped": "NOT RUN", "missing": "NOT RUN"}.get(result, "BLOCKED")
             reason = "Actual GitHub job result: " + result
             failures.append(name + ": " + result)
         rows.append((name, status, reason))
@@ -35,7 +35,7 @@ def summarize(needs, full):
              "Independent results do not qualify the full backend, Spring startup, database or live providers.",
              "", "| Job | Status | Evidence / limitation |", "| --- | --- | --- |"]
     lines += [f"| {name} | {status} | {reason} |" for name, status, reason in rows]
-    lines += ["", "Live model quality: NOT_MEASURED. No live model requests are part of this workflow."]
+    lines += ["", "Live provider suites: SKIPPED_EXTERNAL_DEPENDENCY. Separate externalServices authorization and provider credentials are not supplied; no live model requests are part of this workflow."]
     return "\n".join(lines) + "\n", failures
 
 
