@@ -204,3 +204,15 @@ def test_disabled_bootstrap_guards_are_executed_in_the_offline_scope():
     assert 'if (databaseIntegrationEnabled.get() && name != "testOffline")' in build
     assert 'excludeTestsMatching("com.specagent.eval.P3BLiveDatabaseGuardTest")' in build
     assert 'systemProperty("specagent.database-tests.enabled", "false")' in build
+
+
+def test_local_zen_override_matches_both_published_modules():
+    settings = (ROOT / "backend/settings.gradle.kts").read_text(encoding="utf-8")
+    assert 'System.getenv("OPENCODE_ZEN_LOCAL")' in settings
+    assert '?.let { file(it) }' in settings
+    assert 'includeBuild(localZen)' in settings
+    for module in ("opencode-zen-spring-boot-starter", "opencode-zen-spring-boot-autoconfigure"):
+        assert f'substitute(module("com.github.BangShou1st.opencode-zen:{module}"))' in settings
+        assert f'.using(project(":{module}"))' in settings
+    assert 'com.sharedlibs:' not in settings
+    assert 'mavenLocal()' not in BUILD.read_text(encoding="utf-8")
