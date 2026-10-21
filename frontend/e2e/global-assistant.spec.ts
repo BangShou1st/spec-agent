@@ -235,9 +235,11 @@ test('refresh restores thread, double submit prevented, run-active handled, sett
   expect(createRunCalls).toBe(1)
   await expect(page.getByTestId('ga-stop')).toBeVisible()
   await page.reload()
-  if ((await page.getByTestId('ga-panel').count()) === 0) {
-    await page.getByTestId('ga-toggle').click()
-  }
+  // The assistant shell renders only after the session resolves, and the
+  // persisted panel state restores the open drawer after a refresh. Waiting
+  // for the restored panel proves the restore happened; an immediate
+  // (non-waiting) count raced the mount and then waited for a toggle that
+  // cannot exist while the panel is open.
   await expect(page.getByTestId('ga-panel')).toBeVisible()
   await expect(page.getByTestId('ga-message')).toContainText('hi')
   await page.goto('/settings/skills')

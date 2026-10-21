@@ -1,5 +1,5 @@
 
-import { test, expect, type Page } from './helpers'
+import { test, expect, seedGaOwnerIdentity, type Page } from './helpers'
 const THREAD = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const RUN_A = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const RUN_B = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
@@ -61,8 +61,12 @@ test('scenario 1: steer running run creates successor once', async ({ page }) =>
   await expect(page.getByTestId('ga-steer-pending')).toHaveCount(0)
 })
 
-test('scenario 2: late steer successor is observed after a pending-only activity read', async ({ page }) => {
+test('scenario 2: late steer successor is observed after a pending-only activity read', async ({ page, request }) => {
   await mockProjects(page)
+  // The persisted thread and run are scoped to the identity that wrote them:
+  // without the owner key the store discards them and the restore path under
+  // test is never reached.
+  await seedGaOwnerIdentity(page, request)
   await page.addInitScript((keys) => {
     window.localStorage.setItem(keys.thread, keys.threadId)
     window.localStorage.setItem(keys.run, keys.runId)

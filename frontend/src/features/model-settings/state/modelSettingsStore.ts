@@ -5,6 +5,7 @@
 import { defineStore } from 'pinia'
 import { identityScopedStore, privateIdentityWork, PrivateIdentityExpiredError } from '@/shared/state/privateIdentity'
 import { toDisplayError } from '@/shared/http/displayError'
+import { classifyProviderProbeFailure } from '@/shared/http/providerReachability'
 import {
   getOpenCodeSettings,
   listOpenCodeModels,
@@ -47,6 +48,8 @@ export const useModelSettingsStore = defineStore('modelSettings', {
      * 相同的 已配置但未验证 / 配置有效 / 测试失败 三种状态。
      */
     validated: false,
+    /** 上游可达但当前被限流:连通性判定通过,限流状态本身必须保留。 */
+    rateLimited: false,
     error: null as ModelSettingsError | null,
   }),
   getters: {
@@ -122,6 +125,7 @@ export const useModelSettingsStore = defineStore('modelSettings', {
       if (identityStore.probing || !apiKey.trim()) return []
       identityStore.probing = true
       identityStore.error = null
+      identityStore.rateLimited = false
       try {
         const result = await privateIdentityWork(identityStore, identityEpoch, () => (probeOpenCode(apiKey.trim())))
         // 兼容旧后端：没有 allModels 时回退到 freeModels（只展示免费列表）。
@@ -137,7 +141,10 @@ export const useModelSettingsStore = defineStore('modelSettings', {
         if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
 
         // 候选密钥探测失败时,保持之前的工作状态与成功的模型列表不动。
-        identityStore.error = displayError(err)
+        // 连通性判定:上游可达(含被限流)就不是「测试失败」。
+        const probe = classifyProviderProbeFailure(err)
+        identityStore.error = { code: probe.code, message: probe.message }
+        identityStore.rateLimited = probe.rateLimited
         return []
       } finally {
         if (this.identityEpoch === identityEpoch) {
@@ -195,6 +202,7 @@ export const useModelSettingsStore = defineStore('modelSettings', {
       if (identityStore.loadingModels || typeof listOpenCodeModels !== 'function') return false
       identityStore.loadingModels = true
       identityStore.error = null
+      identityStore.rateLimited = false
       try {
         const result = await privateIdentityWork(identityStore, identityEpoch, () => (listOpenCodeModels()))
         // 兼容旧后端：没有 allModels 时回退到 freeModels（只展示免费列表）。
@@ -212,7 +220,10 @@ export const useModelSettingsStore = defineStore('modelSettings', {
       } catch (err) {
         if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
 
-        identityStore.error = displayError(err)
+        // 模型目录刷新同样是一次可达性探测:429 表示上游可达但被限流。
+        const probe = classifyProviderProbeFailure(err)
+        identityStore.error = { code: probe.code, message: probe.message }
+        identityStore.rateLimited = probe.rateLimited
         return false
       } finally {
         if (this.identityEpoch === identityEpoch) {
@@ -272,6 +283,7 @@ export const useModelSettingsStore = defineStore('modelSettings', {
       }
       identityStore.validating = true
       identityStore.error = null
+        identityStore.rateLimited = false
       try {
         identityStore.status = await privateIdentityWork(identityStore, identityEpoch, () => (validateOpenCode()))
         identityStore.selectedModel = identityStore.status.selectedModel

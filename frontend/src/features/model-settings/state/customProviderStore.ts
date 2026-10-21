@@ -5,6 +5,7 @@
 import { defineStore } from 'pinia'
 import { identityScopedStore, privateIdentityWork, PrivateIdentityExpiredError } from '@/shared/state/privateIdentity'
 import { toDisplayError } from '@/shared/http/displayError'
+import { classifyProviderProbeFailure } from '@/shared/http/providerReachability'
 import {
   discoverCustom,
   getCustomStatus,
@@ -48,6 +49,8 @@ export const useCustomProviderStore = defineStore('customProvider', {
     validating: false,
     modelUnavailable: false,
     failed: false,
+    /** 上游可达但当前被限流:连通性判定通过,限流状态本身必须保留。 */
+    rateLimited: false,
     error: null as ProviderError | null,
   }),
   actions: {
@@ -118,6 +121,7 @@ export const useCustomProviderStore = defineStore('customProvider', {
       }
       identityStore.discovering = true
       identityStore.error = null
+      identityStore.rateLimited = false
       try {
         const res = await privateIdentityWork(identityStore, identityEpoch, () => (discoverCustom(identityStore.apiFormat, identityStore.baseUrl.trim(), apiKey ?? null)))
         identityStore.availableModels = [...res.models]
@@ -132,8 +136,12 @@ export const useCustomProviderStore = defineStore('customProvider', {
       } catch (err) {
         if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
 
-        identityStore.error = displayError(err)
-        identityStore.failed = true
+        // 连通性探测的判定:上游可达(含被限流)就不是「测试失败」。
+        // 限流状态与错误信息保留,但绝不自动重试、绝不额外消耗配额。
+        const probe = classifyProviderProbeFailure(err)
+        identityStore.error = { code: probe.code, message: probe.message }
+        identityStore.failed = !probe.reachable
+        identityStore.rateLimited = probe.rateLimited
         // 认证/网络失败绝不降级为手动回退。
         identityStore.manualModel = false
       } finally {
@@ -202,6 +210,7 @@ export const useCustomProviderStore = defineStore('customProvider', {
       }
       identityStore.validating = true
       identityStore.error = null
+        identityStore.rateLimited = false
       try {
         const s = await privateIdentityWork(identityStore, identityEpoch, () => (validateCustom()))
         identityStore.configured = s.configured

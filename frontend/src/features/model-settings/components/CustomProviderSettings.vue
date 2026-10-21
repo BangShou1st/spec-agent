@@ -35,6 +35,7 @@ const state = computed(() => providerCardState(
   isActive.value,
   store.failed,
   store.validating || refreshing.value,
+  store.rateLimited,
 ))
 
 const canActivate = computed(() => canManage.value && store.configured && store.validated
