@@ -252,6 +252,7 @@ export const useOpenRouterStore = defineStore('openRouter', {
       }
       identityStore.validating = true
       identityStore.error = null
+        identityStore.rateLimited = false
       try {
         const s = await privateIdentityWork(identityStore, identityEpoch, () => (validateOpenRouter()))
         identityStore.configured = s.configured

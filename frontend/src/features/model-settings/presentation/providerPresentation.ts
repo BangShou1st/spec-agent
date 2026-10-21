@@ -85,17 +85,17 @@ export function providerCardState(
   if (busy) {
     return 'validating'
   }
-  if (active && validated) {
-    return 'active'
-  }
   if (failed) {
     return 'invalid'
   }
-  if (!configured) {
-    return 'unconfigured'
-  }
   if (rateLimited) {
     return 'rate-limited'
+  }
+  if (active && validated) {
+    return 'active'
+  }
+  if (!configured) {
+    return 'unconfigured'
   }
   if (validated) {
     return 'valid-inactive'

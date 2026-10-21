@@ -283,6 +283,7 @@ export const useModelSettingsStore = defineStore('modelSettings', {
       }
       identityStore.validating = true
       identityStore.error = null
+        identityStore.rateLimited = false
       try {
         identityStore.status = await privateIdentityWork(identityStore, identityEpoch, () => (validateOpenCode()))
         identityStore.selectedModel = identityStore.status.selectedModel

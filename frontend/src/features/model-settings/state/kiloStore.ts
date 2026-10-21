@@ -265,6 +265,7 @@ export const useKiloSettingsStore = defineStore('kiloSettings', {
         }
         identityStore.validating = true
         identityStore.error = null
+        identityStore.rateLimited = false
         try {
           identityStore.status = await privateIdentityWork(identityStore, identityEpoch, () => (validateKilo()))
           identityStore.selectedModel = identityStore.status.selectedModel

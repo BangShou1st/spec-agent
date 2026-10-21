@@ -210,6 +210,7 @@ export const useCustomProviderStore = defineStore('customProvider', {
       }
       identityStore.validating = true
       identityStore.error = null
+        identityStore.rateLimited = false
       try {
         const s = await privateIdentityWork(identityStore, identityEpoch, () => (validateCustom()))
         identityStore.configured = s.configured

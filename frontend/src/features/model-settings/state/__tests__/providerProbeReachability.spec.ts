@@ -170,7 +170,9 @@ describe('provider probe reachability semantics', () => {
     store.configured = true
     store.validated = true
 
+    store.rateLimited = true
     await expect(store.validate()).resolves.toBe(false)
+    expect(store.rateLimited).toBe(false)
 
     // 429 不单独证明凭证有效:验证必须失败。
     expect(store.validated).toBe(false)
@@ -183,9 +185,63 @@ describe('provider probe reachability semantics', () => {
     store.configured = true
     store.validated = true
 
+    store.rateLimited = true
     await expect(store.validate()).resolves.toBe(false)
+    expect(store.rateLimited).toBe(false)
 
     expect(store.validated).toBe(false)
     expect(store.failed).toBe(true)
+  })
+})
+
+
+// Zen and Kilo use different API modules from OpenRouter/Custom.
+import { probeOpenCode, listOpenCodeModels, validateOpenCode } from '@/features/model-settings/api/modelSettings'
+import { probeKilo, listKiloModels, validateKilo } from '@/features/model-settings/api/kiloSettings'
+import { useModelSettingsStore } from '../modelSettingsStore'
+import { useKiloSettingsStore } from '../kiloStore'
+vi.mock('@/features/model-settings/api/modelSettings', () => ({
+  probeOpenCode: vi.fn(), listOpenCodeModels: vi.fn(), validateOpenCode: vi.fn(),
+}))
+vi.mock('@/features/model-settings/api/kiloSettings', () => ({
+  probeKilo: vi.fn(), listKiloModels: vi.fn(), validateKilo: vi.fn(),
+}))
+
+describe.each([
+  ['Zen', useModelSettingsStore, probeOpenCode, listOpenCodeModels, validateOpenCode],
+  ['Kilo', useKiloSettingsStore, probeKilo, listKiloModels, validateKilo],
+] as const)('%s probe and actual validation boundary', (_name, useStore, probeApi, listApi, validateApi) => {
+  beforeEach(() => { setActivePinia(createPinia()); vi.clearAllMocks() })
+
+  it('accepts successful discovery and preserves the returned catalog', async () => {
+    vi.mocked(probeApi).mockResolvedValue({ allModels: ['fixture:free'], freeModels: ['fixture:free'] })
+    const store = useStore()
+    expect(await store.probe('fixture-only')).toEqual(['fixture:free'])
+    expect(store.rateLimited).toBe(false)
+    expect(store.error).toBeNull()
+    expect(probeApi).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([RATE_LIMITED, AUTH_FAILED, UNREACHABLE, TIMEOUT])('retains each failure category without retries: $code', async error => {
+    vi.mocked(probeApi).mockRejectedValue(error)
+    const store = useStore()
+    await store.probe('fixture-only')
+    expect(store.error?.code).toBe(error.code)
+    expect(store.rateLimited).toBe(error === RATE_LIMITED)
+    expect(probeApi).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a rate-limited catalog reachable but rejects a subsequent actual validation', async () => {
+    vi.mocked(listApi).mockRejectedValue(RATE_LIMITED)
+    vi.mocked(validateApi).mockRejectedValue(RATE_LIMITED)
+    const store = useStore()
+    await store.refreshModels()
+    expect(store.rateLimited).toBe(true)
+    store.validated = true
+    expect(await store.validate()).toBe(false)
+    expect(store.validated).toBe(false)
+    expect(store.rateLimited).toBe(false)
+    expect(store.error?.code).toBe('MODEL_PROVIDER_RATE_LIMITED')
+    expect(validateApi).toHaveBeenCalledTimes(1)
   })
 })
