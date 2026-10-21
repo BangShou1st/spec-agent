@@ -98,16 +98,40 @@ class C16CrossProcessWorkerAcceptanceTest {
 
     @AfterAll
     static void stopEverything() throws Exception {
+        stopWorkers();
+    }
+
+    /**
+     * Stops every worker this test started.
+     *
+     * <p>Called before the fixture rows are deleted and again after the class
+     * finishes. A worker that is still alive can write a continuation child run
+     * while the parent row is being removed, which the self-referencing
+     * foreign key on {@code agent_runs.parent_run_id} rejects.
+     */
+    static void stopWorkers() {
         for (Process worker : WORKERS) {
-            worker.descendants().toList().forEach(ProcessHandle::destroyForcibly);
-            worker.destroyForcibly();
-            worker.waitFor(10, TimeUnit.SECONDS);
+            try {
+                worker.descendants().toList().forEach(ProcessHandle::destroyForcibly);
+                worker.destroyForcibly();
+                worker.waitFor(10, TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return;
+            }
         }
         WORKERS.clear();
     }
 
     @AfterEach
     void cleanProjects() {
+        // The workers are still running while the fixture rows are deleted.
+        // A live worker can commit a continuation child run (which references
+        // its parent through agent_runs.parent_run_id) between clearing that
+        // link and deleting the parent row, and the foreign key then rejects
+        // the DELETE. Stopping the workers first removes the writer, so the
+        // cleanup below is deterministic.
+        stopWorkers();
         for (UUID project : TOUCHED) {
             jdbc.update("UPDATE agent_runs SET produced_answer_id = NULL, produced_patch_id = NULL,"
                     + " produced_spec_snapshot_id = NULL, produced_node_id = NULL,"
