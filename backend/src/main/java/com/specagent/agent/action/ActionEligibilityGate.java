@@ -93,6 +93,8 @@ public class ActionEligibilityGate {
         }
     }
 
+    public boolean isEnforced() { return mode == Mode.ENFORCED; }
+
     public record Assessment(Mode mode,
                              ActionEligibility eligibility,
                              String selectedAction,

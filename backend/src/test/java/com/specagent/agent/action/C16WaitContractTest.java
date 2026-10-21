@@ -9,6 +9,17 @@ import static org.assertj.core.api.Assertions.*;
 
 /** Current contract boundaries, not an implementation of asynchronous WAIT/resumption. */
 class C16WaitContractTest {
+    @Test void deferredCompletionUsesExistingObservationWireButPendingRemainsHostOwned() throws Exception {
+        var raw = Files.readString(Path.of("../contracts/fixtures/deferred-capability-completed-observation.json"));
+        for (String status : List.of("SUCCEEDED", "FAILED")) {
+            var observation = AgentContracts.read(raw.replace("SUCCEEDED", status), CapabilityResultView.class);
+            assertThat(observation.status()).isEqualTo(status);
+            assertThat(AgentContracts.read(AgentContracts.write(observation), CapabilityResultView.class))
+                    .isEqualTo(observation);
+        }
+        assertThatThrownBy(() -> AgentContracts.read(raw.replace("SUCCEEDED", "PENDING"), CapabilityResultView.class))
+                .isInstanceOf(AgentContractException.class);
+    }
     private AgentRequestEnvelope request() throws Exception {
         return AgentContracts.read(Files.readString(Path.of("../contracts/fixtures/agent-input-valid.json")),
                 AgentRequestEnvelope.class);

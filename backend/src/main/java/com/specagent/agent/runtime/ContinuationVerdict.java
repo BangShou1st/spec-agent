@@ -38,6 +38,9 @@ public enum ContinuationVerdict {
      */
     PARKED_APPROVAL,
 
+    /** Explicit PENDING invocation owned by this run; RUNNING is not a dependency. */
+    PARKED_DEPENDENCY,
+
     /**
      * 证据:存在该 run 的 {@code RESPOND_MESSAGE} 事件行。本轮只产出了
      * 回答、没有其他持久化产物;v1 在此结束链路。

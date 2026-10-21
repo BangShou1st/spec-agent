@@ -140,6 +140,11 @@ public class ContinuationCoordinator {
             return ContinuationDecision.of(runId, ContinuationVerdict.TERMINAL_RESPONSE,
                     "run emitted a response message");
         }
+        if (invocationRepository.findByRunId(run.id()).stream()
+                .anyMatch(record -> record.status() == CapabilityResult.Status.PENDING)) {
+            return ContinuationDecision.of(runId, ContinuationVerdict.PARKED_DEPENDENCY,
+                    "a registered deferred capability is pending");
+        }
         if (hasNewFacts(run)) {
             return ContinuationDecision.of(runId,
                     ContinuationVerdict.EXECUTED_NEW_OBSERVATION, "durable facts persisted");

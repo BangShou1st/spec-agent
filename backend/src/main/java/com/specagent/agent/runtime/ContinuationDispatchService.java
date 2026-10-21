@@ -44,6 +44,12 @@ public class ContinuationDispatchService {
      * 单执行器模式下为 null,行为与历史一致。
      */
     private final UUID workerId;
+    private com.specagent.capability.CapabilityInvocationRepository deferredInvocations;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setDeferredInvocations(com.specagent.capability.CapabilityInvocationRepository repository) {
+        this.deferredInvocations = repository;
+    }
 
     public ContinuationDispatchService(ContinuationCheckRepository checkRepository,
                                        ContinuationCoordinator coordinator,
@@ -120,6 +126,16 @@ public class ContinuationDispatchService {
     private static final int CLAIM_SECONDS = 60;
 
     public void recoverPending(int limit) {
+        if (deferredInvocations != null) {
+            try {
+                deferredInvocations.expirePending(limit);
+            } catch (RuntimeException ex) {
+                // The timeout transaction rolls back independently. Retry it next tick
+                // without starving checks already committed by unrelated runs.
+                LOG.warn("Deferred capability timeout scan failed; retrying next poll ({})",
+                        ex.getClass().getSimpleName());
+            }
+        }
         List<ContinuationCheck> pending =
                 checkRepository.claimPending(limit, workerId, CLAIM_SECONDS);
         for (ContinuationCheck check : pending) {

@@ -246,7 +246,10 @@ public class DecisionExecutionService {
             });
             trace = appendTrace(trace, "completed", traceSeparator);
         } else {
-            execResult = actionExecutor.execute(proposal, execContext);
+            execResult = actionExecutor.execute(proposal, execContext.withDeferredAllowed(
+                    actionEligibilityGate.isEnforced()
+                            && com.specagent.agent.protocol.AgentProtocol.INPUT_PROTOCOL_VERSION_V3
+                                    .equals(envelope.protocolVersion())));
             trace = appendTrace(trace, "completed", traceSeparator);
             Map<String, Object> payload = new HashMap<>();
             payload.put("actionFamily", proposal.actionFamily());

@@ -57,6 +57,35 @@ public class CapabilityRuntime {
         return execute(invocationKey, capabilityId, projectId, runId, arguments);
     }
 
+    /** Enforced Host decisions only. Legacy/shadow/GA callers retain the synchronous contract. */
+    @Transactional
+    public CapabilityResult invokeDeferredAllowed(String invocationKey, String capabilityId,
+            UUID projectId, UUID runId, Map<String, Object> arguments) {
+        if (projectId == null || runId == null) throw new IllegalArgumentException("Missing deferred owner");
+        return execute(invocationKey, capabilityId, projectId, runId, arguments, null, true);
+    }
+
+    /** Internal adapter completion entry, deliberately not exposed as an HTTP endpoint. */
+    @Transactional
+    public boolean completeDeferred(CapabilityResult result) {
+        if (result == null || (result.status() != CapabilityResult.Status.SUCCEEDED
+                && result.status() != CapabilityResult.Status.FAILED)) {
+            throw new IllegalArgumentException("Expected terminal completion");
+        }
+        var record = invocationRepository.findByInvocationKey(result.invocationKey())
+                .orElseThrow(() -> new IllegalArgumentException("Unknown deferred invocation"));
+        if (!record.id().equals(result.invocationId()) || !record.capabilityId().equals(result.capabilityId())
+                || record.projectId() == null || record.runId() == null) {
+            throw new IllegalArgumentException("Deferred completion identity mismatch");
+        }
+        var adapter = registry.findAdapter(record.capabilityId()).orElse(null);
+        if (!(adapter instanceof DeferredCapabilityAdapter deferred)) {
+            throw new IllegalArgumentException("Capability does not own deferred jobs");
+        }
+        deferred.requireAuthorizedCompletion(record);
+        return invocationRepository.completePending(record.id(), result);
+    }
+
     /**
      * Global Assistant 宿主工具唯一的应用范围公开入口。持久化时 {@code project_id = NULL},
      * 同时复用与项目范围完全相同的 注册表 → 适配器 → claim/complete/重放 通路,
@@ -108,9 +137,26 @@ public class CapabilityRuntime {
 
     private CapabilityResult execute(String invocationKey, String capabilityId, UUID projectId, UUID runId,
             Map<String,Object> arguments, PreparedApplicationCall prepared) {
+        return execute(invocationKey, capabilityId, projectId, runId, arguments, prepared, false);
+    }
+
+    private CapabilityResult execute(String invocationKey, String capabilityId, UUID projectId, UUID runId,
+            Map<String,Object> arguments, PreparedApplicationCall prepared, boolean deferredAllowed) {
         CapabilityInvocation invocation = new CapabilityInvocation(
                 Ids.random(), invocationKey, capabilityId, projectId, runId, arguments);
         CapabilityAdapter adapter = registry.findAdapter(capabilityId).orElse(null);
+        long timeoutSeconds = 0;
+        if (adapter instanceof DeferredCapabilityAdapter deferred) {
+            // Reject before claim or external submission. Neither model text nor a status
+            // string from a synchronous adapter can opt into durable waiting.
+            if (!deferredAllowed) throw new IllegalStateException("DEFERRED_REQUIRES_ENFORCED_DECISION");
+            var timeout = deferred.completionTimeout();
+            if (timeout == null || timeout.isNegative() || timeout.isZero()
+                    || timeout.getSeconds() < 1 || timeout.getSeconds() > 86400) {
+                throw new IllegalArgumentException("Invalid deferred capability timeout");
+            }
+            timeoutSeconds = timeout.getSeconds();
+        }
         if (adapter instanceof GuardedCapabilityAdapter guarded) {
             // Task/scope/auth/Run locks precede the invocation row, also on a replay.
             guarded.requireAuthorizedInvocation(invocation);
@@ -160,13 +206,28 @@ public class CapabilityRuntime {
                     invocation.invocationId(), invocationKey, capabilityId,
                     "Capability execution failed: " + ex.getClass().getSimpleName());
         }
-        invocationRepository.complete(invocation.invocationId(), result);
+        if (result == null || !invocation.invocationId().equals(result.invocationId())
+                || !invocationKey.equals(result.invocationKey()) || !capabilityId.equals(result.capabilityId())) {
+            throw new IllegalStateException("CAPABILITY_RESULT_IDENTITY_MISMATCH");
+        }
+        if (result.status() == CapabilityResult.Status.PENDING) {
+            if (!(adapter instanceof DeferredCapabilityAdapter)
+                    || !invocationRepository.markPending(invocation.invocationId(), result, timeoutSeconds)) {
+                throw new IllegalStateException("DEFERRED_REGISTRATION_REJECTED");
+            }
+        } else {
+            invocationRepository.complete(invocation.invocationId(), result);
+        }
         return result;
     }
 
     private CapabilityResult replayResult(CapabilityInvocationRecord record) {
         // "已认领但未完成"的调用(存在并发属主,或持有方进程已崩溃)应如实呈现为
         // 进行中状态:既不能伪装成成功的重放,也不能在这里重新执行。
+        if (record.status() == CapabilityResult.Status.PENDING) {
+            return new CapabilityResult(record.id(), record.invocationKey(), record.capabilityId(),
+                    CapabilityResult.Status.PENDING, Map.of(), List.of(), Map.of(), List.of());
+        }
         if (record.status() == CapabilityResult.Status.RUNNING) {
             return new CapabilityResult(
                     record.id(),

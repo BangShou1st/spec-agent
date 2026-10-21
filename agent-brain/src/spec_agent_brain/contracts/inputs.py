@@ -150,6 +150,13 @@ class CapabilityResultView(StrictModel):
     source_refs: List[str] = Field(default_factory=list)
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("status")
+    @classmethod
+    def _completed_observation_only(cls, value: str) -> str:
+        if value == "PENDING":
+            raise ValueError("deferred dependencies remain Host-owned in existing wire versions")
+        return value
+
 
 class AvailableSkillView(StrictModel):
     """冻结输入快照中的一条有界 Skill 目录项。

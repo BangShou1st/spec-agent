@@ -19,12 +19,32 @@ import java.util.UUID;
  * PARKED_APPROVAL 之后再次请求会把代数加一并重新打开评估。
  */
 @Repository
-public class ContinuationCheckRepository {
+public class ContinuationCheckRepository implements com.specagent.common.CapabilityCompletionPort {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
 
     public ContinuationCheckRepository(NamedParameterJdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
+    }
+
+    /** Scope comes from durable rows, never from a completion payload.
+     * Always enqueue, even if this transaction cannot yet see parent terminalization:
+     * its consumer may already be parking on our uncommitted PENDING row. The outbox
+     * generation serializes both requests; the coordinator enforces terminality and
+     * refuses failed parents. An early nonterminal evaluation remains retryable.
+     */
+    @Override
+    public void completed(UUID invocationId) {
+        jdbcTemplate.update("""
+                INSERT INTO agent_run_continuation_checks
+                    (run_id, requested_at, processed_at, request_generation)
+                SELECT r.id, CURRENT_TIMESTAMP, NULL, 1
+                  FROM capability_invocations i JOIN agent_runs r ON r.id = i.run_id
+                 WHERE i.id = :id AND i.project_id = r.project_id
+                ON CONFLICT (run_id) DO UPDATE
+                  SET requested_at = CURRENT_TIMESTAMP, processed_at = NULL,
+                      request_generation = agent_run_continuation_checks.request_generation + 1
+                """, Maps.of("id", invocationId));
     }
 
     /**

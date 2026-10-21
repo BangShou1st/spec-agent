@@ -34,7 +34,7 @@ public record CapabilityResult(
      * {@code IN_PROGRESS} 是运行时返回给"调用仍在进行中"的后续调用方的带类型应答——
      * 它刻意不是重放,也绝不携带编造的内容。
      */
-    public enum Status { SUCCEEDED, FAILED, REPLAYED, RUNNING, IN_PROGRESS }
+    public enum Status { SUCCEEDED, FAILED, REPLAYED, RUNNING, IN_PROGRESS, PENDING }
 
     public CapabilityResult {
         content = content == null ? Map.of() : Map.copyOf(content);

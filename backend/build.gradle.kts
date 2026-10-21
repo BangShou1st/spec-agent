@@ -108,7 +108,12 @@ val auditedOfflineTests = setOf(
     "com.specagent.model.inference.ModelTargetBindingContractTest",
     "com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest",
     "com.specagent.agent.decision.AgentBrainArgumentGroundingTest",
-    "com.specagent.agent.action.C16WaitContractTest"
+    "com.specagent.agent.action.C16WaitContractTest",
+    "com.specagent.agent.runtime.LegacyBindingMigrationGuardTest",
+    "com.specagent.agent.runtime.DeferredContinuationOfflineTest",
+    "com.specagent.capability.DeferredCapabilityRuntimeTest",
+    "com.specagent.capability.DeferredCapabilityRepositoryTest",
+    "com.specagent.capability.GuardedCapabilityOrderTest"
 )
 val databaseIntegrationEnabled = providers.gradleProperty("databaseIntegration").map { it == "true" }.orElse(false)
 val externalServicesEnabled = providers.gradleProperty("externalServices").map { it == "true" }.orElse(false)
