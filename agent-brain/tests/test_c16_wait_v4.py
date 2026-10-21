@@ -47,6 +47,9 @@ def test_existing_versions_reject_v4_projection(version):
     value = raw(); value["protocolVersion"] = version
     with pytest.raises(ValidationError):
         parse_request_envelope(value)
+    value["pendingDependencies"] = None
+    with pytest.raises(ValidationError):
+        parse_request_envelope(value)
 
 @pytest.mark.parametrize("field", ["runId", "snapshotId", "projectId", "routeId", "anchorNodeId", "contextHash"])
 def test_cross_scope_projection_fails_before_model_call(field):

@@ -47,6 +47,12 @@ class ActionEligibilityWaitV4Test {
         for (var version : List.of("agent-input.v2", "agent-input.v3"))
             assertThatThrownBy(() -> AgentContracts.read(raw.replace("agent-input.v4", version), AgentRequestEnvelope.class))
                     .isInstanceOf(AgentContractException.class);
+        for (var fixture : List.of("agent-input-valid.json", "agent-input-v3-valid.json")) {
+            var tree = new com.fasterxml.jackson.databind.ObjectMapper().readTree(Files.readString(Path.of("../contracts/fixtures/" + fixture)));
+            ((com.fasterxml.jackson.databind.node.ObjectNode) tree).putNull("pendingDependencies");
+            assertThatThrownBy(() -> AgentContracts.read(tree.toString(), AgentRequestEnvelope.class))
+                    .isInstanceOf(AgentContractException.class);
+        }
         var v3 = Files.readString(Path.of("../contracts/fixtures/agent-input-v3-valid.json"));
         assertThatThrownBy(() -> AgentContracts.read(v3.replace("agent-input.v3", "agent-input.v4"), AgentRequestEnvelope.class))
                 .isInstanceOf(AgentContractException.class);

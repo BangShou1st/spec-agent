@@ -60,6 +60,15 @@ public final class AgentContracts {
      */
     public static <T> T read(String json, Class<T> type) {
         try {
+            // A shared Java record cannot distinguish an absent creator argument
+            // from explicit JSON null. Legacy wire versions must reject the V4
+            // field even when null, matching Python's extra="forbid" boundary.
+            if (type == AgentRequestEnvelope.class) {
+                var raw = JSON.read(json, java.util.Map.class);
+                if (raw != null && raw.containsKey("pendingDependencies")
+                        && !AgentProtocol.INPUT_PROTOCOL_VERSION_V4.equals(raw.get("protocolVersion")))
+                    throw new AgentContractException("Legacy requests must not carry pendingDependencies");
+            }
             return JSON.read(json, type);
         } catch (IllegalStateException ex) {
             Throwable cause = ex.getCause();
