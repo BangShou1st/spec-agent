@@ -319,7 +319,7 @@ ground. Know which one you ran before you report a result:
 |---|---|---|
 | `testOffline` | Only the reviewed `auditedOfflineTests` set | Nothing; no datasource, no live provider |
 | `test` | Everything except `database-integration` / `external-service` tagged tests | An isolated database and `-PdatabaseIntegration=true` |
-| `testDatabaseIntegration` | `*IntegrationTest`, `*AcceptanceTest`, `*EndToEndTest` by class name | An isolated database and `-PdatabaseIntegration=true` |
+| `testDatabaseIntegration` | `*IntegrationTest`, `*AcceptanceTest`, `*EndToEndTest` by class name | An isolated database, `-PdatabaseIntegration=true`, and a Python interpreter carrying the `agent-brain` package |
 | `testNonLive` | The complete backend suite except live-provider suites and the cross-language gate | An isolated database |
 | `testCrossLanguage` | The Python brain cross-language exit gate | A broker-mode `agent-brain` on `localhost:8100` |
 | `evalBFast` | The deterministic P2 evaluation corpus | An isolated database |
@@ -340,6 +340,14 @@ Rules that follow from this:
    `spec_agent_test` or any other business database.
 4. When a suite cannot run in the current environment, say so. Do not
    report an environment gap as a pass.
+5. `testDatabaseIntegration` starts a **real** `agent-brain` process for
+   `C16RetrievalAwaitGenerationEndToEndTest`. The interpreter it starts must
+   carry the brain package, otherwise the test fails with
+   `No module named uvicorn`. Export that interpreter as
+   `SPEC_AGENT_GA_TEST_PYTHON` (absolute path) instead of relying on an
+   arbitrary `python3` from `PATH`. A missing runtime is an environment gap,
+   not a product defect — but it still has to be fixed in the environment that
+   runs the suite, never by weakening the test.
 
 ### 11.2 Skipped is not passed
 
