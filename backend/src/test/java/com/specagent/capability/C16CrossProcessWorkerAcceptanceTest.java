@@ -125,6 +125,11 @@ class C16CrossProcessWorkerAcceptanceTest {
                     + " (SELECT id FROM agent_runs WHERE project_id = ?)", project);
             jdbc.update("DELETE FROM agent_run_events WHERE run_id IN"
                     + " (SELECT id FROM agent_runs WHERE project_id = ?)", project);
+            // agent_runs references itself through parent_run_id. Clear the
+            // link first: a single DELETE over parent and child rows in one
+            // statement does not guarantee that the parent row is gone before
+            // the child row is checked, and the foreign key then rejects it.
+            jdbc.update("UPDATE agent_runs SET parent_run_id = NULL WHERE project_id = ?", project);
             jdbc.update("DELETE FROM agent_runs WHERE project_id = ?", project);
             jdbc.update("DELETE FROM spec_snapshots WHERE project_id = ?", project);
             jdbc.update("DELETE FROM context_snapshots WHERE project_id = ?", project);
@@ -166,10 +171,53 @@ class C16CrossProcessWorkerAcceptanceTest {
         builder.environment().put("SPEC_AGENT_BRAIN_ENGINE", "fake");
         builder.environment().put("SPEC_AGENT_BRAIN_WORKER_ENABLED", "true");
         builder.environment().put("SPEC_AGENT_EMBEDDING_WORKER_ENABLED", "true");
+        // The worker must talk to the SAME isolated database as this test.
+        // Without this it falls back to the application default
+        // (localhost:5434/spec_agent), which is a business database this
+        // repository must never touch, and its execution-mode registration
+        // then refuses the PER_TASK fleet.
+        builder.environment().put("SPRING_DATASOURCE_URL", isolatedDatabaseUrl());
+        builder.environment().put("SPRING_DATASOURCE_USERNAME", isolatedDatabaseUser());
+        builder.environment().put("SPRING_DATASOURCE_PASSWORD", isolatedDatabasePassword());
+        builder.environment().put("SPRING_FLYWAY_URL", isolatedDatabaseUrl());
+        builder.environment().put("SPRING_FLYWAY_USER", isolatedDatabaseUser());
+        builder.environment().put("SPRING_FLYWAY_PASSWORD", isolatedDatabasePassword());
+        // The worker must run the same profile as the test: the test profile
+        // carries the deterministic master key and internal secret the test
+        // database's ciphertext was written with. A worker on the default
+        // profile has no key and refuses to start.
+        builder.environment().put("SPRING_PROFILES_ACTIVE", "test");
         Process process = builder.start();
         WORKERS.add(process);
         awaitHealthy(process, port, log);
         return process;
+    }
+
+    /** The isolated database this test was pointed at, or a hard failure. */
+    private static String isolatedDatabaseUrl() {
+        String url = System.getenv("SPEC_AGENT_TEST_DB_URL");
+        if (url == null || url.isBlank()) {
+            throw new IllegalStateException(
+                    "SPEC_AGENT_TEST_DB_URL must be set: the cross-process workers must "
+                            + "join the same isolated database as this test");
+        }
+        return url;
+    }
+
+    private static String isolatedDatabaseUser() {
+        String user = System.getenv("SPEC_AGENT_TEST_DB_USERNAME");
+        if (user == null || user.isBlank()) {
+            throw new IllegalStateException("SPEC_AGENT_TEST_DB_USERNAME must be set");
+        }
+        return user;
+    }
+
+    private static String isolatedDatabasePassword() {
+        String password = System.getenv("SPEC_AGENT_TEST_DB_PASSWORD");
+        if (password == null || password.isBlank()) {
+            throw new IllegalStateException("SPEC_AGENT_TEST_DB_PASSWORD must be set");
+        }
+        return password;
     }
 
     private void awaitHealthy(Process process, int port, Path log) throws Exception {

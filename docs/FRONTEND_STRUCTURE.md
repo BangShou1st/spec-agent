@@ -4,7 +4,7 @@ This document is the placement contract for `frontend/src`. It exists so new
 code lands in an obvious place instead of accumulating another `components/`
 grab bag.
 
-Authoritative for behaviour: `AGENT.md`, `docs/PRODUCT_SPEC.md`,
+Authoritative for behaviour: `AGENTS.md`, `docs/PRODUCT_SPEC.md`,
 `docs/ARCHITECTURE.md`. This file only governs *where code lives*.
 
 ## 1. Layout
@@ -127,3 +127,4 @@ npm run test:e2e      # needs a running backend, see playwright.config.ts
 `npm run typecheck` matters even when `npm run test` is green: vitest does not
 type-check, so type errors (including broken `@ts-expect-error` contracts such as
 `features/workspace/state/__tests__/slicesReadonly.spec.ts`) surface only there.
+

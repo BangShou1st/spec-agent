@@ -153,10 +153,15 @@ class C16RetrievalAwaitGenerationEndToEndTest {
     private String startPythonBrain() throws Exception {
         int brainPort;
         try (var socket = new java.net.ServerSocket(0)) { brainPort = socket.getLocalPort(); }
-        Path executable = Path.of(System.getenv().getOrDefault("SPEC_AGENT_GA_TEST_PYTHON",
-                "../agent-brain/.venv/Scripts/python.exe")).toAbsolutePath();
-        assertThat(Files.isRegularFile(executable)).isTrue();
-        var builder = new ProcessBuilder(executable.toString(), "-m", "uvicorn",
+        Path brainDirectory = Path.of("../agent-brain").toAbsolutePath().normalize();
+        Path repositoryRoot = brainDirectory.getParent();
+        String pythonCommand = com.specagent.testing.PythonExecutable.locate(repositoryRoot);
+        // A bare command name means "resolve it from PATH": CI installs the brain
+        // with the runner's own Python instead of a repository virtualenv.
+        if (Path.of(pythonCommand).isAbsolute()) {
+            assertThat(Files.isRegularFile(Path.of(pythonCommand))).isTrue();
+        }
+        var builder = new ProcessBuilder(pythonCommand, "-m", "uvicorn",
                 "spec_agent_brain.app:create_app", "--factory", "--host", "127.0.0.1",
                 "--port", Integer.toString(brainPort));
         builder.directory(Path.of("../agent-brain").toFile());
