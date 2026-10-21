@@ -6,6 +6,7 @@
 import { defineStore } from 'pinia'
 import { identityScopedStore, privateIdentityWork, PrivateIdentityExpiredError } from '@/shared/state/privateIdentity'
 import { toDisplayError } from '@/shared/http/displayError'
+import { classifyProviderProbeFailure } from '@/shared/http/providerReachability'
 import {
   getKiloSettings,
   listKiloModels,
@@ -47,6 +48,8 @@ export const useKiloSettingsStore = defineStore('kiloSettings', {
      * 会话内有效,仅用于让卡片能呈现三种状态。
      */
     validated: false,
+    /** 上游可达但当前被限流:连通性判定通过,限流状态本身必须保留。 */
+    rateLimited: false,
     error: null as KiloSettingsError | null,
   }),
   getters: {
@@ -112,6 +115,7 @@ export const useKiloSettingsStore = defineStore('kiloSettings', {
         if (identityStore.probing) return []
         identityStore.probing = true
         identityStore.error = null
+        identityStore.rateLimited = false
         try {
           const result = await privateIdentityWork(identityStore, identityEpoch, () => (probeKilo(apiKey.trim())))
           // 兼容旧后端：没有 allModels 时回退到 freeModels（只展示免费列表）。
@@ -126,7 +130,10 @@ export const useKiloSettingsStore = defineStore('kiloSettings', {
         } catch (err) {
           if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
 
-          identityStore.error = displayError(err)
+          // 连通性探测:上游可达(含被限流)就不是「测试失败」。
+          const probe = classifyProviderProbeFailure(err)
+          identityStore.error = { code: probe.code, message: probe.message }
+          identityStore.rateLimited = probe.rateLimited
           return []
         } finally {
           if (this.identityEpoch === identityEpoch) {
@@ -184,6 +191,7 @@ export const useKiloSettingsStore = defineStore('kiloSettings', {
         if (identityStore.loadingModels) return false
         identityStore.loadingModels = true
         identityStore.error = null
+        identityStore.rateLimited = false
         try {
           const result = await privateIdentityWork(identityStore, identityEpoch, () => (listKiloModels()))
           const all = Array.isArray(result.allModels) ? result.allModels : result.freeModels
@@ -198,7 +206,10 @@ export const useKiloSettingsStore = defineStore('kiloSettings', {
         } catch (err) {
           if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
 
-          identityStore.error = displayError(err)
+          // 模型目录刷新同样是一次可达性探测:429 表示上游可达但被限流。
+          const probe = classifyProviderProbeFailure(err)
+          identityStore.error = { code: probe.code, message: probe.message }
+          identityStore.rateLimited = probe.rateLimited
           return false
         } finally {
           if (this.identityEpoch === identityEpoch) {

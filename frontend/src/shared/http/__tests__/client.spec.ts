@@ -253,4 +253,64 @@ describe('api client', () => {
     expect(err.code).toBe('INVALID_RESPONSE')
     expect(err.message).toBe(GENERIC_ERROR_MESSAGE)
   })
+
+  it('announces a genuine user session expiry so the session can recover', async () => {
+    const expired = vi.fn()
+    window.addEventListener('spec-agent-session-expired', expired)
+    try {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          jsonResponse({ code: 'UNAUTHENTICATED', message: 'Authentication is required; sign in again' }, 401),
+        ),
+      )
+      const err = (await apiClient.get('/x').catch((e: unknown) => e)) as ApiError
+      expect(err.status).toBe(401)
+      expect(err.code).toBe('UNAUTHENTICATED')
+      expect(expired).toHaveBeenCalledTimes(1)
+    } finally {
+      window.removeEventListener('spec-agent-session-expired', expired)
+    }
+  })
+
+  it('never announces a session expiry for an upstream provider authentication failure', async () => {
+    const expired = vi.fn()
+    window.addEventListener('spec-agent-session-expired', expired)
+    try {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          jsonResponse(
+            { code: 'MODEL_PROVIDER_AUTHENTICATION', message: 'The model provider rejected the request configuration' },
+            401,
+          ),
+        ),
+      )
+      const err = (await apiClient.get('/settings/custom/discover').catch((e: unknown) => e)) as ApiError
+      expect(err.status).toBe(401)
+      expect(err.code).toBe('MODEL_PROVIDER_AUTHENTICATION')
+      // 上游拒绝凭据必须由 Provider 设置页自己展示,绝不能重置用户会话。
+      expect(expired).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('spec-agent-session-expired', expired)
+    }
+  })
+
+  it('never announces a session expiry for a rate limited upstream', async () => {
+    const expired = vi.fn()
+    window.addEventListener('spec-agent-session-expired', expired)
+    try {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          jsonResponse({ code: 'MODEL_PROVIDER_RATE_LIMITED', message: 'The model provider is temporarily rate limited' }, 429),
+        ),
+      )
+      const err = (await apiClient.get('/settings/custom/discover').catch((e: unknown) => e)) as ApiError
+      expect(err.code).toBe('MODEL_PROVIDER_RATE_LIMITED')
+      expect(expired).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('spec-agent-session-expired', expired)
+    }
+  })
 })

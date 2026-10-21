@@ -5,6 +5,7 @@
 import { defineStore } from 'pinia'
 import { identityScopedStore, privateIdentityWork, PrivateIdentityExpiredError } from '@/shared/state/privateIdentity'
 import { toDisplayError } from '@/shared/http/displayError'
+import { classifyProviderProbeFailure } from '@/shared/http/providerReachability'
 import {
   getOpenRouterStatus,
   listOpenRouterModels,
@@ -52,6 +53,8 @@ export const useOpenRouterStore = defineStore('openRouter', {
     loadingModels: false,
     modelUnavailable: false,
     failed: false,
+    /** 上游可达但当前被限流:连通性判定通过,限流状态本身必须保留。 */
+    rateLimited: false,
     error: null as ProviderError | null,
   }),
   getters: {
@@ -123,6 +126,7 @@ export const useOpenRouterStore = defineStore('openRouter', {
       }
       identityStore.probing = true
       identityStore.error = null
+      identityStore.rateLimited = false
       try {
         const res = await privateIdentityWork(identityStore, identityEpoch, () => (probeOpenRouter(apiKey.trim())))
         // 兼容旧后端：没有 allModels 时回退到 freeModels（只展示免费列表）。
@@ -137,8 +141,12 @@ export const useOpenRouterStore = defineStore('openRouter', {
       } catch (err) {
         if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
 
-        identityStore.error = displayError(err)
-        identityStore.failed = true
+        // 连通性探测:上游可达(含被限流)就不是「测试失败」;
+        // 限流状态与错误信息保留,绝不自动重试。
+        const probe = classifyProviderProbeFailure(err)
+        identityStore.error = { code: probe.code, message: probe.message }
+        identityStore.failed = !probe.reachable
+        identityStore.rateLimited = probe.rateLimited
         return []
       } finally {
         if (this.identityEpoch === identityEpoch) {
@@ -161,6 +169,7 @@ export const useOpenRouterStore = defineStore('openRouter', {
       }
       identityStore.loadingModels = true
       identityStore.error = null
+      identityStore.rateLimited = false
       try {
         const res = await privateIdentityWork(identityStore, identityEpoch, () => (listOpenRouterModels()))
         // 兼容旧后端：没有 allModels 时回退到 freeModels（只展示免费列表）。
@@ -179,9 +188,12 @@ export const useOpenRouterStore = defineStore('openRouter', {
       } catch (err) {
         if (this.identityEpoch !== identityEpoch) throw new PrivateIdentityExpiredError()
 
-        identityStore.error = displayError(err)
-        // 401/403/429/5xx 保持为硬错误,绝不降级为手动模式。
-        identityStore.failed = true
+        // 模型目录刷新同样是一次可达性探测:429 表示上游可达但被限流,
+        // 绝不是「不可达」,也绝不降级为手动模式。
+        const probe = classifyProviderProbeFailure(err)
+        identityStore.error = { code: probe.code, message: probe.message }
+        identityStore.failed = !probe.reachable
+        identityStore.rateLimited = probe.rateLimited
       } finally {
         if (this.identityEpoch === identityEpoch) {
         identityStore.loadingModels = false

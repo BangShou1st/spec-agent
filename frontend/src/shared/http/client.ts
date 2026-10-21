@@ -32,6 +32,21 @@ export class ApiError extends Error {
 
 export const GENERIC_ERROR_MESSAGE = '操作失败，请稍后重试'
 
+/**
+ * 上游 Provider 的错误码前缀。
+ *
+ * 后端把提供商侧的失败冻结成一组提供商中立的错误码
+ * (MODEL_PROVIDER_AUTHENTICATION / MODEL_PROVIDER_RATE_LIMITED /
+ * MODEL_PROVIDER_UNREACHABLE / MODEL_PROVIDER_TIMEOUT / ...),
+ * 它们描述的是「上游怎么了」,而不是「用户会话怎么了」。
+ */
+const UPSTREAM_PROVIDER_ERROR_PREFIX = 'MODEL_PROVIDER_'
+
+/** 该错误码是否描述上游 Provider 的失败(而非用户会话失效)。 */
+export function isUpstreamProviderError(code: string): boolean {
+  return (code ?? '').trim().toUpperCase().startsWith(UPSTREAM_PROVIDER_ERROR_PREFIX)
+}
+
 /** 类型化客户端与 SSE 流共享的单一 API 基准地址。 */
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 
@@ -123,11 +138,17 @@ class ApiClient {
         throw new ApiError(GENERIC_ERROR_MESSAGE, 'INVALID_RESPONSE', response.status)
       }
     }
-    if (response.status === 401 && typeof window !== 'undefined') {
+    const apiError = await this.toApiError(response)
+    // 只有「用户自己的会话失效」才触发会话恢复。
+    // 上游 Provider 拒绝凭据同样是 401(错误码 MODEL_PROVIDER_AUTHENTICATION):
+    // 那是 Provider 设置页必须展示的上游错误,绝不是用户会话过期。
+    // 把它误判成会话失效会把整页重置成「正在确认账户…」,并让真正的上游
+    // 错误从界面上消失。
+    if (response.status === 401 && typeof window !== 'undefined'
+      && !isUpstreamProviderError(apiError.code)) {
       window.dispatchEvent(new Event('spec-agent-session-expired'))
     }
-
-    throw await this.toApiError(response)
+    throw apiError
   }
 
   /*

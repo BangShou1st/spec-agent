@@ -25,6 +25,9 @@ const variantClass = computed(() => {
       return 'settings-status--warning'
     case 'invalid':
       return 'settings-status--error'
+    case 'rate-limited':
+      // 上游可达:这是警告,不是失败。
+      return 'settings-status--warning'
     default:
       return 'settings-status--empty'
   }

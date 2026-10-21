@@ -65,10 +65,14 @@ export type ProviderState =
   | 'valid-inactive'
   | 'invalid'
   | 'active'
+  | 'rate-limited'
 
 /**
  * 所有 Provider 卡片共用的单一状态映射。
  * `busy` 让卡片展示进行中状态,而不必新增第四种映射分支。
+ *
+ * `rateLimited` 表示「上游可达,但当前被限流」:连通性判定通过,因此绝不能
+ * 落进 'invalid'(测试失败);限流状态本身必须被保留并展示出来。
  */
 export function providerCardState(
   configured: boolean,
@@ -76,6 +80,7 @@ export function providerCardState(
   active: boolean,
   failed: boolean,
   busy = false,
+  rateLimited = false,
 ): ProviderState {
   if (busy) {
     return 'validating'
@@ -88,6 +93,9 @@ export function providerCardState(
   }
   if (!configured) {
     return 'unconfigured'
+  }
+  if (rateLimited) {
+    return 'rate-limited'
   }
   if (validated) {
     return 'valid-inactive'
@@ -113,5 +121,7 @@ export function stateLabel(state: ProviderState): string {
       return '测试失败'
     case 'active':
       return '当前使用'
+    case 'rate-limited':
+      return '上游可达但被限流'
   }
 }

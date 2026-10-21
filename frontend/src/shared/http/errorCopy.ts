@@ -47,7 +47,14 @@ const ERROR_COPY: Record<string, string> = {
   UNANSWERED_QUESTION_HAS_CHILD: '当前问题还没有回答，不能在它下面继续追加内容。请先回答最新问题',
 }
 
-function stableCode(code: string): string {
+/**
+ * 把后端错误码归一化到产品文案使用的稳定类别。
+ *
+ * 这是前端的通用错误分类器:后端冻结的、提供商中立的错误码
+ * (MODEL_PROVIDER_*) 与网络错误在这里被折叠成同一组类别,
+ * 因此可达性判定与文案映射永远看到同一个类别。
+ */
+export function stableCode(code: string): string {
   const normalized = code.toUpperCase()
   if (normalized === 'MODEL_PROVIDER_NOT_CONFIGURED') return 'NOT_CONFIGURED'
   if (normalized.includes('AUTHENTICATION')) return 'AUTHENTICATION'

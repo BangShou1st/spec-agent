@@ -38,13 +38,15 @@ const configured = computed(() => store.status?.configured === true)
 const hasSavedKey = computed(() => Boolean(store.status?.maskedKey))
 const selectedRequiresKey = computed(() => store.selectedModel !== null
   && !store.freeModels.includes(store.selectedModel))
-const failed = computed(() => store.error !== null)
+// 上游可达但被限流不是「测试失败」:连通性判定通过,限流状态单独保留。
+const failed = computed(() => store.error !== null && !store.rateLimited)
 const state = computed(() => providerCardState(
   configured.value,
   store.validated,
   isActive.value,
   failed.value,
   store.validating || store.probing || store.saving,
+  store.rateLimited,
 ))
 
 const showCredentialForm = computed(() => !configured.value || store.changingCredential
