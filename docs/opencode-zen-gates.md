@@ -4,9 +4,9 @@
 
 共享实现由独立仓库 E:/project/shared-libs/opencode-zen 维护（两个模块：
 opencode-zen-spring-boot-autoconfigure 与 opencode-zen-spring-boot-starter；协议与模型规则
-也包含在自动配置模块中，版本 1.2.0）。本项目**不再保存源码快照**：后端以普通依赖
-`com.sharedlibs:opencode-zen-spring-boot-starter` 解析制品（本机 mavenLocal，CI 用私有
-GitHub Packages）；联调时设 `OPENCODE_ZEN_LOCAL` 指向库检出目录，Gradle 用本地源码替换同坐标
+也包含在自动配置模块中，版本 1.4.2）。本项目**不再保存源码快照**：后端以普通依赖
+`com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter` 从公开 JitPack
+解析制品（无需任何凭据）；联调时设 `OPENCODE_ZEN_LOCAL` 指向库检出目录，Gradle 用本地源码替换同坐标
 依赖。请求身份、标识符、保留工具、SSE 帧、模型元数据解析、免费资格规则及免费/付费凭证选择
 以共享库为代码源；本文保留验证结论与排障说明。升级与发布流程见
 docs/OPENCODE_SHARED_COMPONENT.md。

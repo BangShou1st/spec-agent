@@ -1,6 +1,6 @@
 # OpenCode Shared Component
 
-Status: source copied into the Spec Agent repository and consumed as a Gradle composite build
+Status: maintained in its own repository and consumed as a published Gradle dependency from public JitPack
 Date: 2026-10-16
 
 ## Layout
@@ -14,8 +14,8 @@ The OpenCode Zen library has the conventional two-module Spring Boot layout unde
 
 The library lives in its own repository at `E:\project\shared-libs\opencode-zen`; Spec Agent does
 **not** keep a copy of the sources and there is no sync step. The backend declares a normal
-dependency on `com.sharedlibs:opencode-zen-spring-boot-starter` and resolves it from the private
-GitHub Packages repository (credentials live in `~/.gradle/gradle.properties`).
+dependency on `com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter:v1.4.2` and
+resolves it from public JitPack (`https://jitpack.io`) with no credentials and no token.
 
 For co-development, point `OPENCODE_ZEN_LOCAL` at a local library checkout: Gradle then substitutes
 those coordinates with the local source build, so a library change takes effect immediately without
@@ -25,13 +25,12 @@ publishing anything.
 $env:OPENCODE_ZEN_LOCAL = "E:\project\shared-libs\opencode-zen"
 ```
 
-By default the backend resolves the published coordinates (mavenLocal on a workstation, the private
-GitHub Packages repository in CI); the `OPENCODE_ZEN_LOCAL` override above switches it to the local
-source build.
+By default the backend resolves the published coordinates from public JitPack, on a workstation as
+well as in CI; the `OPENCODE_ZEN_LOCAL` override above switches it to the local source build.
 
 ## Spring Boot use
 
-Add com.sharedlibs:opencode-zen-spring-boot-starter:1.2.0. The starter registers an
+Add com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter:v1.4.2. The starter registers an
 OpenCodeZenRequestFactory bean and binds opencode.zen.user-agent. Applications keep credential
 storage, model classification, request bodies, timeouts, traces, routing, and business contracts.
 
@@ -67,83 +66,35 @@ The backend consumes the same library either as published coordinates or, with
 
 For a new release, update the version in the shared modules and the backend dependency together. Do not overwrite a released version.
 
-## Publishing to a private Maven repository (GitHub Packages)
+## Publishing and consuming through public JitPack
 
-The library is not a Git repository yet (the upstream working copy lives at
-`E:\project\shared-libs\opencode-zen`). GitHub Packages scopes a package to `<OWNER>/<REPO>`, so
-first turn the library into its own repository and push it; then the package becomes installable
-by coordinate from any project.
-
-### Automatic publishing (recommended, no stored secret)
-
-Add `.github/workflows/publish.yml` to the **library** repository:
-
-```yaml
-name: publish
-on:
-  push:
-    tags: ["v*"]
-jobs:
-  publish:
-    runs-on: ubuntu-latest
-    permissions: { contents: read, packages: write }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: "21" }
-      - run: ./gradlew publish --no-daemon
-        env:
-          ZEN_MAVEN_REPO_URL: https://maven.pkg.github.com/<OWNER>/<REPO>
-          ZEN_MAVEN_USER: ${{ github.actor }}
-          ZEN_MAVEN_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
-`GITHUB_TOKEN` is sufficient inside the library repository's own Actions, so no PAT has to be
-stored. The module build files read exactly these three environment variables.
-
-### Manual publishing from a workstation
-
-Use a classic PAT with `write:packages` (plus `repo` when the repository is private):
-
-```powershell
-$env:ZEN_MAVEN_REPO_URL="https://maven.pkg.github.com/<OWNER>/<REPO>"
-$env:ZEN_MAVEN_USER="<github-user>"
-$env:ZEN_MAVEN_TOKEN="<PAT>"
-cd E:\project\shared-libs\opencode-zen
-.\gradlew.bat publish
-```
-
-### Consuming the published artifact
-
-A consumer project then needs one repository entry and one coordinate:
+The library is published publicly on JitPack. A release is identified by a git tag and is consumed
+with the tag-based coordinate `com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter:<tag>`.
+There is no private repository, no stored secret and no token: a consumer only needs the public
+JitPack repository and the dependency itself.
 
 ```kotlin
 repositories {
     mavenCentral()
     maven {
-        url = uri("https://maven.pkg.github.com/<OWNER>/<REPO>")
-        credentials {
-            username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
-            password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN")
-        }
+        name = "jitpack"
+        url = uri("https://jitpack.io")
     }
 }
-dependencies { implementation("com.sharedlibs:opencode-zen-spring-boot-starter:1.2.0") }
+dependencies { implementation("com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter:v1.4.2") }
 ```
 
-Keep the credentials in `~/.gradle/gradle.properties` or `~/.m2/settings.xml`; never commit them.
-Each consumer needs its **own** token with `read:packages` — one repository's `GITHUB_TOKEN` is not
-visible to another repository.
+To work against a local checkout without publishing anything, use the `OPENCODE_ZEN_LOCAL`
+composite-build override described above: Gradle substitutes the same coordinates with the local
+source build.
 
 ### Discipline
 
-* GitHub Packages is immutable per version: bump the version for every change (1.2.0 cannot be
-  re-published);
-* the `-sources.jar` and the starter POM are published too, and the POM already points at
-  `com.sharedlibs:opencode-zen-spring-boot-autoconfigure:<same version>`, so one coordinate pulls the
-  whole chain;
-* do **not** publish to a public repository: the library carries the CLI identity and tool envelope
-  that the free tier requires, which should not be redistributed publicly.
+* publish a new tag (and the matching version) for every change; a released version is never
+  overwritten;
+* keep the starter and the backend dependency in step: the backend coordinate
+  `com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter:<tag>` must name the tag the
+  library release was published under.
 
 ## Failure handling
 

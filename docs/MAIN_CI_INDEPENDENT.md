@@ -62,7 +62,10 @@ cancellations, unexpected skips and missing results are separately reported as
 
 All four failed jobs in [run 171](https://github.com/BangShou1st/spec-agent/actions/runs/39132798714)
 were inspected through complete failed-job logs: `compileClasspath` could not find
-`com.sharedlibs:opencode-zen-spring-boot-starter:1.2.0`. The eval retrieval step and
+`com.sharedlibs:opencode-zen-spring-boot-starter:1.2.0`. That is the coordinate that run actually
+used; the library has since moved to the public JitPack publication
+`com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter:v1.4.2`, which is resolved
+without credentials. The eval retrieval step and
 E2E browser step were downstream skips. Frontend and brain passed in that run;
 those historical results do not count as this branch's verification.
 

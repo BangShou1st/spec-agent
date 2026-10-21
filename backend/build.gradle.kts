@@ -17,23 +17,10 @@ repositories {
         name = "jitpack"
         url = uri("https://jitpack.io")
     }
-    // 私有生态仓库（GitHub Packages / Nexus）。地址与凭据来自环境或
-    // ~/.gradle/gradle.properties（zenRepoUrl / zenRepoUser / zenRepoToken），绝不写进仓库。
-    val zenRepoUrl = providers.gradleProperty("zenRepoUrl").orNull
-        ?: System.getenv("ZEN_MAVEN_REPO_URL")
-    if (!zenRepoUrl.isNullOrBlank()) {
-        maven {
-            name = "zenEcosystem"
-            url = uri(zenRepoUrl)
-            isAllowInsecureProtocol = zenRepoUrl.startsWith("http://")
-            credentials {
-                username = providers.gradleProperty("zenRepoUser").orNull
-                    ?: System.getenv("ZEN_MAVEN_USER").orEmpty()
-                password = providers.gradleProperty("zenRepoToken").orNull
-                    ?: System.getenv("ZEN_MAVEN_TOKEN").orEmpty()
-            }
-        }
-    }
+    // OpenCode Zen 共享库同样通过 JitPack 公开发布
+    // (com.github.BangShou1st.opencode-zen:opencode-zen-spring-boot-starter:v1.4.2)。
+    // 私有生态仓库(GitHub Packages / Nexus)已经不再发版,消费端也不需要任何 Token:
+    // 曾经按环境变量注入的仓库地址与凭据因此整体移除,依赖解析只剩公开来源。
 }
 
 // Evaluation harness source set: com.specagent.eval (+ com.specagent.trace)
