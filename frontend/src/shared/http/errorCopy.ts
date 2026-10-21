@@ -7,8 +7,8 @@ const ERROR_COPY: Record<string, string> = {
   AUTHENTICATION: '当前 API Key 已失效，请更换 API Key',
   RATE_LIMITED: '模型服务当前请求较多，请稍后再试',
   TIMEOUT: '模型服务响应超时，请稍后再试',
-  CONNECTION: '无法连接到 OpenCode，请检查网络后重试',
-  NETWORK_ERROR: '无法连接到 OpenCode，请检查网络后重试',
+  CONNECTION: '无法连接到上游服务，请检查网络后重试',
+  NETWORK_ERROR: '无法连接到上游服务，请检查网络后重试',
   SERVER_ERROR: '模型服务暂时不可用，请稍后再试',
   INVALID_MODEL: '当前模型已不可用，请重新选择',
   INVALID_RESPONSE: '模型返回了无法识别的结果，请重新请求',
@@ -47,7 +47,14 @@ const ERROR_COPY: Record<string, string> = {
   UNANSWERED_QUESTION_HAS_CHILD: '当前问题还没有回答，不能在它下面继续追加内容。请先回答最新问题',
 }
 
-function stableCode(code: string): string {
+/**
+ * 把后端错误码归一化到产品文案使用的稳定类别。
+ *
+ * 这是前端的通用错误分类器:后端冻结的、提供商中立的错误码
+ * (MODEL_PROVIDER_*) 与网络错误在这里被折叠成同一组类别,
+ * 因此可达性判定与文案映射永远看到同一个类别。
+ */
+export function stableCode(code: string): string {
   const normalized = code.toUpperCase()
   if (normalized === 'MODEL_PROVIDER_NOT_CONFIGURED') return 'NOT_CONFIGURED'
   if (normalized.includes('AUTHENTICATION')) return 'AUTHENTICATION'

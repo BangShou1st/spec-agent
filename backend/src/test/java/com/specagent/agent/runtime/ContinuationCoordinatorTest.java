@@ -271,8 +271,14 @@ class ContinuationCoordinatorTest {
         Project project = projectService.createProject("coord-running");
         UUID runId = saveRun(project, AgentRunStatus.RUNNING, null, null, null, null);
 
-        assertThatThrownBy(() -> coordinator.evaluate(runId))
-                .isInstanceOf(IllegalStateException.class);
+        // A non-terminal owner is a normal, recoverable state, not an error:
+        // throwing here made the scheduler re-claim and retry the same check
+        // on every tick without a retry ceiling or backoff. The run is
+        // re-evaluated once it becomes terminal.
+        ContinuationDecision decision = coordinator.evaluate(runId);
+
+        assertThat(decision.eligible()).isFalse();
+        assertThat(decision.verdict()).isEqualTo(ContinuationVerdict.RUN_NOT_TERMINAL);
     }
 
     @Test

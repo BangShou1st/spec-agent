@@ -138,7 +138,7 @@ describe('ModelSettingsView', () => {
     await wrapper.get('[data-test="opencode-probe"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="opencode-error"]').text()).toContain('无法连接到 OpenCode')
+    expect(wrapper.get('[data-test="opencode-error"]').text()).toContain('无法连接到上游服务')
     await wrapper.get('[data-test="opencode-error"]').find('button').trigger('click')
     await flushPromises()
 
