@@ -126,7 +126,8 @@ public class ContinuationCoordinator {
     }
     /**
      * 从持久化状态裁决单个 run。终态 {@code FAILED} 映射到 {@code FAILED};
-     * 非终态 run 属于调用方错误,直接抛异常。
+     * 非终态 run 映射到 {@link ContinuationVerdict#RUN_NOT_TERMINAL}——它
+     * 不是调用方错误,而是"还没到裁决时点"。
      */
     public ContinuationDecision evaluate(UUID runId) {
         AgentRun run = agentRunService.getRun(runId)
@@ -137,8 +138,13 @@ public class ContinuationCoordinator {
                     "run terminally failed");
         }
         if (run.status() != AgentRunStatus.COMPLETED) {
-            throw new IllegalStateException(
-                    "Continuation needs a terminal run: " + runId);
+            // 抛异常会让调度器在 run 终态化之前每个 tick 都重新认领并重试同一条
+            // 检查:没有重试上限、没有退避、也没有可观察的失败状态,持续占用
+            // outbox 并刷告警。按代次正常收口这条检查即可;run 终态化时
+            // AgentRunTerminalizationService 会重新请求它,仍然可恢复的续跑
+            // 因此不会被丢弃。
+            return ContinuationDecision.of(runId, ContinuationVerdict.RUN_NOT_TERMINAL,
+                    "run is not terminal yet: " + run.status());
         }
         if (agentRunRepository.findChildByParentRunId(runId).isPresent()) {
             return ContinuationDecision.of(runId, ContinuationVerdict.ALREADY_CONTINUED,
