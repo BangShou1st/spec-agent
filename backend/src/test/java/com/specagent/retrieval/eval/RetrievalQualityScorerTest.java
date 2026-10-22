@@ -300,4 +300,34 @@ class RetrievalQualityScorerTest {
         assertThat(report.macroSourceRecallAt8()).isEqualTo(0.50);
         assertThat(report.firstRelevantMrr()).isEqualTo(0.50);
     }
+
+    @Test
+    @DisplayName("正式报告组装一致性测试：前七条背景chunk+第八条目标来源，所有报告中MRR必须严格为0.125不得为0.5")
+    void rawTop8ReportAssemblyMrrConsistency() {
+        // 前 7 条为合法背景 BG_01，第 8 位才命中目标 N01
+        List<String> rawTop8 = List.of("BG_01", "BG_01", "BG_01", "BG_01", "BG_01", "BG_01", "BG_01", "N01");
+        List<RetrievalQualityScorer.QueryObservation> observations = List.of(
+                new RetrievalQualityScorer.QueryObservation(
+                        "B001", "SINGLE_SOURCE_NODE", List.of("N01"), List.of("P00"), List.of("BG_01"),
+                        rawTop8, false, 15L
+                )
+        );
+
+        var qualityReport = RetrievalQualityScorer.evaluate(observations, APPROVED_THRESHOLDS, Set.of("S00"));
+
+        // 模拟正式集成测试组装的顶层报告
+        Map<String, Object> topLevelReport = new LinkedHashMap<>();
+        topLevelReport.put("recallAt8", qualityReport.macroSourceRecallAt8());
+        topLevelReport.put("mrr", qualityReport.firstRelevantMrr());
+        topLevelReport.put("qualityReport", qualityReport.summary());
+
+        // 验证第一相关命中在 rank 8: MRR = 1/8 = 0.125
+        assertThat(qualityReport.firstRelevantMrr()).isEqualTo(0.125);
+        assertThat(topLevelReport.get("mrr")).isEqualTo(0.125);
+        assertThat(((Map<?, ?>) topLevelReport.get("qualityReport")).get("firstRelevantMrr")).isEqualTo(0.125);
+
+        // 绝对不能变成压缩后的 0.5 或 1.0
+        assertThat(topLevelReport.get("mrr")).isNotEqualTo(0.5);
+        assertThat(topLevelReport.get("mrr")).isNotEqualTo(1.0);
+    }
 }

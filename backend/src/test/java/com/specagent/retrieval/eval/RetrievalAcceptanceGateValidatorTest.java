@@ -20,6 +20,8 @@ class RetrievalAcceptanceGateValidatorTest {
 
     private SyntheticFixture createValidSyntheticFixture() {
         ObjectNode dataset = MAPPER.createObjectNode();
+        dataset.put("version", "v2.2");
+        dataset.put("datasetVersion", "v2.2");
         dataset.put("datasetRole", "INDEPENDENT_ACCEPTANCE_CANDIDATE");
         dataset.put("tuningUse", "NEVER_USED");
         dataset.put("executionStatus", "NOT_RUN");
@@ -64,12 +66,17 @@ class RetrievalAcceptanceGateValidatorTest {
         ObjectNode codeHashes = freeze.putObject("codeHashes");
         codeHashes.put("build.gradle.kts", Hashes.sha256Hex("dummy"));
         freeze.put("modelTag", "qwen3-embedding:0.6b");
-        freeze.put("profileId", "test_profile_123");
+        freeze.put("profileId", "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047");
+        freeze.put("rrfK", 60);
+        freeze.put("maxVectorDistance", 0.50);
+        freeze.put("maxItems", 8);
+        freeze.put("maxChars", 8000);
         freeze.put("thresholdStatus", "APPROVED_BEFORE_FIRST_RUN");
         ObjectNode thresholds = freeze.putObject("proposedThresholds");
         thresholds.put("macroSourceRecallAt8", 0.85);
         thresholds.put("firstRelevantMrr", 0.75);
         thresholds.put("multiSourceAllOfCoverage", 0.75);
+        thresholds.put("pureNoAnswerZeroHitCorrectness", 1.0);
         thresholds.put("staleSourceLeakCount", 0);
         thresholds.put("permissionLeakCount", 0);
 
@@ -281,6 +288,48 @@ class RetrievalAcceptanceGateValidatorTest {
                 "INDEPENDENT_ACCEPTANCE_CANDIDATE", 2, 2
         )).isInstanceOf(RetrievalAcceptanceGateValidator.GateValidationException.class)
           .hasMessageContaining("Dataset SHA-256 mismatch");
+    }
+
+    @Test
+    @DisplayName("缺必需指标阈值 pureNoAnswerZeroHitCorrectness 必须被拒绝")
+    void missingPureNoAnswerThresholdIsRejected() {
+        SyntheticFixture f = createValidSyntheticFixture();
+        ((ObjectNode) f.freeze().path("proposedThresholds")).remove("pureNoAnswerZeroHitCorrectness");
+
+        assertThatThrownBy(() -> RetrievalAcceptanceGateValidator.validateForExecution(
+                f.dataset(), f.rawJson(), f.freeze(), Path.of("."),
+                "INDEPENDENT_ACCEPTANCE_CANDIDATE", 2, 2
+        )).isInstanceOf(RetrievalAcceptanceGateValidator.GateValidationException.class)
+          .hasMessageContaining("pureNoAnswerZeroHitCorrectness threshold missing");
+    }
+
+    @Test
+    @DisplayName("执行配置参数不匹配 (profileId / rrfK / maxVectorDistance) 必须被拒绝")
+    void executionParametersMismatchIsRejected() {
+        SyntheticFixture f = createValidSyntheticFixture();
+        f.freeze().put("rrfK", 100); // 期望 60
+
+        assertThatThrownBy(() -> RetrievalAcceptanceGateValidator.validateForExecution(
+                f.dataset(), f.rawJson(), f.freeze(), Path.of("."),
+                "INDEPENDENT_ACCEPTANCE_CANDIDATE", 2, 2
+        )).isInstanceOf(RetrievalAcceptanceGateValidator.GateValidationException.class)
+          .hasMessageContaining("rrfK mismatch");
+    }
+
+    @Test
+    @DisplayName("候选集 version 与 datasetVersion 不一致时必须被拒绝")
+    void candidateVersionMismatchIsRejected() {
+        SyntheticFixture f = createValidSyntheticFixture();
+        f.dataset().put("version", "v2-revised");
+        f.dataset().put("datasetVersion", "v2.2");
+        String raw = f.dataset().toString();
+        f.freeze().put("datasetSha256", Hashes.sha256Hex(raw));
+
+        assertThatThrownBy(() -> RetrievalAcceptanceGateValidator.validateForExecution(
+                f.dataset(), raw, f.freeze(), Path.of("."),
+                "INDEPENDENT_ACCEPTANCE_CANDIDATE", 2, 2
+        )).isInstanceOf(RetrievalAcceptanceGateValidator.GateValidationException.class)
+          .hasMessageContaining("mismatch");
     }
 
     private static String assertRead(Path p) {

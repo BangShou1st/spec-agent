@@ -270,12 +270,19 @@ def audit(version='all', strict=False):
             'acceptance-freeze.v2.1.json', 'acceptance-candidate.v2.1.json', 'ACCEPTANCE_HUMAN_REVIEW.v2.1.md',
             development, other_candidate_data=cand_v1
         )
+    if version in ('all', 'v2_2', 'v2-2', 'v2.2'):
+        cand_v22 = json.loads((DATA / 'acceptance-candidate.v2.2.json').read_text(encoding='utf-8'))
+        results['v2_2_asset'] = audit_single_asset(
+            'acceptance-freeze.v2.2.json', 'acceptance-candidate.v2.2.json', 'ACCEPTANCE_HUMAN_REVIEW.v2.2.md',
+            development, other_candidate_data=cand_v1
+        )
 
     # Consolidated report compatible with existing evidence consumers
     primary_v1 = results.get('v1_regression_asset', {})
     primary_v2 = results.get('v2_independent_asset', {})
     primary_v2_rev = results.get('v2_revised_asset', {})
     primary_v21 = results.get('v2_1_asset', {})
+    primary_v22 = results.get('v2_2_asset', {})
     
     # Overall status is PASS only if all requested assets PASS
     overall_status = 'PASS' if all(r['status'] == 'PASS' for r in results.values()) else 'BLOCKED'
@@ -286,17 +293,17 @@ def audit(version='all', strict=False):
         'governanceDecision': 'BLOCKED; Asset A retired to REVIEWED_REGRESSION awaiting review; Asset B/C/D code-aligned but PENDING human label & threshold approval.',
         'assets': results,
         # Backward-compatible fields mapped to primary asset
-        'queryCount': primary_v21.get('queryCount', primary_v2_rev.get('queryCount', primary_v1.get('queryCount', 68))),
-        'sourceCount': primary_v21.get('sourceCount', primary_v2_rev.get('sourceCount', primary_v1.get('sourceCount', 28))),
-        'categories': primary_v21.get('categories', primary_v2_rev.get('categories', primary_v1.get('categories', {}))),
-        'candidateSha256': primary_v21.get('candidateSha256', primary_v2_rev.get('candidateSha256', primary_v1.get('candidateSha256'))),
-        'freezeSha256': primary_v21.get('freezeSha256', primary_v2_rev.get('freezeSha256', primary_v1.get('freezeSha256'))),
+        'queryCount': primary_v22.get('queryCount', primary_v21.get('queryCount', primary_v2_rev.get('queryCount', primary_v1.get('queryCount', 68)))),
+        'sourceCount': primary_v22.get('sourceCount', primary_v21.get('sourceCount', primary_v2_rev.get('sourceCount', primary_v1.get('sourceCount', 28)))),
+        'categories': primary_v22.get('categories', primary_v21.get('categories', primary_v2_rev.get('categories', primary_v1.get('categories', {})))),
+        'candidateSha256': primary_v22.get('candidateSha256', primary_v21.get('candidateSha256', primary_v2_rev.get('candidateSha256', primary_v1.get('candidateSha256')))),
+        'freezeSha256': primary_v22.get('freezeSha256', primary_v21.get('freezeSha256', primary_v2_rev.get('freezeSha256', primary_v1.get('freezeSha256')))),
         'executedQueries': 0,
         'executionStatus': 'NOT_RUN',
         'labelsApproved': False,
         'humanReviewStatus': 'PENDING',
-        'hashDriftCount': primary_v21.get('hashDriftCount', primary_v2_rev.get('hashDriftCount', 0)),
-        'hashDriftList': primary_v21.get('hashDriftList', primary_v2_rev.get('hashDriftList', [])),
+        'hashDriftCount': primary_v22.get('hashDriftCount', primary_v21.get('hashDriftCount', primary_v2_rev.get('hashDriftCount', 0))),
+        'hashDriftList': primary_v22.get('hashDriftList', primary_v21.get('hashDriftList', primary_v2_rev.get('hashDriftList', []))),
         'semanticPrecheck': [
             'Near-no-answer asks unsupported quantities/policies; related context is not sufficient to answer.',
             'Multi-source labels are all-of, not any-hit; reviewers must check each source is necessary.',
@@ -332,7 +339,7 @@ def audit(version='all', strict=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Static precheck for independent retrieval acceptance.")
-    parser.add_argument("--version", choices=['all', 'v1', 'v2', 'v2_revised', 'v2-revised', 'v2.1', 'v2_1', 'v2-1'], default='all', help="Audit specific asset or all.")
+    parser.add_argument("--version", choices=['all', 'v1', 'v2', 'v2_revised', 'v2-revised', 'v2.1', 'v2_1', 'v2-1', 'v2.2', 'v2_2', 'v2-2'], default='all', help="Audit specific asset or all.")
     parser.add_argument("--strict", action="store_true", help="Fail with non-zero exit code if status is not PASS.")
     args = parser.parse_args()
     audit(version=args.version, strict=args.strict)

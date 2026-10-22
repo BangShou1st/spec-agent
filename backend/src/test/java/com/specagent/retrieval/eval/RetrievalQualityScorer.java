@@ -45,7 +45,7 @@ public final class RetrievalQualityScorer {
             double minMacroSourceRecallAt8,
             double minFirstRelevantMrr,
             double minMultiSourceAllOfCoverage,
-            Double minPureNoAnswerZeroHitCorrectness, // 仅针对纯负例，非全体负样本
+            double minPureNoAnswerZeroHitCorrectness, // 仅针对纯负例，必需指标字段，不可为 null
             int maxStaleSourceLeaks,
             int maxPermissionLeaks
     ) {
@@ -195,12 +195,10 @@ public final class RetrievalQualityScorer {
                     "Multi-Source All-Of Coverage failed: actual %.4f < required %.4f",
                     allOfCoverage, thresholds.minMultiSourceAllOfCoverage()));
         }
-        if (thresholds.minPureNoAnswerZeroHitCorrectness() != null) {
-            if (pureZeroHitRate < thresholds.minPureNoAnswerZeroHitCorrectness()) {
-                failureReasons.add(String.format(Locale.ROOT,
-                        "Pure No-Answer Zero-Hit Correctness failed: actual %.4f < required %.4f",
-                        pureZeroHitRate, thresholds.minPureNoAnswerZeroHitCorrectness()));
-            }
+        if (pureNoAnswerCount > 0 && pureZeroHitRate < thresholds.minPureNoAnswerZeroHitCorrectness()) {
+            failureReasons.add(String.format(Locale.ROOT,
+                    "Pure No-Answer Zero-Hit Correctness failed: actual %.4f < required %.4f",
+                    pureZeroHitRate, thresholds.minPureNoAnswerZeroHitCorrectness()));
         }
         if (staleLeaks > thresholds.maxStaleSourceLeaks()) {
             failureReasons.add(String.format(Locale.ROOT,

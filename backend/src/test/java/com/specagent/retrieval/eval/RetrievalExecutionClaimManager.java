@@ -110,6 +110,30 @@ public final class RetrievalExecutionClaimManager {
         Objects.requireNonNull(claimsDir, "claimsDir must not be null");
 
         Path claimFile = claimsDir.resolve(claim.datasetSha256() + ".claim.json");
+        if (!Files.exists(claimFile)) {
+            throw new IllegalStateException("Execution claim file does not exist for dataset " + claim.datasetSha256());
+        }
+
+        ExecutionClaim current;
+        try {
+            current = MAPPER.readValue(claimFile.toFile(), ExecutionClaim.class);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to read current claim file: " + claimFile, e);
+        }
+
+        if (!current.runId().equals(claim.runId())) {
+            throw new IllegalStateException("Claim runId mismatch: current=" + current.runId() + ", requested=" + claim.runId());
+        }
+
+        // 终态不可覆盖：若当前状态已经是终态，严禁覆写为其他状态（例如 COMPLETED_FAIL 被覆写为 COMPLETED_PASS）
+        Set<String> terminalStates = Set.of("COMPLETED_PASS", "COMPLETED_FAIL", "INTERRUPTED_OR_ERROR");
+        if (terminalStates.contains(current.status())) {
+            throw new IllegalStateException(
+                    "Terminal claim status '" + current.status() + "' for dataset " + claim.datasetSha256() +
+                    " cannot be overwritten with '" + outcomeStatus + "'"
+            );
+        }
+
         ExecutionClaim updated = new ExecutionClaim(
                 claim.runId(),
                 claim.datasetSha256(),
@@ -124,6 +148,16 @@ public final class RetrievalExecutionClaimManager {
             Files.write(claimFile, bytes, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to update claim outcome: " + claimFile, e);
+        }
+
+        // 同时以 runId 独立路径生成不可覆写的独立执行回执 (Receipt)
+        Path receiptFile = claimsDir.resolve(claim.datasetSha256() + "." + claim.runId() + ".receipt.json");
+        try {
+            Files.write(receiptFile, bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        } catch (FileAlreadyExistsException e) {
+            // runId receipt 已经存在
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to write claim receipt: " + receiptFile, e);
         }
 
         return updated;

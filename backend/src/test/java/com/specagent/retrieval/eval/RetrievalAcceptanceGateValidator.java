@@ -60,6 +60,11 @@ public final class RetrievalAcceptanceGateValidator {
         List<String> violations = new ArrayList<>();
 
         // 1. Role & Execution qualification (Gate 3, 6, 7)
+        String version = dataset.path("version").asText().trim();
+        String datasetVersion = dataset.path("datasetVersion").asText().trim();
+        if (!version.isEmpty() && !datasetVersion.isEmpty() && !version.equals(datasetVersion)) {
+            violations.add("Candidate version ('" + version + "') and datasetVersion ('" + datasetVersion + "') mismatch");
+        }
         String role = dataset.path("datasetRole").asText();
         if (!expectedRole.equals(role)) {
             violations.add("Dataset role mismatch: expected '" + expectedRole + "', got '" + role + "'");
@@ -170,10 +175,27 @@ public final class RetrievalAcceptanceGateValidator {
         String modelTag = freeze.path("modelTag").asText().trim();
         if (modelTag.isEmpty()) {
             violations.add("modelTag missing in freeze");
+        } else if (!"qwen3-embedding:0.6b".equals(modelTag)) {
+            violations.add("modelTag mismatch with execution chain: expected 'qwen3-embedding:0.6b' but got '" + modelTag + "'");
         }
         String profileId = freeze.path("profileId").asText().trim();
         if (profileId.isEmpty()) {
             violations.add("profileId missing in freeze");
+        } else if (!"26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047".equals(profileId)) {
+            violations.add("profileId mismatch with execution chain: expected '26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047' but got '" + profileId + "'");
+        }
+
+        if (!freeze.has("rrfK") || freeze.path("rrfK").asInt() != 60) {
+            violations.add("rrfK mismatch with execution chain: expected 60 but got " + freeze.path("rrfK").asText());
+        }
+        if (!freeze.has("maxVectorDistance") || Math.abs(freeze.path("maxVectorDistance").asDouble() - 0.50) > 1e-6) {
+            violations.add("maxVectorDistance mismatch with execution chain: expected 0.50 but got " + freeze.path("maxVectorDistance").asText());
+        }
+        if (!freeze.has("maxItems") || freeze.path("maxItems").asInt() != 8) {
+            violations.add("maxItems mismatch with execution chain: expected 8 but got " + freeze.path("maxItems").asText());
+        }
+        if (!freeze.has("maxChars") || freeze.path("maxChars").asInt() != 8000) {
+            violations.add("maxChars mismatch with execution chain: expected 8000 but got " + freeze.path("maxChars").asText());
         }
 
         String frozenReqSha = freeze.path("requirementsLockSha256").asText().trim();
@@ -238,14 +260,18 @@ public final class RetrievalAcceptanceGateValidator {
             checkRatioThreshold(thresholds, "macroSourceRecallAt8", violations);
             checkRatioThreshold(thresholds, "firstRelevantMrr", violations);
             checkRatioThreshold(thresholds, "multiSourceAllOfCoverage", violations);
-            if (thresholds.has("noAnswerZeroHitCorrectness") && !thresholds.path("noAnswerZeroHitCorrectness").isNull()) {
-                checkRatioThreshold(thresholds, "noAnswerZeroHitCorrectness", violations);
-            }
-            if (thresholds.has("staleSourceLeakCount")) {
+            // pureNoAnswerZeroHitCorrectness 是必需门禁字段，绝不允许为 null 或缺失！
+            checkRatioThreshold(thresholds, "pureNoAnswerZeroHitCorrectness", violations);
+
+            if (!thresholds.has("staleSourceLeakCount") || !thresholds.path("staleSourceLeakCount").isIntegralNumber()) {
+                violations.add("staleSourceLeakCount threshold missing or non-integer");
+            } else {
                 int v = thresholds.path("staleSourceLeakCount").asInt(-1);
                 if (v < 0) violations.add("staleSourceLeakCount must be non-negative");
             }
-            if (thresholds.has("permissionLeakCount")) {
+            if (!thresholds.has("permissionLeakCount") || !thresholds.path("permissionLeakCount").isIntegralNumber()) {
+                violations.add("permissionLeakCount threshold missing or non-integer");
+            } else {
                 int v = thresholds.path("permissionLeakCount").asInt(-1);
                 if (v < 0) violations.add("permissionLeakCount must be non-negative");
             }

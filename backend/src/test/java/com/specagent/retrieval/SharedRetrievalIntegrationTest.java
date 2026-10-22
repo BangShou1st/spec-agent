@@ -55,34 +55,57 @@ class SharedRetrievalIntegrationTest {
     Path log;
     String oldBase;
 
+    com.specagent.retrieval.eval.RetrievalExecutionClaimManager.ExecutionClaim activeClaim;
+    static final Path CLAIMS_DIR = Path.of("../data/retrieval-eval-claims");
+
     @BeforeEach void fixture() {
         if("true".equals(System.getenv("SPEC_AGENT_RAG_EVALUATION"))) {
             String datasetFile=System.getenv().getOrDefault("SPEC_AGENT_RAG_EVALUATION_DATASET","chinese-queries.v1.json");
             boolean acceptance=!datasetFile.equals("chinese-queries.v1.json");
             if(acceptance) {
                 Path datasetPath=Path.of("../contracts/retrieval/evaluation/"+datasetFile);
-                if(Files.exists(datasetPath)) {
-                    try {
-                        String rawJson=Files.readString(datasetPath);
-                        var dataset=JSON.readTree(rawJson);
-                        String freezeFile=switch(datasetFile) {
-                            case "acceptance-candidate.v1.json" -> "acceptance-freeze.v1.json";
-                            case "acceptance-candidate.v2.json" -> "acceptance-freeze.v2.json";
-                            case "acceptance-candidate.v2-revised.json" -> "acceptance-freeze.v2-revised.json";
-                            case "acceptance-candidate.v2.1.json" -> "acceptance-freeze.v2.1.json";
-                            default -> throw new IllegalArgumentException("Unknown candidate: " + datasetFile);
-                        };
-                        Path freezePath=Path.of("../contracts/retrieval/evaluation/"+freezeFile);
-                        if(Files.exists(freezePath)) {
-                            var freeze=JSON.readTree(Files.readString(freezePath));
-                            com.specagent.retrieval.eval.RetrievalAcceptanceGateValidator.validateForExecution(
-                                dataset, rawJson, freeze, Path.of(".."),
-                                "INDEPENDENT_ACCEPTANCE_CANDIDATE", 68, 28
-                            );
-                        }
-                    } catch(Exception e) {
-                        throw new IllegalStateException("Acceptance gate rejection before fixture setup: " + e.getMessage(), e);
-                    }
+                if(!Files.exists(datasetPath)) {
+                    throw new IllegalStateException("Candidate dataset file missing: " + datasetPath);
+                }
+                String rawJson;
+                com.fasterxml.jackson.databind.JsonNode dataset;
+                try {
+                    rawJson=Files.readString(datasetPath);
+                    dataset=JSON.readTree(rawJson);
+                } catch(Exception e) {
+                    throw new IllegalStateException("Candidate dataset unreadable or invalid JSON: " + datasetPath, e);
+                }
+                String freezeFile=switch(datasetFile) {
+                    case "acceptance-candidate.v1.json" -> "acceptance-freeze.v1.json";
+                    case "acceptance-candidate.v2.json" -> "acceptance-freeze.v2.json";
+                    case "acceptance-candidate.v2-revised.json" -> "acceptance-freeze.v2-revised.json";
+                    case "acceptance-candidate.v2.1.json" -> "acceptance-freeze.v2.1.json";
+                    case "acceptance-candidate.v2.2.json" -> "acceptance-freeze.v2.2.json";
+                    default -> throw new IllegalArgumentException("Unknown candidate: " + datasetFile);
+                };
+                Path freezePath=Path.of("../contracts/retrieval/evaluation/"+freezeFile);
+                if(!Files.exists(freezePath)) {
+                    throw new IllegalStateException("Freeze contract file missing: " + freezePath);
+                }
+                com.fasterxml.jackson.databind.JsonNode freeze;
+                try {
+                    freeze=JSON.readTree(Files.readString(freezePath));
+                } catch(Exception e) {
+                    throw new IllegalStateException("Freeze contract unreadable or invalid JSON: " + freezePath, e);
+                }
+                try {
+                    com.specagent.retrieval.eval.RetrievalAcceptanceGateValidator.validateForExecution(
+                        dataset, rawJson, freeze, Path.of(".."),
+                        "INDEPENDENT_ACCEPTANCE_CANDIDATE", 68, 28
+                    );
+                    // 原子认领首次执行资格：前置门禁全部校验通过后方可认领
+                    activeClaim = com.specagent.retrieval.eval.RetrievalExecutionClaimManager.claimFirstRun(
+                        dataset.path("datasetSha256").asText(),
+                        freeze.path("datasetSha256").asText(),
+                        CLAIMS_DIR
+                    );
+                } catch(Exception e) {
+                    throw new IllegalStateException("Acceptance gate rejection before fixture setup: " + e.getMessage(), e);
                 }
             }
         }
@@ -93,6 +116,23 @@ class SharedRetrievalIntegrationTest {
         oldBase=properties.getBaseUrl();
     }
     @AfterEach void cleanup() throws Exception {
+        if(activeClaim!=null) {
+            Path claimFile=CLAIMS_DIR.resolve(activeClaim.datasetSha256()+".claim.json");
+            if(Files.exists(claimFile)) {
+                try {
+                    var claimObj=JSON.readTree(Files.readString(claimFile));
+                    String status=claimObj.path("status").asText();
+                    if("CLAIMED".equals(status)) {
+                        com.specagent.retrieval.eval.RetrievalExecutionClaimManager.recordOutcome(
+                            activeClaim,
+                            "INTERRUPTED_OR_ERROR",
+                            "Execution interrupted or errored before completion",
+                            CLAIMS_DIR
+                        );
+                    }
+                } catch(Exception ignored) {}
+            }
+        }
         stopCandidatePython();
         if(properties!=null && oldBase!=null) properties.setBaseUrl(oldBase);
         if(project!=null && other!=null) {
@@ -334,7 +374,7 @@ class SharedRetrievalIntegrationTest {
     @Test void realOllamaFiftyTwoReviewableQueriesEvaluateRecallNoAnswerStaleAndPermissionIsolation() throws Exception {
         Assumptions.assumeTrue("true".equals(System.getenv("SPEC_AGENT_RAG_EVALUATION")));
         String datasetFile=System.getenv().getOrDefault("SPEC_AGENT_RAG_EVALUATION_DATASET","chinese-queries.v1.json");
-        assertTrue(Set.of("chinese-queries.v1.json","acceptance-candidate.v1.json","acceptance-candidate.v2.json","acceptance-candidate.v2-revised.json","acceptance-candidate.v2.1.json").contains(datasetFile));
+        assertTrue(Set.of("chinese-queries.v1.json","acceptance-candidate.v1.json","acceptance-candidate.v2.json","acceptance-candidate.v2-revised.json","acceptance-candidate.v2.1.json","acceptance-candidate.v2.2.json").contains(datasetFile));
         Path datasetPath=Path.of("../contracts/retrieval/evaluation/"+datasetFile);
         String rawJson=Files.readString(datasetPath);
         var dataset=JSON.readTree(rawJson);
@@ -348,6 +388,7 @@ class SharedRetrievalIntegrationTest {
                 case "acceptance-candidate.v2.json" -> "acceptance-freeze.v2.json";
                 case "acceptance-candidate.v2-revised.json" -> "acceptance-freeze.v2-revised.json";
                 case "acceptance-candidate.v2.1.json" -> "acceptance-freeze.v2.1.json";
+                case "acceptance-candidate.v2.2.json" -> "acceptance-freeze.v2.2.json";
                 default -> throw new IllegalArgumentException("Unknown candidate: " + datasetFile);
             };
             var freeze=JSON.readTree(Files.readString(Path.of("../contracts/retrieval/evaluation/"+freezeFile)));
@@ -417,25 +458,30 @@ class SharedRetrievalIntegrationTest {
         report.put("authorship",dataset.path("authorship").asText()); report.put("humanReviewStatus",reviewStatus); report.put("queryCount",observations.size());
         report.put("datasetFile",datasetFile); report.put("datasetRole",dataset.path("datasetRole").asText());
         report.put("datasetSha256",com.specagent.common.Hashes.sha256Hex(Files.readString(datasetPath)));
-        report.put("profileId",PROFILE); report.put("recallAt8",recall/labelled); report.put("mrr",mrr/labelled); report.put("javaLegacyLexicalRecallAt8",baseRecall/labelled);
-        report.put("noAnswerQueries",empty); report.put("zeroHitCorrectness",(double)correctEmpty/empty); report.put("canonicalStaleLeaks",invalidSources); report.put("permissionLeaks",leaks);
+        report.put("profileId",PROFILE);
+        report.put("javaLegacyLexicalRecallAt8",baseRecall/labelled);
         report.put("p50Ms",timings.get(timings.size()/2)); report.put("p95Ms",timings.get((int)Math.ceil(timings.size()*0.95)-1));
         report.put("javaHeapObservedPeakBytes",heapPeak); report.put("resourceMeasurementLimit","Sampled observations; Java heap after each query, Python working set and whole GPU device shared with other apps"); report.put("resourceSamples",resources.report());
-        report.put("multiSourceAllOfCoverage",observations.stream().filter(o->o.get("category").equals("MULTI_SOURCE"))
-            .mapToDouble(o->((List<?>)o.get("retrievedAliases")).containsAll((List<?>)o.get("expectedAliases"))?1:0).average().orElse(0));
         report.put("maxVectorDistance",0.50); report.put("evaluationUse",acceptance?"independent candidate run under frozen config; not automatically production-approved":"development calibration fixture, never independent acceptance");
         report.put("productionEngineChanged",false); report.put("observations",observations);
+
         if(acceptance && freezeFile!=null) {
             var freeze=JSON.readTree(Files.readString(Path.of("../contracts/retrieval/evaluation/"+freezeFile)));
             var tNode=freeze.path("proposedThresholds");
             if(tNode.isMissingNode() || tNode.isNull()) tNode=freeze.path("approvedThresholds");
+            double pureZeroHit=tNode.has("pureNoAnswerZeroHitCorrectness")
+                ? tNode.path("pureNoAnswerZeroHitCorrectness").asDouble()
+                : tNode.path("noAnswerZeroHitCorrectness").asDouble(1.0);
+            int maxStale=tNode.path("staleSourceLeakCount").asInt(0);
+            int maxPerm=tNode.path("permissionLeakCount").asInt(0);
             var thresholds=new com.specagent.retrieval.eval.RetrievalQualityScorer.QualityThresholds(
                 freeze.path("thresholdStatus").asText(),
                 tNode.path("macroSourceRecallAt8").asDouble(0.85),
                 tNode.path("firstRelevantMrr").asDouble(0.75),
                 tNode.path("multiSourceAllOfCoverage").asDouble(0.75),
-                tNode.has("noAnswerZeroHitCorrectness")?tNode.path("noAnswerZeroHitCorrectness").asDouble():null,
-                0, 0
+                pureZeroHit,
+                maxStale,
+                maxPerm
             );
             List<com.specagent.retrieval.eval.RetrievalQualityScorer.QueryObservation> queryObservations=new ArrayList<>();
             for(var obs:observations) {
@@ -452,8 +498,43 @@ class SharedRetrievalIntegrationTest {
             }
             Set<String> staleAliasesSet=stale.stream().map(aliases::get).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
             var qualityReport=com.specagent.retrieval.eval.RetrievalQualityScorer.evaluate(queryObservations, thresholds, staleAliasesSet);
+            // 顶层指标必须与质量报告严格一致，单一事实源
+            report.put("recallAt8",qualityReport.macroSourceRecallAt8());
+            report.put("mrr",qualityReport.firstRelevantMrr());
+            report.put("multiSourceAllOfCoverage",qualityReport.multiSourceAllOfCoverage());
+            report.put("noAnswerQueries",qualityReport.pureNoAnswerCount());
+            report.put("zeroHitCorrectness",qualityReport.pureNoAnswerZeroHitRate());
+            report.put("canonicalStaleLeaks",qualityReport.staleSourceLeakCount());
+            report.put("permissionLeaks",qualityReport.permissionLeakCount());
             report.put("qualityReport",qualityReport.summary());
+
+            if(activeClaim!=null) {
+                if(qualityReport.isPass()) {
+                    com.specagent.retrieval.eval.RetrievalExecutionClaimManager.recordOutcome(
+                        activeClaim,
+                        "COMPLETED_PASS",
+                        com.specagent.agent.protocol.AgentContracts.write(qualityReport.summary()),
+                        CLAIMS_DIR
+                    );
+                } else {
+                    com.specagent.retrieval.eval.RetrievalExecutionClaimManager.recordOutcome(
+                        activeClaim,
+                        "COMPLETED_FAIL",
+                        "Quality gate failed: " + qualityReport.failureReasons(),
+                        CLAIMS_DIR
+                    );
+                }
+            }
             assertTrue(qualityReport.isPass(), () -> "Retrieval quality gate failed: " + qualityReport.failureReasons());
+        } else {
+            report.put("recallAt8",recall/labelled);
+            report.put("mrr",mrr/labelled);
+            report.put("noAnswerQueries",empty);
+            report.put("zeroHitCorrectness",(double)correctEmpty/empty);
+            report.put("canonicalStaleLeaks",invalidSources);
+            report.put("permissionLeaks",leaks);
+            report.put("multiSourceAllOfCoverage",observations.stream().filter(o->o.get("category").equals("MULTI_SOURCE"))
+                .mapToDouble(o->((List<?>)o.get("retrievedAliases")).containsAll((List<?>)o.get("expectedAliases"))?1:0).average().orElse(0));
         }
         Files.writeString(Path.of("../docs/v2/evidence/"+(acceptance?"SHARED_RAG_ACCEPTANCE_CANDIDATE_EVALUATION.json":"SHARED_RAG_52_QUERY_EVALUATION.json")),write(report));
         assertTrue(observations.size()>=50); assertEquals(0,leaks); assertEquals(0,invalidSources);
@@ -470,7 +551,7 @@ class SharedRetrievalIntegrationTest {
     }
 
     @Test void pendingIndependentCandidateIsRejectedBeforePythonOrIndexing() throws Exception {
-        for(String candFile : List.of("acceptance-candidate.v1.json", "acceptance-candidate.v2.json", "acceptance-candidate.v2-revised.json", "acceptance-candidate.v2.1.json")) {
+        for(String candFile : List.of("acceptance-candidate.v1.json", "acceptance-candidate.v2.json", "acceptance-candidate.v2-revised.json", "acceptance-candidate.v2.1.json", "acceptance-candidate.v2.2.json")) {
             Path candPath = Path.of("../contracts/retrieval/evaluation/" + candFile);
             if(!Files.exists(candPath)) continue;
             String raw = Files.readString(candPath);

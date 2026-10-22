@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -63,5 +64,67 @@ class RetrievalExecutionClaimManagerTest {
         assertThatThrownBy(() -> RetrievalExecutionClaimManager.claimFirstRun(datasetSha, freezeSha, tempDir))
                 .isInstanceOf(RetrievalExecutionClaimManager.ClaimCollisionException.class)
                 .hasMessageContaining("COMPLETED_FAIL");
+    }
+
+    @Test
+    @DisplayName("终态不可被任何后续状态覆盖：COMPLETED_FAIL 绝不允许覆写为 COMPLETED_PASS")
+    void terminalStateCannotBeOverwritten(@TempDir Path tempDir) {
+        String datasetSha = "fake_sha_terminal";
+        String freezeSha = "freeze_sha_terminal";
+
+        var claim = RetrievalExecutionClaimManager.claimFirstRun(datasetSha, freezeSha, tempDir);
+
+        // 首次记录终态失败
+        RetrievalExecutionClaimManager.recordOutcome(
+                claim,
+                "COMPLETED_FAIL",
+                "Recall 0.70 < 0.85",
+                tempDir
+        );
+
+        // 试图再次覆写为成功，必须被严正拒绝
+        assertThatThrownBy(() -> RetrievalExecutionClaimManager.recordOutcome(
+                claim,
+                "COMPLETED_PASS",
+                "Forged pass attempt",
+                tempDir
+        )).isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("cannot be overwritten");
+
+        // 独立 runId 回执文件必须存在
+        assertThat(tempDir.resolve(datasetSha + "." + claim.runId() + ".receipt.json")).exists();
+    }
+
+    @Test
+    @DisplayName("并发认领争抢同一数据集，仅允许一个胜出，其余必须抛出 ClaimCollisionException")
+    void concurrentClaimsOnlyOneWins(@TempDir Path tempDir) throws Exception {
+        String datasetSha = "fake_sha_concurrent";
+        String freezeSha = "freeze_sha_concurrent";
+        int threads = 8;
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(threads);
+        var barrier = new java.util.concurrent.CyclicBarrier(threads);
+        var successCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        var collisionCount = new java.util.concurrent.atomic.AtomicInteger(0);
+
+        List<java.util.concurrent.Future<?>> futures = new java.util.ArrayList<>();
+        for (int i = 0; i < threads; i++) {
+            futures.add(executor.submit(() -> {
+                try {
+                    barrier.await();
+                    RetrievalExecutionClaimManager.claimFirstRun(datasetSha, freezeSha, tempDir);
+                    successCount.incrementAndGet();
+                } catch (RetrievalExecutionClaimManager.ClaimCollisionException e) {
+                    collisionCount.incrementAndGet();
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }));
+        }
+
+        for (var f : futures) f.get();
+        executor.shutdown();
+
+        assertThat(successCount.get()).isEqualTo(1);
+        assertThat(collisionCount.get()).isEqualTo(threads - 1);
     }
 }

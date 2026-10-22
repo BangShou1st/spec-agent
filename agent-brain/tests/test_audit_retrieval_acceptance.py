@@ -18,14 +18,17 @@ def test_audit_retrieval_acceptance_reports_blocked_and_preserves_review():
     review_v2 = DATA / 'ACCEPTANCE_HUMAN_REVIEW.v2.md'
     review_v2_rev = DATA / 'ACCEPTANCE_HUMAN_REVIEW.v2-revised.md'
     review_v21 = DATA / 'ACCEPTANCE_HUMAN_REVIEW.v2.1.md'
+    review_v22 = DATA / 'ACCEPTANCE_HUMAN_REVIEW.v2.2.md'
     assert review_v1.exists(), "Review markdown v1 should exist before test"
     assert review_v2.exists(), "Review markdown v2 should exist before test"
     assert review_v2_rev.exists(), "Review markdown v2-revised should exist before test"
     assert review_v21.exists(), "Review markdown v2.1 should exist before test"
+    assert review_v22.exists(), "Review markdown v2.2 should exist before test"
     mtime_v1_before = review_v1.stat().st_mtime_ns
     mtime_v2_before = review_v2.stat().st_mtime_ns
     mtime_v2_rev_before = review_v2_rev.stat().st_mtime_ns
     mtime_v21_before = review_v21.stat().st_mtime_ns
+    mtime_v22_before = review_v22.stat().st_mtime_ns
     content_v1_before = review_v1.read_text(encoding='utf-8')
     content_v2_before = review_v2_rev.read_text(encoding='utf-8')
 
@@ -40,6 +43,7 @@ def test_audit_retrieval_acceptance_reports_blocked_and_preserves_review():
     assert 'v2_independent_asset' in report['assets']
     assert 'v2_revised_asset' in report['assets']
     assert 'v2_1_asset' in report['assets']
+    assert 'v2_2_asset' in report['assets']
 
     # 2. Verification of Asset A (v1 regression asset)
     v1_res = report['assets']['v1_regression_asset']
@@ -66,27 +70,39 @@ def test_audit_retrieval_acceptance_reports_blocked_and_preserves_review():
     assert v2_rev_res['labelsApproved'] is False
     assert v2_rev_res['datasetRole'] == 'INDEPENDENT_ACCEPTANCE_CANDIDATE'
 
-    # 5. Verification of Asset D (v2.1 revised candidate: 0 drift against latest code)
+    # 5. Verification of Asset D (v2.1 revised candidate: historical asset with 5 drifted files from round D3-F)
     v21_res = report['assets']['v2_1_asset']
     assert v21_res['status'] == 'BLOCKED'
-    assert v21_res['hashDriftCount'] == 0
+    assert v21_res['hashDriftCount'] == 5
     assert v21_res['executedQueries'] == 0
     assert v21_res['humanReviewStatus'] == 'PENDING'
     assert v21_res['labelsApproved'] is False
     assert v21_res['datasetRole'] == 'INDEPENDENT_ACCEPTANCE_CANDIDATE'
 
-    # 6. Verification of non-overwrite protection on all review documents
+    # 6. Verification of Asset E (v2.2 clean candidate: 0 drift against latest code, all 20 files tracked)
+    v22_res = report['assets']['v2_2_asset']
+    assert v22_res['status'] == 'BLOCKED'
+    assert v22_res['hashDriftCount'] == 0
+    assert v22_res['executedQueries'] == 0
+    assert v22_res['humanReviewStatus'] == 'PENDING'
+    assert v22_res['labelsApproved'] is False
+    assert v22_res['datasetRole'] == 'INDEPENDENT_ACCEPTANCE_CANDIDATE'
+    assert any('Individual query reviews pending' in f for f in v22_res['gateFailures'])
+    assert any('Quality acceptance thresholds unapproved' in f for f in v22_res['gateFailures'])
+
+    # 7. Verification of non-overwrite protection on all review documents
     assert review_v1.stat().st_mtime_ns == mtime_v1_before, "Audit should not modify ACCEPTANCE_HUMAN_REVIEW.md"
     assert review_v2.stat().st_mtime_ns == mtime_v2_before, "Audit should not modify ACCEPTANCE_HUMAN_REVIEW.v2.md"
     assert review_v2_rev.stat().st_mtime_ns == mtime_v2_rev_before, "Audit should not modify ACCEPTANCE_HUMAN_REVIEW.v2-revised.md"
     assert review_v21.stat().st_mtime_ns == mtime_v21_before, "Audit should not modify ACCEPTANCE_HUMAN_REVIEW.v2.1.md"
+    assert review_v22.stat().st_mtime_ns == mtime_v22_before, "Audit should not modify ACCEPTANCE_HUMAN_REVIEW.v2.2.md"
 
 
 def test_in_memory_approved_candidate_passes_audit_gate_without_conflict(tmp_path, monkeypatch):
     """Test that a genuinely approved dataset passes all 7 gates in Python static precheck without assertion conflicts."""
-    cand_path = DATA / 'acceptance-candidate.v2.1.json'
-    freeze_path = DATA / 'acceptance-freeze.v2.1.json'
-    review_path = DATA / 'ACCEPTANCE_HUMAN_REVIEW.v2.1.md'
+    cand_path = DATA / 'acceptance-candidate.v2.2.json'
+    freeze_path = DATA / 'acceptance-freeze.v2.2.json'
+    review_path = DATA / 'ACCEPTANCE_HUMAN_REVIEW.v2.2.md'
 
     cand_data = json.loads(cand_path.read_text(encoding='utf-8'))
     freeze_data = json.loads(freeze_path.read_text(encoding='utf-8'))
