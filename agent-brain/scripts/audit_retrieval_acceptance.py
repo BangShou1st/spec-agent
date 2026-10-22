@@ -41,33 +41,67 @@ def audit_single_asset(freeze_name, candidate_name, review_md_name, development_
 
     # 4. Hash drift audit (code and requirements)
     drifted_files = []
-    actual_req_sha = sha(ROOT / 'agent-brain/requirements.lock')
-    if freeze.get('requirementsLockSha256') and freeze['requirementsLockSha256'] != actual_req_sha:
+    frozen_req_sha = freeze.get('requirementsLockSha256')
+    if not frozen_req_sha or not str(frozen_req_sha).strip():
         drifted_files.append({
             'file': 'agent-brain/requirements.lock',
-            'frozenHash': freeze['requirementsLockSha256'],
-            'actualHash': actual_req_sha,
-            'reason': 'Added socksio==1.0.0 for proxy isolation (commit 685bb05)'
+            'frozenHash': 'MISSING',
+            'actualHash': 'N/A',
+            'reason': 'requirementsLockSha256 missing or empty in freeze'
         })
+    else:
+        actual_req_sha = sha(ROOT / 'agent-brain/requirements.lock')
+        if frozen_req_sha != actual_req_sha:
+            drifted_files.append({
+                'file': 'agent-brain/requirements.lock',
+                'frozenHash': frozen_req_sha,
+                'actualHash': actual_req_sha,
+                'reason': 'Dependency drift in requirements.lock'
+            })
 
-    for rel_path, expected_hash in freeze.get('codeHashes', {}).items():
-        code_file = ROOT / rel_path
-        if not code_file.exists():
-            drifted_files.append({
-                'file': rel_path,
-                'frozenHash': expected_hash,
-                'actualHash': 'MISSING',
-                'reason': 'File missing from workspace'
-            })
-            continue
-        actual_code_sha = sha(code_file)
-        if expected_hash != actual_code_sha:
-            drifted_files.append({
-                'file': rel_path,
-                'frozenHash': expected_hash,
-                'actualHash': actual_code_sha,
-                'reason': 'Implementation update or drift'
-            })
+    code_hashes = freeze.get('codeHashes')
+    if not code_hashes or not isinstance(code_hashes, dict):
+        drifted_files.append({
+            'file': 'codeHashes',
+            'frozenHash': 'MISSING',
+            'actualHash': 'N/A',
+            'reason': 'codeHashes missing or empty in freeze'
+        })
+    else:
+        for rel_path, expected_hash in code_hashes.items():
+            code_file = ROOT / rel_path
+            if not code_file.exists():
+                drifted_files.append({
+                    'file': rel_path,
+                    'frozenHash': expected_hash,
+                    'actualHash': 'MISSING',
+                    'reason': 'File missing from workspace'
+                })
+                continue
+            actual_code_sha = sha(code_file)
+            if expected_hash != actual_code_sha:
+                drifted_files.append({
+                    'file': rel_path,
+                    'frozenHash': expected_hash,
+                    'actualHash': actual_code_sha,
+                    'reason': 'Implementation update or drift'
+                })
+
+    # Model and profile identity validation
+    if not freeze.get('modelTag') or not str(freeze['modelTag']).strip():
+        drifted_files.append({
+            'file': 'modelTag',
+            'frozenHash': 'MISSING',
+            'actualHash': 'N/A',
+            'reason': 'modelTag missing in freeze'
+        })
+    if not freeze.get('profileId') or not str(freeze['profileId']).strip():
+        drifted_files.append({
+            'file': 'profileId',
+            'frozenHash': 'MISSING',
+            'actualHash': 'N/A',
+            'reason': 'profileId missing in freeze'
+        })
 
     # 5. Queries and sources integrity
     assert len({s['alias'] for s in candidate['sources']}) == len(candidate['sources'])
@@ -142,6 +176,24 @@ def audit_single_asset(freeze_name, candidate_name, review_md_name, development_
         gate_failures.append(f"Quality acceptance thresholds unapproved (status: '{freeze.get('thresholdStatus')}')")
     elif threshold_status not in ('APPROVED_BEFORE_FIRST_RUN', 'APPROVED'):
         gate_failures.append(f"Unknown threshold status (status: '{freeze.get('thresholdStatus')}')")
+
+    thresholds = freeze.get('proposedThresholds') or freeze.get('approvedThresholds') or {}
+    for metric in ('macroSourceRecallAt8', 'firstRelevantMrr', 'multiSourceAllOfCoverage'):
+        val = thresholds.get(metric)
+        if val is None or not isinstance(val, (int, float)) or val < 0.0 or val > 1.0:
+            gate_failures.append(f"Threshold for {metric} is invalid: {val} (must be in [0.0, 1.0])")
+    if 'noAnswerZeroHitCorrectness' in thresholds and thresholds['noAnswerZeroHitCorrectness'] is not None:
+        val = thresholds['noAnswerZeroHitCorrectness']
+        if not isinstance(val, (int, float)) or val < 0.0 or val > 1.0:
+            gate_failures.append(f"Threshold for noAnswerZeroHitCorrectness is invalid: {val}")
+    if 'pureNoAnswerZeroHitCorrectness' in thresholds and thresholds['pureNoAnswerZeroHitCorrectness'] is not None:
+        val = thresholds['pureNoAnswerZeroHitCorrectness']
+        if not isinstance(val, (int, float)) or val < 0.0 or val > 1.0:
+            gate_failures.append(f"Threshold for pureNoAnswerZeroHitCorrectness is invalid: {val}")
+    for leak in ('staleSourceLeakCount', 'permissionLeakCount'):
+        val = thresholds.get(leak)
+        if val is None or not isinstance(val, int) or val < 0:
+            gate_failures.append(f"Threshold for {leak} is invalid: {val} (must be non-negative integer)")
         
     # Gate 6: Zero tuning usage
     if candidate.get('tuningUse') != 'NEVER_USED':
@@ -212,11 +264,18 @@ def audit(version='all', strict=False):
             'acceptance-freeze.v2-revised.json', 'acceptance-candidate.v2-revised.json', 'ACCEPTANCE_HUMAN_REVIEW.v2-revised.md',
             development, other_candidate_data=cand_v1
         )
+    if version in ('all', 'v2_1', 'v2-1', 'v2.1'):
+        cand_v21 = json.loads((DATA / 'acceptance-candidate.v2.1.json').read_text(encoding='utf-8'))
+        results['v2_1_asset'] = audit_single_asset(
+            'acceptance-freeze.v2.1.json', 'acceptance-candidate.v2.1.json', 'ACCEPTANCE_HUMAN_REVIEW.v2.1.md',
+            development, other_candidate_data=cand_v1
+        )
 
     # Consolidated report compatible with existing evidence consumers
     primary_v1 = results.get('v1_regression_asset', {})
     primary_v2 = results.get('v2_independent_asset', {})
     primary_v2_rev = results.get('v2_revised_asset', {})
+    primary_v21 = results.get('v2_1_asset', {})
     
     # Overall status is PASS only if all requested assets PASS
     overall_status = 'PASS' if all(r['status'] == 'PASS' for r in results.values()) else 'BLOCKED'
@@ -224,20 +283,20 @@ def audit(version='all', strict=False):
     combined_report = {
         'recordedAt': datetime.now(timezone.utc).isoformat(),
         'status': overall_status,
-        'governanceDecision': 'BLOCKED; Asset A retired to REVIEWED_REGRESSION awaiting review; Asset B/C code-aligned but PENDING human label & threshold approval.',
+        'governanceDecision': 'BLOCKED; Asset A retired to REVIEWED_REGRESSION awaiting review; Asset B/C/D code-aligned but PENDING human label & threshold approval.',
         'assets': results,
         # Backward-compatible fields mapped to primary asset
-        'queryCount': primary_v2_rev.get('queryCount', primary_v1.get('queryCount', 68)),
-        'sourceCount': primary_v2_rev.get('sourceCount', primary_v1.get('sourceCount', 28)),
-        'categories': primary_v2_rev.get('categories', primary_v1.get('categories', {})),
-        'candidateSha256': primary_v2_rev.get('candidateSha256', primary_v1.get('candidateSha256')),
-        'freezeSha256': primary_v2_rev.get('freezeSha256', primary_v1.get('freezeSha256')),
+        'queryCount': primary_v21.get('queryCount', primary_v2_rev.get('queryCount', primary_v1.get('queryCount', 68))),
+        'sourceCount': primary_v21.get('sourceCount', primary_v2_rev.get('sourceCount', primary_v1.get('sourceCount', 28))),
+        'categories': primary_v21.get('categories', primary_v2_rev.get('categories', primary_v1.get('categories', {}))),
+        'candidateSha256': primary_v21.get('candidateSha256', primary_v2_rev.get('candidateSha256', primary_v1.get('candidateSha256'))),
+        'freezeSha256': primary_v21.get('freezeSha256', primary_v2_rev.get('freezeSha256', primary_v1.get('freezeSha256'))),
         'executedQueries': 0,
         'executionStatus': 'NOT_RUN',
         'labelsApproved': False,
         'humanReviewStatus': 'PENDING',
-        'hashDriftCount': primary_v2_rev.get('hashDriftCount', 0),
-        'hashDriftList': primary_v2_rev.get('hashDriftList', []),
+        'hashDriftCount': primary_v21.get('hashDriftCount', primary_v2_rev.get('hashDriftCount', 0)),
+        'hashDriftList': primary_v21.get('hashDriftList', primary_v2_rev.get('hashDriftList', [])),
         'semanticPrecheck': [
             'Near-no-answer asks unsupported quantities/policies; related context is not sufficient to answer.',
             'Multi-source labels are all-of, not any-hit; reviewers must check each source is necessary.',
@@ -273,7 +332,7 @@ def audit(version='all', strict=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Static precheck for independent retrieval acceptance.")
-    parser.add_argument("--version", choices=['all', 'v1', 'v2', 'v2_revised', 'v2-revised'], default='all', help="Audit specific asset or all.")
+    parser.add_argument("--version", choices=['all', 'v1', 'v2', 'v2_revised', 'v2-revised', 'v2.1', 'v2_1', 'v2-1'], default='all', help="Audit specific asset or all.")
     parser.add_argument("--strict", action="store_true", help="Fail with non-zero exit code if status is not PASS.")
     args = parser.parse_args()
     audit(version=args.version, strict=args.strict)

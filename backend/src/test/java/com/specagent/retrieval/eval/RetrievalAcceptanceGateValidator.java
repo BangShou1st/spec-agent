@@ -21,8 +21,8 @@ import java.util.*;
  * Gate 1: 逐条标签审阅（queries 中每条必须为 HUMAN_REVIEWED，且集合大小与 ID 完整）。
  * Gate 2: 真实人工审阅者与合法 ISO 时间戳（非空、非占位符，顶级状态为 APPROVED）。
  * Gate 3: 候选数据集 SHA-256 与 freeze 严格匹配，且角色为 INDEPENDENT_ACCEPTANCE_CANDIDATE。
- * Gate 4: 依赖锁 (requirements.lock) 与全部实现代码文件 SHA-256 与 freeze 严格匹配，无代码漂移。
- * Gate 5: 质量验收指标阈值已获人工批准（APPROVED_BEFORE_FIRST_RUN，非 PROPOSED/PENDING），且数值合法。
+ * Gate 4: 依赖锁 (requirements.lock) 与全部实现代码文件 SHA-256 与 freeze 严格匹配，无代码漂移且清单非空。
+ * Gate 5: 质量验收指标阈值已获人工批准（APPROVED_BEFORE_FIRST_RUN，非 PROPOSED/PENDING），数值范围合法（无负数/NaN/Inf）。
  * Gate 6: 零调参使用历史（tuningUse == NEVER_USED）。
  * Gate 7: 首次执行记录与原子 claim（executionStatus == NOT_RUN，且防止并发与重复执行）。
  */
@@ -63,6 +63,10 @@ public final class RetrievalAcceptanceGateValidator {
         String role = dataset.path("datasetRole").asText();
         if (!expectedRole.equals(role)) {
             violations.add("Dataset role mismatch: expected '" + expectedRole + "', got '" + role + "'");
+        }
+        String freezeRole = freeze.path("datasetRole").asText().trim();
+        if (!expectedRole.equals(freezeRole)) {
+            violations.add("Freeze datasetRole mismatch: expected '" + expectedRole + "', got '" + freezeRole + "'");
         }
         String tuningUse = dataset.path("tuningUse").asText();
         if (!"NEVER_USED".equals(tuningUse)) {
@@ -163,10 +167,26 @@ public final class RetrievalAcceptanceGateValidator {
             violations.add("Dataset SHA-256 mismatch: actual " + actualDatasetSha + " vs frozen " + frozenDatasetSha);
         }
 
-        String frozenReqSha = freeze.path("requirementsLockSha256").asText();
-        if (!frozenReqSha.isBlank()) {
+        String modelTag = freeze.path("modelTag").asText().trim();
+        if (modelTag.isEmpty()) {
+            violations.add("modelTag missing in freeze");
+        }
+        String profileId = freeze.path("profileId").asText().trim();
+        if (profileId.isEmpty()) {
+            violations.add("profileId missing in freeze");
+        }
+
+        String frozenReqSha = freeze.path("requirementsLockSha256").asText().trim();
+        if (frozenReqSha.isEmpty()) {
+            violations.add("requirementsLockSha256 missing or empty in freeze");
+        } else {
             Path reqFile = repoRoot.resolve("agent-brain/requirements.lock");
-            if (Files.exists(reqFile)) {
+            if (!Files.exists(reqFile) && Files.exists(repoRoot.resolve("../agent-brain/requirements.lock"))) {
+                reqFile = repoRoot.resolve("../agent-brain/requirements.lock");
+            }
+            if (!Files.exists(reqFile)) {
+                violations.add("requirements.lock file missing in workspace");
+            } else {
                 try {
                     String actualReqSha = Hashes.sha256Hex(Files.readString(reqFile));
                     if (!frozenReqSha.equals(actualReqSha)) {
@@ -179,7 +199,9 @@ public final class RetrievalAcceptanceGateValidator {
         }
 
         JsonNode codeHashes = freeze.path("codeHashes");
-        if (codeHashes.isObject()) {
+        if (!codeHashes.isObject() || codeHashes.isEmpty()) {
+            violations.add("codeHashes missing or empty in freeze");
+        } else {
             codeHashes.fields().forEachRemaining(entry -> {
                 Path codeFile = repoRoot.resolve(entry.getKey());
                 if (!Files.exists(codeFile)) {
@@ -213,19 +235,35 @@ public final class RetrievalAcceptanceGateValidator {
         if (thresholds.isMissingNode() || thresholds.isNull() || !thresholds.isObject()) {
             violations.add("Quality threshold metrics contract missing in freeze");
         } else {
-            if (!thresholds.has("macroSourceRecallAt8") || !thresholds.path("macroSourceRecallAt8").isNumber()) {
-                violations.add("macroSourceRecallAt8 threshold missing or non-numeric");
+            checkRatioThreshold(thresholds, "macroSourceRecallAt8", violations);
+            checkRatioThreshold(thresholds, "firstRelevantMrr", violations);
+            checkRatioThreshold(thresholds, "multiSourceAllOfCoverage", violations);
+            if (thresholds.has("noAnswerZeroHitCorrectness") && !thresholds.path("noAnswerZeroHitCorrectness").isNull()) {
+                checkRatioThreshold(thresholds, "noAnswerZeroHitCorrectness", violations);
             }
-            if (!thresholds.has("firstRelevantMrr") || !thresholds.path("firstRelevantMrr").isNumber()) {
-                violations.add("firstRelevantMrr threshold missing or non-numeric");
+            if (thresholds.has("staleSourceLeakCount")) {
+                int v = thresholds.path("staleSourceLeakCount").asInt(-1);
+                if (v < 0) violations.add("staleSourceLeakCount must be non-negative");
             }
-            if (!thresholds.has("multiSourceAllOfCoverage") || !thresholds.path("multiSourceAllOfCoverage").isNumber()) {
-                violations.add("multiSourceAllOfCoverage threshold missing or non-numeric");
+            if (thresholds.has("permissionLeakCount")) {
+                int v = thresholds.path("permissionLeakCount").asInt(-1);
+                if (v < 0) violations.add("permissionLeakCount must be non-negative");
             }
         }
 
         if (!violations.isEmpty()) {
             throw new GateValidationException(violations);
+        }
+    }
+
+    private static void checkRatioThreshold(JsonNode node, String field, List<String> violations) {
+        if (!node.has(field) || !node.path(field).isNumber()) {
+            violations.add(field + " threshold missing or non-numeric");
+            return;
+        }
+        double val = node.path(field).asDouble();
+        if (Double.isNaN(val) || Double.isInfinite(val) || val < 0.0 || val > 1.0) {
+            violations.add(field + " threshold must be a valid ratio in [0.0, 1.0], got: " + val);
         }
     }
 }

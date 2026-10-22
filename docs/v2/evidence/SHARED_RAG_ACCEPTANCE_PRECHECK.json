@@ -1,19 +1,19 @@
 {
-  "recordedAt": "2026-10-22T15:33:39.657596+00:00",
+  "recordedAt": "2026-10-22T16:50:53.497520+00:00",
   "status": "BLOCKED",
-  "governanceDecision": "BLOCKED; Asset A retired to REVIEWED_REGRESSION awaiting review; Asset B/C code-aligned but PENDING human label & threshold approval.",
+  "governanceDecision": "BLOCKED; Asset A retired to REVIEWED_REGRESSION awaiting review; Asset B/C/D code-aligned but PENDING human label & threshold approval.",
   "assets": {
-    "v2_revised_asset": {
-      "freezeFile": "acceptance-freeze.v2-revised.json",
-      "datasetFile": "acceptance-candidate.v2-revised.json",
-      "reviewDocument": "ACCEPTANCE_HUMAN_REVIEW.v2-revised.md",
+    "v2_1_asset": {
+      "freezeFile": "acceptance-freeze.v2.1.json",
+      "datasetFile": "acceptance-candidate.v2.1.json",
+      "reviewDocument": "ACCEPTANCE_HUMAN_REVIEW.v2.1.md",
       "status": "BLOCKED",
-      "statusReason": "Execution gate BLOCKED by 5 missing condition(s): Individual query reviews pending (68 queries unreviewed, e.g. ['B001', 'B002', 'B003']); Genuine human reviewer identity missing (got: ''); Human review timestamp missing (got: ''); Quality acceptance thresholds unapproved (status: 'PROPOSED_BASELINE; awaiting human business approval before first run; no post-result tuning'); Top-level humanReviewStatus is 'PENDING', not 'APPROVED'",
+      "statusReason": "Execution gate BLOCKED by 5 missing condition(s): Individual query reviews pending (68 queries unreviewed, e.g. ['B001', 'B002', 'B003']); Genuine human reviewer identity missing (got: ''); Human review timestamp missing (got: ''); Quality acceptance thresholds unapproved (status: 'PROPOSED_BASELINE; awaiting human business approval'); Top-level humanReviewStatus is 'PENDING', not 'APPROVED'",
       "gateFailures": [
         "Individual query reviews pending (68 queries unreviewed, e.g. ['B001', 'B002', 'B003'])",
         "Genuine human reviewer identity missing (got: '')",
         "Human review timestamp missing (got: '')",
-        "Quality acceptance thresholds unapproved (status: 'PROPOSED_BASELINE; awaiting human business approval before first run; no post-result tuning')",
+        "Quality acceptance thresholds unapproved (status: 'PROPOSED_BASELINE; awaiting human business approval')",
         "Top-level humanReviewStatus is 'PENDING', not 'APPROVED'"
       ],
       "datasetRole": "INDEPENDENT_ACCEPTANCE_CANDIDATE",
@@ -29,8 +29,8 @@
         "PERMISSION_ISOLATION": 4,
         "NO_ANSWER": 3
       },
-      "candidateSha256": "59d9ea47db9cb6c51649ea526730ae4954618c86da559f396946e6522229f9a6",
-      "freezeSha256": "bb1ebad57396c5665954ca07e8418d208d3d344e101abc8ba77af85ae5dd1078",
+      "candidateSha256": "3162ce2b67e15f3ad31ab277e0ddaf56700cc609d0ddec386d0a9c232088e0f4",
+      "freezeSha256": "f4e52111f9602b8f00a44698d55ffc274e9d93c31092f5780dc1ba8f7c3b4493",
       "executedQueries": 0,
       "executionStatus": "NOT_RUN",
       "labelsApproved": false,
@@ -52,8 +52,8 @@
     "PERMISSION_ISOLATION": 4,
     "NO_ANSWER": 3
   },
-  "candidateSha256": "59d9ea47db9cb6c51649ea526730ae4954618c86da559f396946e6522229f9a6",
-  "freezeSha256": "bb1ebad57396c5665954ca07e8418d208d3d344e101abc8ba77af85ae5dd1078",
+  "candidateSha256": "3162ce2b67e15f3ad31ab277e0ddaf56700cc609d0ddec386d0a9c232088e0f4",
+  "freezeSha256": "f4e52111f9602b8f00a44698d55ffc274e9d93c31092f5780dc1ba8f7c3b4493",
   "executedQueries": 0,
   "executionStatus": "NOT_RUN",
   "labelsApproved": false,

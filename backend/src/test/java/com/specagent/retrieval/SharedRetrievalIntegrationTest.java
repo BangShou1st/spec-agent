@@ -56,6 +56,36 @@ class SharedRetrievalIntegrationTest {
     String oldBase;
 
     @BeforeEach void fixture() {
+        if("true".equals(System.getenv("SPEC_AGENT_RAG_EVALUATION"))) {
+            String datasetFile=System.getenv().getOrDefault("SPEC_AGENT_RAG_EVALUATION_DATASET","chinese-queries.v1.json");
+            boolean acceptance=!datasetFile.equals("chinese-queries.v1.json");
+            if(acceptance) {
+                Path datasetPath=Path.of("../contracts/retrieval/evaluation/"+datasetFile);
+                if(Files.exists(datasetPath)) {
+                    try {
+                        String rawJson=Files.readString(datasetPath);
+                        var dataset=JSON.readTree(rawJson);
+                        String freezeFile=switch(datasetFile) {
+                            case "acceptance-candidate.v1.json" -> "acceptance-freeze.v1.json";
+                            case "acceptance-candidate.v2.json" -> "acceptance-freeze.v2.json";
+                            case "acceptance-candidate.v2-revised.json" -> "acceptance-freeze.v2-revised.json";
+                            case "acceptance-candidate.v2.1.json" -> "acceptance-freeze.v2.1.json";
+                            default -> throw new IllegalArgumentException("Unknown candidate: " + datasetFile);
+                        };
+                        Path freezePath=Path.of("../contracts/retrieval/evaluation/"+freezeFile);
+                        if(Files.exists(freezePath)) {
+                            var freeze=JSON.readTree(Files.readString(freezePath));
+                            com.specagent.retrieval.eval.RetrievalAcceptanceGateValidator.validateForExecution(
+                                dataset, rawJson, freeze, Path.of(".."),
+                                "INDEPENDENT_ACCEPTANCE_CANDIDATE", 68, 28
+                            );
+                        }
+                    } catch(Exception e) {
+                        throw new IllegalStateException("Acceptance gate rejection before fixture setup: " + e.getMessage(), e);
+                    }
+                }
+            }
+        }
         project=projects.createProject("shared-rag-fixture-"+UUID.randomUUID());
         other=projects.createProject("shared-rag-isolation-"+UUID.randomUUID());
         node=nodes.createRootNode(project.id(),project.activeRouteId(),"订单导出使用 CSV 文件，导出编号 EXP-2026-A。",null,List.of(),true).id();
@@ -64,13 +94,15 @@ class SharedRetrievalIntegrationTest {
     }
     @AfterEach void cleanup() throws Exception {
         stopCandidatePython();
-        properties.setBaseUrl(oldBase);
-        for(var item:List.of(project,other)) {
-            jdbc.update("DELETE FROM retrieval_scope_grants WHERE corpus_id=?",item.id());
-            jdbc.update("DELETE FROM retrieval_index_jobs WHERE corpus_id=?",item.id());
-            jdbc.update("DELETE FROM retrieval_index_heads WHERE corpus_id=?",item.id());
-            jdbc.update("DELETE FROM retrieval_index_generations WHERE corpus_id=?",item.id());
-            deletion.deleteProject(item.id());
+        if(properties!=null && oldBase!=null) properties.setBaseUrl(oldBase);
+        if(project!=null && other!=null) {
+            for(var item:List.of(project,other)) {
+                jdbc.update("DELETE FROM retrieval_scope_grants WHERE corpus_id=?",item.id());
+                jdbc.update("DELETE FROM retrieval_index_jobs WHERE corpus_id=?",item.id());
+                jdbc.update("DELETE FROM retrieval_index_heads WHERE corpus_id=?",item.id());
+                jdbc.update("DELETE FROM retrieval_index_generations WHERE corpus_id=?",item.id());
+                deletion.deleteProject(item.id());
+            }
         }
     }
     void stopCandidatePython() throws Exception {
@@ -302,7 +334,7 @@ class SharedRetrievalIntegrationTest {
     @Test void realOllamaFiftyTwoReviewableQueriesEvaluateRecallNoAnswerStaleAndPermissionIsolation() throws Exception {
         Assumptions.assumeTrue("true".equals(System.getenv("SPEC_AGENT_RAG_EVALUATION")));
         String datasetFile=System.getenv().getOrDefault("SPEC_AGENT_RAG_EVALUATION_DATASET","chinese-queries.v1.json");
-        assertTrue(Set.of("chinese-queries.v1.json","acceptance-candidate.v1.json","acceptance-candidate.v2.json","acceptance-candidate.v2-revised.json").contains(datasetFile));
+        assertTrue(Set.of("chinese-queries.v1.json","acceptance-candidate.v1.json","acceptance-candidate.v2.json","acceptance-candidate.v2-revised.json","acceptance-candidate.v2.1.json").contains(datasetFile));
         Path datasetPath=Path.of("../contracts/retrieval/evaluation/"+datasetFile);
         String rawJson=Files.readString(datasetPath);
         var dataset=JSON.readTree(rawJson);
@@ -315,6 +347,7 @@ class SharedRetrievalIntegrationTest {
                 case "acceptance-candidate.v1.json" -> "acceptance-freeze.v1.json";
                 case "acceptance-candidate.v2.json" -> "acceptance-freeze.v2.json";
                 case "acceptance-candidate.v2-revised.json" -> "acceptance-freeze.v2-revised.json";
+                case "acceptance-candidate.v2.1.json" -> "acceptance-freeze.v2.1.json";
                 default -> throw new IllegalArgumentException("Unknown candidate: " + datasetFile);
             };
             var freeze=JSON.readTree(Files.readString(Path.of("../contracts/retrieval/evaluation/"+freezeFile)));
@@ -355,7 +388,10 @@ class SharedRetrievalIntegrationTest {
             var request=new RetrievalQuery(project.id(),null,null,"EXPLICIT_SEARCH",query,scopes,8,8000,Set.of(),Set.of());
             long begin=System.nanoTime(); var result=shared.search(request,UUID.randomUUID(),"CONTEXT_PROJECTION",excluded);
             long elapsed=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-begin); timings.add(elapsed);
-            List<String> actual=result.items().stream().map(i->aliases.getOrDefault(UUID.fromString(i.source().sourceRef().split(":")[1]),"UNLABELLED")).distinct().toList();
+            List<String> rawRetrieved=result.items().stream()
+                .map(i->aliases.getOrDefault(UUID.fromString(i.source().sourceRef().split(":")[1]),"UNLABELLED"))
+                .toList();
+            List<String> actual=rawRetrieved.stream().distinct().toList();
             List<String> legacy=baseline.retrieve(request).stream().filter(c->!excluded.contains(c.entry().sourceRef())).limit(8)
                 .map(c->aliases.getOrDefault(c.entry().sourceId(),"UNLABELLED")).distinct().toList();
             for(var item:result.items()) {
@@ -370,7 +406,9 @@ class SharedRetrievalIntegrationTest {
             heapPeak=Math.max(heapPeak,java.lang.management.ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed());
             var observation=new LinkedHashMap<String,Object>();
             observation.put("id",labelledQuery.path("id").asText()); observation.put("category",category); observation.put("query",query);
-            observation.put("expectedAliases",expected); observation.put("retrievedAliases",actual); observation.put("legacyLexicalAliases",legacy);
+            observation.put("expectedAliases",expected); observation.put("forbiddenAliases",forbidden);
+            observation.put("retrievedAliases",rawRetrieved); observation.put("distinctRetrievedAliases",actual);
+            observation.put("legacyLexicalAliases",legacy);
             observation.put("elapsedMs",elapsed); observation.put("vectorUnavailable",result.vectorUnavailable()); observation.put("labelReview",labelledQuery.path("labelReview").asText());
             observation.put("sources",result.items().stream().map(Ranked::source).toList()); observations.add(observation);
         }
@@ -405,7 +443,7 @@ class SharedRetrievalIntegrationTest {
                     (String)obs.get("id"),
                     (String)obs.get("category"),
                     (List<String>)obs.get("expectedAliases"),
-                    List.of(),
+                    (List<String>)obs.get("forbiddenAliases"),
                     List.of(),
                     (List<String>)obs.get("retrievedAliases"),
                     Boolean.TRUE.equals(obs.get("vectorUnavailable")),
@@ -432,7 +470,7 @@ class SharedRetrievalIntegrationTest {
     }
 
     @Test void pendingIndependentCandidateIsRejectedBeforePythonOrIndexing() throws Exception {
-        for(String candFile : List.of("acceptance-candidate.v1.json", "acceptance-candidate.v2.json", "acceptance-candidate.v2-revised.json")) {
+        for(String candFile : List.of("acceptance-candidate.v1.json", "acceptance-candidate.v2.json", "acceptance-candidate.v2-revised.json", "acceptance-candidate.v2.1.json")) {
             Path candPath = Path.of("../contracts/retrieval/evaluation/" + candFile);
             if(!Files.exists(candPath)) continue;
             String raw = Files.readString(candPath);

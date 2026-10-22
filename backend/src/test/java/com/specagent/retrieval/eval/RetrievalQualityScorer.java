@@ -8,14 +8,17 @@ import java.util.*;
  * 依据冻结且获得批准的质量契约，对实际检索 Top-8 结果进行纯函数评分与通过判定。
  * 不产生副作用，不依赖外部服务或数据库。
  *
- * 核心指标与规则：
- * 1. Source Recall@8：按真实来源 alias 去重后统计召回数，除以必需证据集合大小。背景来源不计入充分证据命中。
- * 2. MRR@8：严格保留检索原始排名（1-8），不因来源去重而压缩位置（同源多个 chunk 占前七位、目标排第八位时按 1/8 计）。
- * 3. Multi-Source All-Of Coverage：多来源查询必须全部覆盖所有必需证据（All-Of），只命中部分证据算 0 分。
- * 4. Zero-Hit / No-Answer：统计无答案/负例查询的零命中率，并防范词法噪声。
- * 5. 安全硬门槛：Stale 撤回来源泄漏数与跨项目/未授权 Permission 泄漏数必须为 0，否则直接判 FAIL。
- * 6. 分母固化：必须按全部候选分母统计，禁止因空结果或异常过滤分母。
- * 7. 审批有效性：未批准或未知阈值状态直接判 BLOCKED_UNAPPROVED_THRESHOLDS，不予通过。
+ * 指标与分类规则（Sol F05/F19）：
+ * 1. 严格保留 Top-8 原始排名：同源多个 chunk 占前七位、目标排第八位时按 1/8 (0.125) 计，不被外部去重压缩。
+ * 2. 正向查询（分母固化 49 条）：
+ *    - Source Recall@8：按真实来源 alias 去重后统计召回数除以 expected 长度。
+ *    - MRR@8：保留原始排名的首个相关来源倒数排名。
+ *    - Multi-Source All-Of Coverage：针对 MULTI_SOURCE（8条），必须覆盖全部必需证据组。
+ * 3. 负例与诊断查询：
+ *    - NEAR_NO_ANSWER（8条）：作为诊断观察项，语料不充分但存在相关背景，返回合法公开背景不判质量 FAIL；但禁止命中 forbidden。
+ *    - NO_ANSWER（3条纯无答案）：统计严格零命中率，返回词法噪声不计入充分证据，禁止命中 forbidden。
+ *    - STALE_VERSION（4条）与 PERMISSION_ISOLATION（4条）：硬安全门禁，命中对应 stale/forbidden 来源立即判 FAIL。
+ * 4. 审批有效性：未批准或未知阈值状态直接判 BLOCKED_UNAPPROVED_THRESHOLDS，不予通过。
  */
 public final class RetrievalQualityScorer {
 
@@ -42,7 +45,7 @@ public final class RetrievalQualityScorer {
             double minMacroSourceRecallAt8,
             double minFirstRelevantMrr,
             double minMultiSourceAllOfCoverage,
-            Double minNoAnswerZeroHitCorrectness,
+            Double minPureNoAnswerZeroHitCorrectness, // 仅针对纯负例，非全体负样本
             int maxStaleSourceLeaks,
             int maxPermissionLeaks
     ) {
@@ -59,13 +62,15 @@ public final class RetrievalQualityScorer {
     public record QualityReport(
             String verdict, // "PASS", "FAIL", "BLOCKED_UNAPPROVED_THRESHOLDS"
             int totalQueries,
-            int labelledQueriesCount,
+            int positiveQueriesCount,
             int multiSourceQueriesCount,
-            int negativeQueriesCount,
+            int nearNoAnswerCount,
+            int pureNoAnswerCount,
             double macroSourceRecallAt8,
             double firstRelevantMrr,
             double multiSourceAllOfCoverage,
-            double noAnswerZeroHitCorrectness,
+            double pureNoAnswerZeroHitRate,
+            int nearNoAnswerBackgroundReturnedCount,
             int staleSourceLeakCount,
             int permissionLeakCount,
             List<String> failureReasons,
@@ -92,14 +97,17 @@ public final class RetrievalQualityScorer {
         }
 
         int totalQueries = observations.size();
-        int labelledCount = 0;
+        int positiveCount = 0;
         int multiSourceCount = 0;
-        int negativeCount = 0;
+        int nearCount = 0;
+        int pureNoAnswerCount = 0;
 
         double sumRecall = 0.0;
         double sumMrr = 0.0;
         int multiSourceAllOfHits = 0;
-        int zeroHitCount = 0;
+
+        int pureNoAnswerZeroHits = 0;
+        int nearBackgroundReturned = 0;
 
         int staleLeaks = 0;
         int permissionLeaks = 0;
@@ -108,8 +116,9 @@ public final class RetrievalQualityScorer {
             List<String> expected = obs.expectedAliases();
             List<String> forbidden = obs.forbiddenAliases();
             List<String> retrieved = obs.retrievedAliases();
+            String cat = obs.category() == null ? "" : obs.category();
 
-            // 安全检查：检查所有返回项中是否有 stale 或 forbidden 来源
+            // 1. 全局安全硬门禁检查：所有查询返回的任何来源均不得命中 forbidden 或 stale
             for (String alias : retrieved) {
                 if (forbidden.contains(alias)) {
                     permissionLeaks++;
@@ -119,17 +128,17 @@ public final class RetrievalQualityScorer {
                 }
             }
 
-            boolean isLabelled = !expected.isEmpty();
-            if (isLabelled) {
-                labelledCount++;
+            // 2. 正向查询评估（expected 非空）
+            if (!expected.isEmpty()) {
+                positiveCount++;
 
-                // 1. Source Recall@8: 按唯一来源 alias 去重统计命中数
+                // Source Recall@8: 按唯一来源 alias 去重统计命中数
                 Set<String> distinctRetrieved = new HashSet<>(retrieved);
                 long hits = expected.stream().filter(distinctRetrieved::contains).count();
                 double queryRecall = (double) hits / expected.size();
                 sumRecall += queryRecall;
 
-                // 2. MRR@8: 保留原始排名位置，不因去重压缩 index
+                // MRR@8: 保留原始排名位置（1-8），不因去重压缩 index
                 double queryMrr = 0.0;
                 for (int rank = 0; rank < retrieved.size(); rank++) {
                     String actualAlias = retrieved.get(rank);
@@ -140,25 +149,35 @@ public final class RetrievalQualityScorer {
                 }
                 sumMrr += queryMrr;
 
-                // 3. Multi-Source All-Of: 必须覆盖全部必需证据组
-                if ("MULTI_SOURCE".equals(obs.category()) || expected.size() >= 2) {
+                // Multi-Source All-Of Coverage: 必须覆盖全部必需证据组
+                if ("MULTI_SOURCE".equals(cat) || expected.size() >= 2) {
                     multiSourceCount++;
                     if (distinctRetrieved.containsAll(expected)) {
                         multiSourceAllOfHits++;
                     }
                 }
             } else {
-                negativeCount++;
-                if (retrieved.isEmpty()) {
-                    zeroHitCount++;
+                // 3. 负例与诊断查询细分处理
+                if ("NEAR_NO_ANSWER".equals(cat)) {
+                    nearCount++;
+                    if (!retrieved.isEmpty()) {
+                        // 返回了合法公开背景/相关节点，仅做诊断计数，不判零命中失败
+                        nearBackgroundReturned++;
+                    }
+                } else if ("NO_ANSWER".equals(cat)) {
+                    pureNoAnswerCount++;
+                    if (retrieved.isEmpty()) {
+                        pureNoAnswerZeroHits++;
+                    }
                 }
+                // STALE_VERSION 与 PERMISSION_ISOLATION 归属于全局硬安全检查，不强制要求 retrieved 为空
             }
         }
 
-        double macroRecall = labelledCount == 0 ? 0.0 : sumRecall / labelledCount;
-        double meanMrr = labelledCount == 0 ? 0.0 : sumMrr / labelledCount;
-        double allOfCoverage = multiSourceCount == 0 ? 0.0 : (double) multiSourceAllOfHits / multiSourceCount;
-        double zeroHitRate = negativeCount == 0 ? 1.0 : (double) zeroHitCount / negativeCount;
+        double macroRecall = positiveCount == 0 ? 0.0 : sumRecall / positiveCount;
+        double meanMrr = positiveCount == 0 ? 0.0 : sumMrr / positiveCount;
+        double allOfCoverage = multiSourceCount == 0 ? 1.0 : (double) multiSourceAllOfHits / multiSourceCount;
+        double pureZeroHitRate = pureNoAnswerCount == 0 ? 1.0 : (double) pureNoAnswerZeroHits / pureNoAnswerCount;
 
         // 阈值断言
         if (macroRecall < thresholds.minMacroSourceRecallAt8()) {
@@ -171,16 +190,16 @@ public final class RetrievalQualityScorer {
                     "MRR@8 failed: actual %.4f < required %.4f",
                     meanMrr, thresholds.minFirstRelevantMrr()));
         }
-        if (allOfCoverage < thresholds.minMultiSourceAllOfCoverage()) {
+        if (multiSourceCount > 0 && allOfCoverage < thresholds.minMultiSourceAllOfCoverage()) {
             failureReasons.add(String.format(Locale.ROOT,
                     "Multi-Source All-Of Coverage failed: actual %.4f < required %.4f",
                     allOfCoverage, thresholds.minMultiSourceAllOfCoverage()));
         }
-        if (thresholds.minNoAnswerZeroHitCorrectness() != null) {
-            if (zeroHitRate < thresholds.minNoAnswerZeroHitCorrectness()) {
+        if (thresholds.minPureNoAnswerZeroHitCorrectness() != null) {
+            if (pureZeroHitRate < thresholds.minPureNoAnswerZeroHitCorrectness()) {
                 failureReasons.add(String.format(Locale.ROOT,
-                        "Zero-Hit Correctness failed: actual %.4f < required %.4f",
-                        zeroHitRate, thresholds.minNoAnswerZeroHitCorrectness()));
+                        "Pure No-Answer Zero-Hit Correctness failed: actual %.4f < required %.4f",
+                        pureZeroHitRate, thresholds.minPureNoAnswerZeroHitCorrectness()));
             }
         }
         if (staleLeaks > thresholds.maxStaleSourceLeaks()) {
@@ -206,26 +225,30 @@ public final class RetrievalQualityScorer {
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("verdict", verdict);
         summary.put("totalQueries", totalQueries);
-        summary.put("labelledQueriesCount", labelledCount);
+        summary.put("positiveQueriesCount", positiveCount);
         summary.put("multiSourceQueriesCount", multiSourceCount);
-        summary.put("negativeQueriesCount", negativeCount);
+        summary.put("nearNoAnswerCount", nearCount);
+        summary.put("pureNoAnswerCount", pureNoAnswerCount);
         summary.put("macroSourceRecallAt8", macroRecall);
         summary.put("firstRelevantMrr", meanMrr);
         summary.put("multiSourceAllOfCoverage", allOfCoverage);
-        summary.put("noAnswerZeroHitCorrectness", zeroHitRate);
+        summary.put("pureNoAnswerZeroHitRate", pureZeroHitRate);
+        summary.put("nearNoAnswerBackgroundReturnedCount", nearBackgroundReturned);
         summary.put("staleSourceLeakCount", staleLeaks);
         summary.put("permissionLeakCount", permissionLeaks);
 
         return new QualityReport(
                 verdict,
                 totalQueries,
-                labelledCount,
+                positiveCount,
                 multiSourceCount,
-                negativeCount,
+                nearCount,
+                pureNoAnswerCount,
                 macroRecall,
                 meanMrr,
                 allOfCoverage,
-                zeroHitRate,
+                pureZeroHitRate,
+                nearBackgroundReturned,
                 staleLeaks,
                 permissionLeaks,
                 List.copyOf(failureReasons),

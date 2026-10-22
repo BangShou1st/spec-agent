@@ -109,7 +109,7 @@ class RetrievalQualityScorerTest {
     void backgroundSourceDoesNotCountTowardsExpected() {
         List<RetrievalQualityScorer.QueryObservation> observations = List.of(
                 new RetrievalQualityScorer.QueryObservation(
-                        "B050", "NEAR_NO_ANSWER", List.of("N03"), List.of(), List.of("N03_BG"),
+                        "B010", "SINGLE_SOURCE_NODE", List.of("N03"), List.of(), List.of("N03_BG"),
                         List.of("N03_BG"), // 命中了背景，但期望必需证据是 N03
                         false, 10L
                 )
@@ -119,6 +119,45 @@ class RetrievalQualityScorerTest {
         assertThat(report.isPass()).isFalse();
         assertThat(report.macroSourceRecallAt8()).isEqualTo(0.0);
         assertThat(report.firstRelevantMrr()).isEqualTo(0.0);
+    }
+
+    @Test
+    @DisplayName("近主题无答案 (NEAR_NO_ANSWER) 返回合法背景作为诊断项，不因严格零命中判 FAIL")
+    void nearNoAnswerReturningLegalBackgroundDoesNotFailQuality() {
+        List<RetrievalQualityScorer.QueryObservation> observations = List.of(
+                new RetrievalQualityScorer.QueryObservation(
+                        "B001", "SINGLE_SOURCE_NODE", List.of("N01"), List.of("P00"), List.of(),
+                        List.of("N01"), false, 10L
+                ),
+                new RetrievalQualityScorer.QueryObservation(
+                        "B050", "NEAR_NO_ANSWER", List.of(), List.of("P00"), List.of("N03_BG"),
+                        List.of("N03_BG"), // 合法背景，作为诊断项
+                        false, 10L
+                )
+        );
+
+        var report = RetrievalQualityScorer.evaluate(observations, APPROVED_THRESHOLDS, Set.of("S00"));
+        assertThat(report.isPass()).isTrue();
+        assertThat(report.verdict()).isEqualTo("PASS");
+        assertThat(report.permissionLeakCount()).isEqualTo(0);
+        assertThat(report.nearNoAnswerBackgroundReturnedCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("近主题无答案 (NEAR_NO_ANSWER) 若命中 Forbidden 来源，仍必须直接判 FAIL")
+    void nearNoAnswerReturningForbiddenFailsImmediately() {
+        List<RetrievalQualityScorer.QueryObservation> observations = List.of(
+                new RetrievalQualityScorer.QueryObservation(
+                        "B050", "NEAR_NO_ANSWER", List.of(), List.of("P00"), List.of(),
+                        List.of("P00"), // 泄露了 forbidden
+                        false, 10L
+                )
+        );
+
+        var report = RetrievalQualityScorer.evaluate(observations, APPROVED_THRESHOLDS, Set.of());
+        assertThat(report.isPass()).isFalse();
+        assertThat(report.permissionLeakCount()).isEqualTo(1);
+        assertThat(report.failureReasons()).anyMatch(r -> r.contains("Permission leaks failed"));
     }
 
     @Test
@@ -185,7 +224,7 @@ class RetrievalQualityScorerTest {
 
         var report = RetrievalQualityScorer.evaluate(observations, APPROVED_THRESHOLDS, Set.of());
         assertThat(report.isPass()).isFalse();
-        assertThat(report.noAnswerZeroHitCorrectness()).isEqualTo(0.0);
+        assertThat(report.pureNoAnswerZeroHitRate()).isEqualTo(0.0);
         assertThat(report.permissionLeakCount()).isEqualTo(0); // 非 forbidden，无安全泄露
         assertThat(report.failureReasons()).anyMatch(r -> r.contains("Zero-Hit Correctness failed"));
     }
@@ -235,7 +274,7 @@ class RetrievalQualityScorerTest {
         assertThat(report.macroSourceRecallAt8()).isEqualTo(1.0);
         assertThat(report.firstRelevantMrr()).isEqualTo(1.0);
         assertThat(report.multiSourceAllOfCoverage()).isEqualTo(1.0);
-        assertThat(report.noAnswerZeroHitCorrectness()).isEqualTo(1.0);
+        assertThat(report.pureNoAnswerZeroHitRate()).isEqualTo(1.0);
         assertThat(report.staleSourceLeakCount()).isEqualTo(0);
         assertThat(report.permissionLeakCount()).isEqualTo(0);
         assertThat(report.failureReasons()).isEmpty();
@@ -257,7 +296,7 @@ class RetrievalQualityScorerTest {
 
         var report = RetrievalQualityScorer.evaluate(observations, APPROVED_THRESHOLDS, Set.of());
         // 分母为 2，sumRecall = 1.0 -> macroRecall = 0.50
-        assertThat(report.labelledQueriesCount()).isEqualTo(2);
+        assertThat(report.positiveQueriesCount()).isEqualTo(2);
         assertThat(report.macroSourceRecallAt8()).isEqualTo(0.50);
         assertThat(report.firstRelevantMrr()).isEqualTo(0.50);
     }

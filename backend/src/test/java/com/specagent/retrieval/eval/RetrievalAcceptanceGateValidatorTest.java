@@ -9,9 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RetrievalAcceptanceGateValidatorTest {
@@ -60,22 +58,42 @@ class RetrievalAcceptanceGateValidatorTest {
         String sha = Hashes.sha256Hex(rawJson);
 
         ObjectNode freeze = MAPPER.createObjectNode();
+        freeze.put("datasetRole", "INDEPENDENT_ACCEPTANCE_CANDIDATE");
         freeze.put("datasetSha256", sha);
-        freeze.put("requirementsLockSha256", "");
-        freeze.putObject("codeHashes");
+        freeze.put("requirementsLockSha256", "mock_req_lock_sha");
+        ObjectNode codeHashes = freeze.putObject("codeHashes");
+        codeHashes.put("build.gradle.kts", Hashes.sha256Hex("dummy"));
+        freeze.put("modelTag", "qwen3-embedding:0.6b");
+        freeze.put("profileId", "test_profile_123");
         freeze.put("thresholdStatus", "APPROVED_BEFORE_FIRST_RUN");
         ObjectNode thresholds = freeze.putObject("proposedThresholds");
         thresholds.put("macroSourceRecallAt8", 0.85);
         thresholds.put("firstRelevantMrr", 0.75);
         thresholds.put("multiSourceAllOfCoverage", 0.75);
+        thresholds.put("staleSourceLeakCount", 0);
+        thresholds.put("permissionLeakCount", 0);
 
         return new SyntheticFixture(dataset, rawJson, freeze);
     }
 
     @Test
-    @DisplayName("完整满足 7 点门禁的合成数据能够顺利通过验证")
+    @DisplayName("完整满足 7 点门禁且无代码检查要求的合成数据在覆盖环境验证下放行")
     void allGatesPassingAllowsExecution() {
         SyntheticFixture f = createValidSyntheticFixture();
+        // 设置真实文件哈希以供校验
+        Path buildFile = Path.of("build.gradle.kts");
+        if (java.nio.file.Files.exists(buildFile)) {
+            String realSha = Hashes.sha256Hex(assertRead(buildFile));
+            ((ObjectNode) f.freeze().path("codeHashes")).put("build.gradle.kts", realSha);
+        }
+        Path reqFile = Path.of("agent-brain/requirements.lock");
+        if (!java.nio.file.Files.exists(reqFile)) {
+            reqFile = Path.of("../agent-brain/requirements.lock");
+        }
+        if (java.nio.file.Files.exists(reqFile)) {
+            f.freeze().put("requirementsLockSha256", Hashes.sha256Hex(assertRead(reqFile)));
+        }
+
         RetrievalAcceptanceGateValidator.validateForExecution(
                 f.dataset(), f.rawJson(), f.freeze(), Path.of("."),
                 "INDEPENDENT_ACCEPTANCE_CANDIDATE", 2, 2
@@ -98,6 +116,58 @@ class RetrievalAcceptanceGateValidatorTest {
     }
 
     @Test
+    @DisplayName("codeHashes 缺失或为空时必须拒绝")
+    void missingOrEmptyCodeHashesIsRejected() {
+        SyntheticFixture f = createValidSyntheticFixture();
+        f.freeze().remove("codeHashes"); // 移除
+
+        assertThatThrownBy(() -> RetrievalAcceptanceGateValidator.validateForExecution(
+                f.dataset(), f.rawJson(), f.freeze(), Path.of("."),
+                "INDEPENDENT_ACCEPTANCE_CANDIDATE", 2, 2
+        )).isInstanceOf(RetrievalAcceptanceGateValidator.GateValidationException.class)
+          .hasMessageContaining("codeHashes missing or empty");
+    }
+
+    @Test
+    @DisplayName("requirementsLockSha256 缺失或为空时必须拒绝")
+    void missingRequirementsLockIsRejected() {
+        SyntheticFixture f = createValidSyntheticFixture();
+        f.freeze().put("requirementsLockSha256", "   ");
+
+        assertThatThrownBy(() -> RetrievalAcceptanceGateValidator.validateForExecution(
+                f.dataset(), f.rawJson(), f.freeze(), Path.of("."),
+                "INDEPENDENT_ACCEPTANCE_CANDIDATE", 2, 2
+        )).isInstanceOf(RetrievalAcceptanceGateValidator.GateValidationException.class)
+          .hasMessageContaining("requirementsLockSha256 missing or empty");
+    }
+
+    @Test
+    @DisplayName("modelTag 或 profileId 缺失时必须拒绝")
+    void missingModelTagOrProfileIdIsRejected() {
+        SyntheticFixture f = createValidSyntheticFixture();
+        f.freeze().remove("modelTag");
+
+        assertThatThrownBy(() -> RetrievalAcceptanceGateValidator.validateForExecution(
+                f.dataset(), f.rawJson(), f.freeze(), Path.of("."),
+                "INDEPENDENT_ACCEPTANCE_CANDIDATE", 2, 2
+        )).isInstanceOf(RetrievalAcceptanceGateValidator.GateValidationException.class)
+          .hasMessageContaining("modelTag missing");
+    }
+
+    @Test
+    @DisplayName("质量指标阈值为负数或大于 1.0 时必须拒绝")
+    void invalidRatioThresholdsRejected() {
+        SyntheticFixture f = createValidSyntheticFixture();
+        ((ObjectNode) f.freeze().path("proposedThresholds")).put("macroSourceRecallAt8", -0.1);
+
+        assertThatThrownBy(() -> RetrievalAcceptanceGateValidator.validateForExecution(
+                f.dataset(), f.rawJson(), f.freeze(), Path.of("."),
+                "INDEPENDENT_ACCEPTANCE_CANDIDATE", 2, 2
+        )).isInstanceOf(RetrievalAcceptanceGateValidator.GateValidationException.class)
+          .hasMessageContaining("macroSourceRecallAt8 threshold must be a valid ratio in [0.0, 1.0]");
+    }
+
+    @Test
     @DisplayName("审阅者为 AI 或占位符时必须被拒绝")
     void missingOrPlaceholderReviewerIsRejected() {
         SyntheticFixture f = createValidSyntheticFixture();
@@ -116,7 +186,7 @@ class RetrievalAcceptanceGateValidatorTest {
     @DisplayName("审阅时间戳非合法 ISO-8601 时必须被拒绝")
     void invalidIsoTimestampIsRejected() {
         SyntheticFixture f = createValidSyntheticFixture();
-        f.dataset().put("reviewedAt", "2026-10-22 14:00:00"); // 非 ISO-8601
+        f.dataset().put("reviewedAt", "2026-10-22 14:00:00");
         String raw = f.dataset().toString();
         f.freeze().put("datasetSha256", Hashes.sha256Hex(raw));
 
@@ -211,5 +281,13 @@ class RetrievalAcceptanceGateValidatorTest {
                 "INDEPENDENT_ACCEPTANCE_CANDIDATE", 2, 2
         )).isInstanceOf(RetrievalAcceptanceGateValidator.GateValidationException.class)
           .hasMessageContaining("Dataset SHA-256 mismatch");
+    }
+
+    private static String assertRead(Path p) {
+        try {
+            return java.nio.file.Files.readString(p);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }
