@@ -1,0 +1,1799 @@
+{
+  "version": "acceptance-candidate.v2",
+  "datasetRole": "INDEPENDENT_ACCEPTANCE_CANDIDATE",
+  "humanReviewStatus": "PENDING",
+  "executionStatus": "NOT_RUN",
+  "tuningUse": "NEVER_USED",
+  "authorship": "AI-authored independent candidate dataset based on Spec Agent v2 architecture specifications; pending human review; strictly zero execution history",
+  "reviewedBy": null,
+  "reviewedAt": null,
+  "sources": [
+    {
+      "alias": "N00",
+      "kind": "NODE",
+      "text": "节点图谱中每个 Workspace Unit 具有全局唯一 UUID 与持久化版本号；软删除仅撤回可见性而不破坏历史溯源链。 验收夹具标识 FACT-3100。",
+      "provenance": {
+        "repositoryPath": "docs/v2/NODE_MODEL_V2.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N01",
+      "kind": "NODE",
+      "text": "澄清动作的合法性检查由 Action Eligibility 守卫独立仲裁；未就绪的前置依赖阻止模型执行分支合并。 验收夹具标识 FACT-3101。",
+      "provenance": {
+        "repositoryPath": "docs/v2/ACTION_ELIGIBILITY_ARCHITECTURE.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N02",
+      "kind": "NODE",
+      "text": "候选生成过程中的向量距离阈值设定为 0.50；超过此距离的语义节点在初筛阶段直接剔除。 验收夹具标识 FACT-3102。",
+      "provenance": {
+        "repositoryPath": "docs/v2/UNIFIED_PYTHON_RAG_DESIGN.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N03",
+      "kind": "NODE",
+      "text": "多工作线程调度使用 RebuildLeaseCoordinator 进行租约加锁；过期租约由后台协同器抢占并回收。 验收夹具标识 FACT-3103。",
+      "provenance": {
+        "repositoryPath": "docs/v2/PHASE1_MULTI_WORKER_EXECUTION_DESIGN.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N04",
+      "kind": "NODE",
+      "text": "运行时模型网关对所有供应商响应实施 Fail-Closed 校验；格式不合规的结构化输出直接标记为失败。 验收夹具标识 FACT-3104。",
+      "provenance": {
+        "repositoryPath": "docs/v2/AGENT_RUNTIME_ARCHITECTURE.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N05",
+      "kind": "NODE",
+      "text": "跨项目检索授权通过 RetrievalScopeGrant 显式下发；无当前项目授权的私有语料在 SQL 层直接阻断。 验收夹具标识 FACT-3105。",
+      "provenance": {
+        "repositoryPath": "docs/v2/PHASE2_IDENTITY_AUTHORIZATION_DESIGN.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N06",
+      "kind": "NODE",
+      "text": "全局助手在 LangChain 架构下将会话记忆与持久化 Checkpoint 绑定；单步失败不会破坏历史有效状态。 验收夹具标识 FACT-3106。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GLOBAL_ASSISTANT_LANGCHAIN_REDESIGN.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N07",
+      "kind": "NODE",
+      "text": "词法检索通道引入 CJK Bigram 增强索引；对中文多词表达进行双字切分以保证无分词器场景下的自然语言召回。 验收夹具标识 FACT-3107。",
+      "provenance": {
+        "repositoryPath": "docs/v2/UNIFIED_PYTHON_RAG_DESIGN.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N08",
+      "kind": "NODE",
+      "text": "嵌入向量计算由本地 Qwen3-0.6B 服务提供，固定输出 1024 维 float32 数组并通过小端字节序校验和验真。 验收夹具标识 FACT-3108。",
+      "provenance": {
+        "repositoryPath": "docs/v2/LOCAL_DEPLOYMENT_SERVICE_CONFIGURATION_DESIGN.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N09",
+      "kind": "NODE",
+      "text": "宿主等待协议 C16-WAIT 针对未就绪的异步任务建立延期唤醒队列；超时未决则触发主动取消。 验收夹具标识 FACT-3109。",
+      "provenance": {
+        "repositoryPath": "docs/v2/C16_WAIT_V4.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N10",
+      "kind": "NODE",
+      "text": "混合检索融合采用标准 Reciprocal Rank Fusion (RRF)，平滑常数 k 固定配置为 60。 验收夹具标识 FACT-3110。",
+      "provenance": {
+        "repositoryPath": "docs/v2/UNIFIED_PYTHON_RAG_DESIGN.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N11",
+      "kind": "NODE",
+      "text": "节点属性的局部修订通过 AnswerPatch 增量追踪；任何历史 Patch 不得直接改写父节点原始记录。 验收夹具标识 FACT-3111。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GRAPH_MODEL_V2.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N12",
+      "kind": "NODE",
+      "text": "外部 Web 检索工具 Tavily 仅在全局助手明确授权时调用；获取的网页内容按外部证据级别标记。 验收夹具标识 FACT-3112。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GLOBAL_ASSISTANT_SINGLE_ENGINE_AND_WEB_TOOLS_PLAN.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N13",
+      "kind": "NODE",
+      "text": "项目 Agent 对当前路线的上下文重构采用线性祖先溯源；被剪枝或分叉的同级路线节点排除在上下文窗口之外。 验收夹具标识 FACT-3113。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GRAPH_ROUTE_CONTEXT_INTEGRITY_INVESTIGATION.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N14",
+      "kind": "NODE",
+      "text": "本地推理客户端向 Broker 发起调用时配置独立超时预算；超时未响应由客户端主动熔断。 验收夹具标识 FACT-3114。",
+      "provenance": {
+        "repositoryPath": "docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "N15",
+      "kind": "NODE",
+      "text": "生产环境通过环境变量隔离网络代理设置；Python 检索进程启动时移除全局 SOCKS 代理以防旁路污染。 验收夹具标识 FACT-3115。",
+      "provenance": {
+        "repositoryPath": "docs/v2/UNIFIED_PYTHON_RAG_DESIGN.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "R00",
+      "kind": "RESOURCE",
+      "text": "# 分块规范文档\n\n长文本切分最大单块长度为 800 字符，保留 100 字符重叠窗口以维护上下文连贯性。文档归档编号 CHK-801。\n",
+      "provenance": {
+        "repositoryPath": "docs/v2/UNIFIED_PYTHON_RAG_DESIGN.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "R01",
+      "kind": "RESOURCE",
+      "text": "# 宿主存储认证规范\n\nPython 与 Java 宿主之间采用内部安全令牌 X-Spec-Agent-Internal-Token 进行双向握手鉴权。文档归档编号 SEC-802。\n",
+      "provenance": {
+        "repositoryPath": "docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "R02",
+      "kind": "RESOURCE",
+      "text": "# 索引迁移规范\n\n当底层向量索引发生结构升级时，保留旧版本索引直至新 generation 整体校验通过后再行原子切换。文档归档编号 MIG-803。\n",
+      "provenance": {
+        "repositoryPath": "docs/v2/LOCAL_DEPLOYMENT_SERVICE_CONFIGURATION_GUIDE.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "R03",
+      "kind": "RESOURCE",
+      "text": "# 性能基准规范\n\n单次检索请求在本地 CPU 环境下的目标端到端 P50 延迟需小于等于 500 毫秒。文档归档编号 PERF-804。\n",
+      "provenance": {
+        "repositoryPath": "docs/v2/P3A_PROJECT_AGENT_QUALITY_EVALUATION.md",
+        "sourceVersion": "1"
+      }
+    },
+    {
+      "alias": "S00",
+      "kind": "STALE_NODE",
+      "text": "已撤回实验特性 OBS-STALE-0：曾尝试在检索层直接合并图谱社区发现算法；该特性已正式废弃。",
+      "provenance": {
+        "repositoryPath": "隔离测试夹具",
+        "sourceVersion": "0"
+      }
+    },
+    {
+      "alias": "S01",
+      "kind": "STALE_NODE",
+      "text": "已撤回实验特性 OBS-STALE-1：曾尝试通过多轮 LLM 改写扩展查询词；现已改为确定性 CJK Bigram。",
+      "provenance": {
+        "repositoryPath": "隔离测试夹具",
+        "sourceVersion": "0"
+      }
+    },
+    {
+      "alias": "S02",
+      "kind": "STALE_NODE",
+      "text": "已撤回实验特性 OBS-STALE-2：曾计划使用云端 Embedding API 作为默认；现已全面收敛至本地 Ollama。",
+      "provenance": {
+        "repositoryPath": "隔离测试夹具",
+        "sourceVersion": "0"
+      }
+    },
+    {
+      "alias": "S03",
+      "kind": "STALE_NODE",
+      "text": "已撤回实验特性 OBS-STALE-3：曾设计客户端直接连接 pgvector 数据库；现已改为受保护宿主 RPC。",
+      "provenance": {
+        "repositoryPath": "隔离测试夹具",
+        "sourceVersion": "0"
+      }
+    },
+    {
+      "alias": "P00",
+      "kind": "PRIVATE_NODE",
+      "text": "其他项目绝密配置 CONF-PRIV-0：金融交易网关对接私钥与支付通道路由。",
+      "provenance": {
+        "repositoryPath": "隔离测试夹具",
+        "sourceVersion": "0"
+      }
+    },
+    {
+      "alias": "P01",
+      "kind": "PRIVATE_NODE",
+      "text": "其他项目绝密配置 CONF-PRIV-1：企业专属人事薪酬核算公式与薪资职级对照表。",
+      "provenance": {
+        "repositoryPath": "隔离测试夹具",
+        "sourceVersion": "0"
+      }
+    },
+    {
+      "alias": "P02",
+      "kind": "PRIVATE_NODE",
+      "text": "其他项目绝密配置 CONF-PRIV-2：供应链独家供货协议价格表与年度返点政策。",
+      "provenance": {
+        "repositoryPath": "隔离测试夹具",
+        "sourceVersion": "0"
+      }
+    },
+    {
+      "alias": "P03",
+      "kind": "PRIVATE_NODE",
+      "text": "其他项目绝密配置 CONF-PRIV-3：未经公开的并购谈判意向书与股权质押清册。",
+      "provenance": {
+        "repositoryPath": "隔离测试夹具",
+        "sourceVersion": "0"
+      }
+    }
+  ],
+  "queries": [
+    {
+      "id": "B001",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "节点在图谱里做软删除后，历史上的溯源链条还会保留吗？",
+      "expectedAliases": [
+        "N00"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N00，表达核心溯源链与软删除可见性分离原则。"
+    },
+    {
+      "id": "B002",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "如果依赖条件没有满足，模型能强行把两个分支合并吗？",
+      "expectedAliases": [
+        "N01"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N01，涉及 Action Eligibility 守卫的独立仲裁机制。"
+    },
+    {
+      "id": "B003",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "向量初筛时，相距太远的节点是在哪个距离阈值被直接筛掉的？",
+      "expectedAliases": [
+        "N02"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N02，明确 0.50 向量距离截断。"
+    },
+    {
+      "id": "B004",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "多个工作线程并发时，谁来负责协调租约加锁与过期回收？",
+      "expectedAliases": [
+        "N03"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N03，明确 RebuildLeaseCoordinator 的调度。"
+    },
+    {
+      "id": "B005",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "模型返回的结构化输出如果不符合契约，网关会怎么处理？",
+      "expectedAliases": [
+        "N04"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N04，体现 Fail-Closed 安全校验原则。"
+    },
+    {
+      "id": "B006",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "没有给当前项目授权的私有文档，SQL 查询能直接阻断吗？",
+      "expectedAliases": [
+        "N05"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N05，明确 RetrievalScopeGrant 与 SQL 授权过滤。"
+    },
+    {
+      "id": "B007",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "全局助手的会话中某一步执行失败，之前的检查点状态会丢失吗？",
+      "expectedAliases": [
+        "N06"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N06，LangChain Checkpoint 状态持久化机制。"
+    },
+    {
+      "id": "B008",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "检索引擎在不依赖专门中文分词器时，靠什么保证中文自然语言召回？",
+      "expectedAliases": [
+        "N07"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N07，明确 CJK Bigram 词法双字切分增强。"
+    },
+    {
+      "id": "B009",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "本地运行的 Qwen 嵌入模型输出多少维度的向量，如何做校验？",
+      "expectedAliases": [
+        "N08"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N08，固定 1024 维 float32 及小端校验和。"
+    },
+    {
+      "id": "B010",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "宿主对于还没完成的异步任务，是怎样建立唤醒队列的？",
+      "expectedAliases": [
+        "N09"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N09，明确 C16-WAIT 延期唤醒与超时取消。"
+    },
+    {
+      "id": "B011",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "词法路和向量路做混合检索融合时，使用的 RRF 平滑常数是多少？",
+      "expectedAliases": [
+        "N10"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N10，固定 RRF k=60。"
+    },
+    {
+      "id": "B012",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "修改已有节点属性时，会直接改写历史父节点记录吗？",
+      "expectedAliases": [
+        "N11"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N11，AnswerPatch 增量追踪与不可变历史。"
+    },
+    {
+      "id": "B013",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "调用外部 Tavily 网页搜索工具获得的内容，在系统里算什么级别的证据？",
+      "expectedAliases": [
+        "N12"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N12，明确 EXTERNAL_EVIDENCE 外部证据标记。"
+    },
+    {
+      "id": "B014",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "项目 Agent 构建上下文时，分叉路线上的同级节点会被包含进来吗？",
+      "expectedAliases": [
+        "N13"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N13，线性祖先溯源与同级路线隔离。"
+    },
+    {
+      "id": "B015",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "向本地 Broker 发起模型调用如果卡住了，客户端有什么保护措施？",
+      "expectedAliases": [
+        "N14"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N14，明确独立超时预算与主动熔断机制。"
+    },
+    {
+      "id": "B016",
+      "category": "PROJECT_EXPRESSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "系统如何防止本地代理环境变量影响 Python 检索服务的网络通信？",
+      "expectedAliases": [
+        "N15"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 N15，子进程启动时移除全局 SOCKS 代理。"
+    },
+    {
+      "id": "B017",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3100",
+      "expectedAliases": [
+        "N00"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N00。"
+    },
+    {
+      "id": "B018",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3101",
+      "expectedAliases": [
+        "N01"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N01。"
+    },
+    {
+      "id": "B019",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3102",
+      "expectedAliases": [
+        "N02"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N02。"
+    },
+    {
+      "id": "B020",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3103",
+      "expectedAliases": [
+        "N03"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N03。"
+    },
+    {
+      "id": "B021",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3104",
+      "expectedAliases": [
+        "N04"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N04。"
+    },
+    {
+      "id": "B022",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3105",
+      "expectedAliases": [
+        "N05"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N05。"
+    },
+    {
+      "id": "B023",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3106",
+      "expectedAliases": [
+        "N06"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N06。"
+    },
+    {
+      "id": "B024",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3107",
+      "expectedAliases": [
+        "N07"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N07。"
+    },
+    {
+      "id": "B025",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3108",
+      "expectedAliases": [
+        "N08"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N08。"
+    },
+    {
+      "id": "B026",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3109",
+      "expectedAliases": [
+        "N09"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N09。"
+    },
+    {
+      "id": "B027",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3110",
+      "expectedAliases": [
+        "N10"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N10。"
+    },
+    {
+      "id": "B028",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3111",
+      "expectedAliases": [
+        "N11"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N11。"
+    },
+    {
+      "id": "B029",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3112",
+      "expectedAliases": [
+        "N12"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N12。"
+    },
+    {
+      "id": "B030",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3113",
+      "expectedAliases": [
+        "N13"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N13。"
+    },
+    {
+      "id": "B031",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3114",
+      "expectedAliases": [
+        "N14"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N14。"
+    },
+    {
+      "id": "B032",
+      "category": "EXACT_IDENTIFIER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "FACT-3115",
+      "expectedAliases": [
+        "N15"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "精确标识符匹配 N15。"
+    },
+    {
+      "id": "B033",
+      "category": "RESOURCE_CONTENT",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "query": "CHK-801",
+      "expectedAliases": [
+        "R00"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "标识符 CHK-801 对应 R00。"
+    },
+    {
+      "id": "B034",
+      "category": "RESOURCE_CONTENT",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "query": "长文本分块的最大单块字符数和重叠窗口各是多少？",
+      "expectedAliases": [
+        "R00"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 R00，考核 800 字单块与 100 字重叠。"
+    },
+    {
+      "id": "B035",
+      "category": "RESOURCE_CONTENT",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "query": "SEC-802",
+      "expectedAliases": [
+        "R01"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "标识符 SEC-802 对应 R01。"
+    },
+    {
+      "id": "B036",
+      "category": "RESOURCE_CONTENT",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "query": "Python 检索服务与 Java 宿主通信时使用什么请求头进行握手鉴权？",
+      "expectedAliases": [
+        "R01"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 R01，考核 X-Spec-Agent-Internal-Token。"
+    },
+    {
+      "id": "B037",
+      "category": "RESOURCE_CONTENT",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "query": "MIG-803",
+      "expectedAliases": [
+        "R02"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "标识符 MIG-803 对应 R02。"
+    },
+    {
+      "id": "B038",
+      "category": "RESOURCE_CONTENT",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "query": "向量索引结构升级期间，旧版本的索引何时被切换替换？",
+      "expectedAliases": [
+        "R02"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 R02，考核新代际校验通过后的原子切换。"
+    },
+    {
+      "id": "B039",
+      "category": "RESOURCE_CONTENT",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "query": "PERF-804",
+      "expectedAliases": [
+        "R03"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "标识符 PERF-804 对应 R03。"
+    },
+    {
+      "id": "B040",
+      "category": "RESOURCE_CONTENT",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "query": "系统对本地 CPU 环境下单次检索的 P50 延迟目标要求是多少？",
+      "expectedAliases": [
+        "R03"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "对应 R03，考核 P50 <= 500ms 延迟目标。"
+    },
+    {
+      "id": "B041",
+      "category": "MULTI_SOURCE",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "节点的软删除溯源机制与属性的 AnswerPatch 增量更新分别如何规定？",
+      "expectedAliases": [
+        "N00",
+        "N11"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "all-of 必须同时命中 N00 与 N11。"
+    },
+    {
+      "id": "B042",
+      "category": "MULTI_SOURCE",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "初筛阶段的向量距离截断阈值和混合检索的 RRF 平滑参数各是多少？",
+      "expectedAliases": [
+        "N02",
+        "N10"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "all-of 必须同时命中 N02 与 N10。"
+    },
+    {
+      "id": "B043",
+      "category": "MULTI_SOURCE",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "跨项目未授权语料在 SQL 层如何拦截，以及进程启动时如何隔离外部代理？",
+      "expectedAliases": [
+        "N05",
+        "N15"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "all-of 必须同时命中 N05 与 N15。"
+    },
+    {
+      "id": "B044",
+      "category": "MULTI_SOURCE",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "词法通道的双字 Bigram 切分与本地向量模型的维度及小端校验是怎样配合的？",
+      "expectedAliases": [
+        "N07",
+        "N08"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "all-of 必须同时命中 N07 与 N08。"
+    },
+    {
+      "id": "B045",
+      "category": "MULTI_SOURCE",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "query": "长文本分块的最大单块字符长度，以及向量初筛允许的最大语义距离是多少？",
+      "expectedAliases": [
+        "R00",
+        "N02"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "跨类型 all-of：必须同时命中 R00 (RESOURCE) 与 N02 (NODE)。"
+    },
+    {
+      "id": "B046",
+      "category": "MULTI_SOURCE",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "query": "Python 宿主鉴权请求头名称与向量代际原子切换的时机分别是什么？",
+      "expectedAliases": [
+        "R01",
+        "R02"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "双 RESOURCE all-of：必须同时命中 R01 与 R02。"
+    },
+    {
+      "id": "B047",
+      "category": "MULTI_SOURCE",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "全局助手的 Checkpoint 持久化绑定与宿主异步任务延期唤醒队列各起什么作用？",
+      "expectedAliases": [
+        "N06",
+        "N09"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "all-of 必须同时命中 N06 与 N09。"
+    },
+    {
+      "id": "B048",
+      "category": "MULTI_SOURCE",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "结构化输出的 Fail-Closed 校验与向 Broker 调用时的超时熔断预算分别怎样设置？",
+      "expectedAliases": [
+        "N04",
+        "N14"
+      ],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "all-of 必须同时命中 N04 与 N14。"
+    },
+    {
+      "id": "B049",
+      "category": "NEAR_NO_ANSWER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "软删除的节点在数据库中保留多少个自然月后会被彻底物理粉碎？",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "近主题无答案：涉及软删除与版本溯源(N00)，但语料未提及物理删除月数。"
+    },
+    {
+      "id": "B050",
+      "category": "NEAR_NO_ANSWER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "租约协调器抢占过期锁时，必须等待多少毫秒的仲裁心跳？",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "近主题无答案：涉及租约协调(N03)，但语料未提及心跳毫秒数值。"
+    },
+    {
+      "id": "B051",
+      "category": "NEAR_NO_ANSWER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "模型网关结构化输出校验失败后，最多允许重试几次？",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "近主题无答案：涉及 Fail-Closed 校验(N04)，但语料未提及重试次数。"
+    },
+    {
+      "id": "B052",
+      "category": "NEAR_NO_ANSWER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "CJK Bigram 双字切分支持的最大汉字总长度是多少个字符？",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "近主题无答案：涉及 CJK 切分(N07)，但语料未提及总字数上限。"
+    },
+    {
+      "id": "B053",
+      "category": "NEAR_NO_ANSWER",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "query": "长文本切分使用的 100 字符重叠窗口允许用户自定义修改吗？",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "近主题无答案：涉及切分重叠(R00)，但语料未说明是否可动态配置。"
+    },
+    {
+      "id": "B054",
+      "category": "NEAR_NO_ANSWER",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "query": "X-Spec-Agent-Internal-Token 令牌每隔几小时轮换一次？",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "近主题无答案：涉及内部令牌(R01)，但语料未定义轮换周期。"
+    },
+    {
+      "id": "B055",
+      "category": "NEAR_NO_ANSWER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "Tavily Web 检索每次最多抓取前几个搜索结果？",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "近主题无答案：涉及 Web 检索(N12)，但语料未限定搜索结果抓取条数。"
+    },
+    {
+      "id": "B056",
+      "category": "NEAR_NO_ANSWER",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "query": "本地 CPU 环境下延迟若超过 500ms 会触发告警发给哪位工程师？",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "近主题无答案：涉及延迟目标(R03)，但语料未提及报警机制与负责人。"
+    },
+    {
+      "id": "B057",
+      "category": "STALE_VERSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "OBS-STALE-0",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "撤回版本标识符，禁止泄漏 S00。"
+    },
+    {
+      "id": "B058",
+      "category": "STALE_VERSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "OBS-STALE-1",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "撤回版本标识符，禁止泄漏 S01。"
+    },
+    {
+      "id": "B059",
+      "category": "STALE_VERSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "OBS-STALE-2",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "撤回版本标识符，禁止泄漏 S02。"
+    },
+    {
+      "id": "B060",
+      "category": "STALE_VERSION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "OBS-STALE-3",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "撤回版本标识符，禁止泄漏 S03。"
+    },
+    {
+      "id": "B061",
+      "category": "PERMISSION_ISOLATION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "CONF-PRIV-0",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "越权隔离标识符，禁止泄漏 P00。"
+    },
+    {
+      "id": "B062",
+      "category": "PERMISSION_ISOLATION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "CONF-PRIV-1",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "越权隔离标识符，禁止泄漏 P01。"
+    },
+    {
+      "id": "B063",
+      "category": "PERMISSION_ISOLATION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "CONF-PRIV-2",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "越权隔离标识符，禁止泄漏 P02。"
+    },
+    {
+      "id": "B064",
+      "category": "PERMISSION_ISOLATION",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "CONF-PRIV-3",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "越权隔离标识符，禁止泄漏 P03。"
+    },
+    {
+      "id": "B065",
+      "category": "NO_ANSWER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "公司新版差旅报销标准中，高铁二等座每天餐补是多少元？",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "纯负样本：完全不相关业务问题，要求严格 0 命中。"
+    },
+    {
+      "id": "B066",
+      "category": "NO_ANSWER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "前端微服务在生产集群中配置了几个副本节点？",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "纯负样本：完全不相关业务问题，要求严格 0 命中。"
+    },
+    {
+      "id": "B067",
+      "category": "NO_ANSWER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "客户退货退款需要哪一级技术主管签字审批？",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "纯负样本：完全不相关业务问题，要求严格 0 命中。"
+    },
+    {
+      "id": "B068",
+      "category": "NO_ANSWER",
+      "scopes": [
+        "PROJECT"
+      ],
+      "query": "本季度对外投资协议中的保密期限具体到哪一年哪一月？",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "P00",
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "纯负样本：完全不相关业务问题，要求严格 0 命中。"
+    }
+  ]
+}
