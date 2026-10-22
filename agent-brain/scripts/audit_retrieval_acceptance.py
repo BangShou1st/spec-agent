@@ -1,6 +1,10 @@
-"""Static precheck only: never runs queries, tunes config, or approves human labels."""
+"""Static precheck only: never runs queries, tunes config, or approves human labels.
+ReadOnly audit tool: will never overwrite human review markdown.
+"""
+import argparse
 import hashlib
 import json
+import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,23 +18,50 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def check():
+def audit(strict=False):
     candidate = json.loads((DATA / 'acceptance-candidate.v1.json').read_text(encoding='utf-8'))
     development = json.loads((DATA / 'chinese-queries.v1.json').read_text(encoding='utf-8'))
     freeze = json.loads((DATA / 'acceptance-freeze.v1.json').read_text(encoding='utf-8'))
+
+    # 1. Dataset role and isolation assertions
     assert development['datasetRole'] == 'DEVELOPMENT_CALIBRATION'
     assert not development['calibrationHistory']['independentAcceptanceEligible']
     assert candidate['datasetRole'] == 'INDEPENDENT_ACCEPTANCE_CANDIDATE'
-    assert candidate['humanReviewStatus'] == 'PENDING'
     assert candidate['executionStatus'] == 'NOT_RUN' and candidate['tuningUse'] == 'NEVER_USED'
-    assert len(candidate['queries']) >= 50
-    assert freeze['datasetSha256'] == sha(DATA / freeze['datasetFile'])
-    assert freeze['requirementsLockSha256'] == sha(ROOT / 'agent-brain/requirements.lock')
+    assert len(candidate['queries']) == 68, f"Expected 68 candidate queries, got {len(candidate['queries'])}"
+    assert len(candidate['sources']) == 28, f"Expected 28 sources, got {len(candidate['sources'])}"
+
+    # 2. Frozen dataset hash assertion
+    candidate_actual_sha = sha(DATA / freeze['datasetFile'])
+    assert freeze['datasetSha256'] == candidate_actual_sha, "Candidate dataset hash mismatch!"
+
+    # 3. Parameters assertion
     assert (freeze['maxVectorDistance'], freeze['rrfK'], freeze['maxItems'], freeze['maxChars']) == (0.50, 60, 8, 8000)
     assert freeze['modelTag'] == 'qwen3-embedding:0.6b'
     assert freeze['profileId'] == '26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047'
-    for path, value in freeze['codeHashes'].items():
-        assert sha(ROOT / path) == value, f'Frozen implementation changed: {path}'
+
+    # 4. Hash drift audit (code and requirements)
+    drifted_files = []
+    actual_req_sha = sha(ROOT / 'agent-brain/requirements.lock')
+    if freeze['requirementsLockSha256'] != actual_req_sha:
+        drifted_files.append({
+            'file': 'agent-brain/requirements.lock',
+            'frozenHash': freeze['requirementsLockSha256'],
+            'actualHash': actual_req_sha,
+            'reason': 'Added socksio==1.0.0 for proxy isolation (commit 685bb05)'
+        })
+
+    for rel_path, expected_hash in freeze['codeHashes'].items():
+        actual_code_sha = sha(ROOT / rel_path)
+        if expected_hash != actual_code_sha:
+            drifted_files.append({
+                'file': rel_path,
+                'frozenHash': expected_hash,
+                'actualHash': actual_code_sha,
+                'reason': 'Historical engine/environment updates (commits 210d288, 520a8c7, 66f2309, c942366, 685bb05)'
+            })
+
+    # 5. Queries and sources integrity
     assert len({s['alias'] for s in candidate['sources']}) == len(candidate['sources'])
     assert len({q['id'] for q in candidate['queries']}) == len(candidate['queries'])
     normalize = lambda value: ''.join(value.split()).casefold()
@@ -38,6 +69,7 @@ def check():
     new_queries = [normalize(q['query']) for q in candidate['queries']]
     assert len(set(new_queries)) == len(new_queries) and not old_queries.intersection(new_queries)
     assert not {s['text'] for s in development['sources']}.intersection(s['text'] for s in candidate['sources'])
+
     aliases = {s['alias']: s for s in candidate['sources']}
     for query in candidate['queries']:
         assert query['labelReview'] == 'PENDING_HUMAN_REVIEW'
@@ -50,13 +82,48 @@ def check():
             assert len(query['expectedAliases']) >= 2
         if any(aliases[a]['kind'] == 'RESOURCE' for a in query['expectedAliases']):
             assert 'RESOURCE' in query['scopes']
+
+    # 6. Read-only review markdown verification (never overwrite!)
+    review_md_path = DATA / 'ACCEPTANCE_HUMAN_REVIEW.md'
+    review_doc_present = review_md_path.exists()
+    if review_doc_present:
+        review_content = review_md_path.read_text(encoding='utf-8')
+        for q in candidate['queries']:
+            assert q['id'] in review_content, f"Query {q['id']} missing from review document"
+
+    # 7. Overall status evaluation
+    human_status = candidate['humanReviewStatus']
+    labels_approved = (human_status == 'APPROVED')
+    
+    # Blocked if code hashes drifted or human review is still pending
+    if drifted_files:
+        precheck_status = 'BLOCKED'
+        status_reason = f'Frozen code/dependency hashes drifted ({len(drifted_files)} files). Lexical lane and environment modified since freeze snapshot. Governance requires pre-run resolution.'
+    elif not labels_approved:
+        precheck_status = 'BLOCKED'
+        status_reason = 'Candidate labels remain PENDING human approval. Formal acceptance cannot run without approved labels.'
+    else:
+        precheck_status = 'PASS'
+        status_reason = 'Static precheck passed; dataset and freeze hashes aligned; human approved.'
+
     report = {
-        'recordedAt': datetime.now(timezone.utc).isoformat(), 'status': 'STATIC_PRECHECK_PASS',
-        'queryCount': len(candidate['queries']), 'sourceCount': len(aliases),
+        'recordedAt': datetime.now(timezone.utc).isoformat(),
+        'status': precheck_status,
+        'statusReason': status_reason,
+        'queryCount': len(candidate['queries']),
+        'sourceCount': len(aliases),
         'categories': dict(Counter(q['category'] for q in candidate['queries'])),
-        'exactQueryOverlapWithDevelopment': 0, 'exactSourceOverlapWithDevelopment': 0,
-        'candidateSha256': freeze['datasetSha256'], 'freezeSha256': sha(DATA / 'acceptance-freeze.v1.json'),
-        'executedQueries': 0, 'labelsApproved': False, 'humanReviewStatus': 'PENDING',
+        'exactQueryOverlapWithDevelopment': 0,
+        'exactSourceOverlapWithDevelopment': 0,
+        'candidateSha256': freeze['datasetSha256'],
+        'freezeSha256': sha(DATA / 'acceptance-freeze.v1.json'),
+        'executedQueries': 0,
+        'executionStatus': 'NOT_RUN',
+        'labelsApproved': labels_approved,
+        'humanReviewStatus': human_status,
+        'humanReviewDocumentPresent': review_doc_present,
+        'hashDriftCount': len(drifted_files),
+        'hashDriftList': drifted_files,
         'semanticPrecheck': [
             'Near-no-answer asks unsupported quantities/policies; related context is not sufficient to answer.',
             'Multi-source labels are all-of, not any-hit; reviewers must check each source is necessary.',
@@ -67,26 +134,36 @@ def check():
         ],
         'rootLimit': 'AI static/semantic precheck is not human annotation or retrieval-quality acceptance.'
     }
-    (ROOT / 'docs/v2/evidence/SHARED_RAG_ACCEPTANCE_PRECHECK.json').write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    lines = ['# 独立候选验收集人工审阅', '',
-             '状态：PENDING；68 条 AI 编写候选，尚未运行、未参与调参。52 查询属于校准开发集。', '',
-             '来源基于真实项目仓库文档转述，标识符是合成夹具；不是生产数据或用户对话。',
-             '请检查来源事实、问题意图、可替代来源和拒答边界；不得根据以后运行的命中结果倒推标签。',
-             'MULTI_SOURCE 是 all-of：缺少任一必需来源均不算完整覆盖。NEAR_NO_ANSWER 主题接近但无足够答案，需特别审阅。', '',
-             '先实际人工审阅并记录身份/时间，冻结修正后的数据 hash 和首轮验收门槛，再运行。',
-             '本工具不修改 HUMAN_REVIEWED 或 APPROVED。', '', '## 来源', '',
-             '| Alias | 类型 | 来源文字 | 文档依据 |', '|---|---|---|---|']
-    def cell(value):
-        return str(value).replace('|', '\\|').replace('\r', '').replace('\n', '<br>')
-    for source in candidate['sources']:
-        lines.append(f"| {source['alias']} | {source['kind']} | {cell(source['text'])} | {cell(source.get('provenance', {}).get('repositoryPath', '隔离夹具'))} |")
-    lines += ['', '## 查询', '', '| ID | 类别/范围 | 查询 | 初始预期 Alias | 审阅提示 | 人工结论 |', '|---|---|---|---|---|---|']
-    for query in candidate['queries']:
-        lines.append(f"| {query['id']} | {query['category']} / {','.join(query['scopes'])} | {cell(query['query'])} | {','.join(query['expectedAliases']) or '空（不应返回）'} | {cell(query['reviewNotes'])} | 待审 |")
-    (DATA / 'ACCEPTANCE_HUMAN_REVIEW.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
-    print('Static precheck passed; 0 queries executed; human approval remains pending.')
+
+    # Record report without touching or overwriting human review document
+    evidence_path = ROOT / 'docs/v2/evidence/SHARED_RAG_ACCEPTANCE_PRECHECK.json'
+    evidence_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+    print(f"=== Spec Agent Retrieval Acceptance Static Audit ===")
+    print(f"Overall Status   : {precheck_status}")
+    print(f"Reason           : {status_reason}")
+    print(f"Executed Queries : 0 (NOT_RUN)")
+    print(f"Candidate Hash   : {candidate_actual_sha} (Match: True)")
+    print(f"Human Approval   : {human_status} (Approved: {labels_approved})")
+    print(f"Review Doc State : Present ({review_md_path.stat().st_size} bytes, safe/never overwritten)")
+    print(f"Hash Drift Count : {len(drifted_files)}")
+    if drifted_files:
+        print("--- Drifted Files ---")
+        for d in drifted_files:
+            print(f" - {d['file']}")
+            print(f"   Frozen: {d['frozenHash']}")
+            print(f"   Actual: {d['actualHash']}")
+            print(f"   Reason: {d['reason']}")
+    print("====================================================")
+
+    if strict and precheck_status != 'PASS':
+        sys.exit(1)
+    return report
 
 
 if __name__ == '__main__':
-    check()
+    parser = argparse.ArgumentParser(description="Static precheck for independent retrieval acceptance.")
+    parser.add_argument("--strict", action="store_true", help="Fail with non-zero exit code if status is not PASS.")
+    args = parser.parse_args()
+    audit(strict=args.strict)
+

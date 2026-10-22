@@ -1,6 +1,7 @@
 {
-  "recordedAt": "2026-10-02T00:24:34.170064+00:00",
-  "status": "STATIC_PRECHECK_PASS",
+  "recordedAt": "2026-10-22T13:40:52.226946+00:00",
+  "status": "BLOCKED",
+  "statusReason": "Frozen code/dependency hashes drifted (6 files). Lexical lane and environment modified since freeze snapshot. Governance requires pre-run resolution.",
   "queryCount": 68,
   "sourceCount": 28,
   "categories": {
@@ -18,8 +19,49 @@
   "candidateSha256": "ae43db38dc1b99ae1a6feeca30fa8f11b16cea4e9ef180981f431c5258a8c5e8",
   "freezeSha256": "0c88f46f4e94c90412a789f7936217e789966d22c7e511e0fed209983386ec20",
   "executedQueries": 0,
+  "executionStatus": "NOT_RUN",
   "labelsApproved": false,
   "humanReviewStatus": "PENDING",
+  "humanReviewDocumentPresent": true,
+  "hashDriftCount": 6,
+  "hashDriftList": [
+    {
+      "file": "agent-brain/requirements.lock",
+      "frozenHash": "eb1bb4f240aeabb94e3a7fdee5edd6abe94590aec9e3431ca58a9794701a4ef6",
+      "actualHash": "c97a57fd54a0eba71b7e9dbb56eb345f04c2b2b001c6f060932c2b5b12d692db",
+      "reason": "Added socksio==1.0.0 for proxy isolation (commit 685bb05)"
+    },
+    {
+      "file": "agent-brain/src/spec_agent_brain/retrieval/embedding.py",
+      "frozenHash": "7f72c0706779f7512d4ebce260b6e7f0e11f499b132c618757b12e96130ac69d",
+      "actualHash": "904fea6deae08bd8afbd25cb2d972eccfbd1452ead1c9e1490144144a2fcb48b",
+      "reason": "Historical engine/environment updates (commits 210d288, 520a8c7, 66f2309, c942366, 685bb05)"
+    },
+    {
+      "file": "agent-brain/src/spec_agent_brain/retrieval/service.py",
+      "frozenHash": "7747a0ca55b02b9ff5fe37ee029e582673127bd5b14f5f44145c3b532ec0b1e9",
+      "actualHash": "f42d06f09fb8a813f265708020b15132fa84ce2b3fad7643768e42af78b2c640",
+      "reason": "Historical engine/environment updates (commits 210d288, 520a8c7, 66f2309, c942366, 685bb05)"
+    },
+    {
+      "file": "agent-brain/src/spec_agent_brain/retrieval/contracts.py",
+      "frozenHash": "d0e66cc9299c2596edd1cfec277637768c36922b893b7d25a40fbecafb8d10a2",
+      "actualHash": "c493a92e852512e071eb9266dd20c9ba5543a28dbfcbd66621ac63860aa6e59c",
+      "reason": "Historical engine/environment updates (commits 210d288, 520a8c7, 66f2309, c942366, 685bb05)"
+    },
+    {
+      "file": "backend/src/main/java/com/specagent/retrieval/protocol/RetrievalStore.java",
+      "frozenHash": "d9841bfae9d748c266002cad301200debd69132156104bb2d8d328f0bad31f24",
+      "actualHash": "6e8f3b6f69f9ece82face31c80eb9c6065d1b82fd1eb264b2987273f5f6ef5a1",
+      "reason": "Historical engine/environment updates (commits 210d288, 520a8c7, 66f2309, c942366, 685bb05)"
+    },
+    {
+      "file": "backend/src/test/java/com/specagent/retrieval/SharedRetrievalIntegrationTest.java",
+      "frozenHash": "13b4c4094dca90ee59bbf93560c103ecb22c297d954b52e0813fa29ae952c810",
+      "actualHash": "942b84f8bb11e2cf83449613752f783ebebd033dd63d76da3b12e898f5531163",
+      "reason": "Historical engine/environment updates (commits 210d288, 520a8c7, 66f2309, c942366, 685bb05)"
+    }
+  ],
   "semanticPrecheck": [
     "Near-no-answer asks unsupported quantities/policies; related context is not sufficient to answer.",
     "Multi-source labels are all-of, not any-hit; reviewers must check each source is necessary.",
