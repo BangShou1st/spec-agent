@@ -95,19 +95,53 @@ def audit_single_asset(freeze_name, candidate_name, review_md_name, development_
         for q in candidate['queries']:
             assert q['id'] in review_content, f"Query {q['id']} missing from review document {review_md_name}"
 
-    # 7. Evaluation of status
-    human_status = candidate['humanReviewStatus']
-    labels_approved = (human_status == 'APPROVED')
-
+    # 7. Comprehensive 7-Point Human Approval Gate Verification
+    gate_failures = []
+    
+    # Gate 1: All 68 queries individually reviewed (not just top-level)
+    unreviewed_queries = [q['id'] for q in candidate['queries'] if q.get('labelReview') == 'PENDING_HUMAN_REVIEW']
+    if unreviewed_queries:
+        gate_failures.append(f"Individual query reviews pending ({len(unreviewed_queries)} queries unreviewed, e.g. {unreviewed_queries[:3]})")
+    
+    # Gate 2: Genuine reviewer identity and timestamp
+    reviewed_by = str(candidate.get('reviewedBy') or '').strip()
+    reviewed_at = str(candidate.get('reviewedAt') or '').strip()
+    placeholder_names = {'none', 'null', 'pending', 'ai', 'ai-agent', 'unassigned', ''}
+    if not reviewed_by or reviewed_by.lower() in placeholder_names:
+        gate_failures.append(f"Genuine human reviewer identity missing (got: '{reviewed_by}')")
+    if not reviewed_at or reviewed_at.lower() in placeholder_names:
+        gate_failures.append(f"Human review timestamp missing (got: '{reviewed_at}')")
+    
+    # Gate 3: Candidate dataset hash consistency
+    if candidate_actual_sha != freeze['datasetSha256']:
+        gate_failures.append(f"Dataset SHA-256 mismatch (actual {candidate_actual_sha[:8]} vs frozen {freeze['datasetSha256'][:8]})")
+        
+    # Gate 4: Implementation and dependency hashes alignment
     if drifted_files:
+        gate_failures.append(f"Implementation/dependency hashes drifted ({len(drifted_files)} files drifted)")
+        
+    # Gate 5: Quality acceptance threshold approval
+    threshold_status = str(freeze.get('thresholdStatus', '')).upper()
+    if 'PROPOSED' in threshold_status or 'NOT_APPROVED' in threshold_status or 'PENDING' in threshold_status:
+        gate_failures.append(f"Quality acceptance thresholds unapproved (status: '{freeze.get('thresholdStatus')}')")
+        
+    # Gate 6: Zero tuning usage
+    if candidate.get('tuningUse') != 'NEVER_USED':
+        gate_failures.append(f"Dataset contaminated by tuning use (tuningUse: '{candidate.get('tuningUse')}')")
+        
+    # Gate 7: Zero prior execution history
+    if candidate.get('executionStatus') != 'NOT_RUN':
+        gate_failures.append(f"Execution history polluted (executionStatus: '{candidate.get('executionStatus')}')")
+
+    human_status = candidate['humanReviewStatus']
+    labels_approved = (len(gate_failures) == 0 and human_status == 'APPROVED')
+
+    if gate_failures:
         precheck_status = 'BLOCKED'
-        status_reason = f'Frozen code/dependency hashes drifted ({len(drifted_files)} files). Lexical lane or environment modified since freeze snapshot. Retires from held-out independence without versioned exception.'
-    elif not labels_approved:
-        precheck_status = 'BLOCKED'
-        status_reason = 'Candidate labels and quality thresholds remain PENDING human approval. Formal evaluation entry point strictly rejects execution.'
+        status_reason = f"Execution gate BLOCKED by {len(gate_failures)} missing condition(s): " + "; ".join(gate_failures)
     else:
         precheck_status = 'PASS'
-        status_reason = 'Static precheck passed; dataset and freeze hashes aligned; human approved.'
+        status_reason = 'All 7 acceptance gate conditions fully satisfied; dataset verified and human approved.'
 
     return {
         'freezeFile': freeze_name,
@@ -115,6 +149,7 @@ def audit_single_asset(freeze_name, candidate_name, review_md_name, development_
         'reviewDocument': review_md_name,
         'status': precheck_status,
         'statusReason': status_reason,
+        'gateFailures': gate_failures,
         'datasetRole': candidate['datasetRole'],
         'queryCount': len(candidate['queries']),
         'sourceCount': len(aliases),

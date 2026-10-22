@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-10-22T13:58:56.458292+00:00",
+  "recordedAt": "2026-10-22T14:17:34.311061+00:00",
   "status": "BLOCKED",
   "governanceDecision": "BLOCKED; Asset A retired to REVIEWED_REGRESSION awaiting review; Asset B code-aligned but PENDING human label & threshold approval.",
   "assets": {
@@ -8,7 +8,14 @@
       "datasetFile": "acceptance-candidate.v1.json",
       "reviewDocument": "ACCEPTANCE_HUMAN_REVIEW.md",
       "status": "BLOCKED",
-      "statusReason": "Frozen code/dependency hashes drifted (6 files). Lexical lane or environment modified since freeze snapshot. Retires from held-out independence without versioned exception.",
+      "statusReason": "Execution gate BLOCKED by 5 missing condition(s): Individual query reviews pending (68 queries unreviewed, e.g. ['A001', 'A002', 'A003']); Genuine human reviewer identity missing (got: ''); Human review timestamp missing (got: ''); Implementation/dependency hashes drifted (6 files drifted); Quality acceptance thresholds unapproved (status: 'NOT_APPROVED; humans must set acceptance thresholds before first run; no post-result tuning')",
+      "gateFailures": [
+        "Individual query reviews pending (68 queries unreviewed, e.g. ['A001', 'A002', 'A003'])",
+        "Genuine human reviewer identity missing (got: '')",
+        "Human review timestamp missing (got: '')",
+        "Implementation/dependency hashes drifted (6 files drifted)",
+        "Quality acceptance thresholds unapproved (status: 'NOT_APPROVED; humans must set acceptance thresholds before first run; no post-result tuning')"
+      ],
       "datasetRole": "INDEPENDENT_ACCEPTANCE_CANDIDATE",
       "queryCount": 68,
       "sourceCount": 28,
@@ -74,7 +81,13 @@
       "datasetFile": "acceptance-candidate.v2.json",
       "reviewDocument": "ACCEPTANCE_HUMAN_REVIEW.v2.md",
       "status": "BLOCKED",
-      "statusReason": "Candidate labels and quality thresholds remain PENDING human approval. Formal evaluation entry point strictly rejects execution.",
+      "statusReason": "Execution gate BLOCKED by 4 missing condition(s): Individual query reviews pending (68 queries unreviewed, e.g. ['B001', 'B002', 'B003']); Genuine human reviewer identity missing (got: ''); Human review timestamp missing (got: ''); Quality acceptance thresholds unapproved (status: 'PROPOSED_BASELINE; awaiting human business approval before first run; no post-result tuning')",
+      "gateFailures": [
+        "Individual query reviews pending (68 queries unreviewed, e.g. ['B001', 'B002', 'B003'])",
+        "Genuine human reviewer identity missing (got: '')",
+        "Human review timestamp missing (got: '')",
+        "Quality acceptance thresholds unapproved (status: 'PROPOSED_BASELINE; awaiting human business approval before first run; no post-result tuning')"
+      ],
       "datasetRole": "INDEPENDENT_ACCEPTANCE_CANDIDATE",
       "queryCount": 68,
       "sourceCount": 28,
