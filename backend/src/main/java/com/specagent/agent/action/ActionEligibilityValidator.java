@@ -60,8 +60,15 @@ public final class ActionEligibilityValidator {
             case CREATE_NODE -> validateCreateNode(request, proposal.payload());
             case REQUEST_USER_INPUT -> validateRequestUserInput(request, proposal.payload());
             case INVOKE_CAPABILITY -> validateVisibleCapability(request, proposal.payload());
+            case WAIT -> {
+                var pending = request.pendingDependencies();
+                Object ref = proposal.payload().get("dependencyRef");
+                if (pending == null || proposal.payload().size() != 1 || !(ref instanceof String)
+                        || pending.dependencies().stream().noneMatch(d -> d.invocationId().toString().equals(ref)))
+                    reject(ActionEligibilityReasonCode.NO_PENDING_DEPENDENCY);
+            }
             case UPDATE_NODE, CONNECT_NODE, CREATE_ROUTE, RESPOND_TO_USER,
-                 GENERATE_ARTIFACT, WAIT -> {
+                 GENERATE_ARTIFACT -> {
                 // 这些动作族尚无额外的载荷相关资格不变量。
             }
         }
@@ -227,16 +234,18 @@ public final class ActionEligibilityValidator {
 
     private static List<String> declaredRequiredFields(Map<String, Object> inputSchema) {
         List<String> required = new java.util.ArrayList<>();
-        Object properties = inputSchema.get("properties");
-        if (properties instanceof Map<?, ?> propertyMap) {
-            Object declared = inputSchema.get("required");
-            if (declared instanceof List<?> names) {
-                for (Object name : names) {
-                    if (name != null && !required.contains(String.valueOf(name))) {
-                        required.add(String.valueOf(name));
-                    }
+        // JSON Schema's required keyword applies even without properties (or
+        // when the required name has no property definition).
+        Object declared = inputSchema.get("required");
+        if (declared instanceof List<?> names) {
+            for (Object name : names) {
+                if (name != null && !required.contains(String.valueOf(name))) {
+                    required.add(String.valueOf(name));
                 }
             }
+        }
+        Object properties = inputSchema.get("properties");
+        if (properties instanceof Map<?, ?> propertyMap) {
             for (Map.Entry<?, ?> entry : propertyMap.entrySet()) {
                 if (entry.getValue() instanceof Map<?, ?> definition
                         && isRequiredFlag(definition.get("required"))

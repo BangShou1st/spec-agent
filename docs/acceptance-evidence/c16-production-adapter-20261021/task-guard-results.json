@@ -1,0 +1,49 @@
+[
+  {
+    "name": "guard-default-test",
+    "command": [
+      "E:\\project\\spec-agent\\backend\\gradlew.bat",
+      "-p",
+      "backend",
+      "test",
+      "--offline",
+      "--dry-run",
+      "--console=plain"
+    ],
+    "exitCode": 1,
+    "expectedRejected": true
+  },
+  {
+    "name": "guard-bootrun",
+    "command": [
+      "E:\\project\\spec-agent\\backend\\gradlew.bat",
+      "-p",
+      "backend",
+      "testOffline",
+      "bootRun",
+      "-PdatabaseIntegration=true",
+      "--offline",
+      "--dry-run",
+      "--console=plain"
+    ],
+    "exitCode": 1,
+    "expectedRejected": true
+  },
+  {
+    "name": "guard-live",
+    "command": [
+      "E:\\project\\spec-agent\\backend\\gradlew.bat",
+      "-p",
+      "backend",
+      "testOffline",
+      "evalLive",
+      "-PdatabaseIntegration=true",
+      "-PexternalServices=true",
+      "--offline",
+      "--dry-run",
+      "--console=plain"
+    ],
+    "exitCode": 1,
+    "expectedRejected": true
+  }
+]

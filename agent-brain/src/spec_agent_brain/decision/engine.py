@@ -11,19 +11,23 @@ Brain 使用自己收到的可信请求来填写 base context 标识(绝不采�
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from typing import Any
+
+from pydantic import ValidationError
 
 from ..diagnostics import semantic_diagnostics
 from ..contracts.decisions import (
     ActionProposal,
     AgentV2ResponseEnvelope,
     AgentV3ResponseEnvelope,
+    AgentV4ResponseEnvelope,
     ModelDecisionOutput,
     ObservationView,
     UsageView,
 )
-from ..contracts.inputs import AgentV2RequestEnvelope, AgentV3RequestEnvelope
-from ..contracts.protocol import DECISION_PROTOCOL_VERSION, DECISION_PROTOCOL_VERSION_V3
+from ..contracts.inputs import AgentV2RequestEnvelope, AgentV3RequestEnvelope, AgentV4RequestEnvelope
+from ..contracts.protocol import DECISION_PROTOCOL_VERSION, DECISION_PROTOCOL_VERSION_V3, DECISION_PROTOCOL_VERSION_V4
 from ..model_client import ChatMessage, ModelClient
 from ..prompts import decision as decision_prompt
 
@@ -35,8 +39,31 @@ logger = logging.getLogger("spec_agent_brain")
 TOP_LEVEL_SOURCE_REFS = "sourceRefs"
 
 
+@dataclass(frozen=True)
+class ContractDiagnostic:
+    diagnostic_id: str
+    stage: str
+    validator_id: str
+    machine_code: str
+    field_path: str | None
+    expected_type: str | None
+    actual_type: str | None
+    boundary: str = "PYTHON_BRAIN"
+    java_wire_validator_entered: bool = False
+    executor_reached: bool = False
+    source_exception_type: str | None = None
+
+
 class BrainContractError(RuntimeError):
-    """模型输出违反 brain 自身输出契约时抛出。"""
+    """Brain 侧契约错误;只有携带明确诊断的输出校验错误才归为模型违约。"""
+
+    def __init__(self, message: str, diagnostic: ContractDiagnostic | None = None):
+        super().__init__(message)
+        self.diagnostic = diagnostic
+
+
+class ModelOutputContractError(BrainContractError):
+    """模型生成的 DECISION JSON 未通过 Brain 输出解析或 schema 校验。"""
 
 
 class UngroundedReferenceError(BrainContractError):
@@ -114,10 +141,10 @@ def handle_decision(
         model_calls = 2
         output = _validate_output(completion.content, request)
 
-    response_type = (AgentV3ResponseEnvelope
+    response_type = (AgentV4ResponseEnvelope if isinstance(request, AgentV4RequestEnvelope) else AgentV3ResponseEnvelope
                      if isinstance(request, AgentV3RequestEnvelope)
                      else AgentV2ResponseEnvelope)
-    response_version = (DECISION_PROTOCOL_VERSION_V3
+    response_version = (DECISION_PROTOCOL_VERSION_V4 if isinstance(request, AgentV4RequestEnvelope) else DECISION_PROTOCOL_VERSION_V3
                         if isinstance(request, AgentV3RequestEnvelope)
                         else DECISION_PROTOCOL_VERSION)
 
@@ -180,6 +207,11 @@ def _render_model_input(
     payload = json.loads(rendered)
     payload["actionEligibility"] = request.action_eligibility.model_dump(
         mode="json", by_alias=True)
+    if isinstance(request, AgentV4RequestEnvelope):
+        payload["pendingDependencies"] = request.pending_dependencies.model_dump(mode="json", by_alias=True)
+        payload["waitPayloadSchema"] = {"type": "object", "required": ["dependencyRef"],
+                                      "properties": {"dependencyRef": {"enum": [str(d.invocation_id) for d in request.pending_dependencies.dependencies]}},
+                                      "additionalProperties": False}
     return json.dumps(payload, ensure_ascii=False)
 
 
@@ -187,14 +219,108 @@ def _parse_model_output(content: str) -> ModelDecisionOutput:
     try:
         raw = json.loads(content)
     except json.JSONDecodeError as exc:
-        raise BrainContractError("model output is not valid JSON") from exc
+        raise ModelOutputContractError(
+            "model output is not valid JSON",
+            _contract_diagnostic(
+                stage="brain.model_output_parse",
+                validator_id="json.loads",
+                machine_code="MODEL_OUTPUT_INVALID_JSON",
+                field_path=None,
+                expected_type="object",
+                actual_type="invalid_json",
+                source_exception_type=type(exc).__name__,
+            ),
+        ) from None
     raw = _normalize_stray_source_refs(raw)
     try:
         return ModelDecisionOutput.model_validate(raw)
-    except Exception as exc:  # pydantic ValidationError -> 转成有类型的 brain 失败
-        raise BrainContractError(
+    except ValidationError as exc:
+        error = (exc.errors(include_input=True, include_context=False, include_url=False) or [{}])[0]
+        error_type = error.get("type") if isinstance(error, dict) else None
+        field_path = _safe_field_path(error.get("loc")) if isinstance(error, dict) else None
+        diagnostic = _contract_diagnostic(
+            stage="brain.model_output_validation",
+            validator_id="ModelDecisionOutput",
+            machine_code="MODEL_OUTPUT_SCHEMA_INVALID",
+            field_path=field_path,
+            expected_type=_expected_type(error_type),
+            actual_type=_actual_type(error.get("input")) if isinstance(error, dict) else None,
+            source_exception_type=type(exc).__name__,
+        )
+        safe_path = f" fieldPath={field_path}" if field_path else ""
+        raise ModelOutputContractError(
             "model output violates the DECISION contract: "
-            f"{exc} [{_output_layout(content)}]") from exc
+            f"[{_output_layout(content)}{safe_path}]",
+            diagnostic,
+        ) from None
+
+
+def _safe_field_path(location: Any) -> str | None:
+    if not isinstance(location, (tuple, list)):
+        return None
+    known_fields = {
+        "observation", "known", "unknowns", "conflicts", "risks", "action",
+        "actionFamily", "action_family", "payload", "sourceRefs", "source_refs",
+        "anchorRefs", "anchor_refs",
+    }
+    parts: list[str] = []
+    for item in location[:8]:
+        if isinstance(item, int) and item >= 0:
+            parts.append(f"[{item}]")
+        elif isinstance(item, str) and item in known_fields:
+            if parts and not parts[-1].endswith("]"):
+                parts.append(".")
+            parts.append(item)
+        else:
+            # Unknown model-selected keys can contain user content; don't echo them.
+            return None
+    path = "".join(parts)
+    return path[:160] if path else None
+
+
+def _actual_type(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return "unknown"
+
+
+def _expected_type(error_type: Any) -> str | None:
+    return {
+        "string_type": "string",
+        "int_type": "integer",
+        "float_type": "number",
+        "bool_type": "boolean",
+        "list_type": "array",
+        "dict_type": "object",
+    }.get(error_type)
+
+
+def _contract_diagnostic(*, stage: str, validator_id: str, machine_code: str,
+                         field_path: str | None, expected_type: str | None,
+                         actual_type: str | None,
+                         source_exception_type: str | None) -> ContractDiagnostic:
+    return ContractDiagnostic(
+        diagnostic_id=str(uuid.uuid4()),
+        stage=stage,
+        validator_id=validator_id,
+        machine_code=machine_code,
+        field_path=field_path,
+        expected_type=expected_type,
+        actual_type=actual_type,
+        source_exception_type=source_exception_type,
+    )
 
 
 def _normalize_stray_source_refs(raw: Any) -> Any:
@@ -242,7 +368,17 @@ def _normalize_stray_source_refs(raw: Any) -> Any:
                 return raw
             raise AmbiguousSourceRefsError(
                 "model output carries two different sourceRefs lists: "
-                f"action={_bounded_refs(action_refs)} topLevel={_bounded_refs(stray)}")
+                f"action_count={len(action_refs)} top_level_count={len(stray)}",
+                _contract_diagnostic(
+                    stage="brain.output_normalization",
+                    validator_id="sourceRefsNormalizer",
+                    machine_code="MODEL_OUTPUT_AMBIGUOUS_SOURCE_REFS",
+                    field_path="action.sourceRefs",
+                    expected_type="equivalent source reference lists",
+                    actual_type="different source reference lists",
+                    source_exception_type=None,
+                ),
+            )
         # action 定义了该字段,但值不是 ref 列表。这是非法值,不是缺失:
         # 绝不用顶层副本去修补——严格契约照旧拒绝它。
         return raw
@@ -259,11 +395,10 @@ def _is_source_ref_list(value: Any) -> bool:
 
 
 def _output_layout(content: str) -> str:
-    """被拒绝的 DECISION 输出的有界布局诊断。
+    """被拒绝的 DECISION 输出的无值布局诊断。
 
-    只记录键布局和两份 sourceRefs 列表——足以证明模型把字段放错了哪里,
-    并能在离线复现这次拒绝——但绝不记录模型输出的其余部分,因此用户内容
-    不会泄漏进日志。
+    只记录根/action 是否为对象以及 sourceRefs 的形状和数量。字段名、ref
+    和 payload 均来自模型输出，不进入异常文本或日志。
     """
     try:
         raw = json.loads(content)
@@ -273,34 +408,19 @@ def _output_layout(content: str) -> str:
         return f"layout=<{type(raw).__name__}>"
     action = raw.get("action")
     action_refs = action.get(TOP_LEVEL_SOURCE_REFS) if isinstance(action, dict) else None
-    return ("layout=keys(" + ",".join(sorted(str(key) for key in raw.keys())) + ")"
-            + " topLevelSourceRefs=" + _bounded_refs(raw.get(TOP_LEVEL_SOURCE_REFS))
-            + " actionSourceRefs=" + _bounded_refs(action_refs))
+    return ("layout=object"
+            + f" topLevelSourceRefs={_safe_shape(raw.get(TOP_LEVEL_SOURCE_REFS), TOP_LEVEL_SOURCE_REFS in raw)}"
+            + f" action={type(action).__name__}"
+            + f" actionSourceRefs={_safe_shape(action_refs, isinstance(action, dict) and TOP_LEVEL_SOURCE_REFS in action)}")
 
 
-# 诊断信息会渲染模型输出的 refs,而 refs 属于模型输出:同时限制条目数和
-# 字符数,保证畸形的输出无法把无界的 payload 涌进日志行或有类型的错误
-# detail 里。
-REF_ENTRY_MAX_CHARS = 120
-REF_RENDER_MAX_CHARS = 400
-
-
-def _bounded_refs(value: Any) -> str:
-    """有界地渲染一份 refs 值:最多五条,长度封顶。"""
-    if value is None:
-        return "<absent>"
-    if not isinstance(value, list):
-        return f"<{type(value).__name__}>"
-    head = json.dumps(
-        [_truncate(str(item), REF_ENTRY_MAX_CHARS) for item in value[:5]],
-        ensure_ascii=False)
-    if len(value) > 5:
-        head = f"{head}+{len(value) - 5}"
-    return _truncate(head, REF_RENDER_MAX_CHARS)
-
-
-def _truncate(text: str, limit: int) -> str:
-    return text if len(text) <= limit else text[:limit] + "..."
+def _safe_shape(value: Any, present: bool) -> str:
+    """只返回类型与数量，不回显模型生成的字段值。"""
+    if not present:
+        return "absent"
+    if isinstance(value, list):
+        return f"array[{len(value)}]"
+    return type(value).__name__
 
 
 def _check_source_refs(output: ModelDecisionOutput, request: AgentV2RequestEnvelope) -> None:
@@ -308,11 +428,51 @@ def _check_source_refs(output: ModelDecisionOutput, request: AgentV2RequestEnvel
     for ref in output.action.source_refs:
         if ref not in allowed:
             raise UngroundedReferenceError(
-                f"model referenced a source outside the allowed snapshot refs: {ref}")
+                "model referenced a source outside the allowed snapshot refs",
+                _contract_diagnostic(
+                    stage="brain.output_grounding",
+                    validator_id="sourceRefAllowlist",
+                    machine_code="MODEL_OUTPUT_UNGROUNDED_REFERENCE",
+                    field_path="action.sourceRefs",
+                    expected_type="allowed source reference",
+                    actual_type="string",
+                    source_exception_type=None,
+                ),
+            )
+
+    if output.action.action_family == "INVOKE_CAPABILITY":
+        pending = [output.action.payload.get("arguments")]
+        while pending:
+            value = pending.pop()
+            if isinstance(value, dict):
+                pending.extend(value.values())
+            elif isinstance(value, list):
+                pending.extend(value)
+            elif (isinstance(value, str)
+                  and value.startswith(("node:", "answer:", "patch:", "context:", "route:"))
+                  and value not in allowed):
+                raise UngroundedReferenceError(
+                    "capability argument ref outside the allowed snapshot refs",
+                    _contract_diagnostic(
+                        stage="brain.output_grounding",
+                        validator_id="capabilityArgumentRefAllowlist",
+                        machine_code="MODEL_OUTPUT_UNGROUNDED_REFERENCE",
+                        field_path="action.payload.arguments",
+                        expected_type="allowed source reference",
+                        actual_type="string",
+                        source_exception_type=None,
+                    ),
+                )
 
 
 def _check_eligibility_action(output: ModelDecisionOutput,
                               request: AgentV3RequestEnvelope) -> None:
+    if isinstance(request, AgentV4RequestEnvelope) and output.action.action_family == "WAIT":
+        payload = output.action.payload
+        allowed = {str(d.invocation_id) for d in request.pending_dependencies.dependencies}
+        if (set(payload) != {"dependencyRef"} or not isinstance(payload.get("dependencyRef"), str)
+                or payload["dependencyRef"] not in allowed):
+            raise ActionIneligibleBrainError("WAIT requires a projected dependencyRef")
     if output.action.action_family not in request.action_eligibility.eligible_families:
         raise ActionIneligibleBrainError(
             "model selected an action outside the Runtime eligibility mask")
@@ -340,4 +500,14 @@ def _check_conflict_action(output: ModelDecisionOutput,
 
     if not output.observation.conflicts:
         raise ConflictSurfacingError(
-            "unresolved conflict requires a non-empty observation.conflicts")
+            "unresolved conflict requires a non-empty observation.conflicts",
+            _contract_diagnostic(
+                stage="brain.output_semantic_validation",
+                validator_id="unresolvedConflictSurface",
+                machine_code="MODEL_OUTPUT_CONFLICT_NOT_SURFACED",
+                field_path="observation.conflicts",
+                expected_type="non-empty array",
+                actual_type="empty array",
+                source_exception_type=None,
+            ),
+        )

@@ -228,8 +228,16 @@ class P3BDecisionQualityTest extends EvalHarnessBase {
         boolean continuationScored = expectedVerdict != null && observation.attemptId() != null;
         boolean continuationCorrect = continuationScored && continuationHolds(expectedVerdict, actualVerdict);
 
+        String selectedAction = modelSelectedAction(observation);
+        boolean selectedAcceptable = selectedAction != null
+                && scenario.definition().expect().acceptablePrimaryActions().contains(selectedAction);
+
         return new P3BDecisionQuality.DecisionObservation(
-                scenario.scenarioId(), variant.variantId(), actualAction,
+                scenario.scenarioId(), variant.variantId(),
+                selectedAction, selectedAcceptable,
+                actualAction,
+                P3BDecisionQuality.executedAction(actualAction, executionResult),
+                executionResult,
                 actualAction != null
                         && scenario.definition().expect().acceptablePrimaryActions()
                         .contains(actualAction),
@@ -245,6 +253,26 @@ class P3BDecisionQualityTest extends EvalHarnessBase {
                 repeatedScored, repeatedMissed,
                 observation.productionModelCalls(), persistedCapabilityInvocations(projectId),
                 failureClassification);
+    }
+
+    /**
+     * 模型**原始**选择的动作族:优先取 DECISION_OUTPUT 的 normalized_output.actionFamily,
+     * 回退到 ACTION_ELIGIBILITY.selected_action。二者都是"模型真正选了什么"的运行时证据,
+     * 与被 Java 门禁接受的动作分开记录。
+     */
+    private static String modelSelectedAction(ObservationEnvelope observation) {
+        Map<String, Object> decision = observation.semanticTrace().stages().get("DECISION_OUTPUT");
+        if (decision != null) {
+            Object normalized = decision.get("normalized_output");
+            if (normalized instanceof Map<?, ?> proposal && proposal.get("actionFamily") != null) {
+                return String.valueOf(proposal.get("actionFamily"));
+            }
+        }
+        Map<String, Object> eligibility = observation.semanticTrace().stages().get("ACTION_ELIGIBILITY");
+        if (eligibility != null && eligibility.get("selected_action") != null) {
+            return String.valueOf(eligibility.get("selected_action"));
+        }
+        return null;
     }
 
     private String modelInferenceFailureCategory(String runId) {
@@ -342,7 +370,11 @@ class P3BDecisionQualityTest extends EvalHarnessBase {
 
     private static Map<String, Object> renderSummary(P3BDecisionQuality.Summary summary) {
         Map<String, Object> map = new LinkedHashMap<>();
-        map.put("schema_version", "p3b-decision-quality.v1");
+        map.put("schema_version", "p3b-decision-quality.v2");
+        map.put("schema_migration",
+                "v1 execution_success_rate 把 Run 终态(policy_denied/awaiting_approval)与动作执行混为一谈;"
+                        + "v2 拆分为 run_normal_terminal_rate / action_submitted_rate / action_completed_rate,"
+                        + "并保留 execution_success_rate 作为 action_completed_rate 的兼容别名(v1 的分母等于 action_completed_measured)。");
         map.put("corpus", "P3BCorpus");
         map.put("provider", "fake");
         map.put("model", "scripted-brain");
@@ -354,6 +386,21 @@ class P3BDecisionQualityTest extends EvalHarnessBase {
         map.put("action_acceptable_set_accuracy", summary.actionAcceptableSetAccuracy());
         map.put("action_measured", summary.actionMeasuredCount());
         map.put("action_not_measured", summary.actionNotMeasuredCount());
+        map.put("model_selection_accuracy", summary.modelSelectionAccuracy());
+        map.put("model_selection_measured", summary.modelSelectionMeasuredCount());
+        map.put("model_selection_not_measured", summary.modelSelectionNotMeasuredCount());
+        map.put("gate_accuracy", summary.gateAccuracy());
+        map.put("gate_measured", summary.gateMeasuredCount());
+        map.put("run_normal_terminal_rate", summary.runNormalTerminalRate());
+        map.put("run_normal_terminal_measured", summary.runNormalTerminalMeasuredCount());
+        map.put("action_submitted_rate", summary.actionSubmittedRate());
+        map.put("action_submitted_measured", summary.actionSubmittedMeasuredCount());
+        map.put("action_completed_rate", summary.actionCompletedRate());
+        map.put("action_completed_measured", summary.actionCompletedMeasuredCount());
+        // v1 兼容别名(见 schema_migration):v1 的 execution_success_rate 实际只等于
+        // "动作成功完成率",其分母等于 action_completed_measured。
+        map.put("execution_success_rate", summary.actionCompletedRate());
+        map.put("execution_measured", summary.actionCompletedMeasuredCount());
         map.put("unnecessary_clarification_rate", summary.unnecessaryClarificationRate());
         map.put("unnecessary_clarification_denominator",
                 summary.unnecessaryClarificationDenominator());

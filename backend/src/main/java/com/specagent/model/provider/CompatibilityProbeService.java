@@ -74,7 +74,7 @@ public class CompatibilityProbeService {
         Map<String, Object> body = adapter.buildRequestBody(request, model);
         ProviderHttpSupport.HttpResult result = ProviderHttpSupport.postJson(
                 client, mapper, endpoint, adapter.authHeaders(apiKey), body,
-                Duration.ofSeconds(30), context);
+                ProviderHttpSupport.INFERENCE_TIMEOUT, context);
         var response = adapter.parseNonStreamResponse(result.json(), context);
         if (response.content() == null || response.content().isBlank()) {
             throw ModelProviderException.invalidResponse(context, "Compatibility probe returned empty content");

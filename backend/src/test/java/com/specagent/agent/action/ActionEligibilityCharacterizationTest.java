@@ -401,6 +401,45 @@ class ActionEligibilityCharacterizationTest {
                 true, "NONE", List.of());
     }
 
+    @Test void jsonSchemaRequiredDoesNotDependOnAPropertiesKeyword() throws Exception {
+        for (Map<String, Object> schema : List.of(
+                Map.<String, Object>of("type", "object", "required", List.of("query")),
+                Map.<String, Object>of("type", "object", "properties", Map.of(), "required", List.of("query")))) {
+            var request = requestWithCapability(new CapabilityDescriptor("probe.required", "1", "probe",
+                    schema, true, "NONE", List.of()));
+            for (Map<String, Object> arguments : List.of(Map.<String, Object>of(), Map.<String, Object>of("query", " "))) {
+                assertIneligible(request, proposal(request, "INVOKE_CAPABILITY",
+                        Map.of("capabilityId", "probe.required", "arguments", arguments)),
+                        "MISSING_REQUIRED_CAPABILITY_ARGUMENT");
+            }
+            assertThatCode(() -> validator.validateSelection(request,
+                    proposal(request, "INVOKE_CAPABILITY", Map.of("capabilityId", "probe.required",
+                            "arguments", Map.of("query", "grounded query"))), evaluator.evaluate(request)))
+                    .doesNotThrowAnyException();
+        }
+    }
+
+    @Test void fakeEngineDoesNotInventAnInvocationWhenRootRequiredQueryHasNoPropertyDefinition() throws Exception {
+        var descriptor = new CapabilityDescriptor("probe.required", "1", "probe",
+                Map.of("type", "object", "required", List.of("query")), true, "NONE",
+                List.of("RESOURCE"));
+        var base = requestWithCapability(descriptor);
+        var s = base.snapshot();
+        var entry = s.lineage().getFirst();
+        var node = new com.specagent.agent.protocol.NodeView(entry.node().id(), entry.node().body(), "RESOURCE");
+        var refs = new ArrayList<>(s.allowedSourceRefs());
+        refs.add("node:" + node.id());
+        var snapshot = new AgentInputSnapshot(s.snapshotId(), s.contextHash(), s.projectId(), s.routeId(),
+                s.anchorNodeId(), s.routeContext(), List.of(new com.specagent.agent.protocol.LineageEntry(
+                        node, entry.answer(), entry.patches())), s.effectiveClaims(), s.metadata(), refs,
+                s.availableCapabilities(), s.capabilityResults(), s.relations(), s.relatedNodes(), s.autonomy());
+        var request = new AgentRequestEnvelope(base.protocolVersion(), base.runId(), base.event(), snapshot,
+                base.capabilities(), base.decisionBudget());
+        var engine = new com.specagent.agent.decision.LocalDeterministicDecisionEngine(
+                new com.specagent.agent.decision.DeterministicEngineFaultPlan());
+        assertThat(engine.runDecision(request).actionProposal().actionFamily()).isNotEqualTo("INVOKE_CAPABILITY");
+    }
+
     private CapabilityDescriptor compactRequiredQueryCapability() {
         return new CapabilityDescriptor("memory.search", "1", "search memory",
                 Map.of("query", Map.of("type", "string", "required", true),

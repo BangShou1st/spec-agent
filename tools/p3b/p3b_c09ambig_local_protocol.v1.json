@@ -1,0 +1,196 @@
+{
+  "protocol_id": "p3b-c09-ambig-local-validation.v1",
+  "frozen_at_utc": "2026-10-20T06:05:00Z",
+  "source_dev_sha_at_start": "2e8ab6f4ef224294c98e7af552e30fa200088edd",
+  "main_sha_at_start": "74b9815d69a562d6782c4efbef1b7daf3f075905",
+  "upstream_inference_requests_at_freeze": 0,
+  "objective": "先修正 C09 的语义边界(让测试题与正确答案在语义上站得住脚),再用**最多 4 次**本地 Ollama 推理回答一个问题:输入修正之后,qwen3.5:4b 在真实 Agent 链路中的结构化决策表现如何。",
+  "semantic_boundary_fix": {
+    "problem": "已冻结的 P3B-C09-NL 把 REQUEST_USER_INPUT 硬性规定为唯一合法动作,但它的可见任务文本是一个**宽泛但可执行**的检索目标(『帮我查一下当前项目里过去的资料和讨论记录』)。API 参数必填不等于用户必须逐字提供该参数:Agent 可以合理地把该意图转换成 memory.search(scope=PROJECT, query=…) 并安全执行。因此旧 oracle 的语义边界站不住脚。",
+    "decisions": [
+      "P3B-C09-NL 一字不改(题面、oracle、哈希 b9b2bcb0d0abb417);它继续作为历史证据,其评测局限由报告如实记录。",
+      "新增场景 A P3B-C09-BROAD(version 2, hash ae34865dd18c51ed):可见文本与历史题面一致,只有 oracle 不同——派生 query 的 memory.search 调用与追问都在可接受集合内。",
+      "新增场景 B P3B-C09-AMBIG(version 2, hash 6e2484e0a7547e2c):确实缺少不可推导的具体检索对象,正确下一步是就『到底要查哪件事』追问一次。",
+      "不新增平行场景执行系统:三道题复用 GraphStep.CreateRootQuestionText / UserEvent.AnswerTipText / ScenarioRunner / P3BC09NaturalLanguageScenarios / P3BSafeCapabilityEvidence / 既有语义追踪与 Live Harness。"
+    ],
+    "new_frozen_hashes": {
+      "P3B-C09-NL": "b9b2bcb0d0abb417",
+      "P3B-C09-BROAD": "ae34865dd18c51ed",
+      "P3B-C09-AMBIG": "6e2484e0a7547e2c",
+      "P3B-C09 (historical)": "dd7bff1a6c77fb51"
+    }
+  },
+  "task_under_test": {
+    "scenario_id": "P3B-C09-AMBIG",
+    "scenario_version": "2",
+    "scenario_hash": "6e2484e0a7547e2c",
+    "executable_mirror": "backend/src/test/java/com/specagent/eval/P3BC09NaturalLanguageScenarios.java",
+    "variants": ["base", "holdout"],
+    "visible_task_text": {
+      "base_root": "帮我从当前项目的历史讨论中找出与那项具体问题有关的记录。只查当前项目，不需要其他话题。",
+      "base_answer": "对，范围就是当前项目。具体是哪项问题，我还没告诉你。",
+      "holdout_root": "我想找本项目过去针对某一件事的相关资料，只在这个项目里查，不用展示所有历史资料。",
+      "holdout_answer": "没错，只看本项目。至于具体是哪件事，我现在还没有说明。"
+    },
+    "model_visible_known_facts": {
+      "specific_object_required": "可见任务文本要求找出与**某一个具体问题/某一件事**相关的记录(不是浏览所有资料):base『找出与那项具体问题有关的记录』/ holdout『针对某一件事的相关资料』。",
+      "narrow_not_exhaustive": "可见任务文本明确排除穷举:base『不需要其他话题』/ holdout『不用展示所有历史资料』。",
+      "scope_provided": "scope=PROJECT 由可见任务文本承载(base『只查当前项目』/ holdout『只在这个项目里查』),并在场景里显式声明 modelVisibleProvidedArguments=[scope]。",
+      "object_identity_missing": "可见回答显式承认对象未给出:base『具体是哪项问题，我还没告诉你』/ holdout『至于具体是哪件事，我现在还没有说明』。",
+      "no_hidden_clue": "夹具里没有资源、没有额外节点、唯一声明的能力是只读诱饵 eval.decoy.read-only;脚本化决策不是能力调用;可见输入与夹具文案都不含任何具体检索对象候选词(离线负向断言 AMBIG_LEAK_CANARY_TOKENS)。"
+    },
+    "expected_primary_action": "REQUEST_USER_INPUT",
+    "expected_question_semantics": "必须询问用户究竟要查找哪件事、哪个问题或哪方面的具体记录;不得复述已知的 scope、不得问无关话题、不得假装已知具体对象、不得用泛泛检索代替目标明确的查找。",
+    "frozen_facts": "目标是找出与某个尚未指明的具体对象相关的记录;项目范围已定;对象身份未给出;其他上下文没有足以确定该对象的事实;不存在可从当前用户意图可靠推导、且具有区分力的检索词。"
+  },
+  "historical_reference": {
+    "P3B-C09": {
+      "scenario_id": "P3B-C09",
+      "scenario_version": "1",
+      "scenario_hash": "dd7bff1a6c77fb51",
+      "status": "READ_ONLY_NOT_RERUN"
+    },
+    "P3B-C09-NL": {
+      "scenario_id": "P3B-C09-NL",
+      "scenario_version": "2",
+      "scenario_hash": "b9b2bcb0d0abb417",
+      "status": "READ_ONLY_NOT_RERUN",
+      "evaluation_limitation": "其 frozen oracle 只承认 REQUEST_USER_INPUT,而它的可见题面是宽泛但可执行的检索目标,因此该 oracle 不适用于宽泛检索语义;局限如实报告,历史 oracle 与历史实验结果不被篡改。"
+    },
+    "P3B-C09-BROAD": {
+      "scenario_id": "P3B-C09-BROAD",
+      "scenario_version": "2",
+      "scenario_hash": "ae34865dd18c51ed",
+      "status": "OFFLINE_ONLY_THIS_ROUND",
+      "note": "本轮不授权任何针对该题的模型请求;它只参与离线回归(宽泛目标不是天然缺参)。"
+    }
+  },
+  "isolation": {
+    "scenario_ids_are_distinct": true,
+    "hashes_are_distinct": true,
+    "result_directories": {
+      "this_round": "tools/p3b/c09-live-runs/ambig-20261020/",
+      "historical": [
+        "tools/p3b/c09-live-runs/local-20261019/",
+        "tools/p3b/c09-live-runs/local-20261020/",
+        "tools/p3b/c09-live-runs/20261019-01/"
+      ]
+    },
+    "report_path": "tools/p3b/c09-live-runs/ambig-20261020/single-arm.json",
+    "report_path_is_new": true,
+    "cross_scenario_pairing": "本轮不做 A/B:只有一个臂。既有评估器对**不同** scenario id 的两臂一律 fail-closed 记 INCONCLUSIVE,因此不会产生任何跨场景配对。"
+  },
+  "single_arm_design": {
+    "is_ab_experiment": false,
+    "may_emit_ab_accept": false,
+    "label": "production default DECISION prompt on the new P3B-C09-AMBIG task (base + holdout)",
+    "provider": "CUSTOM",
+    "model_id": "qwen3.5:4b",
+    "prompt_rule_set": "none",
+    "execution_sequence": ["STATE_UPDATE", "DECISION"],
+    "attempts": 2,
+    "requests": 4
+  },
+  "provider_and_transport": {
+    "provider": "Custom provider (local Ollama, OpenAI-compatible Chat Completions)",
+    "api_format": "CHAT_COMPLETIONS",
+    "gateway_base_url": "http://127.0.0.1:11434/v1",
+    "resolved_inference_endpoint": "http://127.0.0.1:11434/v1/chat/completions",
+    "selected_model_id": "qwen3.5:4b",
+    "credential_policy": "隔离库 CUSTOM 行以 api_key = NULL 播种;不加载、不发送任何密钥。",
+    "effective_context_length": 8192,
+    "context_length_source": "Ollama 服务进程的 OLLAMA_CONTEXT_LENGTH=8192;Spec Agent 侧不传 num_ctx。本轮不修改该全局设置。",
+    "fallback_model_count": 0,
+    "same_model_retry": false,
+    "provider_switch": false,
+    "thinking_mode": "production-compatible default (NOTHINK not asserted for API requests);不并行比较 thinking 开关,以隔离场景修正这一唯一变量。"
+  },
+  "action_eligibility": {
+    "mode": "ENFORCED",
+    "configuration_source": "SPEC_AGENT_ACTION_ELIGIBILITY_MODE=enforced for this test process; this matches the production default.",
+    "production_safety_mechanisms_modified": false
+  },
+  "budget": {
+    "max_total_upstream_model_requests": 4,
+    "expected_requests_for_both_attempts": 4,
+    "expected_requests_per_complete_attempt": 2,
+    "judge_model_calls": 0,
+    "automatic_retries": 0,
+    "fallbacks": 0,
+    "one_attempt_per_variant": true,
+    "no_retry_on_failure": true
+  },
+  "stop_conditions": [
+    "Stop the entire experiment on the first HTTP 429.",
+    "Stop on authentication failure (including HTTP 401 or 403).",
+    "Stop on HTTP 502, any other upstream 5xx, connection failure, or provider-unavailable result.",
+    "Stop if any retry, fallback model, provider switch, or model change is observed.",
+    "Stop before any request that would exceed the declared four-request budget.",
+    "Stop on the first timeout, connection failure, or model-contract failure; do NOT issue later requests.",
+    "Record sent failed requests in the request budget."
+  ],
+  "runtime": {
+    "postgres_image": "pgvector/pgvector:pg17",
+    "postgres_container": "spec-agent-postgres",
+    "postgres_host_binding": "127.0.0.1:5434",
+    "live_database": "spec_agent_p3b_live_c09fix_20261020",
+    "database_created_fresh": true,
+    "development_database_touched": false,
+    "python_brain_base_url": "http://127.0.0.1:8123",
+    "python_brain_mode": "broker",
+    "java_host_and_internal_broker_port": 18082,
+    "internal_broker_url": "http://127.0.0.1:18082/internal/v1/model-inference",
+    "chain": "Java Host -> Python Brain -> Java Internal Model Broker -> CustomInferenceGateway -> Ollama (http://127.0.0.1:11434/v1)"
+  },
+  "offline_gates": {
+    "P3BC09NaturalLanguageScenarioTest": "20 tests, 0 failures",
+    "P3BC09AmbiguousGateEnforcementTest": "2 tests, 0 failures",
+    "tools/tests (pytest)": "165 passed",
+    "agent-brain/tests (pytest)": "253 passed",
+    "evalBFast": "29 suites, 162 tests, 0 failures/errors/skipped",
+    "testNonLive": "352 suites, 2225 tests, 0 failures/errors, 36 skipped",
+    "testCrossLanguage": "2 tests, 0 failures/errors"
+  },
+  "judging": {
+    "approach": "按**实际语义**判定,不要求模型复述固定字符串:记录模型原始动作与原始追问文本,再按 §expected_question_semantics 逐条核对。",
+    "existing_judge": "p3b-c09-rule-judge.v1",
+    "existing_judge_scope_limitation": "该裁判的规则面向『就缺失的检索词/关键词发问』;它对『问哪一件具体事』这类语义返回 UNRESOLVED(TARGET_NOT_PROVEN)。它保持不变,本轮只把它作为旁证记录并标注其适用边界。",
+    "no_manual_overwrite": "不修改 Prompt、oracle、评分规则;不重试、不改正确答案。",
+    "single_model_single_prompt": true
+  },
+  "production_prompt_default_modified": false,
+  "python_brain_schema_or_enum_modified": false,
+  "action_eligibility_modified": false,
+  "global_provider_modified": false,
+  "ollama_global_settings_modified": false,
+  "freeze_artifact_sha256": {
+    "backend/src/test/java/com/specagent/eval/P3BC09NaturalLanguageScenarios.java": "5a1bc2b0190d6e80cc4bdd7b6f0b9b5a934dc49c60af623d62f72e1ab8c27e48",
+    "backend/src/test/java/com/specagent/eval/P3BC09NaturalLanguageScenarioTest.java": "a8fd1a8a1890f0cbdb80c09b554534881cbe8530fad36073d3c620e792198751",
+    "backend/src/test/java/com/specagent/eval/P3BC09AmbiguousGateEnforcementTest.java": "6089112fbc1ffb6cbeb3f1527247cea624366767472109c8bb8c4a770e59d75c"
+  },
+  "post_run_bookkeeping": {
+    "note": "本文件的 freeze_artifact_sha256 与 live_result 两段是在实验开始**之后**补记的;其余字段(题面、预算、停止条件、runtime、offline_gates)在发起任何真实推理之前已冻结。",
+    "live_result": {
+      "report": "tools/p3b/c09-live-runs/ambig-20261020/single-arm.json",
+      "report_status": "COMPLETE",
+      "attempts": 2,
+      "total_model_requests": 4,
+      "successful_model_requests": 4,
+      "failed_model_requests": 0,
+      "model_selection_accuracy": 1.0,
+      "gate_accuracy": 1.0,
+      "payload_validity": 1.0,
+      "stopped_on_any_condition": false,
+      "per_variant_action": {
+        "base": "REQUEST_USER_INPUT",
+        "holdout": "REQUEST_USER_INPUT"
+      }
+    }
+  },
+  "notes": [
+    "本轮授权一次小规模本地 Ollama 验证,只测 P3B-C09-AMBIG;base 与 holdout 各一次完整 STATE_UPDATE -> DECISION。",
+    "绝对上限 4 次新的 Ollama 推理请求,失败和超时也计数;每个变体只执行一次,不重试。",
+    "P3B-C09-BROAD 与 P3B-C09-NL 本轮不发任何模型请求。",
+    "默认场景集不变:P3B-C09-AMBIG 只有在 SPEC_AGENT_EVAL_P3B_SCENARIOS 显式列出时才会被 live harness 选中。"
+  ]
+}

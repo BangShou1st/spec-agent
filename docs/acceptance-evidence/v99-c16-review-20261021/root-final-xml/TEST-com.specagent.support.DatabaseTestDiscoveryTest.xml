@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.specagent.support.DatabaseTestDiscoveryTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-10-21T03:27:03" hostname="榜首" time="0.02">
+  <properties/>
+  <testcase name="c03RuleAndIntegrationDiscoveryStaySeparate()" classname="com.specagent.support.DatabaseTestDiscoveryTest" time="0.02"/>
+  <system-out><![CDATA[11:27:03.222 [Test worker] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.specagent.eval.P3BC03NaturalLanguageScenarioDatabaseIntegrationTest]: P3BC03NaturalLanguageScenarioDatabaseIntegrationTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

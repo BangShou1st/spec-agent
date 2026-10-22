@@ -1,0 +1,37 @@
+
+> Task :dependencyInsight
+com.sharedlibs:opencode-zen-spring-boot-autoconfigure:1.2.0
+  Variant apiElements:
+    | Attribute Name                 | Provided | Requested    |
+    |--------------------------------|----------|--------------|
+    | org.gradle.status              | release  |              |
+    | org.gradle.category            | library  | library      |
+    | org.gradle.dependency.bundling | external | external     |
+    | org.gradle.jvm.version         | 21       | 21           |
+    | org.gradle.libraryelements     | jar      | classes      |
+    | org.gradle.usage               | java-api | java-api     |
+    | org.gradle.jvm.environment     |          | standard-jvm |
+
+com.sharedlibs:opencode-zen-spring-boot-autoconfigure:1.2.0
+\--- com.sharedlibs:opencode-zen-spring-boot-starter:1.2.0
+     \--- compileClasspath
+
+com.sharedlibs:opencode-zen-spring-boot-starter:1.2.0 (selected by rule)
+  Variant apiElements:
+    | Attribute Name                 | Provided | Requested    |
+    |--------------------------------|----------|--------------|
+    | org.gradle.status              | release  |              |
+    | org.gradle.category            | library  | library      |
+    | org.gradle.dependency.bundling | external | external     |
+    | org.gradle.jvm.version         | 21       | 21           |
+    | org.gradle.libraryelements     | jar      | classes      |
+    | org.gradle.usage               | java-api | java-api     |
+    | org.gradle.jvm.environment     |          | standard-jvm |
+
+com.sharedlibs:opencode-zen-spring-boot-starter:1.2.0
+\--- compileClasspath
+
+A web-based, searchable dependency report is available by adding the --scan option.
+
+BUILD SUCCESSFUL in 1s
+1 actionable task: 1 executed

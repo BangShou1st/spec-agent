@@ -11,9 +11,27 @@ import {
 describe('stable model error classifier and product copy', () => {
   it('maps provider unreachable to the Chinese connection copy', () => {
     expect(productErrorMessage('MODEL_PROVIDER_UNREACHABLE')).toBe(
-      '无法连接到 OpenCode，请检查网络后重试',
+      '无法连接到上游服务，请检查网络后重试',
     )
     expect(classifyModelFailure('MODEL_PROVIDER_UNREACHABLE', 503)).toBe('retryable')
+  })
+
+  it('never names a concrete provider in the shared error copy', () => {
+    // The shared copy is rendered on every provider card (OpenCode Zen,
+    // OpenRouter, Kilo, custom). Naming one provider there misleads the
+    // user on the other cards.
+    for (const code of [
+      'MODEL_PROVIDER_UNREACHABLE',
+      'CONNECTION',
+      'NETWORK_ERROR',
+      'MODEL_PROVIDER_TIMEOUT',
+      'MODEL_PROVIDER_AUTHENTICATION',
+      'MODEL_PROVIDER_RATE_LIMITED',
+    ]) {
+      expect(productErrorMessage(code)).not.toContain('OpenCode')
+      expect(productErrorMessage(code)).not.toContain('OpenRouter')
+      expect(productErrorMessage(code)).not.toContain('Kilo')
+    }
   })
 
   it('keeps network outcome unknown until canonical reconciliation', () => {

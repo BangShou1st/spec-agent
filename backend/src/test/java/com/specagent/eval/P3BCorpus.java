@@ -67,8 +67,27 @@ public final class P3BCorpus {
         }
     }
 
-    /** 一个 P3-B 场景:可执行定义 + 决策质量 oracle。 */
-    public record P3BScenario(String scenarioId, P3BOracle oracle, ScenarioDefinition definition) {
+    /**
+     * 一个 P3-B 场景:可执行定义 + 决策质量 oracle。
+     *
+     * @param modelVisibleProvidedArguments 该场景中**模型可见输入**已经提供的
+     *     能力参数名(例如自然语言任务文本已经固定了 {@code scope=PROJECT})。
+     *     证据导出必须以此为依据,而不是从夹具的脚本化决策 payload 推断——
+     *     脚本参数在 live 链路里根本不会执行,不能当作"模型已经知道"。
+     *     旧场景不声明该字段时保持原行为(空列表)。
+     */
+    public record P3BScenario(String scenarioId, P3BOracle oracle, ScenarioDefinition definition,
+                              List<String> modelVisibleProvidedArguments) {
+
+        public P3BScenario {
+            modelVisibleProvidedArguments = modelVisibleProvidedArguments == null
+                    ? List.of() : List.copyOf(modelVisibleProvidedArguments);
+        }
+
+        /** 旧的三参构造:不声明模型可见已知参数(沿用历史行为)。 */
+        public P3BScenario(String scenarioId, P3BOracle oracle, ScenarioDefinition definition) {
+            this(scenarioId, oracle, definition, List.of());
+        }
     }
 
     private static final Set<String> NO_INVARIANTS = Set.of();

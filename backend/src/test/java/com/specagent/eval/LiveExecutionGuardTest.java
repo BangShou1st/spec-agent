@@ -83,6 +83,7 @@ class LiveExecutionGuardTest {
         ModelInferenceGateway routing = new com.specagent.model.provider
                 .RoutingModelInferenceGateway(
                 () -> com.specagent.model.contract.ModelProvider.OPENCODE_ZEN,
+                java.util.Optional::<com.specagent.model.contract.ActiveModelTargetPort.Target>empty,
                 new OpenCodeModelInferenceGateway(null, null), null, null, null);
 
         LiveExecutionGuard.Evidence evidence = LiveExecutionGuard.requireRemoteProvider(

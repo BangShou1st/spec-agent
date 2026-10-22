@@ -87,9 +87,32 @@ implementation("io.modelcontextprotocol.sdk:mcp:0.18.4")
 val auditedOfflineTests = setOf(
     "com.specagent.model.provider.PublishedZenStarterCompatibilityTest",
     "com.specagent.eval.P3BLiveDatabaseGuardTest",
+    "com.specagent.eval.P3BC03NaturalLanguageScenarioTest",
+    "com.specagent.eval.P3BGateMeasurementTest",
     "com.specagent.support.DatabaseTestContextGuardTest",
+    "com.specagent.support.DatabaseTestDiscoveryTest",
+    // All provider gateways are Mockito mocks; concurrency/LRU fixtures are in-memory.
     "com.specagent.model.inference.RoutingModelInferenceGatewayTest",
+    "com.specagent.model.inference.ModelTargetBindingContractTest",
+    "com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest",
+    "com.specagent.agent.decision.AgentBrainArgumentGroundingTest",
+    "com.specagent.agent.action.C16WaitContractTest",
+    "com.specagent.agent.runtime.LegacyBindingMigrationGuardTest",
+    "com.specagent.agent.runtime.DeferredContinuationOfflineTest",
+    "com.specagent.capability.DeferredCapabilityRuntimeTest",
+    "com.specagent.capability.DeferredCapabilityRepositoryTest",
     "com.specagent.capability.GuardedCapabilityOrderTest",
+    "com.specagent.agent.action.ActionEligibilityWaitV4Test",
+    "com.specagent.agent.runtime.WaitDependencyServiceOfflineTest",
+    "com.specagent.agent.runtime.WaitDependencyRepositoryOfflineTest",
+    "com.specagent.agent.runtime.WaitLifecycleOfflineTest",
+    "com.specagent.agent.runtime.WaitDecisionExecutionOfflineTest",
+    // Actual production readiness adapter/scanner, Mockito JDBC only and resource-free transactions.
+    "com.specagent.capability.RetrievalAwaitGenerationOfflineTest",
+    "com.specagent.capability.RebuildWaitCompletionRecoveryOfflineTest",
+    "com.specagent.retrieval.workload.RebuildReadinessOfflineTest",
+    "com.specagent.capability.RebuildWaitRepositoryOfflineTest",
+    // ArchUnit reads class files only, without initializing application classes.
     "com.specagent.architecture.AgentBoundaryArchitectureTests",
     "com.specagent.architecture.CapabilitySkillsMcpBoundaryTests"
 )

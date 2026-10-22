@@ -46,7 +46,9 @@ public final class ActionEligibilityEvaluator {
 
         // agent-input.v2 中不存在待处理依赖的表示,因此 WAIT 无法
         // 从这份输入获得确定性的资格,直接拒绝。
-        evaluated.put(ActionFamily.WAIT, ActionEligibilityConstraint.deny(
+        evaluated.put(ActionFamily.WAIT, request.pendingDependencies() != null
+                && !request.pendingDependencies().dependencies().isEmpty()
+                ? ActionEligibilityConstraint.allow() : ActionEligibilityConstraint.deny(
                 ActionEligibilityReasonCode.NO_PENDING_DEPENDENCY));
 
         if (request.snapshot().availableCapabilities().isEmpty()) {
@@ -72,7 +74,8 @@ public final class ActionEligibilityEvaluator {
     }
 
     /**
-     * 稳定的语义身份:Runtime 的 UUID 与集合顺序被刻意排除在外,
+     * 稳定的语义身份:Graph UUID 与集合顺序被刻意排除在外；
+     * V4 依赖的具体 invocation/owner/scope 身份必须纳入以防调换订阅目标,
      * 而本评估器用到的每个事实都以规范化排序后的形式纳入哈希。
      */
     private String basisHash(AgentRequestEnvelope request,
@@ -96,6 +99,12 @@ public final class ActionEligibilityEvaluator {
         request.snapshot().availableCapabilities().forEach(capability ->
                 facts.add("capability:" + capability.id() + ":" + capability.version()
                         + ":" + capability.sideEffectClass()));
+        if (request.pendingDependencies() != null) {
+            facts.add("dependencyScope:" + request.pendingDependencies().projectId() + ":"
+                    + request.pendingDependencies().routeId() + ":" + request.pendingDependencies().anchorNodeId());
+            request.pendingDependencies().dependencies().forEach(d -> facts.add("dependency:"
+                    + d.invocationId() + ":" + d.ownerRunId() + ":" + d.capabilityId() + ":" + d.deadline()));
+        }
         evaluated.forEach((family, constraint) -> facts.add(
                 "constraint:" + family.code() + ":" + constraint.eligible() + ":"
                         + constraint.reasonCodes().stream().map(Enum::name).sorted().toList()));

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.specagent.agent.action.ActionEligibilityGateTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-10-21T03:25:31" hostname="榜首" time="0.013">
+  <properties/>
+  <testcase name="validSelectionPassesInBothModes()" classname="com.specagent.agent.action.ActionEligibilityGateTest" time="0.005"/>
+  <testcase name="enforcedModeSendsV3AndThrowsTypedIneligibleFailure()" classname="com.specagent.agent.action.ActionEligibilityGateTest" time="0.003"/>
+  <testcase name="shadowRecordsDuplicateVetoWithoutChangingV2OrThrowing()" classname="com.specagent.agent.action.ActionEligibilityGateTest" time="0.002"/>
+  <testcase name="deterministicEngineHonorsV3EligibilityIdentityInEnforcedMode()" classname="com.specagent.agent.action.ActionEligibilityGateTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

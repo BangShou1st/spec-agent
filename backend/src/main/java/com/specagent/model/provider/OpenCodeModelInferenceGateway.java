@@ -51,43 +51,79 @@ public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
 
     @Override
     public ModelInferenceResponse complete(ModelInferenceRequest request) {
-        RuntimeOpenCodeSettings settings = settingsService.requireRuntimeSettings();
-        String selectedModel = settings.selectedModel();
-        if (selectedModel == null || selectedModel.isBlank()) {
-            throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
-                    "No OpenCode model is selected");
-        }
-        List<OpenCodeChatMessage> messages = request.messages().stream()
-                .map(message -> new OpenCodeChatMessage(message.role(), message.content()))
-                .toList();
-        OpenCodeChatCompletionRequest completionRequest =
-                toProviderRequest(selectedModel, messages, request.outputContract());
-        OpenCodeCompletionResponse completion =
-                transport.complete(settings.apiKey(),
-                        OpenCodeZenSessionIds.forConversation(request.conversationOrRun()),
-                        completionRequest);
-        return toResponse(completion);
+        RuntimeOpenCodeSettings runtime = settingsService.requireRuntimeSettings();
+        return doComplete(request, runtime, requiredModel(runtime.selectedModel()));
+    }
+
+    /**
+     * 用调用方已解析的<b>冻结目标模型</b>发起请求(路由网关专用)。凭据仍从运行时
+     * 设置读取,但模型 id 只使用传入值——本次请求内绝不重新读取所选模型。
+     */
+    public ModelInferenceResponse complete(ModelInferenceRequest request, String selectedModel) {
+        RuntimeOpenCodeSettings runtime = settingsService.requireRuntimeSettings();
+        return doComplete(request, runtime, requiredModel(selectedModel));
+    }
+
+    /** 使用路由目标解析产生的同一份凭据/模型快照,避免请求中途重新读设置。 */
+    public ModelInferenceResponse complete(ModelInferenceRequest request, RuntimeOpenCodeSettings runtime) {
+        return doComplete(request, runtime, requiredModel(runtime.selectedModel()));
     }
 
     @Override
     public ModelInferenceResponse completeStreaming(ModelInferenceRequest request,
             com.specagent.model.contract.FragmentListener listener) {
-        RuntimeOpenCodeSettings settings = settingsService.requireRuntimeSettings();
-        String selectedModel = settings.selectedModel();
+        RuntimeOpenCodeSettings runtime = settingsService.requireRuntimeSettings();
+        return doCompleteStreaming(request, listener, runtime, requiredModel(runtime.selectedModel()));
+    }
+
+    /** 流式版本的冻结目标重载;语义与 {@link #complete(ModelInferenceRequest, String)} 相同。 */
+    public ModelInferenceResponse completeStreaming(ModelInferenceRequest request,
+            com.specagent.model.contract.FragmentListener listener, String selectedModel) {
+        RuntimeOpenCodeSettings runtime = settingsService.requireRuntimeSettings();
+        return doCompleteStreaming(request, listener, runtime, requiredModel(selectedModel));
+    }
+
+    /** 流式路由使用同一份运行时快照。 */
+    public ModelInferenceResponse completeStreaming(ModelInferenceRequest request,
+            com.specagent.model.contract.FragmentListener listener, RuntimeOpenCodeSettings runtime) {
+        return doCompleteStreaming(request, listener, runtime, requiredModel(runtime.selectedModel()));
+    }
+
+    private static String requiredModel(String selectedModel) {
         if (selectedModel == null || selectedModel.isBlank()) {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
                     "No OpenCode model is selected");
         }
-        List<OpenCodeChatMessage> messages = request.messages().stream()
-                .map(message -> new OpenCodeChatMessage(message.role(), message.content()))
-                .toList();
+        return selectedModel;
+    }
+
+    private ModelInferenceResponse doComplete(ModelInferenceRequest request,
+            RuntimeOpenCodeSettings runtime, String selectedModel) {
         OpenCodeChatCompletionRequest completionRequest =
-                toProviderRequest(selectedModel, messages, request.outputContract());
+                toProviderRequest(selectedModel, messages(request), request.outputContract());
         OpenCodeCompletionResponse completion =
-                transport.completeStreaming(settings.apiKey(),
+                transport.complete(runtime.apiKey(),
+                        OpenCodeZenSessionIds.forConversation(request.conversationOrRun()),
+                        completionRequest);
+        return toResponse(completion);
+    }
+
+    private ModelInferenceResponse doCompleteStreaming(ModelInferenceRequest request,
+            com.specagent.model.contract.FragmentListener listener,
+            RuntimeOpenCodeSettings runtime, String selectedModel) {
+        OpenCodeChatCompletionRequest completionRequest =
+                toProviderRequest(selectedModel, messages(request), request.outputContract());
+        OpenCodeCompletionResponse completion =
+                transport.completeStreaming(runtime.apiKey(),
                         OpenCodeZenSessionIds.forConversation(request.conversationOrRun()),
                         completionRequest, listener);
         return toResponse(completion);
+    }
+
+    private static List<OpenCodeChatMessage> messages(ModelInferenceRequest request) {
+        return request.messages().stream()
+                .map(message -> new OpenCodeChatMessage(message.role(), message.content()))
+                .toList();
     }
 
     private static ModelInferenceResponse toResponse(OpenCodeCompletionResponse completion) {

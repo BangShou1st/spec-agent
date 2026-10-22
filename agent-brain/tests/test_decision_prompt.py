@@ -4,7 +4,12 @@
 中关于动作资格与选择规则的关键约束文本。
 """
 
-from spec_agent_brain.prompts.decision import SYSTEM_PROMPT
+from spec_agent_brain.prompts.decision import (
+    P3B_DECISION_PROMPT_RULES,
+    SELECTED_P3B_PROMPT_RULES,
+    SYSTEM_PROMPT,
+    _selected_p3b_prompt_rules,
+)
 
 
 def _assert_prompt_contains(*fragments: str) -> None:
@@ -42,6 +47,15 @@ def test_request_user_input_requires_a_current_user_provided_blocker():
         "对当前可靠推进确实必需、用户现在能够提供",
         "问题会直接解决 blocker",
         "observation.unknowns 非空本身不自动授权 RUI",
+    )
+
+
+def test_clarification_options_must_be_grounded_and_open_questions_may_be_free_text():
+    _assert_prompt_contains(
+        "options 仅列出能由当前用户输入或可信上下文支持的候选项",
+        "使用空数组 options: [] 并允许自由输入",
+        "不得为凑选项或推荐而猜测主题",
+        "已有依据时仍可提供有意义的选项",
     )
 
 
@@ -90,3 +104,30 @@ def test_source_refs_belongs_inside_the_action():
         "sourceRefs 是 action 的内部字段",
         "绝不在 JSON 顶层另外再写一个 sourceRefs",
     )
+
+
+def test_p3b_candidate_rules_cover_resolved_answers_and_capability_need():
+    assert "语义等价改写" in P3B_DECISION_PROMPT_RULES["c03"]
+    assert "真正冲突的新约束" in P3B_DECISION_PROMPT_RULES["c03"]
+    assert "声明必填参数都能从当前输入有依据地构造" in P3B_DECISION_PROMPT_RULES["c08"]
+    assert "只向用户询问真正缺少的必填参数" in P3B_DECISION_PROMPT_RULES["c09"]
+    assert "不得编造参数" in P3B_DECISION_PROMPT_RULES["c09"]
+
+
+def test_unaccepted_p3b_rules_are_not_in_the_default_runtime_prompt():
+    assert SELECTED_P3B_PROMPT_RULES == ()
+    assert all(rule not in SYSTEM_PROMPT for rule in P3B_DECISION_PROMPT_RULES.values())
+
+
+def test_eval_prompt_rule_override_is_explicit_and_rejects_unknown_rules(monkeypatch):
+    monkeypatch.setenv("SPEC_AGENT_P3B_EVAL_PROMPT_RULES", "none")
+    assert _selected_p3b_prompt_rules() == ()
+    monkeypatch.setenv("SPEC_AGENT_P3B_EVAL_PROMPT_RULES", "c03,c08")
+    assert _selected_p3b_prompt_rules() == ("c03", "c08")
+    monkeypatch.setenv("SPEC_AGENT_P3B_EVAL_PROMPT_RULES", "unknown")
+    try:
+        _selected_p3b_prompt_rules()
+    except RuntimeError as error:
+        assert "Unknown P3-B evaluation prompt rule" in str(error)
+    else:
+        raise AssertionError("unknown prompt rule must fail closed")

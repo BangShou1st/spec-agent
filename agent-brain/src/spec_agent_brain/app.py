@@ -18,7 +18,8 @@ import logging
 from threading import Lock
 from typing import Annotated, Any, Dict
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from . import __version__
@@ -47,23 +48,55 @@ GA_EXECUTION_PROTOCOL_VERSIONS = [
 ]
 
 
-def _fail(reason: Exception, run_id: Any, operation: str) -> HTTPException:
-    """把真实失败原因写进服务日志,再折叠成统一的 502 状态码。
+class BrainFailureHTTPException(HTTPException):
+    """Keep the legacy detail marker while attaching separate safe diagnostics."""
 
-    以前只有异常类名能穿过 HTTP 边界,导致预算耗尽、模型输出非 JSON、
-    违反输出契约、broker 不可达等完全不同的原因,到达 Java 时都变成了
-    同一种不可分辨的 "brain_unavailable" 失败。这里保持状态码和 detail
-    格式不变,把诊断信息落到服务日志里。
-    """
-    logger.warning("%s failed run=%s: %s: %s",
-                   operation, run_id, type(reason).__name__, reason)
-    return HTTPException(status_code=502,
-                         detail=f"brain_failure:{type(reason).__name__}")
+    def __init__(self, error_type: str, diagnostic: dict[str, Any] | None):
+        super().__init__(status_code=502, detail=f"brain_failure:{error_type}")
+        self.contract_diagnostic = diagnostic
+
+
+def _fail(reason: Exception, run_id: Any, operation: str) -> HTTPException:
+    """只透传类型化、脱敏的诊断;不把异常文本或模型输出写入日志/HTTP。"""
+    diagnostic = getattr(reason, "diagnostic", None)
+    safe_diagnostic = None
+    if diagnostic is not None:
+        safe_diagnostic = {
+            "diagnosticId": diagnostic.diagnostic_id,
+            "stage": diagnostic.stage,
+            "validatorId": diagnostic.validator_id,
+            "machineCode": diagnostic.machine_code,
+            "fieldPath": diagnostic.field_path,
+            "expectedType": diagnostic.expected_type,
+            "actualType": diagnostic.actual_type,
+            "boundary": diagnostic.boundary,
+            "javaWireValidatorEntered": diagnostic.java_wire_validator_entered,
+            "executorReached": diagnostic.executor_reached,
+            "sourceExceptionType": diagnostic.source_exception_type,
+        }
+        logger.warning(
+            "%s failed run=%s errorType=%s diagnosticId=%s machineCode=%s stage=%s",
+            operation, run_id, type(reason).__name__, diagnostic.diagnostic_id,
+            diagnostic.machine_code, diagnostic.stage,
+        )
+    else:
+        logger.warning("%s failed run=%s errorType=%s diagnosticStatus=UNKNOWN",
+                       operation, run_id, type(reason).__name__)
+    return BrainFailureHTTPException(type(reason).__name__, safe_diagnostic)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or load_settings()
     app = FastAPI(title="spec-agent-brain", version=__version__)
+
+    @app.exception_handler(BrainFailureHTTPException)
+    async def brain_failure_response(_request: Request, exc: BrainFailureHTTPException):
+        body: dict[str, Any] = {"detail": exc.detail}
+        if exc.contract_diagnostic is None:
+            body["diagnosticStatus"] = "UNKNOWN"
+        else:
+            body["contractDiagnostic"] = exc.contract_diagnostic
+        return JSONResponse(status_code=exc.status_code, content=body, headers=exc.headers)
     invocation_lock = Lock()
     invocation_counts = {
         "STATE_UPDATE": 0,

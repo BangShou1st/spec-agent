@@ -1,9 +1,15 @@
 package com.specagent.agent.protocol;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.DatabindException;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.specagent.common.Json;
 
 /**
@@ -17,6 +23,18 @@ import com.specagent.common.Json;
  * 在边界两侧行为一致。
  */
 public final class AgentContracts {
+
+    private static final java.util.Set<String> WIRE_FIELD_NAMES = java.util.Set.of(
+            "protocolVersion", "runId", "stateUpdate", "claims", "kind", "text",
+            "status", "confidence", "sourceRefs", "observation", "known", "unknowns",
+            "conflicts", "risks", "actionProposal", "actionFamily", "payload",
+            "proposalId", "idempotencyKey", "baseContextSnapshotId", "baseContextHash",
+            "anchorRefs", "usage", "modelCalls", "promptHashes", "diagnostics",
+            "selectedEligibilityVersion", "selectedEligibilityBasisHash",
+            "eligibilityEvidenceRefs", "artifact", "artifactType", "sections", "title",
+            "content", "unresolvedItems", "capabilityId", "arguments", "questionText",
+            "options", "label", "allowFreeAnswer", "subtype", "relationClass",
+            "relationType", "sourceRef", "targetRef");
 
     private static final ObjectMapper STRICT_MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true)
@@ -42,16 +60,118 @@ public final class AgentContracts {
      */
     public static <T> T read(String json, Class<T> type) {
         try {
+            // A shared Java record cannot distinguish an absent creator argument
+            // from explicit JSON null. Legacy wire versions must reject the V4
+            // field even when null, matching Python's extra="forbid" boundary.
+            if (type == AgentRequestEnvelope.class) {
+                var raw = JSON.read(json, java.util.Map.class);
+                if (raw != null && raw.containsKey("pendingDependencies")
+                        && !AgentProtocol.INPUT_PROTOCOL_VERSION_V4.equals(raw.get("protocolVersion")))
+                    throw new AgentContractException("Legacy requests must not carry pendingDependencies");
+            }
             return JSON.read(json, type);
         } catch (IllegalStateException ex) {
             Throwable cause = ex.getCause();
             if (cause instanceof com.fasterxml.jackson.databind.DatabindException databindEx) {
+                WireDiagnostic diagnostic = wireDiagnostic(databindEx);
                 throw new AgentContractException(
-                        "Contract violation in " + type.getSimpleName() + ": "
-                                + databindEx.getOriginalMessage());
+                        "Contract violation in " + type.getSimpleName(),
+                        diagnostic.code(), diagnostic.fieldPath(), diagnostic.expectedType(),
+                        diagnostic.actualType(), "AgentContracts.read",
+                        databindEx.getClass().getSimpleName());
+            }
+            if (cause instanceof AgentContractException contract) {
+                throw new AgentContractException(
+                        "Contract violation in " + type.getSimpleName(),
+                        "JAVA_WIRE_CONTRACT_INVALID", null, "unknown", "unknown",
+                        type.getSimpleName(), contract.sourceExceptionType() == null
+                                ? contract.getClass().getSimpleName()
+                                : contract.sourceExceptionType());
             }
             throw new AgentContractException(
-                    "Contract violation in " + type.getSimpleName() + ": " + ex.getMessage());
+                    "Contract violation in " + type.getSimpleName(),
+                    "JAVA_WIRE_CONTRACT_INVALID", null, "unknown", "unknown",
+                    type.getSimpleName(), cause == null
+                            ? "IllegalStateException" : cause.getClass().getSimpleName());
         }
+    }
+
+    private static WireDiagnostic wireDiagnostic(DatabindException failure) {
+        if (!(failure instanceof JsonMappingException mappingFailure)) {
+            return new WireDiagnostic("JAVA_WIRE_CONTRACT_INVALID", null,
+                    "unknown", "unknown");
+        }
+        if (mappingFailure instanceof UnrecognizedPropertyException) {
+            String path = parentPathOf(mappingFailure.getPath());
+            String fullPath = path.isBlank() ? "UNKNOWN_FIELD" : path + ".UNKNOWN_FIELD";
+            return new WireDiagnostic("JAVA_WIRE_UNKNOWN_FIELD", fullPath,
+                    "no additional property", "present");
+        }
+        String path = pathOf(mappingFailure.getPath());
+        if (mappingFailure instanceof MismatchedInputException mismatch) {
+            Object processor = mismatch.getProcessor();
+            String actual = processor instanceof JsonParser parser
+                    ? actualType(parser.currentToken()) : "unknown";
+            return new WireDiagnostic("JAVA_WIRE_TYPE_MISMATCH", path,
+                    expectedType(mismatch.getTargetType()), actual);
+        }
+        return new WireDiagnostic("JAVA_WIRE_CONTRACT_INVALID", path,
+                "unknown", "unknown");
+    }
+
+    private static String pathOf(java.util.List<JsonMappingException.Reference> path) {
+        return pathOf(path, path.size());
+    }
+
+    private static String parentPathOf(java.util.List<JsonMappingException.Reference> path) {
+        return pathOf(path, Math.max(0, path.size() - 1));
+    }
+
+    private static String pathOf(java.util.List<JsonMappingException.Reference> path, int count) {
+        StringBuilder value = new StringBuilder();
+        for (JsonMappingException.Reference reference : path.subList(0, count)) {
+            if (reference.getFieldName() != null) {
+                String segment = safeSegment(reference.getFieldName());
+                if (!value.isEmpty()) value.append('.');
+                value.append(segment);
+            } else if (reference.getIndex() >= 0) {
+                value.append('[').append(reference.getIndex()).append(']');
+            }
+        }
+        return value.toString();
+    }
+
+    private static String safeSegment(String value) {
+        return value != null && WIRE_FIELD_NAMES.contains(value)
+                ? value : "UNKNOWN_FIELD";
+    }
+
+    private static String expectedType(Class<?> type) {
+        if (type == null) return "unknown";
+        if (String.class.isAssignableFrom(type)) return "string";
+        if (java.util.UUID.class.isAssignableFrom(type)) return "uuid";
+        if (type == boolean.class || type == Boolean.class) return "boolean";
+        if (Number.class.isAssignableFrom(type) || type.isPrimitive()) return "number";
+        if (java.util.Collection.class.isAssignableFrom(type)) return "array";
+        if (java.util.Map.class.isAssignableFrom(type)) return "object";
+        return "unknown";
+    }
+
+    private static String actualType(JsonToken token) {
+        if (token == null) return "unknown";
+        return switch (token) {
+            case VALUE_STRING -> "string";
+            case VALUE_NUMBER_INT -> "integer";
+            case VALUE_NUMBER_FLOAT -> "number";
+            case VALUE_TRUE, VALUE_FALSE -> "boolean";
+            case VALUE_NULL -> "null";
+            case START_OBJECT -> "object";
+            case START_ARRAY -> "array";
+            default -> "unknown";
+        };
+    }
+
+    private record WireDiagnostic(String code, String fieldPath,
+                                  String expectedType, String actualType) {
     }
 }

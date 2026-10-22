@@ -1,0 +1,118 @@
+[
+  {
+    "path": "agent-brain/src/spec_agent_brain/contracts/inputs.py",
+    "sha256": "1e6fe7b65341edcdb119c590249e18f0d4bc84587b3c720d1a71a6ad2e82083b"
+  },
+  {
+    "path": "agent-brain/tests/test_c16_wait_contract.py",
+    "sha256": "7623515b8580f4ff3161ca03fd30bd1dae9eb5dd7f4c4cd21a18461eff299863"
+  },
+  {
+    "path": "backend/build.gradle.kts",
+    "sha256": "73c761a8439bbc166ea15f5227bec8ab3c6f5b8342f0ae7cc36143e03cd74f40"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/action/ActionEligibilityGate.java",
+    "sha256": "3e5bef781978c86c0811cfa987a10703826260c4a89314abda1ba88e419b9b8a"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/action/ActionExecutionContext.java",
+    "sha256": "529c8aa7729b751a764d5ba0decd00702d626b465d55540f7a6189e43fe0c7c2"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/action/ProposalActionExecutor.java",
+    "sha256": "0b3ee384163643a4e8b9cc1f1bd9caec0f124aeba6b8d029e251a7181f72e190"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/protocol/CapabilityResultView.java",
+    "sha256": "c70ec9dfc63c92bbd5fc60d6c6148f166d50154ff055ce2c70cfc386208ec44c"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/AgentRunModelBindingRepository.java",
+    "sha256": "5f2834ff15c9ff08db16cf55d3f2eee5902413633513b8ae9d6aba06ca06ed69"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/ContinuationCheckRepository.java",
+    "sha256": "cb8737bdaf7fbc62024880f80d551fb0a6ac4e058fe9e078ae545e98d1f72d1d"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/ContinuationCoordinator.java",
+    "sha256": "914c254c753e0601b6af483a18634be22921b6375022e891f560d556a072f6f6"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/ContinuationDispatchService.java",
+    "sha256": "e1a2a918771ab9c9504b7e1ae2cc5a65ac3ff7d0ec9bc9529452c6b288177ec4"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/ContinuationVerdict.java",
+    "sha256": "4cea2137a6133a632678ae2df0079fb0f7d870ad3ee745e1bc09f2a4f342335c"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/DecisionExecutionService.java",
+    "sha256": "33e483b86b1d02617927739c1a497392f8cba9a10cf906efbd31993bd72063be"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/agent/runtime/LegacyBindingMigrationGuard.java",
+    "sha256": "885e1e51ce0161c43ab21021c0b9a698d2320019c325b8a546b2d04ad4c9e293"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/capability/CapabilityInvocationRepository.java",
+    "sha256": "f869513b8ac39824bd11e2bbe162668e131762c8b8efaf2d620f286d8810bf2a"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/capability/CapabilityResult.java",
+    "sha256": "7a4a6baefa829977242931cd15dafd919555203f3ec84295452301faf638f870"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/capability/CapabilityRuntime.java",
+    "sha256": "abcacaa16bf4f9df820beb2f3745d5dae6a373a0841a1cf2172a4c62ec48a523"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/capability/DeferredCapabilityAdapter.java",
+    "sha256": "b72fe4f975743f674befaf2c69d5ccaee39e0e686c3df191195b4984b2e9a33e"
+  },
+  {
+    "path": "backend/src/main/java/com/specagent/common/CapabilityCompletionPort.java",
+    "sha256": "6f8092b37d0e817ebd2264b5eeaf80b30ba1d2ccf2f2bf94e18a038d3d130481"
+  },
+  {
+    "path": "backend/src/main/resources/db/migration/V100__protect_existing_run_model_binding.sql",
+    "sha256": "c212d7468fae6c14809563e0fe9d957a3dc576cabda301ea21486c537a323ef3"
+  },
+  {
+    "path": "backend/src/main/resources/db/migration/V101__deferred_capability_deadline.sql",
+    "sha256": "aa77074e3cd10d90d7a2f80428781aa95d16269e41cbcabccd8e12ea1504669b"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/agent/action/C16WaitContractTest.java",
+    "sha256": "b31e19461a34b4d38d955f72a07a018ff18d3122d6bf26b8b6629ed88acf474f"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/agent/runtime/AgentRunModelBindingRepositoryOfflineTest.java",
+    "sha256": "f88e23ea9fc7f0f3f29acccba7543d7e660d2bb47cc9dba6dc57e4653f4ca796"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/agent/runtime/DeferredContinuationOfflineTest.java",
+    "sha256": "bca1638aa4cea7531b2e354cf95f961c49172efe2dcebf1600e6aaf6f5ca93a1"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/agent/runtime/LegacyBindingMigrationGuardTest.java",
+    "sha256": "ce04efbf3328528526fbfdca15f6700cc1677c15500025016c1ef079e91824fb"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/capability/DeferredCapabilityRepositoryTest.java",
+    "sha256": "2a571e91e08eae40cfdbb0cd7462e28330b940e1ddee0ca4b7d71d94e5f804bf"
+  },
+  {
+    "path": "backend/src/test/java/com/specagent/capability/DeferredCapabilityRuntimeTest.java",
+    "sha256": "077f1845df774a43636cc12961abcc869150577e012fee326e5f7d5af80adb55"
+  },
+  {
+    "path": "contracts/fixtures/deferred-capability-completed-observation.json",
+    "sha256": "58e2b5c946bb20ee250d8f60bc9c589240646c71d830b2bb3459a867d9d312a4"
+  },
+  {
+    "path": "docs/v2/DEFERRED_CAPABILITY_CONTRACT.md",
+    "sha256": "3d4c6d41dff3e9ba63d28b92f05ce56ea131ff868d24b6218c6891263baea4a3"
+  }
+]

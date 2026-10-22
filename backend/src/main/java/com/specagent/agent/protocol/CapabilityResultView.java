@@ -20,6 +20,9 @@ public record CapabilityResultView(String invocationId,
                                    Map<String, Object> provenance) {
 
     public CapabilityResultView {
+        if ("PENDING".equals(status)) {
+            throw new AgentContractException("Deferred dependencies are Host-owned; existing wire versions expose completed observations only");
+        }
         content = content == null ? Map.of() : Map.copyOf(content);
         sourceRefs = sourceRefs == null ? List.of() : List.copyOf(sourceRefs);
         provenance = provenance == null ? Map.of() : Map.copyOf(provenance);

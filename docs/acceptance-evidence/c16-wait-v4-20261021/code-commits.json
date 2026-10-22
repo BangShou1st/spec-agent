@@ -1,0 +1,59 @@
+[
+  {
+    "sha": "ce16b777baa2bc2a4e0db1cedc63fdcbdfaaf953",
+    "subject": "feat(agent): implement durable V4 WAIT subscriptions and recovery",
+    "files": [
+      "agent-brain/src/spec_agent_brain/contracts/decisions.py",
+      "agent-brain/src/spec_agent_brain/contracts/inputs.py",
+      "agent-brain/src/spec_agent_brain/contracts/protocol.py",
+      "agent-brain/src/spec_agent_brain/decision/engine.py",
+      "agent-brain/tests/test_c16_wait_v4.py",
+      "backend/build.gradle.kts",
+      "backend/src/main/java/com/specagent/agent/action/ActionEligibilityDependencyPort.java",
+      "backend/src/main/java/com/specagent/agent/action/ActionEligibilityEvaluator.java",
+      "backend/src/main/java/com/specagent/agent/action/ActionEligibilityGate.java",
+      "backend/src/main/java/com/specagent/agent/action/ActionEligibilityValidator.java",
+      "backend/src/main/java/com/specagent/agent/decision/AgentBrainResponseValidator.java",
+      "backend/src/main/java/com/specagent/agent/decision/LocalDeterministicDecisionEngine.java",
+      "backend/src/main/java/com/specagent/agent/protocol/AgentProtocol.java",
+      "backend/src/main/java/com/specagent/agent/protocol/AgentRequestEnvelope.java",
+      "backend/src/main/java/com/specagent/agent/protocol/AgentResponseEnvelope.java",
+      "backend/src/main/java/com/specagent/agent/protocol/PendingDependencyProjection.java",
+      "backend/src/main/java/com/specagent/agent/runtime/ContinuationCheckRepository.java",
+      "backend/src/main/java/com/specagent/agent/runtime/ContinuationCoordinator.java",
+      "backend/src/main/java/com/specagent/agent/runtime/ContinuationDispatchService.java",
+      "backend/src/main/java/com/specagent/agent/runtime/DecisionExecutionService.java",
+      "backend/src/main/java/com/specagent/agent/runtime/WaitDependencyRepository.java",
+      "backend/src/main/java/com/specagent/agent/runtime/WaitDependencyService.java",
+      "backend/src/main/java/com/specagent/capability/CapabilityInvocationRepository.java",
+      "backend/src/main/resources/db/migration/V102__wait_dependency_subscriptions.sql",
+      "backend/src/test/java/com/specagent/agent/action/ActionEligibilityWaitV4Test.java",
+      "backend/src/test/java/com/specagent/agent/runtime/WaitDecisionExecutionOfflineTest.java",
+      "backend/src/test/java/com/specagent/agent/runtime/WaitDependencyRepositoryOfflineTest.java",
+      "backend/src/test/java/com/specagent/agent/runtime/WaitDependencyServiceOfflineTest.java",
+      "backend/src/test/java/com/specagent/agent/runtime/WaitLifecycleOfflineTest.java",
+      "contracts/README.md",
+      "contracts/fixtures/agent-input-v4-wait.json",
+      "docs/v2/C16_WAIT_V4.md",
+      "docs/v2/DEFERRED_CAPABILITY_CONTRACT.md",
+      "docs/v2/README.md"
+    ]
+  },
+  {
+    "sha": "8fa66205b4198c1654f5fffb7d4416b441d05d4b",
+    "subject": "fix(protocol): reject null V4 extensions on legacy requests",
+    "files": [
+      "agent-brain/tests/test_c16_wait_v4.py",
+      "backend/src/main/java/com/specagent/agent/protocol/AgentContracts.java",
+      "backend/src/test/java/com/specagent/agent/action/ActionEligibilityWaitV4Test.java"
+    ]
+  },
+  {
+    "sha": "8108535b9ce73d530c4933b58a7666f28cf578eb",
+    "subject": "fix(agent): stop WAIT retries after organization revocation",
+    "files": [
+      "backend/src/main/java/com/specagent/agent/runtime/ContinuationDispatchService.java",
+      "backend/src/test/java/com/specagent/agent/runtime/WaitLifecycleOfflineTest.java"
+    ]
+  }
+]

@@ -135,7 +135,9 @@ public class KiloSettingsService implements KiloRuntimeSettingsPort {
         }
         return new RuntimeKiloSettings(
                 credentialForModel(settings.selectedModel(), settings.apiKey()),
-                settings.selectedModel(), "database:kilo_settings");
+                settings.selectedModel(), "database:kilo_settings",
+                settings.updatedAt() == null ? "unknown" : settings.updatedAt().toString(),
+                properties.getBaseUrl());
     }
 
     /**

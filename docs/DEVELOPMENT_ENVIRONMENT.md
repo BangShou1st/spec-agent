@@ -206,6 +206,31 @@ message) and binds Spring to an isolated port
 automatically when the brain is not running so the default suite stays green
 offline.
 
+### The Python runtime the database integration selection needs
+
+`C16RetrievalAwaitGenerationEndToEndTest` is a real-process acceptance test:
+it starts an actual `agent-brain` process and drives the production
+readiness path over it. The interpreter it starts must therefore carry the
+brain package — a bare `python3` from `PATH` usually does not, and the test
+then fails with `No module named uvicorn`.
+
+Two environment variables make the interpreter selection explicit:
+
+- `SPEC_AGENT_GA_TEST_PYTHON` — the absolute path of the interpreter to
+  start. Point it at the repository virtualenv
+  (`agent-brain/.venv/Scripts/python.exe` on Windows,
+  `agent-brain/.venv/bin/python` on Linux) or at any interpreter where
+  `pip install -e agent-brain` has been run. This is the variable
+  `PythonExecutable` reads first.
+- `SPEC_AGENT_P3B_EVAL_PYTHON` — the same purpose for the evaluation
+  harness; it is the fallback when the first variable is unset.
+
+When neither is set, the lookup falls back to the repository virtualenv and
+then to `python3` / `python` on `PATH`. That fallback is convenient locally
+but is exactly what made the CI `backend` job fail: the runner had a system
+`python3` without the brain package. The CI job now installs the brain into
+the runner's own interpreter and exports that interpreter explicitly.
+
 ## 11. Internal Broker Network Isolation
 
 The internal model inference broker (`POST /internal/v1/model-inference`) is

@@ -1,0 +1,363 @@
+{
+  "schema_version" : "p3b-live-priority.v3",
+  "schema_migration" : "v1 execution_success_rate 把 Run 正常终态(policy_denied/awaiting_approval)与动作实际执行混为一谈;v2 拆分为 run_normal_terminal_rate / action_submitted_rate / action_completed_rate,并保留 execution_success_rate 作为 action_completed_rate 的兼容别名(v1 的分母等于 action_measured_count)。v1 的 executed_action 也据此收窄:只有 completed 才记为已执行。",
+  "suite" : "EvalLiveP3BDecisionQualityTest",
+  "experiment_id" : "c09-ambig-local-20261020-01",
+  "arm" : "UNSPECIFIED",
+  "prompt_rule_set" : "none",
+  "prompt_version_basis" : "DECISION system prompt SHA-256 in each attempt",
+  "eval_database" : "spec_agent_p3b_live_c09fix_20261020",
+  "eval_database_identity" : {
+    "host" : "172.21.0.2/32",
+    "user" : "spec_agent",
+    "database" : "spec_agent_p3b_live_c09fix_20261020",
+    "port" : 5432
+  },
+  "provider" : "CUSTOM",
+  "model_id" : "qwen3.5:4b",
+  "model_listed_as_free" : false,
+  "endpoint" : "http://127.0.0.1:11434/v1",
+  "credential_source" : "database:custom_provider_settings",
+  "brain_model_mode" : "broker",
+  "action_eligibility_mode" : "enforced",
+  "scenario_count" : 1,
+  "scenario_ids" : [ "P3B-C09-AMBIG" ],
+  "attempt_count" : 2,
+  "expected_attempt_count" : 2,
+  "report_status" : "COMPLETE",
+  "human_review_status" : "PENDING_HUMAN_REVIEW",
+  "oracle_policy" : "Frozen AI candidate labels; this report does not approve or modify them",
+  "request_budget" : {
+    "judge_requests" : 0,
+    "experiment_max_new_upstream_requests" : 4,
+    "requests_in_this_arm" : 4,
+    "retry_policy" : "No explicit retries or provider fallback; actual inference events are counted"
+  },
+  "stopped_after_rate_limit" : false,
+  "stopped_after_provider_failure" : false,
+  "stopped_after_provider_retry" : false,
+  "stopped_after_unclassified_failure" : false,
+  "stopped_after_model_contract_failure" : false,
+  "stopped_on_request_budget" : false,
+  "total_model_requests" : 4,
+  "successful_model_requests" : 4,
+  "failed_model_requests" : 0,
+  "not_measured_action_count" : 0,
+  "protocol_failure_count" : 0,
+  "sanitization_policy" : "No raw run IDs, full inputs, private prompts, tokens, or HTTP requests; prompt hashes and fixture-only action payloads retained.",
+  "model_selection_accuracy" : 1.0,
+  "model_selection_measured_count" : 2,
+  "model_selection_not_measured_count" : 0,
+  "gate_accuracy" : 1.0,
+  "gate_measured_count" : 2,
+  "run_normal_terminal_rate" : 1.0,
+  "run_normal_terminal_measured_count" : 2,
+  "action_submitted_rate" : 1.0,
+  "action_submitted_measured_count" : 2,
+  "action_completed_rate" : 1.0,
+  "action_completed_measured_count" : 2,
+  "execution_success_rate" : 1.0,
+  "execution_measured_count" : 2,
+  "action_acceptable_set_accuracy" : 1.0,
+  "action_acceptable_set_denominator" : 2,
+  "action_measured_count" : 2,
+  "repeated_clarification_count" : 0,
+  "repeated_clarification_measured_count" : 0,
+  "unnecessary_capability_call_count" : 0,
+  "unnecessary_capability_call_measured_count" : 0,
+  "capability_call_count" : 0,
+  "payload_validity" : 1.0,
+  "payload_validity_measured" : 2,
+  "payload_validity_invalid_count" : 0,
+  "eligibility_veto_count" : 0,
+  "eligibility_unknown_count" : 0,
+  "eligibility_measured_count" : 2,
+  "unresolved_semantic_error_signal_count" : 0,
+  "unresolved_semantic_error_signal_measured_count" : 2,
+  "manual_semantic_review_required_count" : 0,
+  "failure_classification_breakdown" : {
+    "NONE" : 2
+  },
+  "protocol_error_count" : 0,
+  "rate_limited_count" : 0,
+  "infrastructure_failure_count" : 0,
+  "unknown_failure_count" : 0,
+  "attempts" : [ {
+    "scenario_id" : "P3B-C09-AMBIG",
+    "variant_id" : "base",
+    "run_correlation_id" : "fdb5d1ee010e125c489a",
+    "scenario_hash" : "6e2484e0a7547e2c",
+    "candidate_label_status" : "PENDING_HUMAN_REVIEW",
+    "oracle_candidate" : {
+      "forbidden_actions" : [ "RESPOND_TO_USER", "WAIT", "INVOKE_CAPABILITY" ],
+      "acceptable_primary_actions" : [ "REQUEST_USER_INPUT" ],
+      "expected_gate" : "PASS",
+      "expected_veto_reason_codes" : [ ]
+    },
+    "model_request_events" : [ {
+      "call_type" : "STATE_UPDATE",
+      "status" : "SUCCESS",
+      "gateway_category" : null
+    }, {
+      "call_type" : "DECISION",
+      "status" : "SUCCESS",
+      "gateway_category" : null
+    } ],
+    "run_failed_evidence" : {
+      "error_code" : "NONE",
+      "reason" : "NONE",
+      "present" : false
+    },
+    "input_evidence" : {
+      "answered_lineage_entries" : 1,
+      "unresolved_effective_claims" : 1,
+      "memory_search_visible" : true,
+      "available_capabilities" : [ {
+        "id" : "memory.search",
+        "required_arguments" : [ "query" ]
+      } ],
+      "required_arguments_verified" : true,
+      "memory_search_provided_argument_names" : [ "scope" ],
+      "memory_search_query_required" : true,
+      "memory_search_missing_arguments" : [ "query" ],
+      "allowed_source_ref_count" : 9,
+      "allowed_source_refs_sha256" : "79e8ce416be6288536235fd5595d962f747e7554bfed884033141d8a42a433b8",
+      "retrieved_context_count" : 2
+    },
+    "model_selected_action" : "REQUEST_USER_INPUT",
+    "model_selection_measured" : true,
+    "model_selection_acceptable" : true,
+    "eligibility_outcome" : "PASSED",
+    "eligibility_reason_codes" : [ ],
+    "accepted_action" : "REQUEST_USER_INPUT",
+    "executed_action" : "REQUEST_USER_INPUT",
+    "action_acceptable" : true,
+    "action_measured" : true,
+    "payload_validity" : "VALID",
+    "execution_state" : "completed",
+    "failure_classification" : "NONE",
+    "model_request_count" : 2,
+    "successful_model_requests" : 2,
+    "failed_model_requests" : 0,
+    "provider_retries" : 0,
+    "judge_model_calls" : 0,
+    "reported_production_model_calls" : 2,
+    "provider_failure_categories" : [ ],
+    "attribution_basis" : "final_execution",
+    "capability_calls" : 0,
+    "repeated_clarification" : false,
+    "unnecessary_capability_call" : false,
+    "unresolved_semantic_error_signal" : false,
+    "manual_semantic_review_required" : false,
+    "model_raw_action" : {
+      "action_family" : "REQUEST_USER_INPUT",
+      "payload" : {
+        "allowFreeAnswer" : true,
+        "allowMultiSelect" : false,
+        "kind" : "INTERACTION",
+        "options" : [ {
+          "label" : "已完成功能验证是否通过",
+          "recommended" : false
+        }, {
+          "label" : "需求规格是否已对齐",
+          "recommended" : false
+        } ],
+        "purpose" : "明确需检索的问题内容以便精准搜索历史讨论记录",
+        "questionText" : "请问您当前需要处理具体哪项问题？"
+      },
+      "source_ref_count" : 1
+    },
+    "prompt_hashes" : {
+      "state_update_input" : "d8490e85d7a408fdb549cd7e0ac1cfd8e64ebd36ad0910d17d72015105351d77",
+      "decision_input" : "7417cbe5b2fc1c2146b7eae54cd0a9fd4181484c10b65a9f9d3f47ce63d42bf7"
+    },
+    "source_reference_audit" : {
+      "source_refs_allowed" : true,
+      "source_ref_manifest_sha256" : "6ecd7c9be2bf7bb71191ed91dd454af54f4b752fe7c53e62bd37315f26622e7b",
+      "source_ref_count" : 1,
+      "status" : "DETERMINISTIC_VERIFIED",
+      "anchor_ref_count" : 0,
+      "invalidated_source_reference_used" : false,
+      "invalidated_source_ref_count" : 0
+    },
+    "automatic_semantic_review" : {
+      "status" : "AUTO_REVIEWED",
+      "reviewer" : "p3b-deterministic-evidence-audit.v1",
+      "review_scope" : "fixture facts, candidate oracle alignment, protocol, source refs, declared parameters, and execution trace",
+      "oracle_human_review_status" : "PENDING_HUMAN_REVIEW",
+      "candidate_oracle_action_match" : true,
+      "answered_lineage_present" : true,
+      "unresolved_effective_claim_count" : 1,
+      "capability_argument_audit" : {
+        "status" : "NOT_APPLICABLE"
+      },
+      "clarification_structure_audit" : {
+        "status" : "DETERMINISTIC_VERIFIED",
+        "semantic_intent" : "UNRESOLVED",
+        "question_text_present" : true
+      },
+      "capability_invocation_count" : 0,
+      "cycle_completed" : true,
+      "failure_classification" : "NONE",
+      "source_reference_audit" : {
+        "source_refs_allowed" : true,
+        "source_ref_manifest_sha256" : "6ecd7c9be2bf7bb71191ed91dd454af54f4b752fe7c53e62bd37315f26622e7b",
+        "source_ref_count" : 1,
+        "status" : "DETERMINISTIC_VERIFIED",
+        "anchor_ref_count" : 0,
+        "invalidated_source_reference_used" : false,
+        "invalidated_source_ref_count" : 0
+      },
+      "semantic_equivalence" : "UNRESOLVED",
+      "unsupported_factual_assertions" : "UNRESOLVED",
+      "basis" : [ "The frozen candidate label was compared without editing it.", "The report records structural facts and runtime outcomes; no independent judge model was called." ]
+    },
+    "duration_ms" : 29313,
+    "measured_duration_ms" : 29359,
+    "stage_latency_ms" : {
+      "inference.DECISION" : 13085,
+      "inference.STATE_UPDATE" : 15167,
+      "total" : 29313
+    }
+  }, {
+    "scenario_id" : "P3B-C09-AMBIG",
+    "variant_id" : "holdout",
+    "run_correlation_id" : "612f202c78cfbc0ff3a1",
+    "scenario_hash" : "6e2484e0a7547e2c",
+    "candidate_label_status" : "PENDING_HUMAN_REVIEW",
+    "oracle_candidate" : {
+      "forbidden_actions" : [ "RESPOND_TO_USER", "WAIT", "INVOKE_CAPABILITY" ],
+      "acceptable_primary_actions" : [ "REQUEST_USER_INPUT" ],
+      "expected_gate" : "PASS",
+      "expected_veto_reason_codes" : [ ]
+    },
+    "model_request_events" : [ {
+      "call_type" : "STATE_UPDATE",
+      "status" : "SUCCESS",
+      "gateway_category" : null
+    }, {
+      "call_type" : "DECISION",
+      "status" : "SUCCESS",
+      "gateway_category" : null
+    } ],
+    "run_failed_evidence" : {
+      "error_code" : "NONE",
+      "reason" : "NONE",
+      "present" : false
+    },
+    "input_evidence" : {
+      "answered_lineage_entries" : 1,
+      "unresolved_effective_claims" : 1,
+      "memory_search_visible" : true,
+      "available_capabilities" : [ {
+        "id" : "memory.search",
+        "required_arguments" : [ "query" ]
+      } ],
+      "required_arguments_verified" : true,
+      "memory_search_provided_argument_names" : [ "scope" ],
+      "memory_search_query_required" : true,
+      "memory_search_missing_arguments" : [ "query" ],
+      "allowed_source_ref_count" : 9,
+      "allowed_source_refs_sha256" : "fff5f6ef48cde6ee4dcfee38b750c4aad9da7fed32ad558a8392465b7db4a70b",
+      "retrieved_context_count" : 2
+    },
+    "model_selected_action" : "REQUEST_USER_INPUT",
+    "model_selection_measured" : true,
+    "model_selection_acceptable" : true,
+    "eligibility_outcome" : "PASSED",
+    "eligibility_reason_codes" : [ ],
+    "accepted_action" : "REQUEST_USER_INPUT",
+    "executed_action" : "REQUEST_USER_INPUT",
+    "action_acceptable" : true,
+    "action_measured" : true,
+    "payload_validity" : "VALID",
+    "execution_state" : "completed",
+    "failure_classification" : "NONE",
+    "model_request_count" : 2,
+    "successful_model_requests" : 2,
+    "failed_model_requests" : 0,
+    "provider_retries" : 0,
+    "judge_model_calls" : 0,
+    "reported_production_model_calls" : 2,
+    "provider_failure_categories" : [ ],
+    "attribution_basis" : "final_execution",
+    "capability_calls" : 0,
+    "repeated_clarification" : false,
+    "unnecessary_capability_call" : false,
+    "unresolved_semantic_error_signal" : false,
+    "manual_semantic_review_required" : false,
+    "model_raw_action" : {
+      "action_family" : "REQUEST_USER_INPUT",
+      "payload" : {
+        "allowFreeAnswer" : true,
+        "allowMultiSelect" : false,
+        "kind" : "INTERACTION",
+        "options" : [ {
+          "label" : "某历史事件发生的时间与细节",
+          "recommended" : false
+        }, {
+          "label" : "项目关键决策或资源分配情况",
+          "recommended" : false
+        } ],
+        "purpose" : "为确定后续资料检索的精确目标，需明确用户所关注的特定项目事件或主题名称。",
+        "questionText" : "您在本项目中想查找资料的具体是哪一件事或项目主题呢？"
+      },
+      "source_ref_count" : 1
+    },
+    "prompt_hashes" : {
+      "state_update_input" : "d8490e85d7a408fdb549cd7e0ac1cfd8e64ebd36ad0910d17d72015105351d77",
+      "decision_input" : "7417cbe5b2fc1c2146b7eae54cd0a9fd4181484c10b65a9f9d3f47ce63d42bf7"
+    },
+    "source_reference_audit" : {
+      "source_refs_allowed" : true,
+      "source_ref_manifest_sha256" : "e5d4e52ef3b8f38f80c7d750605b427a30190f901244b868929a24e298a531d9",
+      "source_ref_count" : 1,
+      "status" : "DETERMINISTIC_VERIFIED",
+      "anchor_ref_count" : 0,
+      "invalidated_source_reference_used" : false,
+      "invalidated_source_ref_count" : 0
+    },
+    "automatic_semantic_review" : {
+      "status" : "AUTO_REVIEWED",
+      "reviewer" : "p3b-deterministic-evidence-audit.v1",
+      "review_scope" : "fixture facts, candidate oracle alignment, protocol, source refs, declared parameters, and execution trace",
+      "oracle_human_review_status" : "PENDING_HUMAN_REVIEW",
+      "candidate_oracle_action_match" : true,
+      "answered_lineage_present" : true,
+      "unresolved_effective_claim_count" : 1,
+      "capability_argument_audit" : {
+        "status" : "NOT_APPLICABLE"
+      },
+      "clarification_structure_audit" : {
+        "status" : "DETERMINISTIC_VERIFIED",
+        "semantic_intent" : "UNRESOLVED",
+        "question_text_present" : true
+      },
+      "capability_invocation_count" : 0,
+      "cycle_completed" : true,
+      "failure_classification" : "NONE",
+      "source_reference_audit" : {
+        "source_refs_allowed" : true,
+        "source_ref_manifest_sha256" : "e5d4e52ef3b8f38f80c7d750605b427a30190f901244b868929a24e298a531d9",
+        "source_ref_count" : 1,
+        "status" : "DETERMINISTIC_VERIFIED",
+        "anchor_ref_count" : 0,
+        "invalidated_source_reference_used" : false,
+        "invalidated_source_ref_count" : 0
+      },
+      "semantic_equivalence" : "UNRESOLVED",
+      "unsupported_factual_assertions" : "UNRESOLVED",
+      "basis" : [ "The frozen candidate label was compared without editing it.", "The report records structural facts and runtime outcomes; no independent judge model was called." ]
+    },
+    "duration_ms" : 77052,
+    "measured_duration_ms" : 77076,
+    "stage_latency_ms" : {
+      "inference.DECISION" : 16034,
+      "inference.STATE_UPDATE" : 60333,
+      "total" : 77052
+    }
+  } ],
+  "attempt_evidence_sidecar" : "E:\\project\\spec-agent\\tools\\p3b\\c09-live-runs\\ambig-20261020\\single-arm.json.attempts.jsonl",
+  "python_state_update_delta" : 2,
+  "python_decision_delta" : 2
+}

@@ -1,0 +1,109 @@
+{
+  "evidence_schema": "p3b-local-ollama-model-evidence.v1",
+  "experiment_id": "c09-ambig-qwen25-7b-local-20261020-01",
+  "scenario_id": "P3B-C09-AMBIG",
+  "scenario_version": "2",
+  "scenario_hash": "6e2484e0a7547e2c",
+  "model": {
+    "provider": "CUSTOM",
+    "model_id": "qwen2.5:7b-instruct",
+    "ollama_manifest_digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+    "model_blob": "D:\\Ollama\\models\\blobs\\sha256-2bada8a7450677000f678be90653b85d364de7db25eb5ea54136ada5f3933730",
+    "model_blob_bytes": 4683073952,
+    "ollama_model_size_bytes": 4683087332,
+    "ollama_list_size": "4.7 GB",
+    "format": "gguf",
+    "parameter_size": "7.6B",
+    "quantization": "Q4_K_M",
+    "native_context_length": 32768,
+    "effective_context_length": 8192,
+    "ollama_ps_after_run": {
+      "size": "5.0 GB",
+      "processor": "100% GPU",
+      "context": 8192,
+      "runner": "llamacpp"
+    },
+    "runner_gpu_layers": "29/29",
+    "runner_kv_cache_at_8192": "896.00 MiB (K 448 MiB, V 448 MiB)",
+    "nvidia_smi_after_run": {
+      "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "memory_used_mib": 6459,
+      "memory_total_mib": 8188
+    },
+    "cpu_offload": false,
+    "oom": false
+  },
+  "requests": [
+    {
+      "variant_id": "base",
+      "call_type": "STATE_UPDATE",
+      "provider_request_status": "SUCCESS",
+      "request_task_tokens": 1250,
+      "prompt_eval_tokens": 1250,
+      "prompt_eval_ms": 6610.30,
+      "output_tokens": 150,
+      "generation_ms": 2941.68,
+      "stage_wall_ms": 20663,
+      "context": 8192,
+      "truncated": false,
+      "python_state_update_schema": "PASS",
+      "evidence": "STATE_UPDATE completed; the same run reached DECISION and recorded one unresolved effective claim."
+    },
+    {
+      "variant_id": "base",
+      "call_type": "DECISION",
+      "provider_request_status": "SUCCESS",
+      "request_task_tokens": 5117,
+      "prompt_eval_tokens": 5110,
+      "prompt_eval_ms": 2074.79,
+      "output_tokens": 191,
+      "generation_ms": 3939.80,
+      "stage_wall_ms": 6220,
+      "context": 8192,
+      "truncated": false,
+      "python_model_decision_output_schema": "FAIL",
+      "contract_diagnostic": {
+        "boundary": "PYTHON_BRAIN",
+        "validator_id": "ModelDecisionOutput",
+        "diagnostic_code": "MODEL_OUTPUT_SCHEMA_INVALID",
+        "field_path": "observation.known",
+        "expected_type": "array",
+        "actual_type": "string",
+        "source_exception_type": "ValidationError",
+        "java_wire_validator_entered": false,
+        "executor_reached": false
+      },
+      "model_selected_action": "NOT_MEASURED",
+      "java_decision_contract": "NOT_REACHED",
+      "action_eligibility": "NOT_MEASURED",
+      "source_refs": "NOT_MEASURED",
+      "payload": "NOT_PRODUCED",
+      "capability_calls": 0
+    }
+  ],
+  "run": {
+    "attempts_completed": 1,
+    "expected_attempts": 2,
+    "report_status": "INCOMPLETE",
+    "failure_classification": "MODEL_PROTOCOL_VIOLATION",
+    "total_upstream_requests": 2,
+    "request_budget": 4,
+    "provider_successes": 2,
+    "provider_failures": 0,
+    "provider_retries": 0,
+    "fallbacks": 0,
+    "provider_switches": 0,
+    "judge_model_calls": 0,
+    "stop_after_first_model_contract_failure": true,
+    "full_base_variant_wall_ms": 27603,
+    "holdout": "NOT_RUN"
+  },
+  "evidence_sources": {
+    "live_report": "tools/p3b/c09-live-runs/qwen25-7b-20261020/single-arm.json",
+    "attempt_sidecar": "tools/p3b/c09-live-runs/qwen25-7b-20261020/single-arm.json.attempts.jsonl",
+    "runner_log": "C:\\Users\\32962\\AppData\\Local\\Ollama\\server.log",
+    "ollama_tags_api": "http://127.0.0.1:11434/api/tags",
+    "ollama_ps": "captured after the live run"
+  },
+  "privacy": "No prompts, model completion text, credentials, or raw HTTP bodies are included."
+}

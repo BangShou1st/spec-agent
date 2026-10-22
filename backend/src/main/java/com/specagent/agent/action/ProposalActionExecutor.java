@@ -70,8 +70,11 @@ public class ProposalActionExecutor implements ActionExecutor {
                 ? (Map<String, Object>) map : Map.of();
 
         String invocationKey = "run:" + context.runId() + ":proposal:" + proposal.idempotencyKey();
-        CapabilityResult result = capabilityRuntime.invoke(
-                invocationKey, capabilityId, context.projectId(), context.runId(), arguments);
+        CapabilityResult result = context.deferredAllowed()
+                ? capabilityRuntime.invokeDeferredAllowed(
+                        invocationKey, capabilityId, context.projectId(), context.runId(), arguments)
+                : capabilityRuntime.invoke(
+                        invocationKey, capabilityId, context.projectId(), context.runId(), arguments);
 
         String message = "capability " + capabilityId + " -> " + result.status()
                 + (result.status() == CapabilityResult.Status.FAILED

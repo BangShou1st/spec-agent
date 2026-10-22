@@ -140,10 +140,19 @@ class AgentV3ResponseEnvelope(AgentV2ResponseEnvelope):
         return self
 
 
+class AgentV4ResponseEnvelope(AgentV3ResponseEnvelope):
+    protocol_version: Literal[protocol.DECISION_PROTOCOL_VERSION_V4]
+
+
 def validate_v3_response_for_request(
         request: "AgentV3RequestEnvelope",
         response: AgentV3ResponseEnvelope) -> None:
     """与 Java 侧的 V3 eligibility 信任边界校验保持一致。"""
+    expected_version = (protocol.DECISION_PROTOCOL_VERSION_V4
+                        if request.protocol_version == protocol.INPUT_PROTOCOL_VERSION_V4
+                        else protocol.DECISION_PROTOCOL_VERSION_V3)
+    if response.protocol_version != expected_version:
+        raise ValueError("decision response version does not match request")
     eligibility = request.action_eligibility
     if response.selected_eligibility_version != eligibility.version:
         raise ValueError("selected eligibility version does not match request")
@@ -153,6 +162,13 @@ def validate_v3_response_for_request(
         raise ValueError("V3 Decision requires an action proposal")
     if response.action_proposal.action_family not in eligibility.eligible_families:
         raise ValueError("selected action family is not eligible")
+    if (request.protocol_version == protocol.INPUT_PROTOCOL_VERSION_V4
+            and response.action_proposal.action_family == "WAIT"):
+        payload = response.action_proposal.payload
+        allowed = {str(d.invocation_id) for d in request.pending_dependencies.dependencies}
+        if (set(payload) != {"dependencyRef"} or not isinstance(payload.get("dependencyRef"), str)
+                or payload["dependencyRef"] not in allowed):
+            raise ValueError("WAIT requires a projected dependencyRef")
     allowed = set(request.snapshot.allowed_source_refs)
     if any(ref not in allowed for ref in response.eligibility_evidence_refs):
         raise ValueError("eligibility evidence ref is outside allowed source refs")

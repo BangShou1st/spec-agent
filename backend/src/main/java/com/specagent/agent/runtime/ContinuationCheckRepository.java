@@ -19,12 +19,43 @@ import java.util.UUID;
  * PARKED_APPROVAL 之后再次请求会把代数加一并重新打开评估。
  */
 @Repository
-public class ContinuationCheckRepository {
+public class ContinuationCheckRepository implements com.specagent.common.CapabilityCompletionPort {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
 
     public ContinuationCheckRepository(NamedParameterJdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
+    }
+
+    /** Scope comes from durable rows, never from a completion payload.
+     * Always enqueue, even if this transaction cannot yet see parent terminalization:
+     * its consumer may already be parking on our uncommitted PENDING row. The outbox
+     * generation serializes both requests; the coordinator enforces terminality and
+     * refuses failed parents. An early nonterminal evaluation remains retryable.
+     */
+    @Override
+    public void completed(UUID invocationId) {
+        jdbcTemplate.update("""
+                WITH settled AS (
+                    UPDATE agent_run_wait_subscriptions s SET state = 'READY'
+                      FROM capability_invocations i, agent_runs w
+                     WHERE i.id = :id AND s.invocation_id = i.id AND s.state = 'WAITING'
+                       AND i.status IN ('SUCCEEDED','FAILED') AND s.project_id = i.project_id
+                       AND w.id = s.wait_run_id AND w.project_id = s.project_id
+                    RETURNING s.wait_run_id, s.project_id
+                ), targets AS (
+                    SELECT r.id FROM capability_invocations i JOIN agent_runs r ON r.id = i.run_id
+                     WHERE i.id = :id AND i.project_id = r.project_id
+                    UNION
+                    SELECT wait_run_id FROM settled
+                )
+                INSERT INTO agent_run_continuation_checks
+                    (run_id, requested_at, processed_at, request_generation)
+                SELECT id, CURRENT_TIMESTAMP, NULL, 1 FROM targets
+                ON CONFLICT (run_id) DO UPDATE
+                  SET requested_at = CURRENT_TIMESTAMP, processed_at = NULL,
+                      request_generation = agent_run_continuation_checks.request_generation + 1
+                """, Maps.of("id", invocationId));
     }
 
     /**

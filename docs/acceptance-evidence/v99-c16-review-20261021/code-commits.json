@@ -1,0 +1,43 @@
+[
+  {
+    "sha": "b2689f00488056f23d0ba78e841c23a583054ec8",
+    "subject": "fix(migration): guard legacy binding upgrade and preserve fingerprints",
+    "files": [
+      "backend/src/main/java/com/specagent/agent/runtime/AgentRunModelBindingRepository.java",
+      "backend/src/main/java/com/specagent/agent/runtime/LegacyBindingMigrationGuard.java",
+      "backend/src/main/resources/db/migration/V100__protect_existing_run_model_binding.sql",
+      "backend/src/test/java/com/specagent/agent/runtime/AgentRunModelBindingRepositoryOfflineTest.java",
+      "backend/src/test/java/com/specagent/agent/runtime/LegacyBindingMigrationGuardTest.java"
+    ]
+  },
+  {
+    "sha": "6ac8ad23bbfb90c804b69e845ea9fcf0737a43d2",
+    "subject": "feat(agent): persist deferred completion and prevent lost continuation wakeups",
+    "files": [
+      "agent-brain/src/spec_agent_brain/contracts/inputs.py",
+      "agent-brain/tests/test_c16_wait_contract.py",
+      "backend/build.gradle.kts",
+      "backend/src/main/java/com/specagent/agent/action/ActionEligibilityGate.java",
+      "backend/src/main/java/com/specagent/agent/action/ActionExecutionContext.java",
+      "backend/src/main/java/com/specagent/agent/action/ProposalActionExecutor.java",
+      "backend/src/main/java/com/specagent/agent/protocol/CapabilityResultView.java",
+      "backend/src/main/java/com/specagent/agent/runtime/ContinuationCheckRepository.java",
+      "backend/src/main/java/com/specagent/agent/runtime/ContinuationCoordinator.java",
+      "backend/src/main/java/com/specagent/agent/runtime/ContinuationDispatchService.java",
+      "backend/src/main/java/com/specagent/agent/runtime/ContinuationVerdict.java",
+      "backend/src/main/java/com/specagent/agent/runtime/DecisionExecutionService.java",
+      "backend/src/main/java/com/specagent/capability/CapabilityInvocationRepository.java",
+      "backend/src/main/java/com/specagent/capability/CapabilityResult.java",
+      "backend/src/main/java/com/specagent/capability/CapabilityRuntime.java",
+      "backend/src/main/java/com/specagent/capability/DeferredCapabilityAdapter.java",
+      "backend/src/main/java/com/specagent/common/CapabilityCompletionPort.java",
+      "backend/src/main/resources/db/migration/V101__deferred_capability_deadline.sql",
+      "backend/src/test/java/com/specagent/agent/action/C16WaitContractTest.java",
+      "backend/src/test/java/com/specagent/agent/runtime/DeferredContinuationOfflineTest.java",
+      "backend/src/test/java/com/specagent/capability/DeferredCapabilityRepositoryTest.java",
+      "backend/src/test/java/com/specagent/capability/DeferredCapabilityRuntimeTest.java",
+      "contracts/fixtures/deferred-capability-completed-observation.json",
+      "docs/v2/DEFERRED_CAPABILITY_CONTRACT.md"
+    ]
+  }
+]

@@ -128,6 +128,7 @@ class ArchitectureTests {
                 "com.specagent.access.security.ActorContextFilter",
                 "com.specagent.assistant.conversation.GaRunActorRepository",
                 "com.specagent.agent.runtime.WorkspaceRunActorRepository",
+                "com.specagent.capability.RebuildWaitRepository",
                 "com.specagent.retrieval.protocol.RetrievalGrantAuthorization");
         for (JavaClass source : CLASSES) {
             source.getMethodCallsFromSelf().stream()

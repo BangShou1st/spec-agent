@@ -44,6 +44,22 @@ public class ContinuationDispatchService {
      * 单执行器模式下为 null,行为与历史一致。
      */
     private final UUID workerId;
+    private com.specagent.capability.CapabilityInvocationRepository deferredInvocations;
+    private WaitDependencyRepository waitSubscriptions;
+    private java.util.List<com.specagent.common.DeferredCompletionRecoveryPort> completionSources=java.util.List.of();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setCompletionSources(java.util.List<com.specagent.common.DeferredCompletionRecoveryPort> sources) {
+        this.completionSources=java.util.List.copyOf(sources);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setWaitSubscriptions(WaitDependencyRepository subscriptions) { this.waitSubscriptions = subscriptions; }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setDeferredInvocations(com.specagent.capability.CapabilityInvocationRepository repository) {
+        this.deferredInvocations = repository;
+    }
 
     public ContinuationDispatchService(ContinuationCheckRepository checkRepository,
                                        ContinuationCoordinator coordinator,
@@ -98,10 +114,30 @@ public class ContinuationDispatchService {
      * 公共路径只能靠时序才能触发的确切 ABA 交错(代数 1 在途时请求代数 2)。
      */
     void process(ContinuationCheck check) {
-        transactionTemplate.executeWithoutResult(status -> {
-            coordinator.continueIfEligible(check.runId());
-            checkRepository.markProcessed(check.runId(), check.generation());
-        });
+        try {
+            transactionTemplate.executeWithoutResult(status -> {
+                coordinator.continueIfEligible(check.runId());
+                checkRepository.markProcessed(check.runId(), check.generation());
+            });
+        } catch (com.specagent.access.AccessDeniedException denied) {
+            // The evaluation transaction has already rolled back. Do not persist a
+            // cancellation inside its rollback-only scope, or endlessly retry a revoked WAIT.
+            var permanent = java.util.Set.of(com.specagent.access.AccessReason.RESOURCE_NOT_VISIBLE,
+                    com.specagent.access.AccessReason.USER_DISABLED,
+                    com.specagent.access.AccessReason.ORG_DISABLED,
+                    com.specagent.access.AccessReason.NOT_ORG_MEMBER,
+                    com.specagent.access.AccessReason.MEMBERSHIP_DISABLED,
+                    com.specagent.access.AccessReason.PROJECT_CAPABILITY_MISSING,
+                    com.specagent.access.AccessReason.ORG_CAPABILITY_MISSING);
+            if (waitSubscriptions == null || !permanent.contains(denied.reasonCode())) throw denied;
+            var cancellation = new TransactionTemplate(java.util.Objects.requireNonNull(
+                    transactionTemplate.getTransactionManager(), "WAIT cancellation requires a transaction manager"));
+            cancellation.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            cancellation.executeWithoutResult(status -> {
+                if (waitSubscriptions.invalidateDenied(check.runId()) != 1) throw denied;
+                checkRepository.markProcessed(check.runId(), check.generation());
+            });
+        }
     }
 
     /**
@@ -120,6 +156,22 @@ public class ContinuationDispatchService {
     private static final int CLAIM_SECONDS = 60;
 
     public void recoverPending(int limit) {
+        for(var source:completionSources) {
+            try { source.recover(limit); }
+            catch(RuntimeException ex) {
+                LOG.warn("Deferred business outcome scan failed; retrying next poll ({})",ex.getClass().getSimpleName());
+            }
+        }
+        if (deferredInvocations != null) {
+            try {
+                deferredInvocations.expirePending(limit);
+            } catch (RuntimeException ex) {
+                // The timeout transaction rolls back independently. Retry it next tick
+                // without starving checks already committed by unrelated runs.
+                LOG.warn("Deferred capability timeout scan failed; retrying next poll ({})",
+                        ex.getClass().getSimpleName());
+            }
+        }
         List<ContinuationCheck> pending =
                 checkRepository.claimPending(limit, workerId, CLAIM_SECONDS);
         for (ContinuationCheck check : pending) {

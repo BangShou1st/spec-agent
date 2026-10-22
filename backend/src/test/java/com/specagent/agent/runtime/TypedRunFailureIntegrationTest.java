@@ -98,10 +98,21 @@ class TypedRunFailureIntegrationTest {
         public AgentResponseEnvelope runDecision(AgentRequestEnvelope request) {
             decisions.incrementAndGet();
             if (failDecision) {
+                com.specagent.agent.decision.ModelContractDiagnostic diagnostic =
+                        decisionFailureCode == BrainFailureCode.MODEL_CONTRACT_VIOLATION
+                                ? new com.specagent.agent.decision.ModelContractDiagnostic(
+                                "c44e8c96-f2b8-45c2-a0d2-8df16842cc78",
+                                "brain.model_output_validation",
+                                "ModelDecisionOutput",
+                                "MODEL_OUTPUT_SCHEMA_INVALID",
+                                "action.payload.questionText",
+                                "string", "object", "PYTHON_BRAIN",
+                                false, false, "ValidationError")
+                                : null;
                 throw new AgentBrainUnavailableException(
                         "model output violates the DECISION contract",
                         new IllegalStateException("scripted contract violation"),
-                        decisionFailureCode);
+                        decisionFailureCode, diagnostic);
             }
             UUID snapshotId = UUID.fromString(request.snapshot().snapshotId());
             return new AgentResponseEnvelope(
@@ -212,6 +223,13 @@ class TypedRunFailureIntegrationTest {
         assertThat(failure)
                 .containsEntry("reason", "model_contract_violation")
                 .containsEntry("errorCode", "model_contract_violation");
+        Map<?, ?> diagnostic = (Map<?, ?>) failure.get("contractDiagnostic");
+        assertThat(diagnostic.get("diagnosticId"))
+                .isEqualTo("c44e8c96-f2b8-45c2-a0d2-8df16842cc78");
+        assertThat(diagnostic.get("machineCode")).isEqualTo("MODEL_OUTPUT_SCHEMA_INVALID");
+        assertThat(diagnostic.get("fieldPath")).isEqualTo("action.payload.questionText");
+        assertThat(diagnostic.get("boundary")).isEqualTo("PYTHON_BRAIN");
+        assertThat(diagnostic.get("executorReached")).isEqualTo(false);
         assertThat((String) failure.get("summary")).isNotBlank();
 
         // 检查点完好:恰好一个答案和一个 patch。

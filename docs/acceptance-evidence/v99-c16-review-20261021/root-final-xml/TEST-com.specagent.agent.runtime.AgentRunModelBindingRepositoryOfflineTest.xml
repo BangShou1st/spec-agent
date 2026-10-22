@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-21T03:27:00" hostname="榜首" time="0.032">
+  <properties/>
+  <testcase name="databaseWinnerIsRequiredAndEachCallIssuesOnlyOneUpdate()" classname="com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest" time="0.007"/>
+  <testcase name="jdbcFailurePropagatesWithoutRetryOrInventedSuccess()" classname="com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest" time="0.005"/>
+  <testcase name="bindingSqlWhitelistsRealNonterminalStatesAndNeverReplacesAnExistingDigest()" classname="com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest" time="0.013"/>
+  <testcase name="approvalSuccessorHasAnIndependentBindingAndCannotChangeItsOrigin()" classname="com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest" time="0.002"/>
+  <testcase name="invalidFingerprintAndMissingRunNeverReachJdbc()" classname="com.specagent.agent.runtime.AgentRunModelBindingRepositoryOfflineTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
