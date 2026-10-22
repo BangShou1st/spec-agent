@@ -1,0 +1,60 @@
+{
+  "branch": "dev",
+  "baselineCommit": "742870d6c143d75ce7ab4cc331947932aa0aea47",
+  "recordedAt": "2026-10-22T20:33:00+08:00",
+  "worktreeCleanliness": "Modified files strictly scoped to RAG-D1 task requirements",
+  "modifiedFiles": [
+    {
+      "path": "backend/src/main/resources/application.yml",
+      "reason": "切换默认检索引擎配置为 python-rag.v1，保留已有 profile 与 RPC 契约"
+    },
+    {
+      "path": "backend/src/main/java/com/specagent/retrieval/search/HybridRetriever.java",
+      "reason": "将回退默认引擎设为 python-rag.v1，保留 java-hybrid.v1 回滚兼容"
+    },
+    {
+      "path": "backend/src/main/java/com/specagent/retrieval/embedding/EmbeddingEnrichmentWorker.java",
+      "reason": "将 worker 引擎回退默认设为 python-rag.v1"
+    },
+    {
+      "path": "backend/src/main/java/com/specagent/retrieval/index/RetrievalSourceProjector.java",
+      "reason": "将投影器引擎回退默认设为 python-rag.v1"
+    },
+    {
+      "path": "agent-brain/src/spec_agent_brain/__init__.py",
+      "reason": "防御性移除环境中的 ALL_PROXY / all_proxy，避免 Windows SOCKS 代理阻断与本地 Ollama 11434 的 HTTP 连接"
+    },
+    {
+      "path": "backend/src/test/resources/application-test.yml",
+      "reason": "在 test profile 中增加 master-key-fallback 配置，支持隔离测试库解密"
+    },
+    {
+      "path": "backend/src/test/java/com/specagent/capability/C16RetrievalAwaitGenerationEndToEndTest.java",
+      "reason": "修复测试清理逻辑：在删除代际前先清理外键引用的 scope grants"
+    },
+    {
+      "path": "backend/src/test/java/com/specagent/modelsettings/GeminiCustomProviderSettingsVerificationTest.java",
+      "reason": "Gemini Lite 接入与兼容性验证测试：动态读取本地密钥，通过官方服务完成加密存储、探测与激活"
+    },
+    {
+      "path": "backend/src/test/java/com/specagent/retrieval/eval/GeminiRagControlledAbAcceptanceTest.java",
+      "reason": "RAG-D1 专用受控 A/B 真实模型验收测试：正向、负向与冻结重放断言，输出完整对比证据"
+    },
+    {
+      "path": "backend/src/test/java/com/specagent/retrieval/SharedRetrievalIntegrationTest.java",
+      "reason": "在 startPython() 中显式清理代理环境变量，适配 Windows 本地网络"
+    },
+    {
+      "path": "backend/src/test/java/com/specagent/retrieval/eval/P3ARetrievalLayerAEvaluationTest.java",
+      "reason": "基准对比测试显式绑定 java-hybrid.v1 保证历史比对口径稳定"
+    },
+    {
+      "path": "backend/src/test/java/com/specagent/retrieval/eval/P3AChineseLexicalLaneEvaluationTest.java",
+      "reason": "词法通道基准测试显式绑定 java-hybrid.v1"
+    },
+    {
+      "path": "backend/src/test/java/com/specagent/retrieval/eval/RetrievalFastEvaluationTest.java",
+      "reason": "快速评测基准显式绑定 java-hybrid.v1"
+    }
+  ]
+}

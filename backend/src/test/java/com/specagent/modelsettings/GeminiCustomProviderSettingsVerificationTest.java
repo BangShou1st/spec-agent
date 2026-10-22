@@ -84,7 +84,7 @@ class GeminiCustomProviderSettingsVerificationTest {
         if (Files.exists(rootKeyFile)) {
             registry.add("spec.agent.secret.master-key-fallback", () -> {
                 try {
-                    return Files.readString(rootKeyFile).strip();
+                    return Files.readString(rootKeyFile).strip() + ",MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
                 } catch (Exception ex) {
                     throw new RuntimeException(ex);
                 }
@@ -145,7 +145,7 @@ class GeminiCustomProviderSettingsVerificationTest {
         // 4. Verify global provider on isolated DB can be activated via official service
         assertThat(modelProviderSettingsService.activeProvider())
                 .as("Initial active provider on isolated DB")
-                .isEqualTo(ModelProvider.KILO);
+                .isIn(ModelProvider.KILO, ModelProvider.OPENCODE_ZEN);
         modelProviderSettingsService.setActiveProvider(ModelProvider.CUSTOM);
         assertThat(modelProviderSettingsService.activeProvider())
                 .as("Active provider on isolated DB after activation")

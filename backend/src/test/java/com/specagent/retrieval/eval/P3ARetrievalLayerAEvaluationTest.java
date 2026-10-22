@@ -58,7 +58,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *  - 多来源问题额外统计 All-required@5;
  *  - 越界/过期来源单独计数,不允许用它们换召回。
  */
-@SpringBootTest(properties = "spec.agent.retrieval.embedding.provider=fake")
+@SpringBootTest(properties = {"spec.agent.retrieval.embedding.provider=fake", "spec.agent.retrieval.engine=java-hybrid.v1"})
 @ActiveProfiles("test")
 @Transactional
 class P3ARetrievalLayerAEvaluationTest {

@@ -164,7 +164,7 @@ spec:
       max-descriptor-bytes: ${SPEC_AGENT_CAPABILITY_CATALOG_MAX_DESCRIPTOR_BYTES:2048}
       max-description-chars: ${SPEC_AGENT_CAPABILITY_CATALOG_MAX_DESCRIPTION_CHARS:320}
     retrieval:
-      engine: ${SPEC_AGENT_RETRIEVAL_ENGINE:java-hybrid.v1}
+      engine: ${SPEC_AGENT_RETRIEVAL_ENGINE:python-rag.v1}
       # Vector enrichment is optional; lexical/trigram/graph retrieval remains
       # the correctness path when no provider is configured.
       embedding:

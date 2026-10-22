@@ -251,6 +251,7 @@ class C16RetrievalAwaitGenerationEndToEndTest {
             jdbc.update("DELETE FROM embedding_rebuild_outcomes WHERE project_id = ?", project);
             jdbc.update("DELETE FROM embedding_rebuilds WHERE corpus_id = ?", project);
             jdbc.update("DELETE FROM retrieval_index_jobs WHERE corpus_id = ?", project);
+            jdbc.update("DELETE FROM retrieval_scope_grants WHERE corpus_id = ?", project);
             jdbc.update("DELETE FROM retrieval_index_heads WHERE corpus_id = ?", project);
             jdbc.update("DELETE FROM retrieval_index_generations WHERE corpus_id = ?", project);
             jdbc.update("DELETE FROM nodes WHERE project_id = ?", project);

@@ -1,0 +1,904 @@
+{
+  "recordedAt" : "2026-10-22T12:28:00.151393800Z",
+  "model" : "gemini-3.5-flash-lite",
+  "provider" : "CUSTOM",
+  "protocol" : "CHAT_COMPLETIONS",
+  "realInferenceCalls" : 5,
+  "maxAllowedBudget" : 5,
+  "observations" : [ {
+    "snapshot" : {
+      "snapshotId" : "5c13b977-8229-441a-a0eb-7f584c0e01c2",
+      "contextHash" : "255f6f63d2e4a097a3ea16c5accff7f6c363231ad414f6889a93f063bc3431b2",
+      "projectId" : "e1c4ecba-8f7c-49bf-b3de-86ec398f73ce",
+      "routeId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+      "anchorNodeId" : "78e2d91b-2ac0-459f-b2db-600d3dab4c9a",
+      "routeContext" : {
+        "routeId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+        "tipNodeId" : "78e2d91b-2ac0-459f-b2db-600d3dab4c9a",
+        "label" : "主路线"
+      },
+      "lineage" : [ {
+        "node" : {
+          "id" : "c56eb360-f31d-43e3-bea6-339e5f9dbf2d",
+          "body" : {
+            "text" : "需求工作区导出规范与权限要求",
+            "options" : [ ],
+            "acceptsFreeText" : true
+          },
+          "kind" : "INTERACTION"
+        },
+        "answer" : null,
+        "patches" : [ ]
+      }, {
+        "node" : {
+          "id" : "78e2d91b-2ac0-459f-b2db-600d3dab4c9a",
+          "body" : {
+            "text" : "系统支持导出哪些格式？单次导出的文件大小限制是多少？",
+            "options" : [ ],
+            "acceptsFreeText" : true
+          },
+          "kind" : "INTERACTION"
+        },
+        "answer" : null,
+        "patches" : [ ]
+      } ],
+      "effectiveClaims" : [ ],
+      "metadata" : {
+        "projectTitle" : "rag-d1-gemini-ab-0184546c-13ec-4418-a153-8246d4f15df8"
+      },
+      "allowedSourceRefs" : [ "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d", "node:78e2d91b-2ac0-459f-b2db-600d3dab4c9a", "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d", "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0", "context:5c13b977-8229-441a-a0eb-7f584c0e01c2", "route:a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d" ],
+      "availableCapabilities" : [ {
+        "id" : "memory.search",
+        "version" : "1",
+        "description" : "在当前 Workspace 的受控 Memory / Resource 范围内检索证据",
+        "inputSchema" : {
+          "query" : {
+            "type" : "string",
+            "required" : true
+          },
+          "routeRef" : {
+            "type" : "string"
+          },
+          "maxResults" : {
+            "maximum" : 8,
+            "type" : "integer"
+          },
+          "scope" : {
+            "enum" : [ "ROUTE", "PROJECT", "RESOURCE" ],
+            "type" : "string"
+          }
+        },
+        "readOnly" : true,
+        "sideEffectClass" : "NONE",
+        "supports" : [ ]
+      }, {
+        "id" : "retrieval.await_generation",
+        "version" : "1",
+        "description" : "等待当前项目已请求的检索重建代际就绪；不启动重建、不激活索引。无参数，Host 绑定具体代际及重试代次。",
+        "inputSchema" : {
+          "type" : "object",
+          "additionalProperties" : false,
+          "properties" : { }
+        },
+        "readOnly" : true,
+        "sideEffectClass" : "NONE",
+        "supports" : [ ]
+      } ],
+      "availableSkills" : {
+        "skills" : [ ],
+        "truncated" : false,
+        "fingerprint" : "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "userRequired" : null
+      },
+      "capabilityResults" : [ ],
+      "relations" : [ ],
+      "relatedNodes" : [ ],
+      "retrievedContext" : [ {
+        "sourceRef" : "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d",
+        "sourceKind" : "NODE",
+        "scope" : "ROUTE",
+        "originRouteId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+        "authority" : "DERIVED",
+        "content" : "需求工作区导出规范与权限要求",
+        "location" : { },
+        "provenance" : {
+          "contentHash" : "ea5ac3a0374e181f5640712813af40ab96bfb57244d91edfbf537a0704d80ff2",
+          "originRouteIds" : [ "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d" ],
+          "originRouteId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+          "sourceKind" : "NODE",
+          "workspaceScoped" : false,
+          "retrievalLanes" : [ "route-lexical", "project-lexical" ]
+        },
+        "retrievalReason" : "current-route-memory"
+      }, {
+        "sourceRef" : "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0",
+        "sourceKind" : "RESOURCE_CHUNK",
+        "scope" : "RESOURCE",
+        "originRouteId" : null,
+        "authority" : "EXTERNAL_EVIDENCE",
+        "content" : "需求规格说明书 v2.4（导出章节）：\n1. 格式支持：系统当前完整支持将需求图谱导出为 PDF 和 Markdown 格式。\n2. 大小限制：单次导出的文件大小上限为 50MB。\n3. 不支持的格式：系统当前明确不支持导出为 AutoCAD DWG、Word DOCX 或 HTML 格式。\n4. 权限与安全：导出功能仅限项目正式成员执行；访客与外部人员无权导出。\n",
+        "location" : {
+          "subtype" : "TEXT",
+          "chunkIndex" : 0,
+          "startOffset" : 0,
+          "originRouteIds" : [ ],
+          "rawContentHash" : "10c6d4e59f4275d0a14d1ad93c5cb614aafcb4c8850a225a7af1d3ec9c0e5498",
+          "headings" : [ ],
+          "resourceId" : "ab0fc544-1b6b-4e75-b04d-1116fdc8466e",
+          "workspaceScoped" : true,
+          "rawSourceVersion" : "d956bf1b-2817-40f1-a868-eb461b5f473e",
+          "lineRange" : [ 0, 184 ],
+          "chunk" : 0,
+          "endOffset" : 184
+        },
+        "provenance" : {
+          "sourceKind" : "RESOURCE_CHUNK",
+          "contentHash" : "10c6d4e59f4275d0a14d1ad93c5cb614aafcb4c8850a225a7af1d3ec9c0e5498",
+          "originRouteIds" : [ ],
+          "retrievalLanes" : [ "project-lexical", "project-trigram", "resource-lexical", "resource-trigram" ],
+          "workspaceScoped" : true
+        },
+        "retrievalReason" : "resource-knowledge"
+      } ],
+      "autonomy" : {
+        "mode" : "ADVISOR"
+      }
+    },
+    "arm" : "Case1_ArmA_JavaHybrid",
+    "inferenceCallIndex" : 1,
+    "latencyMs" : 6561,
+    "retrievedContextCount" : 2,
+    "allowedSourceRefsCount" : 6,
+    "observation" : {
+      "known" : [ "用户查询了系统支持的导出格式以及单次导出的文件大小限制。", "资源中包含需求规格说明书 v2.4 的导出章节，指出系统支持导出 PDF 和 Markdown 格式。", "资源指出单次导出的文件大小上限为 50MB。" ],
+      "unknowns" : [ ],
+      "conflicts" : [ ],
+      "risks" : [ "导出的格式与大小限制信息来自外部资源块，需注意其有效性。" ]
+    },
+    "actionProposal" : {
+      "actionFamily" : "RESPOND_TO_USER",
+      "payload" : {
+        "message" : "系统支持导出 PDF 和 Markdown 格式，单次导出的文件大小上限为 50MB。"
+      },
+      "sourceRefs" : [ "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0" ]
+    },
+    "rawResponse" : "{\"observation\": {\"known\": [\"用户查询了系统支持的导出格式以及单次导出的文件大小限制。\", \"资源中包含需求规格说明书 v2.4 的导出章节，指出系统支持导出 PDF 和 Markdown 格式。\", \"资源指出单次导出的文件大小上限为 50MB。\"], \"unknowns\": [], \"conflicts\": [], \"risks\": [\"导出的格式与大小限制信息来自外部资源块，需注意其有效性。\"]}, \"action\": {\"actionFamily\": \"RESPOND_TO_USER\", \"payload\": {\"message\": \"系统支持导出 PDF 和 Markdown 格式，单次导出的文件大小上限为 50MB。\"}, \"sourceRefs\": [\"resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0\"]}}"
+  }, {
+    "snapshot" : {
+      "snapshotId" : "f45ff1d8-63a3-4f9c-9fec-7c7e2e5098e6",
+      "contextHash" : "255f6f63d2e4a097a3ea16c5accff7f6c363231ad414f6889a93f063bc3431b2",
+      "projectId" : "e1c4ecba-8f7c-49bf-b3de-86ec398f73ce",
+      "routeId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+      "anchorNodeId" : "78e2d91b-2ac0-459f-b2db-600d3dab4c9a",
+      "routeContext" : {
+        "routeId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+        "tipNodeId" : "78e2d91b-2ac0-459f-b2db-600d3dab4c9a",
+        "label" : "主路线"
+      },
+      "lineage" : [ {
+        "node" : {
+          "id" : "c56eb360-f31d-43e3-bea6-339e5f9dbf2d",
+          "body" : {
+            "text" : "需求工作区导出规范与权限要求",
+            "options" : [ ],
+            "acceptsFreeText" : true
+          },
+          "kind" : "INTERACTION"
+        },
+        "answer" : null,
+        "patches" : [ ]
+      }, {
+        "node" : {
+          "id" : "78e2d91b-2ac0-459f-b2db-600d3dab4c9a",
+          "body" : {
+            "text" : "系统支持导出哪些格式？单次导出的文件大小限制是多少？",
+            "options" : [ ],
+            "acceptsFreeText" : true
+          },
+          "kind" : "INTERACTION"
+        },
+        "answer" : null,
+        "patches" : [ ]
+      } ],
+      "effectiveClaims" : [ ],
+      "metadata" : {
+        "projectTitle" : "rag-d1-gemini-ab-0184546c-13ec-4418-a153-8246d4f15df8",
+        "retrieval" : {
+          "retrievalEngineVersion" : "python-rag.v1",
+          "profileId" : "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+          "indexGeneration" : "d0000987-50a8-4499-b6db-3a56cf0371ff",
+          "vectorUnavailable" : false,
+          "supplementalRetrievalUnavailable" : false
+        }
+      },
+      "allowedSourceRefs" : [ "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d", "node:78e2d91b-2ac0-459f-b2db-600d3dab4c9a", "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d", "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0", "context:f45ff1d8-63a3-4f9c-9fec-7c7e2e5098e6", "route:a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d" ],
+      "availableCapabilities" : [ {
+        "id" : "memory.search",
+        "version" : "1",
+        "description" : "在当前 Workspace 的受控 Memory / Resource 范围内检索证据",
+        "inputSchema" : {
+          "query" : {
+            "type" : "string",
+            "required" : true
+          },
+          "routeRef" : {
+            "type" : "string"
+          },
+          "maxResults" : {
+            "maximum" : 8,
+            "type" : "integer"
+          },
+          "scope" : {
+            "enum" : [ "ROUTE", "PROJECT", "RESOURCE" ],
+            "type" : "string"
+          }
+        },
+        "readOnly" : true,
+        "sideEffectClass" : "NONE",
+        "supports" : [ ]
+      }, {
+        "id" : "retrieval.await_generation",
+        "version" : "1",
+        "description" : "等待当前项目已请求的检索重建代际就绪；不启动重建、不激活索引。无参数，Host 绑定具体代际及重试代次。",
+        "inputSchema" : {
+          "type" : "object",
+          "additionalProperties" : false,
+          "properties" : { }
+        },
+        "readOnly" : true,
+        "sideEffectClass" : "NONE",
+        "supports" : [ ]
+      } ],
+      "availableSkills" : {
+        "skills" : [ ],
+        "truncated" : false,
+        "fingerprint" : "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "userRequired" : null
+      },
+      "capabilityResults" : [ ],
+      "relations" : [ ],
+      "relatedNodes" : [ ],
+      "retrievedContext" : [ {
+        "sourceRef" : "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d",
+        "sourceKind" : "NODE",
+        "scope" : "ROUTE",
+        "originRouteId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+        "authority" : "DERIVED",
+        "content" : "需求工作区导出规范与权限要求",
+        "location" : { },
+        "provenance" : {
+          "sourceVersion" : "485",
+          "profileId" : "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+          "indexGeneration" : "d0000987-50a8-4499-b6db-3a56cf0371ff",
+          "originRouteId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+          "workspaceScoped" : false,
+          "sourceKind" : "NODE",
+          "retrievalLanes" : [ "route-lexical", "project-lexical", "vector" ],
+          "contentHash" : "ea5ac3a0374e181f5640712813af40ab96bfb57244d91edfbf537a0704d80ff2",
+          "retrievalEngineVersion" : "python-rag.v1",
+          "vectorUnavailable" : false,
+          "originRouteIds" : [ "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d" ]
+        },
+        "retrievalReason" : "current-route-memory"
+      }, {
+        "sourceRef" : "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0",
+        "sourceKind" : "RESOURCE_CHUNK",
+        "scope" : "RESOURCE",
+        "originRouteId" : null,
+        "authority" : "EXTERNAL_EVIDENCE",
+        "content" : "需求规格说明书 v2.4（导出章节）：\n1. 格式支持：系统当前完整支持将需求图谱导出为 PDF 和 Markdown 格式。\n2. 大小限制：单次导出的文件大小上限为 50MB。\n3. 不支持的格式：系统当前明确不支持导出为 AutoCAD DWG、Word DOCX 或 HTML 格式。\n4. 权限与安全：导出功能仅限项目正式成员执行；访客与外部人员无权导出。\n",
+        "location" : {
+          "resourceId" : "ab0fc544-1b6b-4e75-b04d-1116fdc8466e",
+          "lineRange" : [ 0, 184 ],
+          "rawSourceVersion" : "d956bf1b-2817-40f1-a868-eb461b5f473e",
+          "indexGeneration" : "d0000987-50a8-4499-b6db-3a56cf0371ff",
+          "sourceVersion" : "486",
+          "retrievalEngineVersion" : "python-rag.v1",
+          "workspaceScoped" : true,
+          "vectorUnavailable" : false,
+          "profileId" : "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+          "endOffset" : 184,
+          "chunk" : 0,
+          "headings" : [ ],
+          "startOffset" : 0,
+          "subtype" : "TEXT",
+          "originRouteIds" : [ ],
+          "rawContentHash" : "10c6d4e59f4275d0a14d1ad93c5cb614aafcb4c8850a225a7af1d3ec9c0e5498",
+          "chunkIndex" : 0
+        },
+        "provenance" : {
+          "contentHash" : "10c6d4e59f4275d0a14d1ad93c5cb614aafcb4c8850a225a7af1d3ec9c0e5498",
+          "workspaceScoped" : true,
+          "indexGeneration" : "d0000987-50a8-4499-b6db-3a56cf0371ff",
+          "sourceKind" : "RESOURCE_CHUNK",
+          "vectorUnavailable" : false,
+          "originRouteIds" : [ ],
+          "retrievalLanes" : [ "resource-lexical", "resource-trigram", "vector" ],
+          "profileId" : "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+          "sourceVersion" : "486",
+          "retrievalEngineVersion" : "python-rag.v1"
+        },
+        "retrievalReason" : "resource-knowledge"
+      } ],
+      "autonomy" : {
+        "mode" : "ADVISOR"
+      }
+    },
+    "arm" : "Case1_ArmB_PythonRag",
+    "inferenceCallIndex" : 2,
+    "latencyMs" : 1282,
+    "retrievedContextCount" : 2,
+    "allowedSourceRefsCount" : 6,
+    "observation" : {
+      "known" : [ "用户查询系统支持的导出格式及单次导出的文件大小限制。", "资源中明确记录系统完整支持导出为 PDF 和 Markdown 格式。", "资源中明确记录单次导出的文件大小上限为 50MB。" ],
+      "unknowns" : [ ],
+      "conflicts" : [ ],
+      "risks" : [ "检索到的资源内容是否为最新版本的需求规格说明书存在外部依赖风险。" ]
+    },
+    "actionProposal" : {
+      "actionFamily" : "RESPOND_TO_USER",
+      "payload" : {
+        "message" : "根据需求规格说明书 v2.4，系统当前支持将需求图谱导出为 PDF 和 Markdown 格式，单次导出的文件大小上限为 50MB。"
+      },
+      "sourceRefs" : [ "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0" ]
+    },
+    "rawResponse" : "{\"observation\": {\"known\": [\"用户查询系统支持的导出格式及单次导出的文件大小限制。\", \"资源中明确记录系统完整支持导出为 PDF 和 Markdown 格式。\", \"资源中明确记录单次导出的文件大小上限为 50MB。\"], \"unknowns\": [], \"conflicts\": [], \"risks\": [\"检索到的资源内容是否为最新版本的需求规格说明书存在外部依赖风险。\"]}, \"action\": {\"actionFamily\": \"RESPOND_TO_USER\", \"payload\": {\"message\": \"根据需求规格说明书 v2.4，系统当前支持将需求图谱导出为 PDF 和 Markdown 格式，单次导出的文件大小上限为 50MB。\"}, \"sourceRefs\": [\"resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0\"]}}"
+  }, {
+    "snapshot" : {
+      "snapshotId" : "ee441a17-49f7-432f-8116-03281a4d29ab",
+      "contextHash" : "50c3d7842126dde7ada31a3a4c91db4baac6386baf876bc323a2df2e91dd3a8a",
+      "projectId" : "e1c4ecba-8f7c-49bf-b3de-86ec398f73ce",
+      "routeId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+      "anchorNodeId" : "a35afeaf-40f2-40ca-9556-59bd5024fc1d",
+      "routeContext" : {
+        "routeId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+        "tipNodeId" : "a35afeaf-40f2-40ca-9556-59bd5024fc1d",
+        "label" : "主路线"
+      },
+      "lineage" : [ {
+        "node" : {
+          "id" : "c56eb360-f31d-43e3-bea6-339e5f9dbf2d",
+          "body" : {
+            "text" : "需求工作区导出规范与权限要求",
+            "options" : [ ],
+            "acceptsFreeText" : true
+          },
+          "kind" : "INTERACTION"
+        },
+        "answer" : null,
+        "patches" : [ ]
+      }, {
+        "node" : {
+          "id" : "a35afeaf-40f2-40ca-9556-59bd5024fc1d",
+          "body" : {
+            "text" : "系统是否支持将需求自动同步到 Jira，并在飞书群发送 Webhook 通知？",
+            "options" : [ ],
+            "acceptsFreeText" : true
+          },
+          "kind" : "INTERACTION"
+        },
+        "answer" : null,
+        "patches" : [ ]
+      } ],
+      "effectiveClaims" : [ ],
+      "metadata" : {
+        "projectTitle" : "rag-d1-gemini-ab-0184546c-13ec-4418-a153-8246d4f15df8"
+      },
+      "allowedSourceRefs" : [ "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d", "node:a35afeaf-40f2-40ca-9556-59bd5024fc1d", "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d", "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0", "node:78e2d91b-2ac0-459f-b2db-600d3dab4c9a", "context:ee441a17-49f7-432f-8116-03281a4d29ab", "route:a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d" ],
+      "availableCapabilities" : [ {
+        "id" : "memory.search",
+        "version" : "1",
+        "description" : "在当前 Workspace 的受控 Memory / Resource 范围内检索证据",
+        "inputSchema" : {
+          "query" : {
+            "type" : "string",
+            "required" : true
+          },
+          "routeRef" : {
+            "type" : "string"
+          },
+          "maxResults" : {
+            "maximum" : 8,
+            "type" : "integer"
+          },
+          "scope" : {
+            "enum" : [ "ROUTE", "PROJECT", "RESOURCE" ],
+            "type" : "string"
+          }
+        },
+        "readOnly" : true,
+        "sideEffectClass" : "NONE",
+        "supports" : [ ]
+      }, {
+        "id" : "retrieval.await_generation",
+        "version" : "1",
+        "description" : "等待当前项目已请求的检索重建代际就绪；不启动重建、不激活索引。无参数，Host 绑定具体代际及重试代次。",
+        "inputSchema" : {
+          "type" : "object",
+          "additionalProperties" : false,
+          "properties" : { }
+        },
+        "readOnly" : true,
+        "sideEffectClass" : "NONE",
+        "supports" : [ ]
+      } ],
+      "availableSkills" : {
+        "skills" : [ ],
+        "truncated" : false,
+        "fingerprint" : "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "userRequired" : null
+      },
+      "capabilityResults" : [ ],
+      "relations" : [ ],
+      "relatedNodes" : [ ],
+      "retrievedContext" : [ {
+        "sourceRef" : "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d",
+        "sourceKind" : "NODE",
+        "scope" : "ROUTE",
+        "originRouteId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+        "authority" : "DERIVED",
+        "content" : "需求工作区导出规范与权限要求",
+        "location" : { },
+        "provenance" : {
+          "contentHash" : "ea5ac3a0374e181f5640712813af40ab96bfb57244d91edfbf537a0704d80ff2",
+          "originRouteIds" : [ "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d" ],
+          "originRouteId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+          "sourceKind" : "NODE",
+          "workspaceScoped" : false,
+          "retrievalLanes" : [ "route-lexical", "project-lexical" ]
+        },
+        "retrievalReason" : "current-route-memory"
+      }, {
+        "sourceRef" : "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0",
+        "sourceKind" : "RESOURCE_CHUNK",
+        "scope" : "RESOURCE",
+        "originRouteId" : null,
+        "authority" : "EXTERNAL_EVIDENCE",
+        "content" : "需求规格说明书 v2.4（导出章节）：\n1. 格式支持：系统当前完整支持将需求图谱导出为 PDF 和 Markdown 格式。\n2. 大小限制：单次导出的文件大小上限为 50MB。\n3. 不支持的格式：系统当前明确不支持导出为 AutoCAD DWG、Word DOCX 或 HTML 格式。\n4. 权限与安全：导出功能仅限项目正式成员执行；访客与外部人员无权导出。\n",
+        "location" : {
+          "subtype" : "TEXT",
+          "chunkIndex" : 0,
+          "startOffset" : 0,
+          "originRouteIds" : [ ],
+          "rawContentHash" : "10c6d4e59f4275d0a14d1ad93c5cb614aafcb4c8850a225a7af1d3ec9c0e5498",
+          "headings" : [ ],
+          "resourceId" : "ab0fc544-1b6b-4e75-b04d-1116fdc8466e",
+          "workspaceScoped" : true,
+          "rawSourceVersion" : "d956bf1b-2817-40f1-a868-eb461b5f473e",
+          "lineRange" : [ 0, 184 ],
+          "chunk" : 0,
+          "endOffset" : 184
+        },
+        "provenance" : {
+          "sourceKind" : "RESOURCE_CHUNK",
+          "contentHash" : "10c6d4e59f4275d0a14d1ad93c5cb614aafcb4c8850a225a7af1d3ec9c0e5498",
+          "originRouteIds" : [ ],
+          "retrievalLanes" : [ "project-lexical", "resource-lexical" ],
+          "workspaceScoped" : true
+        },
+        "retrievalReason" : "resource-knowledge"
+      }, {
+        "sourceRef" : "node:78e2d91b-2ac0-459f-b2db-600d3dab4c9a",
+        "sourceKind" : "NODE",
+        "scope" : "ROUTE",
+        "originRouteId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+        "authority" : "DERIVED",
+        "content" : "系统支持导出哪些格式？单次导出的文件大小限制是多少？",
+        "location" : { },
+        "provenance" : {
+          "contentHash" : "c543984d1a0c71353753abe8f5a92bfdd736d35a7c5c0cf6d244debe852eba6e",
+          "originRouteIds" : [ "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d" ],
+          "originRouteId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+          "sourceKind" : "NODE",
+          "workspaceScoped" : false,
+          "retrievalLanes" : [ "project-lexical" ]
+        },
+        "retrievalReason" : "current-route-memory"
+      } ],
+      "autonomy" : {
+        "mode" : "ADVISOR"
+      }
+    },
+    "arm" : "Case2_ArmA_JavaHybrid_Negative",
+    "inferenceCallIndex" : 3,
+    "latencyMs" : 6831,
+    "retrievedContextCount" : 3,
+    "allowedSourceRefsCount" : 7,
+    "observation" : {
+      "known" : [ "用户询问系统是否支持将需求自动同步到 Jira，并在飞书群发送 Webhook 通知", "当前项目资源中有需求规格说明书 v2.4 的导出章节内容" ],
+      "unknowns" : [ "系统是否支持 Jira 同步与飞书 Webhook 通知功能暂无明确依据" ],
+      "conflicts" : [ ],
+      "risks" : [ "检索到的资源内容主要关于导出格式与权限，未提及 Jira 或飞书 Webhook 功能" ]
+    },
+    "actionProposal" : {
+      "actionFamily" : "RESPOND_TO_USER",
+      "payload" : {
+        "message" : "经过查阅当前的系统需求与文档，目前暂未找到关于系统支持将需求自动同步到 Jira 以及在飞书群发送 Webhook 通知的相关功能说明。如果您需要了解具体的集成或扩展支持，建议查阅更全面的技术文档或向开发团队确认。"
+      },
+      "sourceRefs" : [ "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0" ]
+    },
+    "rawResponse" : "{\"observation\":{\"known\":[\"用户询问系统是否支持将需求自动同步到 Jira，并在飞书群发送 Webhook 通知\",\"当前项目资源中有需求规格说明书 v2.4 的导出章节内容\"],\"unknowns\":[\"系统是否支持 Jira 同步与飞书 Webhook 通知功能暂无明确依据\"],\"conflicts\":[],\"risks\":[\"检索到的资源内容主要关于导出格式与权限，未提及 Jira 或飞书 Webhook 功能\"]},\"action\":{\"actionFamily\":\"RESPOND_TO_USER\",\"payload\":{\"message\":\"经过查阅当前的系统需求与文档，目前暂未找到关于系统支持将需求自动同步到 Jira 以及在飞书群发送 Webhook 通知的相关功能说明。如果您需要了解具体的集成或扩展支持，建议查阅更全面的技术文档或向开发团队确认。\"},\"sourceRefs\":[\"resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0\"]}}"
+  }, {
+    "snapshot" : {
+      "snapshotId" : "9887b878-4903-4023-8012-4b25a8fcf311",
+      "contextHash" : "50c3d7842126dde7ada31a3a4c91db4baac6386baf876bc323a2df2e91dd3a8a",
+      "projectId" : "e1c4ecba-8f7c-49bf-b3de-86ec398f73ce",
+      "routeId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+      "anchorNodeId" : "a35afeaf-40f2-40ca-9556-59bd5024fc1d",
+      "routeContext" : {
+        "routeId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+        "tipNodeId" : "a35afeaf-40f2-40ca-9556-59bd5024fc1d",
+        "label" : "主路线"
+      },
+      "lineage" : [ {
+        "node" : {
+          "id" : "c56eb360-f31d-43e3-bea6-339e5f9dbf2d",
+          "body" : {
+            "text" : "需求工作区导出规范与权限要求",
+            "options" : [ ],
+            "acceptsFreeText" : true
+          },
+          "kind" : "INTERACTION"
+        },
+        "answer" : null,
+        "patches" : [ ]
+      }, {
+        "node" : {
+          "id" : "a35afeaf-40f2-40ca-9556-59bd5024fc1d",
+          "body" : {
+            "text" : "系统是否支持将需求自动同步到 Jira，并在飞书群发送 Webhook 通知？",
+            "options" : [ ],
+            "acceptsFreeText" : true
+          },
+          "kind" : "INTERACTION"
+        },
+        "answer" : null,
+        "patches" : [ ]
+      } ],
+      "effectiveClaims" : [ ],
+      "metadata" : {
+        "projectTitle" : "rag-d1-gemini-ab-0184546c-13ec-4418-a153-8246d4f15df8",
+        "retrieval" : {
+          "retrievalEngineVersion" : "python-rag.v1",
+          "profileId" : "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+          "indexGeneration" : "d0000987-50a8-4499-b6db-3a56cf0371ff",
+          "vectorUnavailable" : false,
+          "supplementalRetrievalUnavailable" : false
+        }
+      },
+      "allowedSourceRefs" : [ "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d", "node:a35afeaf-40f2-40ca-9556-59bd5024fc1d", "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d", "node:78e2d91b-2ac0-459f-b2db-600d3dab4c9a", "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0", "context:9887b878-4903-4023-8012-4b25a8fcf311", "route:a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d" ],
+      "availableCapabilities" : [ {
+        "id" : "memory.search",
+        "version" : "1",
+        "description" : "在当前 Workspace 的受控 Memory / Resource 范围内检索证据",
+        "inputSchema" : {
+          "query" : {
+            "type" : "string",
+            "required" : true
+          },
+          "routeRef" : {
+            "type" : "string"
+          },
+          "maxResults" : {
+            "maximum" : 8,
+            "type" : "integer"
+          },
+          "scope" : {
+            "enum" : [ "ROUTE", "PROJECT", "RESOURCE" ],
+            "type" : "string"
+          }
+        },
+        "readOnly" : true,
+        "sideEffectClass" : "NONE",
+        "supports" : [ ]
+      }, {
+        "id" : "retrieval.await_generation",
+        "version" : "1",
+        "description" : "等待当前项目已请求的检索重建代际就绪；不启动重建、不激活索引。无参数，Host 绑定具体代际及重试代次。",
+        "inputSchema" : {
+          "type" : "object",
+          "additionalProperties" : false,
+          "properties" : { }
+        },
+        "readOnly" : true,
+        "sideEffectClass" : "NONE",
+        "supports" : [ ]
+      } ],
+      "availableSkills" : {
+        "skills" : [ ],
+        "truncated" : false,
+        "fingerprint" : "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "userRequired" : null
+      },
+      "capabilityResults" : [ ],
+      "relations" : [ ],
+      "relatedNodes" : [ ],
+      "retrievedContext" : [ {
+        "sourceRef" : "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d",
+        "sourceKind" : "NODE",
+        "scope" : "ROUTE",
+        "originRouteId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+        "authority" : "DERIVED",
+        "content" : "需求工作区导出规范与权限要求",
+        "location" : { },
+        "provenance" : {
+          "sourceVersion" : "485",
+          "profileId" : "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+          "indexGeneration" : "d0000987-50a8-4499-b6db-3a56cf0371ff",
+          "originRouteId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+          "workspaceScoped" : false,
+          "sourceKind" : "NODE",
+          "retrievalLanes" : [ "route-lexical", "project-lexical" ],
+          "contentHash" : "ea5ac3a0374e181f5640712813af40ab96bfb57244d91edfbf537a0704d80ff2",
+          "retrievalEngineVersion" : "python-rag.v1",
+          "vectorUnavailable" : false,
+          "originRouteIds" : [ "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d" ]
+        },
+        "retrievalReason" : "current-route-memory"
+      }, {
+        "sourceRef" : "node:78e2d91b-2ac0-459f-b2db-600d3dab4c9a",
+        "sourceKind" : "NODE",
+        "scope" : "ROUTE",
+        "originRouteId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+        "authority" : "DERIVED",
+        "content" : "系统支持导出哪些格式？单次导出的文件大小限制是多少？",
+        "location" : { },
+        "provenance" : {
+          "sourceVersion" : "487",
+          "profileId" : "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+          "indexGeneration" : "d0000987-50a8-4499-b6db-3a56cf0371ff",
+          "originRouteId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+          "workspaceScoped" : false,
+          "sourceKind" : "NODE",
+          "retrievalLanes" : [ "project-lexical" ],
+          "contentHash" : "c543984d1a0c71353753abe8f5a92bfdd736d35a7c5c0cf6d244debe852eba6e",
+          "retrievalEngineVersion" : "python-rag.v1",
+          "vectorUnavailable" : false,
+          "originRouteIds" : [ "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d" ]
+        },
+        "retrievalReason" : "current-route-memory"
+      }, {
+        "sourceRef" : "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0",
+        "sourceKind" : "RESOURCE_CHUNK",
+        "scope" : "RESOURCE",
+        "originRouteId" : null,
+        "authority" : "EXTERNAL_EVIDENCE",
+        "content" : "需求规格说明书 v2.4（导出章节）：\n1. 格式支持：系统当前完整支持将需求图谱导出为 PDF 和 Markdown 格式。\n2. 大小限制：单次导出的文件大小上限为 50MB。\n3. 不支持的格式：系统当前明确不支持导出为 AutoCAD DWG、Word DOCX 或 HTML 格式。\n4. 权限与安全：导出功能仅限项目正式成员执行；访客与外部人员无权导出。\n",
+        "location" : {
+          "resourceId" : "ab0fc544-1b6b-4e75-b04d-1116fdc8466e",
+          "lineRange" : [ 0, 184 ],
+          "rawSourceVersion" : "d956bf1b-2817-40f1-a868-eb461b5f473e",
+          "indexGeneration" : "d0000987-50a8-4499-b6db-3a56cf0371ff",
+          "sourceVersion" : "486",
+          "retrievalEngineVersion" : "python-rag.v1",
+          "workspaceScoped" : true,
+          "vectorUnavailable" : false,
+          "profileId" : "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+          "endOffset" : 184,
+          "chunk" : 0,
+          "headings" : [ ],
+          "startOffset" : 0,
+          "subtype" : "TEXT",
+          "originRouteIds" : [ ],
+          "rawContentHash" : "10c6d4e59f4275d0a14d1ad93c5cb614aafcb4c8850a225a7af1d3ec9c0e5498",
+          "chunkIndex" : 0
+        },
+        "provenance" : {
+          "contentHash" : "10c6d4e59f4275d0a14d1ad93c5cb614aafcb4c8850a225a7af1d3ec9c0e5498",
+          "workspaceScoped" : true,
+          "indexGeneration" : "d0000987-50a8-4499-b6db-3a56cf0371ff",
+          "sourceKind" : "RESOURCE_CHUNK",
+          "vectorUnavailable" : false,
+          "originRouteIds" : [ ],
+          "retrievalLanes" : [ "resource-lexical" ],
+          "profileId" : "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+          "sourceVersion" : "486",
+          "retrievalEngineVersion" : "python-rag.v1"
+        },
+        "retrievalReason" : "resource-knowledge"
+      } ],
+      "autonomy" : {
+        "mode" : "ADVISOR"
+      }
+    },
+    "arm" : "Case2_ArmB_PythonRag_Negative",
+    "inferenceCallIndex" : 4,
+    "latencyMs" : 1639,
+    "retrievedContextCount" : 3,
+    "allowedSourceRefsCount" : 7,
+    "observation" : {
+      "known" : [ "用户提出了关于系统是否支持将需求自动同步到 Jira 并在飞书群发送 Webhook 通知的查询。", "当前检索到的资源包含需求规格说明书 v2.4 的导出章节，但未提及 Jira 同步或飞书 Webhook 通知相关的内容。" ],
+      "unknowns" : [ "当前系统是否支持将需求自动同步到 Jira。", "当前系统是否支持在飞书群发送 Webhook 通知。" ],
+      "conflicts" : [ ],
+      "risks" : [ "推断当前知识库中缺少 Jira 同步与飞书 Webhook 相关的明确文档依据。" ]
+    },
+    "actionProposal" : {
+      "actionFamily" : "RESPOND_TO_USER",
+      "payload" : {
+        "message" : "根据当前查阅的需求规格说明书，系统中暂未找到关于自动同步需求到 Jira 以及在飞书群发送 Webhook 通知的相关功能说明。"
+      },
+      "sourceRefs" : [ "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0" ]
+    },
+    "rawResponse" : "{\n  \"observation\": {\n    \"known\": [\n      \"用户提出了关于系统是否支持将需求自动同步到 Jira 并在飞书群发送 Webhook 通知的查询。\",\n      \"当前检索到的资源包含需求规格说明书 v2.4 的导出章节，但未提及 Jira 同步或飞书 Webhook 通知相关的内容。\"\n    ],\n    \"unknowns\": [\n      \"当前系统是否支持将需求自动同步到 Jira。\",\n      \"当前系统是否支持在飞书群发送 Webhook 通知。\"\n    ],\n    \"conflicts\": [],\n    \"risks\": [\n      \"推断当前知识库中缺少 Jira 同步与飞书 Webhook 相关的明确文档依据。\"\n    ]\n  },\n  \"action\": {\n    \"actionFamily\": \"RESPOND_TO_USER\",\n    \"payload\": {\n      \"message\": \"根据当前查阅的需求规格说明书，系统中暂未找到关于自动同步需求到 Jira 以及在飞书群发送 Webhook 通知的相关功能说明。\"\n    },\n    \"sourceRefs\": [\n      \"resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0\"\n    ]\n  }\n}"
+  }, {
+    "snapshot" : {
+      "snapshotId" : "f45ff1d8-63a3-4f9c-9fec-7c7e2e5098e6",
+      "contextHash" : "255f6f63d2e4a097a3ea16c5accff7f6c363231ad414f6889a93f063bc3431b2",
+      "projectId" : "e1c4ecba-8f7c-49bf-b3de-86ec398f73ce",
+      "routeId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+      "anchorNodeId" : "78e2d91b-2ac0-459f-b2db-600d3dab4c9a",
+      "routeContext" : {
+        "routeId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+        "tipNodeId" : "78e2d91b-2ac0-459f-b2db-600d3dab4c9a",
+        "label" : "主路线"
+      },
+      "lineage" : [ {
+        "node" : {
+          "id" : "c56eb360-f31d-43e3-bea6-339e5f9dbf2d",
+          "body" : {
+            "text" : "需求工作区导出规范与权限要求",
+            "options" : [ ],
+            "acceptsFreeText" : true
+          },
+          "kind" : "INTERACTION"
+        },
+        "answer" : null,
+        "patches" : [ ]
+      }, {
+        "node" : {
+          "id" : "78e2d91b-2ac0-459f-b2db-600d3dab4c9a",
+          "body" : {
+            "text" : "系统支持导出哪些格式？单次导出的文件大小限制是多少？",
+            "options" : [ ],
+            "acceptsFreeText" : true
+          },
+          "kind" : "INTERACTION"
+        },
+        "answer" : null,
+        "patches" : [ ]
+      } ],
+      "effectiveClaims" : [ ],
+      "metadata" : {
+        "projectTitle" : "rag-d1-gemini-ab-0184546c-13ec-4418-a153-8246d4f15df8",
+        "retrieval" : {
+          "retrievalEngineVersion" : "python-rag.v1",
+          "profileId" : "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+          "indexGeneration" : "d0000987-50a8-4499-b6db-3a56cf0371ff",
+          "vectorUnavailable" : false,
+          "supplementalRetrievalUnavailable" : false
+        }
+      },
+      "allowedSourceRefs" : [ "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d", "node:78e2d91b-2ac0-459f-b2db-600d3dab4c9a", "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d", "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0", "context:f45ff1d8-63a3-4f9c-9fec-7c7e2e5098e6", "route:a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d" ],
+      "availableCapabilities" : [ {
+        "id" : "memory.search",
+        "version" : "1",
+        "description" : "在当前 Workspace 的受控 Memory / Resource 范围内检索证据",
+        "inputSchema" : {
+          "query" : {
+            "required" : true,
+            "type" : "string"
+          },
+          "maxResults" : {
+            "maximum" : 8,
+            "type" : "integer"
+          },
+          "routeRef" : {
+            "type" : "string"
+          },
+          "scope" : {
+            "enum" : [ "ROUTE", "PROJECT", "RESOURCE" ],
+            "type" : "string"
+          }
+        },
+        "readOnly" : true,
+        "sideEffectClass" : "NONE",
+        "supports" : [ ]
+      }, {
+        "id" : "retrieval.await_generation",
+        "version" : "1",
+        "description" : "等待当前项目已请求的检索重建代际就绪；不启动重建、不激活索引。无参数，Host 绑定具体代际及重试代次。",
+        "inputSchema" : {
+          "type" : "object",
+          "additionalProperties" : false,
+          "properties" : { }
+        },
+        "readOnly" : true,
+        "sideEffectClass" : "NONE",
+        "supports" : [ ]
+      } ],
+      "availableSkills" : {
+        "skills" : [ ],
+        "truncated" : false,
+        "fingerprint" : "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "userRequired" : null
+      },
+      "capabilityResults" : [ ],
+      "relations" : [ ],
+      "relatedNodes" : [ ],
+      "retrievedContext" : [ {
+        "sourceRef" : "node:c56eb360-f31d-43e3-bea6-339e5f9dbf2d",
+        "sourceKind" : "NODE",
+        "scope" : "ROUTE",
+        "originRouteId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+        "authority" : "DERIVED",
+        "content" : "需求工作区导出规范与权限要求",
+        "location" : { },
+        "provenance" : {
+          "sourceVersion" : "485",
+          "profileId" : "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+          "indexGeneration" : "d0000987-50a8-4499-b6db-3a56cf0371ff",
+          "originRouteId" : "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d",
+          "workspaceScoped" : false,
+          "originRouteIds" : [ "a2fc90ea-7bc2-4a17-a44a-ed4cd8ceaf5d" ],
+          "retrievalLanes" : [ "route-lexical", "project-lexical", "vector" ],
+          "contentHash" : "ea5ac3a0374e181f5640712813af40ab96bfb57244d91edfbf537a0704d80ff2",
+          "retrievalEngineVersion" : "python-rag.v1",
+          "sourceKind" : "NODE",
+          "vectorUnavailable" : false
+        },
+        "retrievalReason" : "current-route-memory"
+      }, {
+        "sourceRef" : "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0",
+        "sourceKind" : "RESOURCE_CHUNK",
+        "scope" : "RESOURCE",
+        "originRouteId" : null,
+        "authority" : "EXTERNAL_EVIDENCE",
+        "content" : "需求规格说明书 v2.4（导出章节）：\n1. 格式支持：系统当前完整支持将需求图谱导出为 PDF 和 Markdown 格式。\n2. 大小限制：单次导出的文件大小上限为 50MB。\n3. 不支持的格式：系统当前明确不支持导出为 AutoCAD DWG、Word DOCX 或 HTML 格式。\n4. 权限与安全：导出功能仅限项目正式成员执行；访客与外部人员无权导出。\n",
+        "location" : {
+          "resourceId" : "ab0fc544-1b6b-4e75-b04d-1116fdc8466e",
+          "lineRange" : [ 0, 184 ],
+          "rawSourceVersion" : "d956bf1b-2817-40f1-a868-eb461b5f473e",
+          "indexGeneration" : "d0000987-50a8-4499-b6db-3a56cf0371ff",
+          "sourceVersion" : "486",
+          "retrievalEngineVersion" : "python-rag.v1",
+          "workspaceScoped" : true,
+          "vectorUnavailable" : false,
+          "profileId" : "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+          "endOffset" : 184,
+          "chunk" : 0,
+          "headings" : [ ],
+          "originRouteIds" : [ ],
+          "startOffset" : 0,
+          "subtype" : "TEXT",
+          "rawContentHash" : "10c6d4e59f4275d0a14d1ad93c5cb614aafcb4c8850a225a7af1d3ec9c0e5498",
+          "chunkIndex" : 0
+        },
+        "provenance" : {
+          "contentHash" : "10c6d4e59f4275d0a14d1ad93c5cb614aafcb4c8850a225a7af1d3ec9c0e5498",
+          "workspaceScoped" : true,
+          "indexGeneration" : "d0000987-50a8-4499-b6db-3a56cf0371ff",
+          "sourceKind" : "RESOURCE_CHUNK",
+          "originRouteIds" : [ ],
+          "vectorUnavailable" : false,
+          "retrievalLanes" : [ "resource-lexical", "resource-trigram", "vector" ],
+          "profileId" : "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+          "sourceVersion" : "486",
+          "retrievalEngineVersion" : "python-rag.v1"
+        },
+        "retrievalReason" : "resource-knowledge"
+      } ],
+      "autonomy" : {
+        "mode" : "ADVISOR"
+      }
+    },
+    "arm" : "Case3_FrozenReplay_PythonRag",
+    "inferenceCallIndex" : 5,
+    "latencyMs" : 1184,
+    "retrievedContextCount" : 2,
+    "allowedSourceRefsCount" : 6,
+    "observation" : {
+      "known" : [ "系统当前完整支持将需求图谱导出为 PDF 和 Markdown 格式。", "单次导出的文件大小上限为 50MB。" ],
+      "unknowns" : [ ],
+      "conflicts" : [ ],
+      "risks" : [ "导出的格式和大小限制来自需求规格说明书外部资源证据，非用户直接输入" ]
+    },
+    "actionProposal" : {
+      "actionFamily" : "RESPOND_TO_USER",
+      "payload" : {
+        "message" : "系统当前支持将需求图谱导出为 PDF 和 Markdown 格式。单次导出的文件大小上限为 50MB。"
+      },
+      "sourceRefs" : [ "resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0" ]
+    },
+    "rawResponse" : "{\"observation\": {\"known\": [\"系统当前完整支持将需求图谱导出为 PDF 和 Markdown 格式。\", \"单次导出的文件大小上限为 50MB。\"], \"unknowns\": [], \"conflicts\": [], \"risks\": [\"导出的格式和大小限制来自需求规格说明书外部资源证据，非用户直接输入\"]}, \"action\": {\"actionFamily\": \"RESPOND_TO_USER\", \"payload\": {\"message\": \"系统当前支持将需求图谱导出为 PDF 和 Markdown 格式。单次导出的文件大小上限为 50MB。\"}, \"sourceRefs\": [\"resource-chunk:ab0fc544-1b6b-4e75-b04d-1116fdc8466e:0\"]}}"
+  } ]
+}

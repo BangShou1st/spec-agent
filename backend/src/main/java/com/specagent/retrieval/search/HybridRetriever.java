@@ -34,12 +34,12 @@ public class HybridRetriever {
     private final com.specagent.retrieval.protocol.RetrievalGrantAuthorization authorization;
     private com.specagent.retrieval.protocol.SharedRetrievalHost shared;
     private com.specagent.retrieval.protocol.RetrievalStore store;
-    private String engine="java-hybrid.v1";
+    private String engine="python-rag.v1";
 
     @org.springframework.beans.factory.annotation.Autowired
     public void configureShared(com.specagent.retrieval.protocol.SharedRetrievalHost shared,
             com.specagent.retrieval.protocol.RetrievalStore store,
-            @org.springframework.beans.factory.annotation.Value("${spec.agent.retrieval.engine:java-hybrid.v1}") String engine) {
+            @org.springframework.beans.factory.annotation.Value("${spec.agent.retrieval.engine:python-rag.v1}") String engine) {
         if(!java.util.Set.of("java-hybrid.v1","python-rag.v1").contains(engine)) throw new IllegalArgumentException("Unsupported retrieval engine");
         this.shared=shared; this.store=store; this.engine=engine;
     }

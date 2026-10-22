@@ -559,6 +559,8 @@ class SharedRetrievalIntegrationTest {
         if(ollamaUrl!=null) builder.environment().put("SPEC_AGENT_OLLAMA_URL",ollamaUrl);
         builder.environment().put("SPEC_AGENT_INTERNAL_BROKER_URL","http://127.0.0.1:"+port+"/internal/v1/model-inference");
         builder.environment().put("SPEC_AGENT_BRAIN_INTERNAL_SECRET",properties.getInternalSecret());
+        builder.environment().remove("ALL_PROXY");
+        builder.environment().remove("all_proxy");
         log=Files.createTempFile("shared-rag-python-",".log");
         builder.redirectErrorStream(true).redirectOutput(log.toFile()); python=builder.start();
         properties.setBaseUrl("http://127.0.0.1:"+brainPort);

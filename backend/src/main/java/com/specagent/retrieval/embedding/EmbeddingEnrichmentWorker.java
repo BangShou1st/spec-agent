@@ -31,7 +31,7 @@ public class EmbeddingEnrichmentWorker {
     @org.springframework.beans.factory.annotation.Autowired
     public void configureShared(com.specagent.retrieval.protocol.SharedRetrievalHost shared,
             com.specagent.retrieval.protocol.RetrievalSourceJobs sourceJobs,com.specagent.retrieval.protocol.RetrievalStore store,com.specagent.retrieval.index.RetrievalSourceProjector projector,
-            @org.springframework.beans.factory.annotation.Value("${spec.agent.retrieval.engine:java-hybrid.v1}") String engine) {
+            @org.springframework.beans.factory.annotation.Value("${spec.agent.retrieval.engine:python-rag.v1}") String engine) {
         this.shared=shared; this.sourceJobs=sourceJobs; this.store=store; this.projector=projector; sharedPython="python-rag.v1".equals(engine);
     }
     private final EmbeddingEnrichmentService enrichmentService;

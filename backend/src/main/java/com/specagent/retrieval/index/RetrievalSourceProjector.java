@@ -58,7 +58,7 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
     private boolean sharedPython;
     @org.springframework.beans.factory.annotation.Autowired
     public void configureSourceJobs(ResourceProjectionJobs jobs,
-            @org.springframework.beans.factory.annotation.Value("${spec.agent.retrieval.engine:java-hybrid.v1}") String engine) {
+            @org.springframework.beans.factory.annotation.Value("${spec.agent.retrieval.engine:python-rag.v1}") String engine) {
         this.sourceJobs=jobs; this.sharedPython="python-rag.v1".equals(engine);
     }
     private final ResourceChunker chunker = new ResourceChunker();
