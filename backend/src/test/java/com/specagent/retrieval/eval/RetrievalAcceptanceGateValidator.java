@@ -57,12 +57,29 @@ public final class RetrievalAcceptanceGateValidator {
             int expectedQueriesCount,
             int expectedSourcesCount
     ) {
+        validate(dataset, datasetRawJson, freeze, repoRoot, expectedRole, expectedQueriesCount, expectedSourcesCount, false);
+    }
+
+    static void validateAiBaseline(JsonNode dataset, String raw, JsonNode freeze, Path root) {
+        validate(dataset, raw, freeze, root, "AI_AUDITED_SYNTHETIC_EVALUATION", 68, 28, true);
+    }
+
+    private static void validate(JsonNode dataset, String datasetRawJson, JsonNode freeze, Path repoRoot,
+            String expectedRole, int expectedQueriesCount, int expectedSourcesCount, boolean ai) {
         List<String> violations = new ArrayList<>();
 
         // 1. Role & Execution qualification (Gate 3, 6, 7)
         String version = dataset.path("version").asText().trim();
         String datasetVersion = dataset.path("datasetVersion").asText().trim();
-        if (!version.isEmpty() && !datasetVersion.isEmpty() && !version.equals(datasetVersion)) {
+        if (version.isEmpty() || !Set.of("v1", "v2", "v2-revised", "v2.1", "v2.2", "v2.3").contains(version)
+                || !version.equals(freeze.path("datasetVersion").asText())
+                || !version.equals(freeze.path("freezeVersion").asText())) {
+            violations.add("Missing, unsupported or mismatched candidate/freeze version");
+        }
+        try {
+            if (!dataset.equals(RetrievalEvaluationSnapshot.parse(datasetRawJson))) violations.add("Parsed dataset differs from raw snapshot");
+        } catch (RuntimeException ex) { violations.add("Invalid candidate JSON"); }
+        if (!version.equals(datasetVersion)) {
             violations.add("Candidate version ('" + version + "') and datasetVersion ('" + datasetVersion + "') mismatch");
         }
         String role = dataset.path("datasetRole").asText();
@@ -84,6 +101,7 @@ public final class RetrievalAcceptanceGateValidator {
 
         // 2. Human approval (Gate 1, 2)
         String humanStatus = dataset.path("humanReviewStatus").asText();
+        if (!ai) {
         if (!"APPROVED".equals(humanStatus)) {
             violations.add("Top-level humanReviewStatus is not APPROVED: got '" + humanStatus + "'");
         }
@@ -96,10 +114,17 @@ public final class RetrievalAcceptanceGateValidator {
             violations.add("Human review timestamp missing: got '" + reviewedAt + "'");
         } else {
             try {
+                if (!reviewedAt.matches("\\d{4}-\\d{2}-\\d{2}T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,9})?(Z|[+-]\\d{2}:\\d{2})"))
+                    throw new DateTimeParseException("Expected instant", reviewedAt, 0);
                 Instant.parse(reviewedAt);
             } catch (DateTimeParseException ex) {
                 violations.add("Human review timestamp is not a valid ISO-8601 instant: '" + reviewedAt + "'");
             }
+        }
+
+        } else if (!"PENDING".equals(humanStatus) || !dataset.path("reviewedBy").isNull()
+                || !dataset.path("reviewedAt").isNull()) {
+            violations.add("AI review must preserve pending human approval and null human identity");
         }
 
         // 3. Dataset Integrity & Query labels (Gate 1)
@@ -116,7 +141,7 @@ public final class RetrievalAcceptanceGateValidator {
         Set<String> sourceAliases = new HashSet<>();
         for (JsonNode s : sourcesNode) {
             String alias = s.path("alias").asText();
-            sourceAliases.add(alias);
+            if (alias.isBlank() || !sourceAliases.add(alias)) violations.add("Blank or duplicate source alias");
             sourceKinds.put(alias, s.path("kind").asText());
         }
 
@@ -124,17 +149,26 @@ public final class RetrievalAcceptanceGateValidator {
         int unreviewedCount = 0;
         for (JsonNode q : queriesNode) {
             String qId = q.path("id").asText();
-            if (!queryIds.add(qId)) {
+            if (qId.isBlank() || !queryIds.add(qId)) {
                 violations.add("Duplicate query id detected: " + qId);
             }
             String labelReview = q.path("labelReview").asText();
-            if (!"HUMAN_REVIEWED".equals(labelReview)) {
+            if (!(ai ? "PENDING_HUMAN_REVIEW" : "HUMAN_REVIEWED").equals(labelReview)) {
                 unreviewedCount++;
             }
             // Scopes validation
             JsonNode scopes = q.path("scopes");
             if (!scopes.isArray() || scopes.isEmpty()) {
                 violations.add("Query " + qId + " has empty or invalid scopes");
+            }
+            for (JsonNode scope : scopes) if (!Set.of("PROJECT", "RESOURCE").contains(scope.asText()))
+                violations.add("Query " + qId + " has unknown scope");
+            for (String field : List.of("expectedAliases", "forbiddenAliases")) {
+                JsonNode aliases = q.path(field);
+                var unique = new HashSet<String>();
+                if (!aliases.isArray()) violations.add("Query " + qId + " missing " + field);
+                for (JsonNode alias : aliases) if (!alias.isTextual() || !unique.add(alias.asText()))
+                    violations.add("Query " + qId + " duplicate/non-string " + field);
             }
             // Expected / Forbidden aliases disjointness
             Set<String> exp = new HashSet<>();
@@ -153,12 +187,32 @@ public final class RetrievalAcceptanceGateValidator {
                     violations.add("Query " + qId + " has overlapping expected and forbidden alias: " + a);
                 }
                 String kind = sourceKinds.get(a);
+                String requiredScope = "RESOURCE".equals(kind) ? "RESOURCE" : "PROJECT";
+                boolean scopePresent = false;
+                for (JsonNode scope : scopes) if (requiredScope.equals(scope.asText())) scopePresent = true;
+                if (!scopePresent) violations.add("Expected alias outside query scope: " + a);
                 if ("STALE_NODE".equals(kind) || "PRIVATE_NODE".equals(kind)) {
                     violations.add("Query " + qId + " contains invalid source kind in expected: " + a + " (" + kind + ")");
                 }
             }
             if ("MULTI_SOURCE".equals(q.path("category").asText()) && exp.size() < 2) {
                 violations.add("Query " + qId + " is MULTI_SOURCE but has < 2 expected aliases");
+            }
+        }
+        if (expectedQueriesCount == 68) {
+            var expectedIds = new HashSet<String>();
+            for (int i = 1; i <= 68; i++) expectedIds.add("B%03d".formatted(i));
+            if (!queryIds.equals(expectedIds)) violations.add("Query identities must be B001-B068");
+            var forbiddenSources = new HashSet<String>();
+            sourceKinds.forEach((alias, kind) -> { if (Set.of("STALE_NODE", "PRIVATE_NODE").contains(kind)) forbiddenSources.add(alias); });
+            Set<String> positive = Set.of("PROJECT_EXPRESSION", "EXACT_IDENTIFIER", "RESOURCE_CONTENT", "MULTI_SOURCE");
+            Set<String> negative = Set.of("NEAR_NO_ANSWER", "NO_ANSWER", "STALE_VERSION", "PERMISSION_ISOLATION");
+            for (JsonNode q : queriesNode) {
+                String cat = q.path("category").asText();
+                if (!positive.contains(cat) && !negative.contains(cat)) violations.add("Unknown query category");
+                if (positive.contains(cat) == q.path("expectedAliases").isEmpty()) violations.add("Missing/inconsistent positive labels");
+                Set<String> forbidden = new HashSet<>(); q.path("forbiddenAliases").forEach(a -> forbidden.add(a.asText()));
+                if (!forbidden.containsAll(forbiddenSources)) violations.add("Incomplete forbidden sources");
             }
         }
         if (unreviewedCount > 0) {
@@ -185,16 +239,16 @@ public final class RetrievalAcceptanceGateValidator {
             violations.add("profileId mismatch with execution chain: expected '26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047' but got '" + profileId + "'");
         }
 
-        if (!freeze.has("rrfK") || freeze.path("rrfK").asInt() != 60) {
+        if (!freeze.path("rrfK").isIntegralNumber() || !freeze.path("rrfK").canConvertToInt() || freeze.path("rrfK").asInt() != 60) {
             violations.add("rrfK mismatch with execution chain: expected 60 but got " + freeze.path("rrfK").asText());
         }
-        if (!freeze.has("maxVectorDistance") || Math.abs(freeze.path("maxVectorDistance").asDouble() - 0.50) > 1e-6) {
+        if (!freeze.path("maxVectorDistance").isNumber() || freeze.path("maxVectorDistance").asDouble() != 0.50) {
             violations.add("maxVectorDistance mismatch with execution chain: expected 0.50 but got " + freeze.path("maxVectorDistance").asText());
         }
-        if (!freeze.has("maxItems") || freeze.path("maxItems").asInt() != 8) {
+        if (!freeze.path("maxItems").isIntegralNumber() || !freeze.path("maxItems").canConvertToInt() || freeze.path("maxItems").asInt() != 8) {
             violations.add("maxItems mismatch with execution chain: expected 8 but got " + freeze.path("maxItems").asText());
         }
-        if (!freeze.has("maxChars") || freeze.path("maxChars").asInt() != 8000) {
+        if (!freeze.path("maxChars").isIntegralNumber() || !freeze.path("maxChars").canConvertToInt() || freeze.path("maxChars").asInt() != 8000) {
             violations.add("maxChars mismatch with execution chain: expected 8000 but got " + freeze.path("maxChars").asText());
         }
 
@@ -225,8 +279,8 @@ public final class RetrievalAcceptanceGateValidator {
             violations.add("codeHashes missing or empty in freeze");
         } else {
             codeHashes.fields().forEachRemaining(entry -> {
-                Path codeFile = repoRoot.resolve(entry.getKey());
-                if (!Files.exists(codeFile)) {
+                Path codeFile = repoRoot.resolve(entry.getKey()).toAbsolutePath().normalize();
+                if (!codeFile.startsWith(repoRoot.toAbsolutePath().normalize()) || !Files.isRegularFile(codeFile)) {
                     violations.add("Tracked code file missing: " + entry.getKey());
                 } else {
                     try {
@@ -244,7 +298,10 @@ public final class RetrievalAcceptanceGateValidator {
         // 5. Quality acceptance threshold approval (Gate 5)
         String thresholdStatus = freeze.path("thresholdStatus").asText();
         String upperThreshold = thresholdStatus.trim().toUpperCase(Locale.ROOT);
-        if (upperThreshold.contains("PROPOSED") || upperThreshold.contains("PENDING") || upperThreshold.contains("NOT_APPROVED")) {
+        if (ai) {
+            if (!"AI_BASELINE_FROZEN".equals(thresholdStatus)) violations.add("AI baseline not frozen");
+            if (!"DIAGNOSTIC_RETRIEVAL_NOISE".equals(freeze.path("noAnswerPolicy").asText())) violations.add("AI no-answer policy missing");
+        } else if (upperThreshold.contains("PROPOSED") || upperThreshold.contains("PENDING") || upperThreshold.contains("NOT_APPROVED")) {
             violations.add("Acceptance thresholds unapproved: status='" + thresholdStatus + "'");
         } else if (!"APPROVED_BEFORE_FIRST_RUN".equals(upperThreshold) && !"APPROVED".equals(upperThreshold)) {
             violations.add("Unknown threshold status: '" + thresholdStatus + "'");
@@ -261,19 +318,19 @@ public final class RetrievalAcceptanceGateValidator {
             checkRatioThreshold(thresholds, "firstRelevantMrr", violations);
             checkRatioThreshold(thresholds, "multiSourceAllOfCoverage", violations);
             // pureNoAnswerZeroHitCorrectness 是必需门禁字段，绝不允许为 null 或缺失！
-            checkRatioThreshold(thresholds, "pureNoAnswerZeroHitCorrectness", violations);
+            if (!ai) checkRatioThreshold(thresholds, "pureNoAnswerZeroHitCorrectness", violations);
+            else if (!thresholds.path("sourceIdentityValidity").isNumber() || thresholds.path("sourceIdentityValidity").asDouble() != 1.0)
+                violations.add("Source identity validity must be 1.0");
 
             if (!thresholds.has("staleSourceLeakCount") || !thresholds.path("staleSourceLeakCount").isIntegralNumber()) {
                 violations.add("staleSourceLeakCount threshold missing or non-integer");
             } else {
-                int v = thresholds.path("staleSourceLeakCount").asInt(-1);
-                if (v < 0) violations.add("staleSourceLeakCount must be non-negative");
+                if (thresholds.path("staleSourceLeakCount").bigIntegerValue().signum() != 0) violations.add("staleSourceLeakCount must be zero");
             }
             if (!thresholds.has("permissionLeakCount") || !thresholds.path("permissionLeakCount").isIntegralNumber()) {
                 violations.add("permissionLeakCount threshold missing or non-integer");
             } else {
-                int v = thresholds.path("permissionLeakCount").asInt(-1);
-                if (v < 0) violations.add("permissionLeakCount must be non-negative");
+                if (thresholds.path("permissionLeakCount").bigIntegerValue().signum() != 0) violations.add("permissionLeakCount must be zero");
             }
         }
 

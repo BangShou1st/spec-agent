@@ -1,0 +1,158 @@
+[
+  {
+    "id": "valid",
+    "path": null,
+    "value": null,
+    "valid": true
+  },
+  {
+    "id": "missing_version",
+    "path": "dataset/version",
+    "value": null,
+    "valid": false
+  },
+  {
+    "id": "unknown_version",
+    "path": "dataset/version",
+    "value": "v9",
+    "valid": false
+  },
+  {
+    "id": "freeze_version",
+    "path": "freeze/freezeVersion",
+    "value": "v1",
+    "valid": false
+  },
+  {
+    "id": "freeze_dataset_version",
+    "path": "freeze/datasetVersion",
+    "value": "v1",
+    "valid": false
+  },
+  {
+    "id": "missing_dataset_version",
+    "path": "dataset/datasetVersion",
+    "value": null,
+    "valid": false
+  },
+  {
+    "id": "pending",
+    "path": "dataset/humanReviewStatus",
+    "value": "PENDING",
+    "valid": false
+  },
+  {
+    "id": "ai_reviewer",
+    "path": "dataset/reviewedBy",
+    "value": "AI",
+    "valid": false
+  },
+  {
+    "id": "no_timezone",
+    "path": "dataset/reviewedAt",
+    "value": "2026-10-22T12:00:00",
+    "valid": false
+  },
+  {
+    "id": "invalid_date",
+    "path": "dataset/reviewedAt",
+    "value": "2026-02-30T12:00:00Z",
+    "valid": false
+  },
+  {
+    "id": "offset_time",
+    "path": "dataset/reviewedAt",
+    "value": "2026-10-23T02:00:00+08:00",
+    "valid": true
+  },
+  {
+    "id": "missing_threshold",
+    "path": "freeze/proposedThresholds/pureNoAnswerZeroHitCorrectness",
+    "value": null,
+    "valid": false
+  },
+  {
+    "id": "bool_threshold",
+    "path": "freeze/proposedThresholds/firstRelevantMrr",
+    "value": true,
+    "valid": false
+  },
+  {
+    "id": "out_of_range",
+    "path": "freeze/proposedThresholds/macroSourceRecallAt8",
+    "value": 1.1,
+    "valid": false
+  },
+  {
+    "id": "string_rrf",
+    "path": "freeze/rrfK",
+    "value": "60",
+    "valid": false
+  },
+  {
+    "id": "float_items",
+    "path": "freeze/maxItems",
+    "value": 8.0,
+    "valid": false
+  },
+  {
+    "id": "bad_profile",
+    "path": "freeze/profileId",
+    "value": "incorrect",
+    "valid": false
+  },
+  {
+    "id": "ai_threshold_status",
+    "path": "freeze/thresholdStatus",
+    "value": "AI_BASELINE_FROZEN",
+    "valid": false
+  },
+  {
+    "id": "unknown_threshold_status",
+    "path": "freeze/thresholdStatus",
+    "value": "UNKNOWN",
+    "valid": false
+  },
+  {
+    "id": "nonzero_leaks",
+    "path": "freeze/proposedThresholds/permissionLeakCount",
+    "value": 1,
+    "valid": false
+  },
+  {
+    "id": "not_run",
+    "path": "dataset/executionStatus",
+    "value": "EXECUTED",
+    "valid": false
+  },
+  {
+    "id": "tuning",
+    "path": "dataset/tuningUse",
+    "value": "USED",
+    "valid": false
+  },
+  {
+    "id": "leap_second",
+    "path": "dataset/reviewedAt",
+    "value": "2016-12-31T23:59:60Z",
+    "valid": false
+  },
+  {
+    "id": "end_of_day",
+    "path": "dataset/reviewedAt",
+    "value": "2026-10-22T24:00:00Z",
+    "valid": false
+  },
+  {
+    "id": "overflow_rrf",
+    "path": "freeze/rrfK",
+    "value": 4294967356,
+    "valid": false
+  },
+  {
+    "id": "overflow_leak",
+    "path": "freeze/proposedThresholds/permissionLeakCount",
+    "value": 4294967296,
+    "valid": false
+  }
+]

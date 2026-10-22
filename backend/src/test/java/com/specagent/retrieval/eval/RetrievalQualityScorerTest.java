@@ -330,4 +330,36 @@ class RetrievalQualityScorerTest {
         assertThat(topLevelReport.get("mrr")).isNotEqualTo(0.5);
         assertThat(topLevelReport.get("mrr")).isNotEqualTo(1.0);
     }
+
+    @Test void aiNoiseDiagnosticDoesNotRelaxSafetyOrHumanContract() {
+        var ai = new RetrievalQualityScorer.QualityThresholds("AI_BASELINE_FROZEN",.85,.75,.75,0,0,0);
+        var observations = List.of(
+            new RetrievalQualityScorer.QueryObservation("positive","PROJECT_EXPRESSION",List.of("N00"),List.of("P00"),List.of(),List.of("N00"),false,1),
+            new RetrievalQualityScorer.QueryObservation("noise","NO_ANSWER",List.of(),List.of("P00"),List.of(),List.of("N07"),false,1));
+        assertThat(RetrievalQualityScorer.evaluateAiAudited(observations,ai,Set.of()).isPass()).isTrue();
+        assertThat(RetrievalQualityScorer.evaluate(observations,ai,Set.of()).verdict()).isEqualTo("BLOCKED_UNAPPROVED_THRESHOLDS");
+        var forbidden = List.of(new RetrievalQualityScorer.QueryObservation("noise","NO_ANSWER",List.of(),List.of("P00"),List.of(),List.of("P00"),false,1));
+        assertThat(RetrievalQualityScorer.evaluateAiAudited(forbidden,ai,Set.of()).isPass()).isFalse();
+    }
+
+    @Test void invalidThresholdUnavailableVectorAndRankNineFailClosed() {
+        var invalid = new RetrievalQualityScorer.QualityThresholds("APPROVED",Double.NaN,.75,.75,1,0,0);
+        var observation = new RetrievalQualityScorer.QueryObservation("q","PROJECT_EXPRESSION",List.of("N00"),List.of(),List.of(),
+            List.of("BG","BG","BG","BG","BG","BG","BG","BG","N00"),true,1);
+        var report=RetrievalQualityScorer.evaluate(List.of(observation),invalid,Set.of());
+        assertThat(report.isPass()).isFalse();
+        assertThat(report.macroSourceRecallAt8()).isZero();
+        assertThat(report.firstRelevantMrr()).isZero();
+        assertThat(report.failureReasons()).anyMatch(r->r.contains("Invalid threshold"))
+            .anyMatch(r->r.contains("Vector unavailable")).anyMatch(r->r.contains("Top-8 limit"));
+    }
+
+    @Test void invalidSourceMakesQualityFailDespitePerfectAliasRecall() {
+        var observation=new RetrievalQualityScorer.QueryObservation("q","PROJECT_EXPRESSION",List.of("N00"),List.of(),List.of(),
+                List.of("N00"),false,1,1);
+        var report=RetrievalQualityScorer.evaluate(List.of(observation),APPROVED_THRESHOLDS,Set.of());
+        assertThat(report.macroSourceRecallAt8()).isEqualTo(1.0);
+        assertThat(report.summary().get("sourceIdentityValidity")).isEqualTo(0.0);
+        assertThat(report.isPass()).isFalse();
+    }
 }

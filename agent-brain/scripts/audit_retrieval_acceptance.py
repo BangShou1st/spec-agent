@@ -9,6 +9,10 @@ import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+try:
+    from scripts.retrieval_acceptance_contract import validate_contract
+except ModuleNotFoundError:
+    from retrieval_acceptance_contract import validate_contract
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -140,72 +144,11 @@ def audit_single_asset(freeze_name, candidate_name, review_md_name, development_
         for q in candidate['queries']:
             assert q['id'] in review_content, f"Query {q['id']} missing from review document {review_md_name}"
 
-    # 7. Comprehensive 7-Point Human Approval Gate Verification
-    gate_failures = []
-    
-    # Gate 1: All 68 queries individually reviewed (must be 'HUMAN_REVIEWED' per contract)
-    unreviewed_queries = [q['id'] for q in candidate['queries'] if q.get('labelReview') != 'HUMAN_REVIEWED']
-    if unreviewed_queries:
-        gate_failures.append(f"Individual query reviews pending ({len(unreviewed_queries)} queries unreviewed, e.g. {unreviewed_queries[:3]})")
-    
-    # Gate 2: Genuine reviewer identity and timestamp
-    reviewed_by = str(candidate.get('reviewedBy') or '').strip()
-    reviewed_at = str(candidate.get('reviewedAt') or '').strip()
-    placeholder_names = {'none', 'null', 'pending', 'ai', 'ai-agent', 'unassigned', ''}
-    if not reviewed_by or reviewed_by.lower() in placeholder_names:
-        gate_failures.append(f"Genuine human reviewer identity missing (got: '{reviewed_by}')")
-    if not reviewed_at or reviewed_at.lower() in placeholder_names:
-        gate_failures.append(f"Human review timestamp missing (got: '{reviewed_at}')")
-    else:
-        try:
-            datetime.fromisoformat(reviewed_at.replace('Z', '+00:00'))
-        except Exception:
-            gate_failures.append(f"Human review timestamp is not a valid ISO-8601 instant (got: '{reviewed_at}')")
-    
-    # Gate 3: Candidate dataset hash consistency
-    if candidate_actual_sha != freeze['datasetSha256']:
-        gate_failures.append(f"Dataset SHA-256 mismatch (actual {candidate_actual_sha[:8]} vs frozen {freeze['datasetSha256'][:8]})")
-        
-    # Gate 4: Implementation and dependency hashes alignment
+    # Same strict contract exercised by the offline Java parity corpus.
+    gate_failures = validate_contract(candidate, (DATA / candidate_name).read_bytes(), freeze, ROOT)
     if drifted_files:
         gate_failures.append(f"Implementation/dependency hashes drifted ({len(drifted_files)} files drifted)")
-        
-    # Gate 5: Quality acceptance threshold approval
-    threshold_status = str(freeze.get('thresholdStatus', '')).upper()
-    if 'PROPOSED' in threshold_status or 'NOT_APPROVED' in threshold_status or 'PENDING' in threshold_status:
-        gate_failures.append(f"Quality acceptance thresholds unapproved (status: '{freeze.get('thresholdStatus')}')")
-    elif threshold_status not in ('APPROVED_BEFORE_FIRST_RUN', 'APPROVED'):
-        gate_failures.append(f"Unknown threshold status (status: '{freeze.get('thresholdStatus')}')")
-
-    thresholds = freeze.get('proposedThresholds') or freeze.get('approvedThresholds') or {}
-    for metric in ('macroSourceRecallAt8', 'firstRelevantMrr', 'multiSourceAllOfCoverage'):
-        val = thresholds.get(metric)
-        if val is None or not isinstance(val, (int, float)) or val < 0.0 or val > 1.0:
-            gate_failures.append(f"Threshold for {metric} is invalid: {val} (must be in [0.0, 1.0])")
-    if 'noAnswerZeroHitCorrectness' in thresholds and thresholds['noAnswerZeroHitCorrectness'] is not None:
-        val = thresholds['noAnswerZeroHitCorrectness']
-        if not isinstance(val, (int, float)) or val < 0.0 or val > 1.0:
-            gate_failures.append(f"Threshold for noAnswerZeroHitCorrectness is invalid: {val}")
-    if 'pureNoAnswerZeroHitCorrectness' in thresholds and thresholds['pureNoAnswerZeroHitCorrectness'] is not None:
-        val = thresholds['pureNoAnswerZeroHitCorrectness']
-        if not isinstance(val, (int, float)) or val < 0.0 or val > 1.0:
-            gate_failures.append(f"Threshold for pureNoAnswerZeroHitCorrectness is invalid: {val}")
-    for leak in ('staleSourceLeakCount', 'permissionLeakCount'):
-        val = thresholds.get(leak)
-        if val is None or not isinstance(val, int) or val < 0:
-            gate_failures.append(f"Threshold for {leak} is invalid: {val} (must be non-negative integer)")
-        
-    # Gate 6: Zero tuning usage
-    if candidate.get('tuningUse') != 'NEVER_USED':
-        gate_failures.append(f"Dataset contaminated by tuning use (tuningUse: '{candidate.get('tuningUse')}')")
-        
-    # Gate 7: Zero prior execution history
-    if candidate.get('executionStatus') != 'NOT_RUN':
-        gate_failures.append(f"Execution history polluted (executionStatus: '{candidate.get('executionStatus')}')")
-
     human_status = str(candidate.get('humanReviewStatus', '')).strip()
-    if human_status != 'APPROVED':
-        gate_failures.append(f"Top-level humanReviewStatus is '{human_status}', not 'APPROVED'")
 
     labels_approved = (len(gate_failures) == 0 and human_status == 'APPROVED')
 
@@ -239,7 +182,7 @@ def audit_single_asset(freeze_name, candidate_name, review_md_name, development_
     }
 
 
-def audit(version='all', strict=False):
+def audit(version='all', strict=False, output_path=None):
     development = json.loads((DATA / 'chinese-queries.v1.json').read_text(encoding='utf-8'))
     assert development['datasetRole'] == 'DEVELOPMENT_CALIBRATION'
     assert not development['calibrationHistory']['independentAcceptanceEligible']
@@ -315,8 +258,8 @@ def audit(version='all', strict=False):
         'rootLimit': 'AI static/semantic precheck is not human annotation or retrieval-quality acceptance.'
     }
 
-    evidence_path = ROOT / 'docs/v2/evidence/SHARED_RAG_ACCEPTANCE_PRECHECK.json'
-    evidence_path.write_text(json.dumps(combined_report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    if output_path is not None:
+        Path(output_path).write_text(json.dumps(combined_report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
     print("=== Spec Agent Retrieval Acceptance Static Audit ===")
     for key, res in results.items():

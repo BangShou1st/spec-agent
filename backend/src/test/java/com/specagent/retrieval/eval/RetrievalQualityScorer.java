@@ -30,8 +30,13 @@ public final class RetrievalQualityScorer {
             List<String> backgroundAliases,
             List<String> retrievedAliases, // Top-8 原始顺序，可能含同源多个 chunk
             boolean vectorUnavailable,
-            long elapsedMs
+            long elapsedMs,
+            int invalidSourceCount
     ) {
+        public QueryObservation(String queryId, String category, List<String> expectedAliases, List<String> forbiddenAliases,
+                List<String> backgroundAliases, List<String> retrievedAliases, boolean vectorUnavailable, long elapsedMs) {
+            this(queryId,category,expectedAliases,forbiddenAliases,backgroundAliases,retrievedAliases,vectorUnavailable,elapsedMs,0);
+        }
         public QueryObservation {
             expectedAliases = expectedAliases == null ? List.of() : List.copyOf(expectedAliases);
             forbiddenAliases = forbiddenAliases == null ? List.of() : List.copyOf(forbiddenAliases);
@@ -86,15 +91,36 @@ public final class RetrievalQualityScorer {
             QualityThresholds thresholds,
             Set<String> staleAliases
     ) {
+        return evaluate(observations, thresholds, staleAliases, false);
+    }
+
+    public static QualityReport evaluateAiAudited(List<QueryObservation> observations, QualityThresholds thresholds,
+            Set<String> staleAliases) {
+        return evaluate(observations, thresholds, staleAliases, true);
+    }
+
+    private static QualityReport evaluate(List<QueryObservation> observations, QualityThresholds thresholds,
+            Set<String> staleAliases, boolean ai) {
         Objects.requireNonNull(observations, "observations must not be null");
         Objects.requireNonNull(thresholds, "thresholds must not be null");
         Set<String> staleSet = staleAliases == null ? Set.of() : staleAliases;
 
         List<String> failureReasons = new ArrayList<>();
 
-        if (!thresholds.isApproved()) {
+        boolean approved = ai ? "AI_BASELINE_FROZEN".equals(thresholds.thresholdStatus()) : thresholds.isApproved();
+        if (!approved) {
             failureReasons.add("Threshold contract status is not approved: '" + thresholds.thresholdStatus() + "'");
         }
+        for (double value : new double[]{thresholds.minMacroSourceRecallAt8(), thresholds.minFirstRelevantMrr(),
+                thresholds.minMultiSourceAllOfCoverage(), thresholds.minPureNoAnswerZeroHitCorrectness()}) {
+            if (!Double.isFinite(value) || value < 0 || value > 1) failureReasons.add("Invalid threshold ratio");
+        }
+        if (thresholds.maxStaleSourceLeaks() != 0 || thresholds.maxPermissionLeaks() != 0)
+            failureReasons.add("Safety thresholds must be zero");
+        if (observations.isEmpty()) failureReasons.add("Empty observations");
+        Set<String> ids = new HashSet<>();
+        int invalidSourceCount = 0;
+        int returnedSourceCount = 0;
 
         int totalQueries = observations.size();
         int positiveCount = 0;
@@ -108,15 +134,24 @@ public final class RetrievalQualityScorer {
 
         int pureNoAnswerZeroHits = 0;
         int nearBackgroundReturned = 0;
+        int nearAnyReturned = 0;
 
         int staleLeaks = 0;
         int permissionLeaks = 0;
 
         for (QueryObservation obs : observations) {
-            List<String> expected = obs.expectedAliases();
+            List<String> expected = obs.expectedAliases().stream().distinct().toList();
             List<String> forbidden = obs.forbiddenAliases();
-            List<String> retrieved = obs.retrievedAliases();
+            List<String> retrieved = obs.retrievedAliases().stream().limit(8).toList();
             String cat = obs.category() == null ? "" : obs.category();
+            if (obs.queryId() == null || obs.queryId().isBlank() || !ids.add(obs.queryId())) failureReasons.add("Invalid/duplicate observation id");
+            if (obs.vectorUnavailable()) failureReasons.add("Vector unavailable: " + obs.queryId());
+            if (obs.retrievedAliases().size() > 8) failureReasons.add("Top-8 limit exceeded: " + obs.queryId());
+            if (retrieved.contains("UNLABELLED")) failureReasons.add("Unknown source identity: " + obs.queryId());
+            returnedSourceCount += obs.retrievedAliases().size();
+            invalidSourceCount += obs.invalidSourceCount();
+            if (obs.invalidSourceCount() < 0 || obs.invalidSourceCount() > obs.retrievedAliases().size()) failureReasons.add("Invalid source count");
+            if ("MULTI_SOURCE".equals(cat) && expected.size() < 2) failureReasons.add("Missing multi-source labels");
 
             // 1. 全局安全硬门禁检查：所有查询返回的任何来源均不得命中 forbidden 或 stale
             for (String alias : retrieved) {
@@ -160,7 +195,8 @@ public final class RetrievalQualityScorer {
                 // 3. 负例与诊断查询细分处理
                 if ("NEAR_NO_ANSWER".equals(cat)) {
                     nearCount++;
-                    if (!retrieved.isEmpty()) {
+                    if (!retrieved.isEmpty()) nearAnyReturned++;
+                    if (retrieved.stream().anyMatch(obs.backgroundAliases()::contains)) {
                         // 返回了合法公开背景/相关节点，仅做诊断计数，不判零命中失败
                         nearBackgroundReturned++;
                     }
@@ -178,6 +214,8 @@ public final class RetrievalQualityScorer {
         double meanMrr = positiveCount == 0 ? 0.0 : sumMrr / positiveCount;
         double allOfCoverage = multiSourceCount == 0 ? 1.0 : (double) multiSourceAllOfHits / multiSourceCount;
         double pureZeroHitRate = pureNoAnswerCount == 0 ? 1.0 : (double) pureNoAnswerZeroHits / pureNoAnswerCount;
+        double sourceIdentityValidity = returnedSourceCount == 0 ? 1.0 : (double)(returnedSourceCount-invalidSourceCount)/returnedSourceCount;
+        if (invalidSourceCount > 0) failureReasons.add("Source identity validity must be 100%");
 
         // 阈值断言
         if (macroRecall < thresholds.minMacroSourceRecallAt8()) {
@@ -195,7 +233,7 @@ public final class RetrievalQualityScorer {
                     "Multi-Source All-Of Coverage failed: actual %.4f < required %.4f",
                     allOfCoverage, thresholds.minMultiSourceAllOfCoverage()));
         }
-        if (pureNoAnswerCount > 0 && pureZeroHitRate < thresholds.minPureNoAnswerZeroHitCorrectness()) {
+        if (!ai && pureNoAnswerCount > 0 && pureZeroHitRate < thresholds.minPureNoAnswerZeroHitCorrectness()) {
             failureReasons.add(String.format(Locale.ROOT,
                     "Pure No-Answer Zero-Hit Correctness failed: actual %.4f < required %.4f",
                     pureZeroHitRate, thresholds.minPureNoAnswerZeroHitCorrectness()));
@@ -212,7 +250,7 @@ public final class RetrievalQualityScorer {
         }
 
         String verdict;
-        if (!thresholds.isApproved()) {
+        if (!approved) {
             verdict = "BLOCKED_UNAPPROVED_THRESHOLDS";
         } else if (failureReasons.isEmpty()) {
             verdict = "PASS";
@@ -232,8 +270,12 @@ public final class RetrievalQualityScorer {
         summary.put("multiSourceAllOfCoverage", allOfCoverage);
         summary.put("pureNoAnswerZeroHitRate", pureZeroHitRate);
         summary.put("nearNoAnswerBackgroundReturnedCount", nearBackgroundReturned);
+        summary.put("nearNoAnswerAnyReturnedCount", nearAnyReturned);
+        summary.put("pureNoAnswerNonEmptyReturnedCount", pureNoAnswerCount - pureNoAnswerZeroHits);
         summary.put("staleSourceLeakCount", staleLeaks);
         summary.put("permissionLeakCount", permissionLeaks);
+        summary.put("sourceIdentityValidity", sourceIdentityValidity);
+        summary.put("noAnswerPolicy", ai ? "DIAGNOSTIC_RETRIEVAL_NOISE" : "HUMAN_APPROVED_STRICT_ZERO_HIT");
 
         return new QualityReport(
                 verdict,

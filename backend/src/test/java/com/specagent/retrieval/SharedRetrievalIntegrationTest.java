@@ -58,55 +58,18 @@ class SharedRetrievalIntegrationTest {
     com.specagent.retrieval.eval.RetrievalExecutionClaimManager.ExecutionClaim activeClaim;
     static final Path CLAIMS_DIR = Path.of("../data/retrieval-eval-claims");
 
+    com.specagent.retrieval.eval.RetrievalEvaluationSnapshot evaluationSnapshot;
+
     @BeforeEach void fixture() {
         if("true".equals(System.getenv("SPEC_AGENT_RAG_EVALUATION"))) {
-            String datasetFile=System.getenv().getOrDefault("SPEC_AGENT_RAG_EVALUATION_DATASET","chinese-queries.v1.json");
-            boolean acceptance=!datasetFile.equals("chinese-queries.v1.json");
-            if(acceptance) {
-                Path datasetPath=Path.of("../contracts/retrieval/evaluation/"+datasetFile);
-                if(!Files.exists(datasetPath)) {
-                    throw new IllegalStateException("Candidate dataset file missing: " + datasetPath);
-                }
-                String rawJson;
-                com.fasterxml.jackson.databind.JsonNode dataset;
-                try {
-                    rawJson=Files.readString(datasetPath);
-                    dataset=JSON.readTree(rawJson);
-                } catch(Exception e) {
-                    throw new IllegalStateException("Candidate dataset unreadable or invalid JSON: " + datasetPath, e);
-                }
-                String freezeFile=switch(datasetFile) {
-                    case "acceptance-candidate.v1.json" -> "acceptance-freeze.v1.json";
-                    case "acceptance-candidate.v2.json" -> "acceptance-freeze.v2.json";
-                    case "acceptance-candidate.v2-revised.json" -> "acceptance-freeze.v2-revised.json";
-                    case "acceptance-candidate.v2.1.json" -> "acceptance-freeze.v2.1.json";
-                    case "acceptance-candidate.v2.2.json" -> "acceptance-freeze.v2.2.json";
-                    default -> throw new IllegalArgumentException("Unknown candidate: " + datasetFile);
-                };
-                Path freezePath=Path.of("../contracts/retrieval/evaluation/"+freezeFile);
-                if(!Files.exists(freezePath)) {
-                    throw new IllegalStateException("Freeze contract file missing: " + freezePath);
-                }
-                com.fasterxml.jackson.databind.JsonNode freeze;
-                try {
-                    freeze=JSON.readTree(Files.readString(freezePath));
-                } catch(Exception e) {
-                    throw new IllegalStateException("Freeze contract unreadable or invalid JSON: " + freezePath, e);
-                }
-                try {
-                    com.specagent.retrieval.eval.RetrievalAcceptanceGateValidator.validateForExecution(
-                        dataset, rawJson, freeze, Path.of(".."),
-                        "INDEPENDENT_ACCEPTANCE_CANDIDATE", 68, 28
-                    );
-                    // 原子认领首次执行资格：前置门禁全部校验通过后方可认领
-                    activeClaim = com.specagent.retrieval.eval.RetrievalExecutionClaimManager.claimFirstRun(
-                        dataset.path("datasetSha256").asText(),
-                        freeze.path("datasetSha256").asText(),
-                        CLAIMS_DIR
-                    );
-                } catch(Exception e) {
-                    throw new IllegalStateException("Acceptance gate rejection before fixture setup: " + e.getMessage(), e);
-                }
+            String file=System.getenv().getOrDefault("SPEC_AGENT_RAG_EVALUATION_DATASET","chinese-queries.v1.json");
+            if(!file.equals("chinese-queries.v1.json")) {
+                evaluationSnapshot=com.specagent.retrieval.eval.RetrievalEvaluationSnapshot.load(Path.of(".."),file,
+                    System.getenv().getOrDefault("SPEC_AGENT_RAG_EVALUATION_MODE",
+                        com.specagent.retrieval.eval.RetrievalEvaluationSnapshot.HUMAN_MODE));
+                evaluationSnapshot.requireRunAuthorization(System.getenv("SPEC_AGENT_RAG_FIRST_RUN_AUTHORIZATION"));
+                activeClaim=com.specagent.retrieval.eval.RetrievalExecutionClaimManager.claimFirstRun(
+                    evaluationSnapshot.familyId(),evaluationSnapshot.datasetSha256(),evaluationSnapshot.freezeSha256(),CLAIMS_DIR);
             }
         }
         project=projects.createProject("shared-rag-fixture-"+UUID.randomUUID());
@@ -116,22 +79,14 @@ class SharedRetrievalIntegrationTest {
         oldBase=properties.getBaseUrl();
     }
     @AfterEach void cleanup() throws Exception {
-        if(activeClaim!=null) {
-            Path claimFile=CLAIMS_DIR.resolve(activeClaim.datasetSha256()+".claim.json");
-            if(Files.exists(claimFile)) {
-                try {
-                    var claimObj=JSON.readTree(Files.readString(claimFile));
-                    String status=claimObj.path("status").asText();
-                    if("CLAIMED".equals(status)) {
-                        com.specagent.retrieval.eval.RetrievalExecutionClaimManager.recordOutcome(
-                            activeClaim,
-                            "INTERRUPTED_OR_ERROR",
-                            "Execution interrupted or errored before completion",
-                            CLAIMS_DIR
-                        );
-                    }
-                } catch(Exception ignored) {}
-            }
+        if(activeClaim!=null && !com.specagent.retrieval.eval.RetrievalExecutionClaimManager.hasOutcome(activeClaim,CLAIMS_DIR)) {
+            if(!Files.exists(CLAIMS_DIR.resolve(activeClaim.runId()+".result.json")))
+                com.specagent.retrieval.eval.RetrievalExecutionClaimManager.writeResult(activeClaim,
+                    write(Map.of("verdict","INTERRUPTED_OR_ERROR","runId",activeClaim.runId(),
+                        "datasetSha256",activeClaim.datasetSha256(),"freezeSha256",activeClaim.freezeSha256(),
+                        "queryCompletion","UNKNOWN; setup or execution did not complete")),CLAIMS_DIR);
+            com.specagent.retrieval.eval.RetrievalExecutionClaimManager.recordOutcome(activeClaim,
+                "INTERRUPTED_OR_ERROR","Execution did not reach a durable complete quality report",CLAIMS_DIR);
         }
         stopCandidatePython();
         if(properties!=null && oldBase!=null) properties.setBaseUrl(oldBase);
@@ -374,29 +329,12 @@ class SharedRetrievalIntegrationTest {
     @Test void realOllamaFiftyTwoReviewableQueriesEvaluateRecallNoAnswerStaleAndPermissionIsolation() throws Exception {
         Assumptions.assumeTrue("true".equals(System.getenv("SPEC_AGENT_RAG_EVALUATION")));
         String datasetFile=System.getenv().getOrDefault("SPEC_AGENT_RAG_EVALUATION_DATASET","chinese-queries.v1.json");
-        assertTrue(Set.of("chinese-queries.v1.json","acceptance-candidate.v1.json","acceptance-candidate.v2.json","acceptance-candidate.v2-revised.json","acceptance-candidate.v2.1.json","acceptance-candidate.v2.2.json").contains(datasetFile));
         Path datasetPath=Path.of("../contracts/retrieval/evaluation/"+datasetFile);
-        String rawJson=Files.readString(datasetPath);
-        var dataset=JSON.readTree(rawJson);
         boolean acceptance=!datasetFile.equals("chinese-queries.v1.json");
+        String rawJson=acceptance?evaluationSnapshot.datasetRaw():Files.readString(datasetPath);
+        var dataset=com.specagent.retrieval.eval.RetrievalEvaluationSnapshot.parse(rawJson);
         String reviewStatus=dataset.path("humanReviewStatus").asText();
-        assertTrue(Set.of("PENDING","APPROVED").contains(reviewStatus));
-        String freezeFile=null;
-        if(acceptance) {
-            freezeFile=switch(datasetFile) {
-                case "acceptance-candidate.v1.json" -> "acceptance-freeze.v1.json";
-                case "acceptance-candidate.v2.json" -> "acceptance-freeze.v2.json";
-                case "acceptance-candidate.v2-revised.json" -> "acceptance-freeze.v2-revised.json";
-                case "acceptance-candidate.v2.1.json" -> "acceptance-freeze.v2.1.json";
-                case "acceptance-candidate.v2.2.json" -> "acceptance-freeze.v2.2.json";
-                default -> throw new IllegalArgumentException("Unknown candidate: " + datasetFile);
-            };
-            var freeze=JSON.readTree(Files.readString(Path.of("../contracts/retrieval/evaluation/"+freezeFile)));
-            com.specagent.retrieval.eval.RetrievalAcceptanceGateValidator.validateForExecution(
-                dataset, rawJson, freeze, Path.of(".."),
-                "INDEPENDENT_ACCEPTANCE_CANDIDATE", 68, 28
-            );
-        }
+        if(acceptance && evaluationSnapshot.aiAudited()) evaluationSnapshot.requireRuntime(Path.of(".."),System.getenv("SPEC_AGENT_GA_TEST_PYTHON"));
         startPython();
         try(var resources=new TestResourceSampler(python)) {
         Map<UUID,String> aliases=new HashMap<>(); Set<UUID> stale=new HashSet<>();
@@ -410,6 +348,11 @@ class SharedRetrievalIntegrationTest {
             UUID generation=store.ensureProjectGeneration(corpus.id());
             int sources=0; while(shared.splitOneSource(corpus.id(),generation)) assertTrue(++sources<=4);
             int batches=0; while(shared.indexOneBatch(corpus.id(),generation)) assertTrue(++batches<=8);
+        }
+        // Safety probes must have actual vectors before retraction/isolation.
+        for(var source:aliases.entrySet()) if(stale.contains(source.getKey()) || source.getValue().startsWith("P")) {
+            assertTrue(jdbc.queryForObject("SELECT count(*) FROM retrieval_entries WHERE source_id=? AND embedding IS NOT NULL AND retracted_at IS NULL",
+                Integer.class,source.getKey())>0,"Safety fixture was never indexed: "+source.getValue());
         }
         // Intentionally leave the derived projection untouched: final canonical checks must still reject it.
         for(UUID item:stale) jdbc.update("UPDATE nodes SET retracted_at=now() WHERE id=?",item);
@@ -435,19 +378,33 @@ class SharedRetrievalIntegrationTest {
             List<String> actual=rawRetrieved.stream().distinct().toList();
             List<String> legacy=baseline.retrieve(request).stream().filter(c->!excluded.contains(c.entry().sourceRef())).limit(8)
                 .map(c->aliases.getOrDefault(c.entry().sourceId(),"UNLABELLED")).distinct().toList();
+            int queryInvalidSources=0;
             for(var item:result.items()) {
                 if(!project.id().equals(item.source().projectId()) || forbidden.contains(aliases.get(UUID.fromString(item.source().sourceRef().split(":")[1])))) leaks++;
-                if(stale.contains(UUID.fromString(item.source().sourceRef().split(":")[1]))) invalidSources++;
+                var source=item.source();
+                var rows=jdbc.queryForList("SELECT * FROM retrieval_entries WHERE id=?",source.entryId());
+                if(stale.contains(UUID.fromString(source.sourceRef().split(":")[1])) || rows.size()!=1
+                        || !project.id().equals(source.projectId()) || !project.id().equals(source.corpusId())
+                        || !aliases.containsKey(UUID.fromString(source.sourceRef().split(":")[1]))
+                        || !scopes.stream().map(Enum::name).toList().contains(source.scope())
+                        || !store.canonicalCurrent(rows.getFirst())
+                        || !source.sourceVersion().equals(rows.getFirst().get("source_version"))
+                        || !source.contentHash().equals(rows.getFirst().get("content_hash"))
+                        || !source.sourceRef().equals(rows.getFirst().get("source_ref"))
+                        || !source.authority().equals(rows.getFirst().get("authority"))) { invalidSources++; queryInvalidSources++; }
             }
             if(!expected.isEmpty()) {
                 labelled++; recall+=(double)expected.stream().filter(actual::contains).count()/expected.size();
                 baseRecall+=(double)expected.stream().filter(legacy::contains).count()/expected.size();
-                for(int rank=0;rank<actual.size();rank++) if(expected.contains(actual.get(rank))) { mrr+=1.0/(rank+1); break; }
+                for(int rank=0;rank<rawRetrieved.size();rank++) if(expected.contains(rawRetrieved.get(rank))) { mrr+=1.0/(rank+1); break; }
             } else { empty++; if(actual.isEmpty()) correctEmpty++; }
             heapPeak=Math.max(heapPeak,java.lang.management.ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed());
             var observation=new LinkedHashMap<String,Object>();
             observation.put("id",labelledQuery.path("id").asText()); observation.put("category",category); observation.put("query",query);
             observation.put("expectedAliases",expected); observation.put("forbiddenAliases",forbidden);
+            List<String> background=new ArrayList<>(); labelledQuery.path("backgroundAliases").forEach(a->background.add(a.asText()));
+            observation.put("backgroundAliases",background);
+            observation.put("invalidSourceCount",queryInvalidSources);
             observation.put("retrievedAliases",rawRetrieved); observation.put("distinctRetrievedAliases",actual);
             observation.put("legacyLexicalAliases",legacy);
             observation.put("elapsedMs",elapsed); observation.put("vectorUnavailable",result.vectorUnavailable()); observation.put("labelReview",labelledQuery.path("labelReview").asText());
@@ -457,28 +414,26 @@ class SharedRetrievalIntegrationTest {
         report.put("recordedAt",Instant.now().toString()); report.put("boundary","actual Python + local qwen3-embedding:0.6b + authenticated Java RPC + existing pgvector; isolated canonical test sources");
         report.put("authorship",dataset.path("authorship").asText()); report.put("humanReviewStatus",reviewStatus); report.put("queryCount",observations.size());
         report.put("datasetFile",datasetFile); report.put("datasetRole",dataset.path("datasetRole").asText());
-        report.put("datasetSha256",com.specagent.common.Hashes.sha256Hex(Files.readString(datasetPath)));
+        report.put("datasetSha256",com.specagent.common.Hashes.sha256Hex(rawJson));
         report.put("profileId",PROFILE);
         report.put("javaLegacyLexicalRecallAt8",baseRecall/labelled);
         report.put("p50Ms",timings.get(timings.size()/2)); report.put("p95Ms",timings.get((int)Math.ceil(timings.size()*0.95)-1));
         report.put("javaHeapObservedPeakBytes",heapPeak); report.put("resourceMeasurementLimit","Sampled observations; Java heap after each query, Python working set and whole GPU device shared with other apps"); report.put("resourceSamples",resources.report());
-        report.put("maxVectorDistance",0.50); report.put("evaluationUse",acceptance?"independent candidate run under frozen config; not automatically production-approved":"development calibration fixture, never independent acceptance");
+        report.put("maxVectorDistance",0.50); report.put("evaluationUse",acceptance?"frozen synthetic evaluation; no statistical independence or production approval claim":"development calibration fixture, never independent acceptance");
         report.put("productionEngineChanged",false); report.put("observations",observations);
 
-        if(acceptance && freezeFile!=null) {
-            var freeze=JSON.readTree(Files.readString(Path.of("../contracts/retrieval/evaluation/"+freezeFile)));
+        if(acceptance) {
+            var freeze=evaluationSnapshot.freeze();
             var tNode=freeze.path("proposedThresholds");
             if(tNode.isMissingNode() || tNode.isNull()) tNode=freeze.path("approvedThresholds");
-            double pureZeroHit=tNode.has("pureNoAnswerZeroHitCorrectness")
-                ? tNode.path("pureNoAnswerZeroHitCorrectness").asDouble()
-                : tNode.path("noAnswerZeroHitCorrectness").asDouble(1.0);
-            int maxStale=tNode.path("staleSourceLeakCount").asInt(0);
-            int maxPerm=tNode.path("permissionLeakCount").asInt(0);
+            double pureZeroHit=evaluationSnapshot.aiAudited()?0.0:tNode.required("pureNoAnswerZeroHitCorrectness").doubleValue();
+            int maxStale=tNode.required("staleSourceLeakCount").intValue();
+            int maxPerm=tNode.required("permissionLeakCount").intValue();
             var thresholds=new com.specagent.retrieval.eval.RetrievalQualityScorer.QualityThresholds(
                 freeze.path("thresholdStatus").asText(),
-                tNode.path("macroSourceRecallAt8").asDouble(0.85),
-                tNode.path("firstRelevantMrr").asDouble(0.75),
-                tNode.path("multiSourceAllOfCoverage").asDouble(0.75),
+                tNode.required("macroSourceRecallAt8").doubleValue(),
+                tNode.required("firstRelevantMrr").doubleValue(),
+                tNode.required("multiSourceAllOfCoverage").doubleValue(),
                 pureZeroHit,
                 maxStale,
                 maxPerm
@@ -490,14 +445,17 @@ class SharedRetrievalIntegrationTest {
                     (String)obs.get("category"),
                     (List<String>)obs.get("expectedAliases"),
                     (List<String>)obs.get("forbiddenAliases"),
-                    List.of(),
+                    (List<String>)obs.get("backgroundAliases"),
                     (List<String>)obs.get("retrievedAliases"),
                     Boolean.TRUE.equals(obs.get("vectorUnavailable")),
-                    (Long)obs.get("elapsedMs")
+                    (Long)obs.get("elapsedMs"),
+                    (Integer)obs.get("invalidSourceCount")
                 ));
             }
             Set<String> staleAliasesSet=stale.stream().map(aliases::get).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
-            var qualityReport=com.specagent.retrieval.eval.RetrievalQualityScorer.evaluate(queryObservations, thresholds, staleAliasesSet);
+            var qualityReport=evaluationSnapshot.aiAudited()
+                ?com.specagent.retrieval.eval.RetrievalQualityScorer.evaluateAiAudited(queryObservations,thresholds,staleAliasesSet)
+                :com.specagent.retrieval.eval.RetrievalQualityScorer.evaluate(queryObservations,thresholds,staleAliasesSet);
             // 顶层指标必须与质量报告严格一致，单一事实源
             report.put("recallAt8",qualityReport.macroSourceRecallAt8());
             report.put("mrr",qualityReport.firstRelevantMrr());
@@ -508,24 +466,18 @@ class SharedRetrievalIntegrationTest {
             report.put("permissionLeaks",qualityReport.permissionLeakCount());
             report.put("qualityReport",qualityReport.summary());
 
-            if(activeClaim!=null) {
-                if(qualityReport.isPass()) {
-                    com.specagent.retrieval.eval.RetrievalExecutionClaimManager.recordOutcome(
-                        activeClaim,
-                        "COMPLETED_PASS",
-                        com.specagent.agent.protocol.AgentContracts.write(qualityReport.summary()),
-                        CLAIMS_DIR
-                    );
-                } else {
-                    com.specagent.retrieval.eval.RetrievalExecutionClaimManager.recordOutcome(
-                        activeClaim,
-                        "COMPLETED_FAIL",
-                        "Quality gate failed: " + qualityReport.failureReasons(),
-                        CLAIMS_DIR
-                    );
-                }
-            }
-            assertTrue(qualityReport.isPass(), () -> "Retrieval quality gate failed: " + qualityReport.failureReasons());
+            report.put("evaluationMode",evaluationSnapshot.aiAudited()
+                ?com.specagent.retrieval.eval.RetrievalEvaluationSnapshot.AI_MODE
+                :com.specagent.retrieval.eval.RetrievalEvaluationSnapshot.HUMAN_MODE);
+            report.put("freezeSha256",evaluationSnapshot.freezeSha256());
+            report.put("runId",activeClaim.runId());
+            report.put("sourceIdentityValidity",qualityReport.summary().get("sourceIdentityValidity"));
+            boolean passed=qualityReport.isPass() && leaks==0 && invalidSources==0 && observations.size()==68;
+            report.put("verdict",passed?"PASS":"FAIL");
+            com.specagent.retrieval.eval.RetrievalExecutionClaimManager.writeResult(activeClaim,write(report),CLAIMS_DIR);
+            com.specagent.retrieval.eval.RetrievalExecutionClaimManager.recordOutcome(activeClaim,
+                passed?"COMPLETED_PASS":"COMPLETED_FAIL",write(report),CLAIMS_DIR);
+            assertTrue(passed, () -> "Retrieval quality/source gate failed: " + qualityReport.failureReasons());
         } else {
             report.put("recallAt8",recall/labelled);
             report.put("mrr",mrr/labelled);
@@ -536,7 +488,7 @@ class SharedRetrievalIntegrationTest {
             report.put("multiSourceAllOfCoverage",observations.stream().filter(o->o.get("category").equals("MULTI_SOURCE"))
                 .mapToDouble(o->((List<?>)o.get("retrievedAliases")).containsAll((List<?>)o.get("expectedAliases"))?1:0).average().orElse(0));
         }
-        Files.writeString(Path.of("../docs/v2/evidence/"+(acceptance?"SHARED_RAG_ACCEPTANCE_CANDIDATE_EVALUATION.json":"SHARED_RAG_52_QUERY_EVALUATION.json")),write(report));
+        if(!acceptance) Files.writeString(Path.of("../docs/v2/evidence/SHARED_RAG_52_QUERY_EVALUATION.json"),write(report));
         assertTrue(observations.size()>=50); assertEquals(0,leaks); assertEquals(0,invalidSources);
         assertTrue(observations.stream().allMatch(o->Boolean.FALSE.equals(o.get("vectorUnavailable"))));
         }
@@ -716,8 +668,7 @@ class SharedRetrievalIntegrationTest {
         if(ollamaUrl!=null) builder.environment().put("SPEC_AGENT_OLLAMA_URL",ollamaUrl);
         builder.environment().put("SPEC_AGENT_INTERNAL_BROKER_URL","http://127.0.0.1:"+port+"/internal/v1/model-inference");
         builder.environment().put("SPEC_AGENT_BRAIN_INTERNAL_SECRET",properties.getInternalSecret());
-        builder.environment().remove("ALL_PROXY");
-        builder.environment().remove("all_proxy");
+        // Internal clients select direct transport; preserve the operator proxy environment.
         log=Files.createTempFile("shared-rag-python-",".log");
         builder.redirectErrorStream(true).redirectOutput(log.toFile()); python=builder.start();
         properties.setBaseUrl("http://127.0.0.1:"+brainPort);

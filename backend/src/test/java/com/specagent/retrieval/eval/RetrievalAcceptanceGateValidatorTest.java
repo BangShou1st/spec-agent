@@ -60,6 +60,8 @@ class RetrievalAcceptanceGateValidatorTest {
         String sha = Hashes.sha256Hex(rawJson);
 
         ObjectNode freeze = MAPPER.createObjectNode();
+        freeze.put("freezeVersion", "v2.2");
+        freeze.put("datasetVersion", "v2.2");
         freeze.put("datasetRole", "INDEPENDENT_ACCEPTANCE_CANDIDATE");
         freeze.put("datasetSha256", sha);
         freeze.put("requirementsLockSha256", "mock_req_lock_sha");
@@ -338,5 +340,27 @@ class RetrievalAcceptanceGateValidatorTest {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @org.junit.jupiter.api.TestFactory
+    java.util.stream.Stream<org.junit.jupiter.api.DynamicTest> sharedPythonJavaContractCases() throws Exception {
+        var cases=MAPPER.readTree(assertRead(Path.of("../contracts/retrieval/evaluation/gate-parity-cases.v1.json")));
+        return java.util.stream.StreamSupport.stream(cases.spliterator(),false).map(c -> org.junit.jupiter.api.DynamicTest.dynamicTest(c.path("id").asText(),()->{
+            var f=createValidSyntheticFixture();
+            ((ObjectNode)f.freeze().path("codeHashes")).put("build.gradle.kts",Hashes.sha256Hex(assertRead(Path.of("build.gradle.kts"))));
+            f.freeze().put("requirementsLockSha256",Hashes.sha256Hex(assertRead(Path.of("../agent-brain/requirements.lock"))));
+            if(!c.path("path").isNull()) {
+                String[] parts=c.path("path").asText().split("/");
+                ObjectNode target=parts[0].equals("dataset")?f.dataset():f.freeze();
+                for(int i=1;i<parts.length-1;i++) target=(ObjectNode)target.path(parts[i]);
+                if(c.path("value").isNull()) target.remove(parts[parts.length-1]);
+                else target.set(parts[parts.length-1],c.path("value"));
+            }
+            String raw=f.dataset().toString(); f.freeze().put("datasetSha256",Hashes.sha256Hex(raw));
+            var executable=(org.junit.jupiter.api.function.Executable)()->RetrievalAcceptanceGateValidator.validateForExecution(
+                f.dataset(),raw,f.freeze(),Path.of("."),"INDEPENDENT_ACCEPTANCE_CANDIDATE",2,2);
+            if(c.path("valid").asBoolean()) org.junit.jupiter.api.Assertions.assertDoesNotThrow(executable);
+            else org.junit.jupiter.api.Assertions.assertThrows(RetrievalAcceptanceGateValidator.GateValidationException.class,executable);
+        }));
     }
 }

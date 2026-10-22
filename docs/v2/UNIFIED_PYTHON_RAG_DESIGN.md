@@ -1,5 +1,8 @@
 # 统一 Python RAG 与本地 Embedding 设计
 
+> status: Canonical
+> authority: Current Authority
+
 > 日期：2026-10-01（Asia/Shanghai）
 > 状态：目标设计 / 范围调整；未在本次实现业务代码。
 > 方向：Java 负责业务事实、权限及存储，Python LangChain 负责 Agent 与 RAG 算法；项目 Agent、全局助手共用一个 RAG 服务。
@@ -310,3 +313,20 @@ Java 核对规范来源的内容、身份和 authority，派生索引本身不�
 7. **验收状态与质量门槛界定**：
    - 当前可靠性收口达到 `CODE_COMPLETE` 与 `INTEGRATION_VERIFIED`。
    - 既有 52 条检索查询仅属于 `DEVELOPMENT_CALIBRATION` 开发期校准，68 条独立候选集维持 `PENDING_HUMAN_REVIEW`；在未完成独立人工审批前，不得宣称 `QUALITY_VERIFIED`。
+
+### 2026-10-23 RAG-D3 AI 自动技术审阅实验路径
+
+负责人授权 AI 逐条技术审阅全部合成来源/查询，不要求逐条人审；这不构成人工批准。
+独立新增 `AI_AUDITED_SYNTHETIC_EVALUATION`，绑定 v2.3 唯一派生数据、版本化
+`ai-review-decisions.v1.json`、实现/依赖哈希与预冻结指标。原人工验收入口保持失败关闭，
+禁止将 AI 审阅写成 HUMAN_REVIEWED 或据此宣称 QUALITY_VERIFIED。
+
+该实验需全部68条/28来源有已解决的 AI 裁决、来源证据和数据hash绑定；不允许未解决项
+进入首次执行。Recall≥0.85、原始chunk排名MRR≥0.75、严格all-of≥0.75、全局零泄漏、
+100%来源身份有效性为硬约束。NO_ANSWER零命中仅作检索噪声诊断，NEAR背景诊断与
+Agent正确拒答分开；旧人审阈值不变。延迟500/1500ms为AI建议观察参考，不是生产SLO。
+完整定义和另行授权后的执行步骤见 [AI首次实验运行手册](../runbooks/rag-d3-ai-audit-first-run.md)。
+
+运行必须另获负责人明确授权。执行入口读取一次数据/freeze快照，按稳定评测家族原子认领，
+再创建fixture、启动Python与检索。所有派生版本共享首次执行历史；claim、结果和终态回执
+追加且不可覆盖，失败/中断消耗首次资格。本轮只做离线验证，不运行正式候选。

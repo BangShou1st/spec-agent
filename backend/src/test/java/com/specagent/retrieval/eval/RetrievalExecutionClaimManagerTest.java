@@ -63,7 +63,7 @@ class RetrievalExecutionClaimManagerTest {
         // 尝试再次认领应坚决拒绝，保护首次执行历史事实
         assertThatThrownBy(() -> RetrievalExecutionClaimManager.claimFirstRun(datasetSha, freezeSha, tempDir))
                 .isInstanceOf(RetrievalExecutionClaimManager.ClaimCollisionException.class)
-                .hasMessageContaining("COMPLETED_FAIL");
+                .hasMessageContaining("already been claimed");
     }
 
     @Test
@@ -126,5 +126,63 @@ class RetrievalExecutionClaimManagerTest {
 
         assertThat(successCount.get()).isEqualTo(1);
         assertThat(collisionCount.get()).isEqualTo(threads - 1);
+    }
+
+    @Test void changedDatasetAndFreezeCannotRenewFamily(@TempDir Path directory) {
+        RetrievalExecutionClaimManager.claimFirstRun("family", "dataset_one", "freeze_one", directory);
+        assertThatThrownBy(() -> RetrievalExecutionClaimManager.claimFirstRun("family", "dataset_two", "freeze_two", directory))
+                .isInstanceOf(RetrievalExecutionClaimManager.ClaimCollisionException.class);
+    }
+
+    @Test void concurrentOutcomesAndResultsAreAppendOnly(@TempDir Path directory) throws Exception {
+        var claim = RetrievalExecutionClaimManager.claimFirstRun("dataset", "freeze", directory);
+        byte[] initial = java.nio.file.Files.readAllBytes(directory.resolve("dataset.claim.json"));
+        try (var pool = java.util.concurrent.Executors.newFixedThreadPool(8)) {
+            var ready = new java.util.concurrent.CyclicBarrier(8);
+            var futures = new java.util.ArrayList<java.util.concurrent.Future<Boolean>>();
+            for (int i = 0; i < 8; i++) futures.add(pool.submit(() -> {
+                ready.await();
+                try { RetrievalExecutionClaimManager.recordOutcome(claim,"COMPLETED_FAIL","failure",directory); return true; }
+                catch (IllegalStateException collision) { return false; }
+            }));
+            int wins = 0;
+            for (var future : futures) if (future.get()) wins++;
+            assertThat(wins).isEqualTo(1);
+        }
+        assertThat(java.nio.file.Files.readAllBytes(directory.resolve("dataset.claim.json"))).isEqualTo(initial);
+        RetrievalExecutionClaimManager.writeResult(claim,"{\"verdict\":\"FAIL\"}",directory);
+        assertThatThrownBy(() -> RetrievalExecutionClaimManager.writeResult(claim,"PASS",directory)).isInstanceOf(java.io.UncheckedIOException.class);
+        assertThatThrownBy(() -> RetrievalExecutionClaimManager.recordOutcome(claim,"CLAIMED","reset",directory)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test void partialClaimAfterProcessDeathStillConsumesRun(@TempDir Path directory) throws Exception {
+        java.nio.file.Files.writeString(directory.resolve("family.claim.json"),"{partial");
+        assertThatThrownBy(() -> RetrievalExecutionClaimManager.claimFirstRun("family","dataset","freeze",directory))
+            .isInstanceOf(RetrievalExecutionClaimManager.ClaimCollisionException.class);
+    }
+
+    @Test void legacyHashedCandidateClaimAlsoPreventsFreshFamily(@TempDir Path directory) throws Exception {
+        java.nio.file.Files.writeString(directory.resolve("old_dataset_hash.claim.json"),"{partial");
+        assertThatThrownBy(() -> RetrievalExecutionClaimManager.claimFirstRun("rag-d3-v2-68","new_dataset","new_freeze",directory))
+            .isInstanceOf(RetrievalExecutionClaimManager.ClaimCollisionException.class);
+    }
+
+    @Test void separateProcessesCannotDoubleClaim(@TempDir Path directory) throws Exception {
+        var processes = new java.util.ArrayList<Process>();
+        String javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        for (int i=0;i<4;i++) processes.add(new ProcessBuilder(javaExecutable,"-cp",System.getProperty("java.class.path"),
+                getClass().getName(),directory.toString()).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start());
+        int wins=0;
+        for(var process:processes) {
+            assertThat(process.waitFor(30,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThat(process.exitValue()).isIn(0,2);
+            if(process.exitValue()==0) wins++;
+        }
+        assertThat(wins).isEqualTo(1);
+    }
+
+    public static void main(String[] args) {
+        try { RetrievalExecutionClaimManager.claimFirstRun("family","dataset","freeze",Path.of(args[0])); }
+        catch (RetrievalExecutionClaimManager.ClaimCollisionException collision) { System.exit(2); }
     }
 }

@@ -1,0 +1,187 @@
+{
+  "status": "AI_AUDIT_READY_FOR_FIRST_RUN_AUTHORIZATION",
+  "recordedAt": "2026-10-22T19:28:39.152260+00:00",
+  "branch": "dev",
+  "baseHead": "361ff9e9f988117ac8b3ab760cbddf05a290db52",
+  "commitBinding": "Resolve the commit containing this file; codeHashes and artifact SHA-256 bind verified bytes without a self-referential commit hash.",
+  "executedFormalCandidateQueries": 0,
+  "localFormalExecutionClaims": 0,
+  "humanApproval": "PENDING",
+  "tuningUse": "NEVER_USED",
+  "preflight": {
+    "status": "AI_AUDIT_READY_FOR_FIRST_RUN_AUTHORIZATION",
+    "failures": [],
+    "datasetSha256": "eb1262001f1f67a28c6210a6cd7846b8b7adf547de3453096d68554c635f4199",
+    "freezeSha256": "0f2583dd500a14c43a8a57d8ca83d73642d6efe626a5a539874529bd4f684c7c",
+    "auditSha256": "61c215e3878be2663cff7f7f7316ec718a66652a2554cd3a495af5e01a177a05",
+    "queriesReviewed": 68,
+    "sourcesReviewed": 28,
+    "queriesExecutedThisRun": 0,
+    "localExecutionClaims": 0,
+    "humanApproval": "PENDING",
+    "historyLimit": "File/ledger evidence only; cannot prove absence of undisclosed off-ledger execution"
+  },
+  "assets": {
+    "acceptance-candidate.v2.3.json": "eb1262001f1f67a28c6210a6cd7846b8b7adf547de3453096d68554c635f4199",
+    "acceptance-freeze.v2.3.json": "0f2583dd500a14c43a8a57d8ca83d73642d6efe626a5a539874529bd4f684c7c",
+    "ai-review-decisions.v1.json": "61c215e3878be2663cff7f7f7316ec718a66652a2554cd3a495af5e01a177a05",
+    "ai-review-decisions.v1.schema.json": "440efc1bb62442dcfacbc4795dffa0a1780dee423eb16ba8bc4a03ee1c446f43",
+    "runtime-inventory.v1.json": "de36a8fc55b52596b50aecd870f2a97694c6ee4498d28ac4da050421fe0e98c1"
+  },
+  "reviewCounts": {
+    "sources": {
+      "reviewed": 28,
+      "AI_ACCEPTED": 8,
+      "AI_CORRECTED": 20,
+      "AI_UNRESOLVED": 0
+    },
+    "queries": {
+      "reviewed": 68,
+      "AI_ACCEPTED": 40,
+      "AI_CORRECTED": 28,
+      "AI_UNRESOLVED": 0
+    }
+  },
+  "knownBlockingIssues": [],
+  "knownCriticalSourceErrorsRemaining": false,
+  "labelsScopesAndBackgroundsConsistent": true,
+  "tests": {
+    "java": {
+      "task": "gradlew.bat --offline testOffline",
+      "classes": 32,
+      "tests": 302,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "python": {
+      "task": "locked Python pytest over agent-brain/tests with network guard",
+      "tests": 339,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "totalFinalTests": 641,
+    "sharedJavaPythonAdversarialGateCases": 26,
+    "networkGuard": "All service/external socket connections denied. Only CPython stdlib socketpair ephemeral self-pipe permitted for Windows asyncio; no database, Ollama or paid model calls.",
+    "priorHarnessAttempt": {
+      "passed": 309,
+      "failed": 25,
+      "skipped": 0,
+      "cause": "Initial overly broad socket guard also denied Windows asyncio socketpair self-pipes. Corrected only scratch test harness to allow the exact stdlib socketpair call; production and candidate safeguards were not weakened."
+    },
+    "notRun": [
+      "testDatabaseIntegration",
+      "testNonLive",
+      "testCrossLanguage",
+      "formal 68 candidate retrievals",
+      "real provider/embedding calls",
+      "browser E2E"
+    ]
+  },
+  "engineeringScope": [
+    {
+      "file": "backend/src/test/java/com/specagent/retrieval/SharedRetrievalIntegrationTest.java",
+      "sha256": "976da67009d174921bb3f4dff35f1c99a3ee409f1484989beddd6156e709cf87"
+    },
+    {
+      "file": "backend/src/test/java/com/specagent/retrieval/eval/RetrievalAcceptanceGateValidator.java",
+      "sha256": "16a9fc3a55882fb877c3e8e138bbcfb03aad0eb1768ff4da4a63f94fde5ed835"
+    },
+    {
+      "file": "backend/src/test/java/com/specagent/retrieval/eval/RetrievalEvaluationSnapshot.java",
+      "sha256": "c5b634817e29aa7dd42f9cdfa37dd9540455ef690c1e86134eba84b34cf91f6e"
+    },
+    {
+      "file": "backend/src/test/java/com/specagent/retrieval/eval/RetrievalExecutionClaimManager.java",
+      "sha256": "5ce6d5ff1f597090ffa8367bb18103b863c4b721957d022e56781d31039f4afa"
+    },
+    {
+      "file": "backend/src/test/java/com/specagent/retrieval/eval/RetrievalQualityScorer.java",
+      "sha256": "38c7778f111844b513ea092cccfda937f5c30429babce8978196e1bf7447433d"
+    },
+    {
+      "file": "agent-brain/scripts/audit_retrieval_acceptance.py",
+      "sha256": "64876ad5c089ad7ffc6246d8c597bd586a62de5c464b91ede52858ba244f9cbd"
+    },
+    {
+      "file": "agent-brain/scripts/retrieval_acceptance_contract.py",
+      "sha256": "ba8cde1b53b74cfc81c33bdcf307710ae27109649b97393c14473882067dc5ec"
+    }
+  ],
+  "fixes": [
+    "Use actual raw candidate/freeze hashes and a stable dataset family, before formal fixture/Python/indexing/query side effects",
+    "Read-once immutable dataset/freeze/audit snapshot; strict Java/Python version/time/numeric and mandatory metrics checks",
+    "Append-only durable CREATE_NEW family claim, terminal receipt and run result; never truncate or overwrite terminal outcomes",
+    "Persist failed quality report before assertions; invalid source identity enters the same quality verdict and summary metrics",
+    "Preserve raw Top-8 MRR ranks, deduplicate source recall and require all-of; AI-only noise diagnostics without weakening human gate",
+    "Preserve uppercase/lowercase global proxy environment in evaluation launcher",
+    "Replace stale source provenance and incorrect patch/lineage/splitter/broker/WAIT descriptions; distinguish fictional probes",
+    "Prepare separate offline Python 3.11.14 environment exactly matching 57 lock pins; freeze and verify actual interpreter inventory"
+  ],
+  "manifest": {
+    "codeFiles": 1007,
+    "runtimeLockPins": 57,
+    "allFrozenHashesCurrent": true,
+    "historicalAcceptanceAssetsUnchanged": true,
+    "productionAlgorithmChanged": false,
+    "embeddingModelChanged": false
+  },
+  "metricContract": {
+    "version": "rag-d3-ai-metrics.v1",
+    "basis": "AI_SUGGESTED_PRE_RESULT_BASELINE_NOT_HUMAN_APPROVED",
+    "hardThresholds": {
+      "macroSourceRecallAt8": 0.85,
+      "firstRelevantMrr": 0.75,
+      "multiSourceAllOfCoverage": 0.75,
+      "staleSourceLeakCount": 0,
+      "permissionLeakCount": 0,
+      "sourceIdentityValidity": 1.0
+    },
+    "noAnswerPolicy": "DIAGNOSTIC_RETRIEVAL_NOISE",
+    "denominators": {
+      "total": 68,
+      "positive": 49,
+      "multiSource": 8,
+      "nearNoAnswer": 8,
+      "pureNoAnswer": 3,
+      "staleProbes": 4,
+      "privateProbes": 4
+    },
+    "ranking": "raw Top-8 chunk positions for MRR; distinct source aliases for recall; background excluded; all-of requires each expected alias",
+    "mandatoryIntegrity": "Every query completed; all source IDs/project/scope/version/hash/authority valid; vector available; no missing metrics defaulted",
+    "diagnostics": {
+      "noAnswer": [
+        "zeroHitRate",
+        "nonEmptyReturnCount",
+        "lawfulNoiseNotAnswerEvidence"
+      ],
+      "near": [
+        "specifiedBackgroundReturnedCount",
+        "anyNonEmptyReturnedCount"
+      ],
+      "latency": {
+        "p50ReferenceMs": 500,
+        "p95ReferenceMs": 1500,
+        "status": "AI_OBSERVATION_ONLY",
+        "coldWarmDisclosureRequired": true
+      },
+      "agentAnswerRefusal": "NOT_MEASURED_NO_AGENT_CALLED"
+    },
+    "limitations": [
+      "synthetic AI-authored/reviewed small corpus",
+      "not statistically independent human acceptance",
+      "no production RAG or capacity proof",
+      "no full multi-org/dynamic authorization matrix",
+      "20 exact identifiers in 49 positive queries",
+      "short resources do not exercise real long-document chunk competition"
+    ]
+  },
+  "limitations": [
+    "Offline tests do not qualify database transactions, actual retrieval, performance, or a complete production permission matrix.",
+    "AI-reviewed synthetic samples are not statistically independent human labels or production-quality proof.",
+    "No claim files and NOT_RUN declarations cannot prove absence of undisclosed off-ledger past execution.",
+    "Freeze uses exact local raw bytes; checkout newline changes must fail closed and require explicit pre-run re-audit, never silent hash refresh after seeing results."
+  ],
+  "nextDecision": "Owner may separately authorize the first local 68-query run on this exact frozen snapshot; this audit grants no execution authorization."
+}
