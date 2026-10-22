@@ -12,11 +12,8 @@ from uuid import UUID
 import httpx
 from langchain_core.embeddings import Embeddings
 
-from .scoped_import import safe_third_party_import
-
-with safe_third_party_import():
-    from langchain_ollama import OllamaEmbeddings
-    from ollama import ResponseError
+from langchain_ollama import OllamaEmbeddings
+from ollama import ResponseError
 from pydantic import Field, model_validator
 
 from ..wire import WireModel, canonical_hash

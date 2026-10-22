@@ -7,11 +7,8 @@ from urllib.parse import urlparse
 
 import httpx
 
-from .scoped_import import safe_third_party_import
-
-with safe_third_party_import():
-    from langchain_ollama import OllamaEmbeddings
-    from ollama import ResponseError
+from langchain_ollama import OllamaEmbeddings
+from ollama import ResponseError
 
 from .contracts import EmbeddingProfile, MODEL, QUERY_INSTRUCTION, QueryVector, vector_checksum
 from ..wire import canonical_hash
