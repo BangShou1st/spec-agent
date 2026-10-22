@@ -98,8 +98,8 @@ def audit_single_asset(freeze_name, candidate_name, review_md_name, development_
     # 7. Comprehensive 7-Point Human Approval Gate Verification
     gate_failures = []
     
-    # Gate 1: All 68 queries individually reviewed (not just top-level)
-    unreviewed_queries = [q['id'] for q in candidate['queries'] if q.get('labelReview') == 'PENDING_HUMAN_REVIEW']
+    # Gate 1: All 68 queries individually reviewed (must be 'HUMAN_REVIEWED' per contract)
+    unreviewed_queries = [q['id'] for q in candidate['queries'] if q.get('labelReview') != 'HUMAN_REVIEWED']
     if unreviewed_queries:
         gate_failures.append(f"Individual query reviews pending ({len(unreviewed_queries)} queries unreviewed, e.g. {unreviewed_queries[:3]})")
     

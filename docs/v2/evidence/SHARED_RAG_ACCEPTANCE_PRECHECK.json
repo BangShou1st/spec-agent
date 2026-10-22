@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-10-22T14:17:34.311061+00:00",
+  "recordedAt": "2026-10-22T14:25:33.967654+00:00",
   "status": "BLOCKED",
   "governanceDecision": "BLOCKED; Asset A retired to REVIEWED_REGRESSION awaiting review; Asset B code-aligned but PENDING human label & threshold approval.",
   "assets": {
