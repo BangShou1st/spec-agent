@@ -58,6 +58,40 @@ path-level sync or a reviewed cherry-pick. Never merge a whole line blind:
 `dev` and `main` move in parallel, so a blind merge can silently drop either
 side's work. Resolve each conflict by semantics and keep the stricter rule.
 
+### Merge mode: use a merge commit, never squash
+
+Merge `dev` into `main` with `--merge`, not `--squash`.
+
+A squash merge replaces the merged commits with one new commit, so none of the
+squashed commit hashes appear in `main`'s history. Git therefore reports `dev`
+as "N commits ahead of `main`" even when both branches hold byte-identical
+content — a permanently misleading signal on the branch page and in every
+review.
+
+A merge commit keeps the original hashes, so `main` contains every `dev`
+commit and the two branches share history. `dev` then shows `0` ahead and `0`
+behind, which is the truth.
+
+```bash
+# wrong: the merged commits vanish from main's history
+gh pr merge <n> --squash
+
+# right: the merged commits stay reachable from main
+gh pr merge <n> --merge
+```
+
+Before merging, verify that the two branches really are equivalent. Content
+equality is the tree hash, not the commit count:
+
+```bash
+git rev-parse origin/main^{tree}     # both must print the same hash
+git rev-parse origin/dev^{tree}
+git diff --stat origin/main origin/dev   # must be empty
+```
+
+A differing tree means the branches are not equivalent yet, whatever the
+ahead/behind counters say.
+
 ### Closed owner overrides (history only)
 
 These branches were authorized once and are closed. They authorize no new
