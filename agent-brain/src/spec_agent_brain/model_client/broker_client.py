@@ -30,7 +30,7 @@ class BrokerModelClient:
         self._internal_secret = internal_secret
         self._execution_grant = execution_grant
         self._owns_client = http_client is None
-        self._client = http_client or httpx.Client(timeout=timeout_seconds)
+        self._client = http_client or httpx.Client(timeout=timeout_seconds, trust_env=False, follow_redirects=False)
 
     def close(self) -> None:
         if self._owns_client:

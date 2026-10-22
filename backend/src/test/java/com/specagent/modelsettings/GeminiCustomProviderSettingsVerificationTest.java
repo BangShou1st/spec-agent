@@ -70,25 +70,13 @@ class GeminiCustomProviderSettingsVerificationTest {
         registry.add("spring.datasource.username", () -> user);
         registry.add("spring.datasource.password", () -> password);
 
-        Path backendKeyFile = Path.of("E:/project/spec-agent/backend/data/secret-master.key");
-        if (Files.exists(backendKeyFile)) {
-            registry.add("spec.agent.secret.master-key", () -> {
-                try {
-                    return Files.readString(backendKeyFile).strip();
-                } catch (Exception ex) {
-                    throw new RuntimeException(ex);
-                }
-            });
+        String testMasterKey = System.getenv("SPEC_AGENT_TEST_MASTER_KEY");
+        if (testMasterKey != null && !testMasterKey.isBlank()) {
+            registry.add("spec.agent.secret.master-key", testMasterKey::strip);
         }
-        Path rootKeyFile = Path.of("E:/project/spec-agent/data/secret-master.key");
-        if (Files.exists(rootKeyFile)) {
-            registry.add("spec.agent.secret.master-key-fallback", () -> {
-                try {
-                    return Files.readString(rootKeyFile).strip() + ",MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
-                } catch (Exception ex) {
-                    throw new RuntimeException(ex);
-                }
-            });
+        String testFallback = System.getenv("SPEC_AGENT_TEST_MASTER_KEY_FALLBACK");
+        if (testFallback != null && !testFallback.isBlank()) {
+            registry.add("spec.agent.secret.master-key-fallback", testFallback::strip);
         }
     }
 

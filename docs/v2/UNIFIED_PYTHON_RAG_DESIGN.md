@@ -270,3 +270,43 @@ Java 核对规范来源的内容、身份和 authority，派生索引本身不�
 人工审阅的 query/source 已真实运行，详细指标与采样界限见实施记录/证据。
 有效权限/版本核验已验证，人工标注门槛仍不通过。0.6B 的 tag/digest/profile
 保持不变；未下载 4B、未引入 reranker/额外反思模型。
+
+
+### 2026-10-22 RAG-D2 可靠性收口与当前权威规范 (Canonical Authority)
+
+本节明确 RAG-D1 切换及 RAG-D2 可靠性审查后的系统权威规范：
+
+1. **引擎默认值与兼容回退**：
+   - 项目 Agent 默认检索引擎已切换为 `python-rag.v1` (`spec.agent.retrieval.engine=python-rag.v1`)。
+   - 显式兼容回退仍然支持 `java-hybrid.v1`，可通过配置随时切换。
+
+2. **检索错误分类与失败关闭矩阵 (Fail-Closed Matrix)**：
+   - **可作为补充检索降级处理 (Degradable / Fail-open for supplemental retrieval)**：
+     - 包括：`RETRIEVAL_UNAVAILABLE` (Python 服务不可用/网络异常)、`OLLAMA_UNAVAILABLE` (本地 Ollama 离线)、`DEADLINE_EXCEEDED` (超时)、以及 `EMBEDDING_*` 系列向量后端临时错误。
+     - 行为：`items` 返回空列表，元数据标记 `supplementalRetrievalUnavailable=true`；核心 Mandatory Graph Lineage 依然正常运行，保证工作区核心交互可用；**严禁将真实服务故障误报为检索零命中**。
+   - **不能静默降级的情况 (Non-degradable / Fail-Closed)**：
+     - 包括：`STALE_SCOPE_GRANT` (伪造/过期授权)、`STALE_WORKLOAD` (身份/epoch 不匹配)、`SOURCE_VERSION_MISMATCH` (来源与数据库事实不一致)、`INDEX_GENERATION_MISMATCH` (索引代际竞态)、`UNSUPPORTED_PROFILE` (非法/不支持 Profile)、`INVALID_VECTOR` (向量损坏)。
+     - 行为：严禁静默吞掉或记录为不可用，必须直接抛出异常拒绝继续投影，保持数据完整性与权限一致性严格失败关闭。
+
+3. **新项目空索引与代际状态语义 (Generation & Index Lifecycle)**：
+   - 全新项目创建后，`RetrievalStore.ensureProjectGeneration()` 创建初始 `ACTIVE` 空代际。
+   - 初始空代际为 `ACTIVE` 允许词法检索无阻塞运行，此时向量仍处于 `PENDING`，检索返回 `vectorUnavailable=true`，**不强制首次请求同步等待全量向量回填**。
+   - 向量生成就绪后正常命中 `vector` 通道；代际重建期间旧代际持续有效，直至新代际原子激活。
+   - `retrieval.await_generation` (C16 WAIT) 绑定并等待代际就绪，不启动多余重建。
+
+4. **代理环境隔离规范 (Proxy Isolation)**：
+   - Python 进程严禁在模块导入期执行破坏性的全局环境变量删除 (如 `os.environ.pop("ALL_PROXY")`)。
+   - 针对内部通信 (本地 Ollama 11434、Java 内部 RPC 8080、Broker)，所有 HTTP 客户端显式配置 `trust_env=False, follow_redirects=False`，确保本地内部请求绝对直连。
+   - 外部网络代理配置 (如 Gemini、Kilo 等外网模型调用所需的 `HTTPS_PROXY`、`ALL_PROXY`) 得到完整保留，不受进程级副作用干扰。
+
+5. **Gemini 测试密钥与主密钥隔离**：
+   - 本地桌面 `$HOME/Desktop/key2.txt` 仅作为显式真实模型受控测试的只读凭据入口，生产 `src/main` 代码与常规测试绝不读取。
+   - 测试加密主密钥禁止硬编码读取开发机业务主密钥文件 (`backend/data/secret-master.key`)，采用独立的测试环境变量 `SPEC_AGENT_TEST_MASTER_KEY` 与测试隔离预设密钥。
+
+6. **模型可见快照与余弦相似度说明更正**：
+   - 澄清报告表述误差：余弦相似度等距离/分数仅在底层融合与排序阶段内部使用，**从未也不会进入**暴露给模型的 `RetrievedContextItem` 快照。
+   - 冻结输入快照原样持久化与回放，后续索引或代际变化不重新检索。
+
+7. **验收状态与质量门槛界定**：
+   - 当前可靠性收口达到 `CODE_COMPLETE` 与 `INTEGRATION_VERIFIED`。
+   - 既有 52 条检索查询仅属于 `DEVELOPMENT_CALIBRATION` 开发期校准，68 条独立候选集维持 `PENDING_HUMAN_REVIEW`；在未完成独立人工审批前，不得宣称 `QUALITY_VERIFIED`。

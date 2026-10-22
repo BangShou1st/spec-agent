@@ -6,11 +6,3 @@
 
 __version__ = "0.1.0"
 
-import os
-
-for _k in ("ALL_PROXY", "all_proxy"):
-    if _k in os.environ and "socks" in os.environ[_k].lower():
-        try:
-            import socksio  # type: ignore # noqa: F401
-        except ImportError:
-            os.environ.pop(_k, None)
