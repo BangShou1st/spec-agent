@@ -1,3 +1,9 @@
+> [!NOTE]
+> **Document Status**: `Historical` (历史归档)\
+> **Authority**: 本文档为历史阶段性记录，仅供追溯与复盘使用。当前系统的实际行为与规约以 [docs/README.md](../../README.md) 及 [docs/v2/README.md](../../v2/README.md) 为准。
+
+---
+
 # Agent 澄清选项依据与自由输入回归报告
 
 日期：2026-10-20
