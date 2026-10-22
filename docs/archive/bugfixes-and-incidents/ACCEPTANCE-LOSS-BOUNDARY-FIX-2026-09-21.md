@@ -1,3 +1,9 @@
+> [!NOTE]
+> **Document Status**: `Historical` (历史归档)\
+> **Authority**: 本文档为历史阶段性记录，仅供追溯与复盘使用。当前系统的实际行为与规约以 [docs/README.md](../../README.md) 及 [docs/v2/README.md](../../v2/README.md) 为准。
+
+---
+
 # 验收修复报告：回答丢失边界 F1/F2/F3 + 缺口修复（2026-09-21）
 
 - 分支：`codex/acceptance-fixes`，HEAD：`80f3f01414132859cedc02ae5e83da7170b016cf`（未提交、未推送）

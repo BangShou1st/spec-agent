@@ -1,3 +1,9 @@
+> [!NOTE]
+> **Document Status**: `Historical` (历史归档)\
+> **Authority**: 本文档为历史阶段性记录，仅供追溯与复盘使用。当前系统的实际行为与规约以 [docs/README.md](../../README.md) 及 [docs/v2/README.md](../../v2/README.md) 为准。
+
+---
+
 # 交接文档：图谱 UI 修复（2026-09-15，分支 `system-bugfix-v1`）
 
 > **第四轮更新（同日晚）**：「只看这条路线」缺陷已修复（见 §五），`RouteActionMenu.vue` 死代码已删除，

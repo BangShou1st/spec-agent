@@ -1,8 +1,14 @@
+> [!NOTE]
+> **Document Status**: `Historical` (历史归档)\
+> **Authority**: 本文档为历史阶段性记录，仅供追溯与复盘使用。当前系统的实际行为与规约以 [docs/README.md](../../README.md) 及 [docs/v2/README.md](../../v2/README.md) 为准。
+
+---
+
 # Semantic diagnostic evidence
 
 The model-selection, reference qualification, Arm A/B procedure, and
 behavioral-versus-reliability reporting contract are defined in
-[`MODEL_AGNOSTIC_EVALUATION.md`](MODEL_AGNOSTIC_EVALUATION.md). This document
+[`MODEL_AGNOSTIC_EVALUATION.md`](../../MODEL_AGNOSTIC_EVALUATION.md). This document
 describes the semantic trace implementation used by that protocol.
 
 The Phase 3B diagnostic path is opt-in (`spec.agent.semantic-trace.enabled`,

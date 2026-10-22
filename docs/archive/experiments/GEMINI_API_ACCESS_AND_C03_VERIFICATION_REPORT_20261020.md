@@ -1,3 +1,9 @@
+> [!NOTE]
+> **Document Status**: `Historical` (历史归档)\
+> **Authority**: 本文档为历史阶段性记录，仅供追溯与复盘使用。当前系统的实际行为与规约以 [docs/README.md](../../README.md) 及 [docs/v2/README.md](../../v2/README.md) 为准。
+
+---
+
 # Gemini 免费 API 接入、配额管理与 C03 验证执行报告
 
 **执行日期**：2026-10-20  
