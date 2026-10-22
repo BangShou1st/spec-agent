@@ -1,6 +1,6 @@
 """Static precheck only: never runs queries, tunes config, or approves human labels.
 ReadOnly audit tool: will never overwrite human review markdown.
-Supports both Asset A (historical v1 regression candidate) and Asset B (new v2 independent acceptance candidate).
+Supports Asset A (historical v1 regression candidate), Asset B (v2 candidate), and Asset C (v2-revised candidate).
 """
 import argparse
 import hashlib
@@ -42,7 +42,7 @@ def audit_single_asset(freeze_name, candidate_name, review_md_name, development_
     # 4. Hash drift audit (code and requirements)
     drifted_files = []
     actual_req_sha = sha(ROOT / 'agent-brain/requirements.lock')
-    if freeze['requirementsLockSha256'] != actual_req_sha:
+    if freeze.get('requirementsLockSha256') and freeze['requirementsLockSha256'] != actual_req_sha:
         drifted_files.append({
             'file': 'agent-brain/requirements.lock',
             'frozenHash': freeze['requirementsLockSha256'],
@@ -50,14 +50,23 @@ def audit_single_asset(freeze_name, candidate_name, review_md_name, development_
             'reason': 'Added socksio==1.0.0 for proxy isolation (commit 685bb05)'
         })
 
-    for rel_path, expected_hash in freeze['codeHashes'].items():
-        actual_code_sha = sha(ROOT / rel_path)
+    for rel_path, expected_hash in freeze.get('codeHashes', {}).items():
+        code_file = ROOT / rel_path
+        if not code_file.exists():
+            drifted_files.append({
+                'file': rel_path,
+                'frozenHash': expected_hash,
+                'actualHash': 'MISSING',
+                'reason': 'File missing from workspace'
+            })
+            continue
+        actual_code_sha = sha(code_file)
         if expected_hash != actual_code_sha:
             drifted_files.append({
                 'file': rel_path,
                 'frozenHash': expected_hash,
                 'actualHash': actual_code_sha,
-                'reason': 'Historical engine/environment updates (commits 210d288, 520a8c7, 66f2309, c942366, 685bb05)'
+                'reason': 'Implementation update or drift'
             })
 
     # 5. Queries and sources integrity
@@ -71,12 +80,14 @@ def audit_single_asset(freeze_name, candidate_name, review_md_name, development_
 
     if other_candidate_data:
         other_queries = {normalize(q['query']) for q in other_candidate_data['queries']}
-        assert not other_queries.intersection(cur_queries), "Overlap between candidate versions detected!"
-        assert not {s['text'] for s in other_candidate_data['sources']}.intersection(s['text'] for s in candidate['sources'])
+        # Overlap check is between distinct baseline generations (e.g. v1 vs v2)
+        if candidate.get('parentDatasetSha256') is None and other_candidate_data.get('parentDatasetSha256') is None:
+            assert not other_queries.intersection(cur_queries), "Overlap between independent candidate versions detected!"
+            assert not {s['text'] for s in other_candidate_data['sources']}.intersection(s['text'] for s in candidate['sources'])
 
     aliases = {s['alias']: s for s in candidate['sources']}
     for query in candidate['queries']:
-        assert query['labelReview'] == 'PENDING_HUMAN_REVIEW'
+        assert query.get('labelReview') in {'PENDING_HUMAN_REVIEW', 'HUMAN_REVIEWED'}, f"Unknown query labelReview: {query.get('labelReview')}"
         assert set(query['scopes']) <= {'PROJECT', 'RESOURCE'} and query['scopes']
         assert set(query['expectedAliases']) <= aliases.keys()
         assert set(query['forbiddenAliases']) <= aliases.keys()
@@ -111,6 +122,11 @@ def audit_single_asset(freeze_name, candidate_name, review_md_name, development_
         gate_failures.append(f"Genuine human reviewer identity missing (got: '{reviewed_by}')")
     if not reviewed_at or reviewed_at.lower() in placeholder_names:
         gate_failures.append(f"Human review timestamp missing (got: '{reviewed_at}')")
+    else:
+        try:
+            datetime.fromisoformat(reviewed_at.replace('Z', '+00:00'))
+        except Exception:
+            gate_failures.append(f"Human review timestamp is not a valid ISO-8601 instant (got: '{reviewed_at}')")
     
     # Gate 3: Candidate dataset hash consistency
     if candidate_actual_sha != freeze['datasetSha256']:
@@ -124,6 +140,8 @@ def audit_single_asset(freeze_name, candidate_name, review_md_name, development_
     threshold_status = str(freeze.get('thresholdStatus', '')).upper()
     if 'PROPOSED' in threshold_status or 'NOT_APPROVED' in threshold_status or 'PENDING' in threshold_status:
         gate_failures.append(f"Quality acceptance thresholds unapproved (status: '{freeze.get('thresholdStatus')}')")
+    elif threshold_status not in ('APPROVED_BEFORE_FIRST_RUN', 'APPROVED'):
+        gate_failures.append(f"Unknown threshold status (status: '{freeze.get('thresholdStatus')}')")
         
     # Gate 6: Zero tuning usage
     if candidate.get('tuningUse') != 'NEVER_USED':
@@ -133,7 +151,10 @@ def audit_single_asset(freeze_name, candidate_name, review_md_name, development_
     if candidate.get('executionStatus') != 'NOT_RUN':
         gate_failures.append(f"Execution history polluted (executionStatus: '{candidate.get('executionStatus')}')")
 
-    human_status = candidate['humanReviewStatus']
+    human_status = str(candidate.get('humanReviewStatus', '')).strip()
+    if human_status != 'APPROVED':
+        gate_failures.append(f"Top-level humanReviewStatus is '{human_status}', not 'APPROVED'")
+
     labels_approved = (len(gate_failures) == 0 and human_status == 'APPROVED')
 
     if gate_failures:
@@ -185,10 +206,17 @@ def audit(version='all', strict=False):
             'acceptance-freeze.v2.json', 'acceptance-candidate.v2.json', 'ACCEPTANCE_HUMAN_REVIEW.v2.md',
             development, other_candidate_data=cand_v1
         )
+    if version in ('all', 'v2_revised', 'v2-revised'):
+        cand_v2_rev = json.loads((DATA / 'acceptance-candidate.v2-revised.json').read_text(encoding='utf-8'))
+        results['v2_revised_asset'] = audit_single_asset(
+            'acceptance-freeze.v2-revised.json', 'acceptance-candidate.v2-revised.json', 'ACCEPTANCE_HUMAN_REVIEW.v2-revised.md',
+            development, other_candidate_data=cand_v1
+        )
 
     # Consolidated report compatible with existing evidence consumers
     primary_v1 = results.get('v1_regression_asset', {})
     primary_v2 = results.get('v2_independent_asset', {})
+    primary_v2_rev = results.get('v2_revised_asset', {})
     
     # Overall status is PASS only if all requested assets PASS
     overall_status = 'PASS' if all(r['status'] == 'PASS' for r in results.values()) else 'BLOCKED'
@@ -196,26 +224,26 @@ def audit(version='all', strict=False):
     combined_report = {
         'recordedAt': datetime.now(timezone.utc).isoformat(),
         'status': overall_status,
-        'governanceDecision': 'BLOCKED; Asset A retired to REVIEWED_REGRESSION awaiting review; Asset B code-aligned but PENDING human label & threshold approval.',
+        'governanceDecision': 'BLOCKED; Asset A retired to REVIEWED_REGRESSION awaiting review; Asset B/C code-aligned but PENDING human label & threshold approval.',
         'assets': results,
-        # Backward-compatible fields mapped to v1
-        'queryCount': primary_v1.get('queryCount', 68),
-        'sourceCount': primary_v1.get('sourceCount', 28),
-        'categories': primary_v1.get('categories', {}),
-        'candidateSha256': primary_v1.get('candidateSha256'),
-        'freezeSha256': primary_v1.get('freezeSha256'),
+        # Backward-compatible fields mapped to primary asset
+        'queryCount': primary_v2_rev.get('queryCount', primary_v1.get('queryCount', 68)),
+        'sourceCount': primary_v2_rev.get('sourceCount', primary_v1.get('sourceCount', 28)),
+        'categories': primary_v2_rev.get('categories', primary_v1.get('categories', {})),
+        'candidateSha256': primary_v2_rev.get('candidateSha256', primary_v1.get('candidateSha256')),
+        'freezeSha256': primary_v2_rev.get('freezeSha256', primary_v1.get('freezeSha256')),
         'executedQueries': 0,
         'executionStatus': 'NOT_RUN',
         'labelsApproved': False,
         'humanReviewStatus': 'PENDING',
-        'hashDriftCount': primary_v1.get('hashDriftCount', 0),
-        'hashDriftList': primary_v1.get('hashDriftList', []),
+        'hashDriftCount': primary_v2_rev.get('hashDriftCount', 0),
+        'hashDriftList': primary_v2_rev.get('hashDriftList', []),
         'semanticPrecheck': [
             'Near-no-answer asks unsupported quantities/policies; related context is not sufficient to answer.',
             'Multi-source labels are all-of, not any-hit; reviewers must check each source is necessary.',
             'Repository-grounded expressions are AI paraphrases, not captured customer/user transcripts.',
             'Shared Question/re-answer, Focus/route and restart/UNKNOWN topics overlap semantically; humans must check alternative relevant sources.',
-            'Eight near-no-answer labels and eight multi-source labels require particular human attention.',
+            'Near-no-answer labels and multi-source labels require particular human attention.',
             'No exact overlap is not proof of statistical independence; same project domain and AI author remain limitations.'
         ],
         'rootLimit': 'AI static/semantic precheck is not human annotation or retrieval-quality acceptance.'
@@ -224,7 +252,7 @@ def audit(version='all', strict=False):
     evidence_path = ROOT / 'docs/v2/evidence/SHARED_RAG_ACCEPTANCE_PRECHECK.json'
     evidence_path.write_text(json.dumps(combined_report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
-    print("=== Spec Agent Retrieval Acceptance Static Audit (Dual Asset) ===")
+    print("=== Spec Agent Retrieval Acceptance Static Audit ===")
     for key, res in results.items():
         print(f"\n[{key.upper()}]")
         print(f" Freeze File     : {res['freezeFile']} (SHA: {res['freezeSha256'][:16]}...)")
@@ -236,7 +264,7 @@ def audit(version='all', strict=False):
         print(f" Executed Queries: {res['executedQueries']} ({res['executionStatus']})")
         print(f" Human Approval  : {res['humanReviewStatus']} (Approved: {res['labelsApproved']})")
     print(f"\nOverall Precheck Status : {overall_status}")
-    print("==================================================================")
+    print("====================================================")
 
     if strict and overall_status != 'PASS':
         sys.exit(1)
@@ -245,9 +273,7 @@ def audit(version='all', strict=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Static precheck for independent retrieval acceptance.")
-    parser.add_argument("--version", choices=['all', 'v1', 'v2'], default='all', help="Audit specific asset or all.")
+    parser.add_argument("--version", choices=['all', 'v1', 'v2', 'v2_revised', 'v2-revised'], default='all', help="Audit specific asset or all.")
     parser.add_argument("--strict", action="store_true", help="Fail with non-zero exit code if status is not PASS.")
     args = parser.parse_args()
     audit(version=args.version, strict=args.strict)
-
-

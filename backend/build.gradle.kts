@@ -113,6 +113,8 @@ val auditedOfflineTests = setOf(
     "com.specagent.retrieval.workload.RebuildReadinessOfflineTest",
     "com.specagent.capability.RebuildWaitRepositoryOfflineTest",
     "com.specagent.retrieval.context.RetrievalContextServiceErrorClassificationTest",
+    "com.specagent.retrieval.eval.RetrievalQualityScorerTest",
+    "com.specagent.retrieval.eval.RetrievalAcceptanceGateValidatorTest",
     // ArchUnit reads class files only, without initializing application classes.
     "com.specagent.architecture.AgentBoundaryArchitectureTests",
     "com.specagent.architecture.CapabilitySkillsMcpBoundaryTests"

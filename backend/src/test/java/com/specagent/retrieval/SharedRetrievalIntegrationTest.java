@@ -302,28 +302,26 @@ class SharedRetrievalIntegrationTest {
     @Test void realOllamaFiftyTwoReviewableQueriesEvaluateRecallNoAnswerStaleAndPermissionIsolation() throws Exception {
         Assumptions.assumeTrue("true".equals(System.getenv("SPEC_AGENT_RAG_EVALUATION")));
         String datasetFile=System.getenv().getOrDefault("SPEC_AGENT_RAG_EVALUATION_DATASET","chinese-queries.v1.json");
-        assertTrue(Set.of("chinese-queries.v1.json","acceptance-candidate.v1.json").contains(datasetFile));
+        assertTrue(Set.of("chinese-queries.v1.json","acceptance-candidate.v1.json","acceptance-candidate.v2.json","acceptance-candidate.v2-revised.json").contains(datasetFile));
         Path datasetPath=Path.of("../contracts/retrieval/evaluation/"+datasetFile);
-        var dataset=JSON.readTree(Files.readString(datasetPath));
-        boolean acceptance=datasetFile.equals("acceptance-candidate.v1.json");
+        String rawJson=Files.readString(datasetPath);
+        var dataset=JSON.readTree(rawJson);
+        boolean acceptance=!datasetFile.equals("chinese-queries.v1.json");
         String reviewStatus=dataset.path("humanReviewStatus").asText();
         assertTrue(Set.of("PENDING","APPROVED").contains(reviewStatus));
+        String freezeFile=null;
         if(acceptance) {
-            // A new held-out run is a separate gate, never a silent reuse of the calibration report.
-            requireReviewedCandidate(dataset);
-            var freeze=JSON.readTree(Files.readString(Path.of("../contracts/retrieval/evaluation/acceptance-freeze.v1.json")));
-            assertEquals(freeze.path("datasetSha256").asText(),com.specagent.common.Hashes.sha256Hex(Files.readString(datasetPath)));
-            assertEquals(PROFILE,freeze.path("profileId").asText());
-            assertEquals("APPROVED_BEFORE_FIRST_RUN",freeze.path("thresholdStatus").asText());
-            freeze.path("codeHashes").fields().forEachRemaining(entry->{
-                try { assertEquals(entry.getValue().asText(),com.specagent.common.Hashes.sha256Hex(Files.readString(Path.of("../"+entry.getKey())))); }
-                catch(java.io.IOException ex) { throw new java.io.UncheckedIOException(ex); }
-            });
-        }
-        if(reviewStatus.equals("APPROVED")) {
-            assertFalse(dataset.path("reviewedBy").asText().isBlank());
-            assertDoesNotThrow(()->Instant.parse(dataset.path("reviewedAt").asText()));
-            assertTrue(java.util.stream.StreamSupport.stream(dataset.path("queries").spliterator(),false).allMatch(q->q.path("labelReview").asText().equals("HUMAN_REVIEWED")));
+            freezeFile=switch(datasetFile) {
+                case "acceptance-candidate.v1.json" -> "acceptance-freeze.v1.json";
+                case "acceptance-candidate.v2.json" -> "acceptance-freeze.v2.json";
+                case "acceptance-candidate.v2-revised.json" -> "acceptance-freeze.v2-revised.json";
+                default -> throw new IllegalArgumentException("Unknown candidate: " + datasetFile);
+            };
+            var freeze=JSON.readTree(Files.readString(Path.of("../contracts/retrieval/evaluation/"+freezeFile)));
+            com.specagent.retrieval.eval.RetrievalAcceptanceGateValidator.validateForExecution(
+                dataset, rawJson, freeze, Path.of(".."),
+                "INDEPENDENT_ACCEPTANCE_CANDIDATE", 68, 28
+            );
         }
         startPython();
         try(var resources=new TestResourceSampler(python)) {
@@ -389,6 +387,36 @@ class SharedRetrievalIntegrationTest {
             .mapToDouble(o->((List<?>)o.get("retrievedAliases")).containsAll((List<?>)o.get("expectedAliases"))?1:0).average().orElse(0));
         report.put("maxVectorDistance",0.50); report.put("evaluationUse",acceptance?"independent candidate run under frozen config; not automatically production-approved":"development calibration fixture, never independent acceptance");
         report.put("productionEngineChanged",false); report.put("observations",observations);
+        if(acceptance && freezeFile!=null) {
+            var freeze=JSON.readTree(Files.readString(Path.of("../contracts/retrieval/evaluation/"+freezeFile)));
+            var tNode=freeze.path("proposedThresholds");
+            if(tNode.isMissingNode() || tNode.isNull()) tNode=freeze.path("approvedThresholds");
+            var thresholds=new com.specagent.retrieval.eval.RetrievalQualityScorer.QualityThresholds(
+                freeze.path("thresholdStatus").asText(),
+                tNode.path("macroSourceRecallAt8").asDouble(0.85),
+                tNode.path("firstRelevantMrr").asDouble(0.75),
+                tNode.path("multiSourceAllOfCoverage").asDouble(0.75),
+                tNode.has("noAnswerZeroHitCorrectness")?tNode.path("noAnswerZeroHitCorrectness").asDouble():null,
+                0, 0
+            );
+            List<com.specagent.retrieval.eval.RetrievalQualityScorer.QueryObservation> queryObservations=new ArrayList<>();
+            for(var obs:observations) {
+                queryObservations.add(new com.specagent.retrieval.eval.RetrievalQualityScorer.QueryObservation(
+                    (String)obs.get("id"),
+                    (String)obs.get("category"),
+                    (List<String>)obs.get("expectedAliases"),
+                    List.of(),
+                    List.of(),
+                    (List<String>)obs.get("retrievedAliases"),
+                    Boolean.TRUE.equals(obs.get("vectorUnavailable")),
+                    (Long)obs.get("elapsedMs")
+                ));
+            }
+            Set<String> staleAliasesSet=stale.stream().map(aliases::get).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+            var qualityReport=com.specagent.retrieval.eval.RetrievalQualityScorer.evaluate(queryObservations, thresholds, staleAliasesSet);
+            report.put("qualityReport",qualityReport.summary());
+            assertTrue(qualityReport.isPass(), () -> "Retrieval quality gate failed: " + qualityReport.failureReasons());
+        }
         Files.writeString(Path.of("../docs/v2/evidence/"+(acceptance?"SHARED_RAG_ACCEPTANCE_CANDIDATE_EVALUATION.json":"SHARED_RAG_52_QUERY_EVALUATION.json")),write(report));
         assertTrue(observations.size()>=50); assertEquals(0,leaks); assertEquals(0,invalidSources);
         assertTrue(observations.stream().allMatch(o->Boolean.FALSE.equals(o.get("vectorUnavailable"))));
@@ -404,12 +432,22 @@ class SharedRetrievalIntegrationTest {
     }
 
     @Test void pendingIndependentCandidateIsRejectedBeforePythonOrIndexing() throws Exception {
-        var dataset=JSON.readTree(Files.readString(Path.of("../contracts/retrieval/evaluation/acceptance-candidate.v1.json")));
-        Assumptions.assumeTrue(dataset.path("humanReviewStatus").asText().equals("PENDING"));
-        long grants=jdbc.queryForObject("SELECT count(*) FROM retrieval_scope_grants WHERE corpus_id=?",Long.class,project.id());
-        assertThrows(AssertionError.class,()->requireReviewedCandidate(dataset));
-        assertNull(python);
-        assertEquals(grants,jdbc.queryForObject("SELECT count(*) FROM retrieval_scope_grants WHERE corpus_id=?",Long.class,project.id()));
+        for(String candFile : List.of("acceptance-candidate.v1.json", "acceptance-candidate.v2.json", "acceptance-candidate.v2-revised.json")) {
+            Path candPath = Path.of("../contracts/retrieval/evaluation/" + candFile);
+            if(!Files.exists(candPath)) continue;
+            String raw = Files.readString(candPath);
+            var dataset = JSON.readTree(raw);
+            if(dataset.path("humanReviewStatus").asText().equals("PENDING")) {
+                long grants = jdbc.queryForObject("SELECT count(*) FROM retrieval_scope_grants WHERE corpus_id=?", Long.class, project.id());
+                String freezeFile = candFile.replace("candidate", "freeze");
+                var freeze = JSON.readTree(Files.readString(Path.of("../contracts/retrieval/evaluation/" + freezeFile)));
+                assertThrows(Exception.class, () -> com.specagent.retrieval.eval.RetrievalAcceptanceGateValidator.validateForExecution(
+                    dataset, raw, freeze, Path.of(".."), "INDEPENDENT_ACCEPTANCE_CANDIDATE", 68, 28
+                ));
+                assertNull(python);
+                assertEquals(grants, jdbc.queryForObject("SELECT count(*) FROM retrieval_scope_grants WHERE corpus_id=?", Long.class, project.id()));
+            }
+        }
     }
 
     @Test void liveUnchangedConfiguredModelInvokesBothSharedRetrievalToolsWithFullCatalog() throws Exception {
