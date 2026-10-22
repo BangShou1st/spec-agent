@@ -1,3 +1,9 @@
+> [!NOTE]
+> **Document Status**: `Historical` (历史归档)\
+> **Authority**: 本文档为历史阶段性记录，仅供追溯与复盘使用。当前系统的实际行为与规约以 [docs/README.md](../../README.md) 及 [docs/v2/README.md](../../v2/README.md) 为准。
+
+---
+
 # C09 语义边界修正与 4B 本地单臂验证报告 — 2026-10-20
 
 本轮只做两件事：**(1)** 让 C09 的测试题与正确答案在语义上站得住脚；**(2)** 用 **4 次**本地 Ollama 推理判断 `qwen3.5:4b` 是否值得继续承担 Spec Agent 的结构化决策任务。

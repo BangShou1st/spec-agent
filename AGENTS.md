@@ -462,6 +462,7 @@ Check:
 13. Did I report the real pass, failure and skip counts rather than a job-level green?
 14. Did I run the test task that actually covers what I changed?
 15. Did I avoid touching anything outside the scope of the change?
+16. Did I place any new documentation in its designated directory according to `docs/README.md` and avoid polluting the repository with raw logs, build dumps, or heavy artifacts?
 
 ## 15. Repository Hygiene
 
@@ -474,3 +475,25 @@ Check:
 5. `main` receives reviewed, self-contained changes. A long-lived development
    line is merged through a reviewed pull request, not by force.
 6. Do not push a branch the owner has not authorized you to push.
+
+## 16. Documentation, Log, and Evidence Governance
+
+All AI agents and contributors must strictly adhere to repository documentation and artifact governance:
+
+1. **Document Placement & Classification**:
+   - Live architectural rules and core contracts belong in canonical specifications (`docs/PRODUCT_SPEC.md`, `docs/ARCHITECTURE.md`, `docs/MODEL_GATEWAY.md`, etc., or `docs/v2/`).
+   - Temporary design proposals and architectural decision records belong in `docs/rfcs/`.
+   - Post-mortems, bugfix records, and delivery reviews belong in `docs/archive/` (`docs/archive/delivery-reviews/`, `docs/archive/bugfixes-and-incidents/`, `docs/archive/experiments/`).
+   - Never create ad-hoc documentation files in the project root or flatly in top-level `docs/`. Consult `docs/README.md` for taxonomy and directory guidelines.
+2. **Metadata Header Requirement**:
+   - Every markdown document must declare its status and authority in a standard header or frontmatter:
+     * `status`: `Canonical` | `Proposal` | `Frozen` | `Historical` | `Runbook`
+     * `authority`: `Current Authority` vs `Historical Reference Only`
+   - When code supersedes a historical report or design, mark the legacy document as `Historical` and add a link to the current canonical specification.
+3. **Acceptance Evidence Hygiene**:
+   - Evidence committed to `docs/acceptance-evidence/` must be minimal, concise, and structured: only `summary.md` and concise machine-readable `.json` summaries/manifests are allowed.
+   - NEVER commit full test reports, HTML files, XML dumps, raw build trees (`build/reports/`), or binary artifacts (`.bin`, `.jar`, `.class`, `.zip`).
+   - Heavy execution traces, full logs, and browser recordings belong in `scratch/` or CI artifacts and must not pollute the git working tree.
+4. **Root Directory Cleanliness**:
+   - The root directory must remain free of transient logs (`*.log`), temporary scripts, or test dumps.
+   - Redirect local test and tool outputs to `scratch/logs/` or `.tmp/`.

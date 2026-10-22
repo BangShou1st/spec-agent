@@ -1,3 +1,9 @@
+> [!NOTE]
+> **Document Status**: `Historical` (历史归档)\
+> **Authority**: 本文档为历史阶段性记录，仅供追溯与复盘使用。当前系统的实际行为与规约以 [docs/README.md](../../README.md) 及 [docs/v2/README.md](../../v2/README.md) 为准。
+
+---
+
 # 交接文档：文档解析 + 资源独立 + 多路线独立（2026-09-16 凌晨，分支 `system-bugfix-v1`）
 
 > 本轮按你的四项指令开工：① PDF/.docx/.xlsx 解析 + 扫描件 OCR；② Q2 先做 D；

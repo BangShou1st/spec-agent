@@ -1,3 +1,9 @@
+> [!NOTE]
+> **Document Status**: `Historical` (历史归档)\
+> **Authority**: 本文档为历史阶段性记录，仅供追溯与复盘使用。当前系统的实际行为与规约以 [docs/README.md](../../README.md) 及 [docs/v2/README.md](../../v2/README.md) 为准。
+
+---
+
 # P3-B 语义错误清单、最小 Prompt A/B 方案与执行证据
 
 状态：**PENDING_HUMAN_REVIEW**（AI 候选标签，尚未人工审核）

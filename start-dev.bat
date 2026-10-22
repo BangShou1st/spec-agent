@@ -232,7 +232,8 @@ start "Spec Agent Frontend" /d "%~dp0frontend" cmd /k "set "VITE_API_PROXY_TARGE
 rem ============================================================
 rem  Summary
 rem ============================================================
->"%~dp0start-dev.log" echo %DATE% %TIME% backend=!BACKEND_PORT! frontend=!FRONTEND_PORT! brain=!BRAIN_STATUS!
+if not exist "%~dp0scratch\logs" mkdir "%~dp0scratch\logs" >nul 2>&1
+>"%~dp0scratch\logs\start-dev.log" echo %DATE% %TIME% backend=!BACKEND_PORT! frontend=!FRONTEND_PORT! brain=!BRAIN_STATUS!
 
 echo.
 echo ------------------------------------------------------------

@@ -1,3 +1,9 @@
+> [!NOTE]
+> **Document Status**: `Historical` (历史归档)\
+> **Authority**: 本文档为历史阶段性记录，仅供追溯与复盘使用。当前系统的实际行为与规约以 [docs/README.md](../../README.md) 及 [docs/v2/README.md](../../v2/README.md) 为准。
+
+---
+
 # system-bugfix-v1 真人验收方案（2026-09-20）
 
 本文档供真人手工验收使用。对应本轮修复：多路线回答会话隔离、项目会话隔离（projectSessionId）、路线读取请求代际、多选答案幂等指纹、窄接口深层只读约束、包循环基线缩到 2 条、CI 扩展、规格生成 generatingSpec 锁残留修复。
