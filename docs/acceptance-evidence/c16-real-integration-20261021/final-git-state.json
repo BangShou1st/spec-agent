@@ -1,0 +1,76 @@
+{
+  "captured_at": "2026-10-21T16:08:38.3926320+08:00",
+  "branch": "dev",
+  "head_before_round": "27e63dbbafb996e54d747c779f15c0ffe6110766",
+  "head_after_round": "40a56724322aaf332063ec55eae16612da3800e8",
+  "round_commits": [
+    {
+      "sha": "f4d4775",
+      "subject": "fix(c16): settle deferred readiness and resume continuations in production",
+      "files": [
+        "backend/src/main/java/com/specagent/capability/RebuildWaitRepository.java",
+        "backend/src/main/java/com/specagent/agent/runtime/ContinuationCoordinator.java"
+      ]
+    },
+    {
+      "sha": "ae4e210",
+      "subject": "test(c16): accept the readiness chain against a real isolated database",
+      "files": [
+        "backend/src/test/java/com/specagent/migration/IsolatedMigrationAcceptanceTest.java",
+        "backend/src/test/java/com/specagent/capability/C16RetrievalAwaitGenerationEndToEndTest.java",
+        "backend/src/test/java/com/specagent/capability/C16ReadinessFailureAcceptanceTest.java",
+        "backend/src/test/java/com/specagent/capability/C16CrossProcessWorkerAcceptanceTest.java"
+      ]
+    },
+    {
+      "sha": "40a5672",
+      "subject": "docs(c16): record the real database and cross-process acceptance evidence",
+      "files": [
+        "docs/acceptance-evidence/c16-real-integration-20261021/delivery.md",
+        "docs/acceptance-evidence/c16-real-integration-20261021/raw-evidence.zip"
+      ]
+    }
+  ],
+  "protected_user_state": {
+    "forbidden_actions_not_used": [
+      "git add -A",
+      "git reset --hard",
+      "git clean -fd",
+      "force push",
+      "push dev",
+      "modify main",
+      "merge PR #19",
+      "docker system prune",
+      "global volume cleanup"
+    ],
+    "deleted_but_uncommitted": [
+      "tools/structured-output-probes/qwen25-7b-schema-20261020/report.md"
+    ],
+    "note": "A pre-existing user deletion from before this round; deliberately NOT staged or committed.",
+    "untracked_preserved": "All pre-existing untracked evidence folders and agent-brain/uv.lock were left untouched."
+  },
+  "isolated_environment": {
+    "volume": "spec-agent-iso-20261021-pgdata",
+    "container": "spec-agent-iso-20261021-postgres",
+    "database": "spec_agent_p3b_live_iso20261021",
+    "client_binding": "127.0.0.1:55432",
+    "network": "spec-agent-iso-20261021-net",
+    "docker_context": "desktop-linux",
+    "server_reported_endpoint": "172.19.0.2/32:5432",
+    "container_port": 5432,
+    "forbidden_entrypoints_untouched": [
+      "localhost:5434",
+      "spec_agent_test",
+      "spec-agent-postgres container and volume"
+    ]
+  },
+  "verification": {
+    "C16ReadinessFailureAcceptanceTest": "PASS (7 tests)",
+    "C16CrossProcessWorkerAcceptanceTest": "PASS (3 tests, independent OS processes)",
+    "C16RetrievalAwaitGenerationEndToEndTest": "PASS (1 test, real Python process + real local embedding model)",
+    "pre-existing database-integration suite": "9 PRE-EXISTING FAILURES (ActionEligibility semantic-trace stage); reproduced unchanged with this round's product changes reverted",
+    "testOffline (audited offline suite)": "PASS",
+    "IsolatedMigrationAcceptanceTest": "PASS (8 tests)",
+    "backend/independent clean test verificationScope": "PASS"
+  }
+}

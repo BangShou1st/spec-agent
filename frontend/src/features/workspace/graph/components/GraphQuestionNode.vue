@@ -453,7 +453,7 @@ function setReadingRoute(event: Event): void {
           v-model="freeText"
           class="graph-answer-input nodrag"
           data-test="free-text"
-          placeholder="补充说明（可选）"
+          :placeholder="node.options.length === 0 ? '请输入回答' : '补充说明（可选）'"
           @click.stop
         ></textarea>
 

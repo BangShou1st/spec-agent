@@ -1,0 +1,23 @@
+[
+  "agent-brain/tests/test_c16_wait_v4.py",
+  "backend/build.gradle.kts",
+  "backend/src/main/java/com/specagent/agent/runtime/ContinuationDispatchService.java",
+  "backend/src/main/java/com/specagent/capability/CapabilityRegistry.java",
+  "backend/src/main/java/com/specagent/capability/CapabilityRuntime.java",
+  "backend/src/main/java/com/specagent/capability/DeferredCapabilityAdapter.java",
+  "backend/src/main/java/com/specagent/capability/RebuildWaitCompletionRecovery.java",
+  "backend/src/main/java/com/specagent/capability/RebuildWaitRepository.java",
+  "backend/src/main/java/com/specagent/capability/RetrievalAwaitGenerationCapability.java",
+  "backend/src/main/java/com/specagent/common/DeferredCompletionRecoveryPort.java",
+  "backend/src/main/java/com/specagent/retrieval/config/EmbeddingRebuilds.java",
+  "backend/src/main/java/com/specagent/retrieval/workload/RebuildLeaseCoordinator.java",
+  "backend/src/main/java/com/specagent/retrieval/workload/RebuildReadiness.java",
+  "backend/src/main/resources/db/migration/V103__retrieval_generation_wait.sql",
+  "backend/src/test/java/com/specagent/agent/action/ActionEligibilityWaitV4Test.java",
+  "backend/src/test/java/com/specagent/capability/RebuildWaitCompletionRecoveryOfflineTest.java",
+  "backend/src/test/java/com/specagent/capability/RebuildWaitRepositoryOfflineTest.java",
+  "backend/src/test/java/com/specagent/capability/RetrievalAwaitGenerationOfflineTest.java",
+  "backend/src/test/java/com/specagent/retrieval/workload/RebuildReadinessOfflineTest.java",
+  "docs/v2/C16_WAIT_V4.md",
+  "docs/v2/C16_RETRIEVAL_READINESS_ADAPTER.md"
+]

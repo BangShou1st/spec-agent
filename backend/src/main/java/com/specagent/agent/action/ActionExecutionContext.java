@@ -18,5 +18,15 @@ public record ActionExecutionContext(UUID runId,
                                      UUID contextSnapshotId,
                                      UUID anchorNodeId,
                                      UUID selectedOptionId,
-                                     String freeText) {
+                                     String freeText,
+                                     boolean deferredAllowed) {
+    public ActionExecutionContext(UUID runId, UUID projectId, UUID routeId, UUID contextSnapshotId,
+            UUID anchorNodeId, UUID selectedOptionId, String freeText) {
+        this(runId, projectId, routeId, contextSnapshotId, anchorNodeId, selectedOptionId, freeText, false);
+    }
+
+    public ActionExecutionContext withDeferredAllowed(boolean allowed) {
+        return new ActionExecutionContext(runId, projectId, routeId, contextSnapshotId,
+                anchorNodeId, selectedOptionId, freeText, allowed);
+    }
 }

@@ -186,7 +186,7 @@ spec-agent/
 ├── tools/            # 工具与辅助能力
 ├── docker-compose.yml
 ├── start-dev.bat     # Windows 本地开发启动入口
-├── AGENT.md          # AI 编码 Agent 必须遵守的仓库规则
+├── AGENTS.md         # AI 编码 Agent 必须遵守的仓库规则
 └── README.md
 ```
 
@@ -485,7 +485,7 @@ local main ↔ remote main
 
 AI 编码 Agent 开工前必须先读：
 
-- [`AGENT.md`](AGENT.md)
+- [`AGENTS.md`](AGENTS.md)
 
 ---
 
@@ -602,3 +602,4 @@ Agent 不需要知道 GitHub、MCP、Skill 等具体执行细节。
 完整范围、参数与验证见 [实施记录](docs/v2/GLOBAL_ASSISTANT_SINGLE_ENGINE_IMPLEMENTATION_STATUS.md)。
 
 日常启动已验证四个服务及前端代理；检索未就绪会提示Ollama、共享存储或帮助索引的具体状态。配置Tavily环境变量、Ollama及索引的步骤见上述实施记录“完整日常启动收尾”。root `data/internal-secret.txt` 为本地忽略文件，禁止提交。
+

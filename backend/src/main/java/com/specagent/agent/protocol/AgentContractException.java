@@ -9,7 +9,61 @@ package com.specagent.agent.protocol;
  */
 public class AgentContractException extends com.specagent.agent.protocol.ModelContractException {
 
+    private final String diagnosticId;
+    private final String diagnosticCode;
+    private final String fieldPath;
+    private final String expectedType;
+    private final String actualType;
+    private final String validatorId;
+    private final String sourceExceptionType;
+
     public AgentContractException(String message) {
+        this(message, null, null, null, null, null);
+    }
+
+    public AgentContractException(String message, String diagnosticCode, String fieldPath,
+                                  String expectedType, String actualType, String validatorId) {
+        this(message, diagnosticCode, fieldPath, expectedType, actualType, validatorId, null);
+    }
+
+    public AgentContractException(String message, String diagnosticCode, String fieldPath,
+                                  String expectedType, String actualType, String validatorId,
+                                  String sourceExceptionType) {
         super(message);
+        this.diagnosticId = java.util.UUID.randomUUID().toString();
+        this.diagnosticCode = diagnosticCode;
+        this.fieldPath = fieldPath;
+        this.expectedType = expectedType;
+        this.actualType = actualType;
+        this.validatorId = validatorId;
+        this.sourceExceptionType = sourceExceptionType;
+    }
+
+    public String diagnosticId() {
+        return diagnosticId;
+    }
+
+    public String diagnosticCode() {
+        return diagnosticCode;
+    }
+
+    public String fieldPath() {
+        return fieldPath;
+    }
+
+    public String expectedType() {
+        return expectedType;
+    }
+
+    public String actualType() {
+        return actualType;
+    }
+
+    public String validatorId() {
+        return validatorId;
+    }
+
+    public String sourceExceptionType() {
+        return sourceExceptionType;
     }
 }

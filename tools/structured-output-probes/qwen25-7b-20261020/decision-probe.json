@@ -1,0 +1,38 @@
+{
+  "probe_status": "stopped_after_pydantic_failure",
+  "baseline_dev_sha": "340255ac19d2c0ba6484c390b1cb982489608092",
+  "model": {
+    "tag": "qwen2.5:7b-instruct",
+    "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+    "ollama_version": "0.40.6"
+  },
+  "requests_sent": 1,
+  "schema": {
+    "name": "project_agent_decision_output_v1",
+    "source": "ModelDecisionOutput.model_json_schema(by_alias=True, mode='validation')",
+    "sha256": "ebe4adc6d7d6d23945282f678816b488ac2e9ab82ef95f840bd4295ff85164ca",
+    "canonical_bytes": 1229
+  },
+  "result": {
+    "provider_http_accepted": true,
+    "http_status": 200,
+    "request_elapsed_ms": 6662,
+    "generation_duration_ms": null,
+    "json_valid": true,
+    "pydantic_valid": false,
+    "failure_type": "custom_action_family_validator",
+    "failure_fields": ["action.actionFamily"],
+    "raw_generated_value_saved": false,
+    "truncated": false,
+    "synthetic_prompt_requested_known_as_string": true,
+    "observation_known_output_type": "array",
+    "known_array_constraint_observed": true
+  },
+  "state_update_probe": {
+    "sent": false,
+    "reason": "stop after the first model output failed the existing Pydantic contract"
+  },
+  "retry_count": 0,
+  "raw_prompt_saved": false,
+  "raw_completion_saved": false
+}

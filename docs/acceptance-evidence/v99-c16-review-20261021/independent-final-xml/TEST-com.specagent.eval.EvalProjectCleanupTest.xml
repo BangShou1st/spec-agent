@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.specagent.eval.EvalProjectCleanupTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-21T03:25:31" hostname="榜首" time="0.013">
+  <properties/>
+  <testcase name="repeatedRunsOnlyCleanProjectsRegisteredForThatRun()" classname="com.specagent.eval.EvalProjectCleanupTest" time="0.001"/>
+  <testcase name="cleanupAttemptsEveryProjectAndReportsPartialFailures()" classname="com.specagent.eval.EvalProjectCleanupTest" time="0.009"/>
+  <testcase name="cleanupFailuresAreSuppressedOnTheOriginalTestFailure()" classname="com.specagent.eval.EvalProjectCleanupTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

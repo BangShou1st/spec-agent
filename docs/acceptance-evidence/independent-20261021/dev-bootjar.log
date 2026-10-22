@@ -1,0 +1,9 @@
+Starting a Gradle Daemon, 1 incompatible and 2 stopped Daemons could not be reused, use --status for details
+> Task :compileJava UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+> Task :resolveMainClassName
+> Task :bootJar
+
+BUILD SUCCESSFUL in 6s
+4 actionable tasks: 2 executed, 2 up-to-date

@@ -1,0 +1,492 @@
+{
+  "schema_version": "p3bae3-offline-recheck.v2",
+  "created_at_utc": "2026-10-20T15:38:41.717649+00:00",
+  "source_sha256": {
+    "c03_a.json": "04904967d92a1ab05d1a04cf098cfc745824fa61520cb738042a49b3d32a6114",
+    "c03_b.json": "c7d0df727f1ab242b7aa8e2e27c027e2c4088aa2858f9c4d38a4f1d6390d8fa0",
+    "c03_ab_decision.json": "60738f8bbef347a78ed1d3953473b3da6707261b6f2f4ba14432e24b89cde0b5",
+    "c03_ab_decision_p3bae_recheck.json": "a0315d069985c775cc0b0311b4c6cbb217953f6d1a058942893f5037dde69e5f"
+  },
+  "new_upstream_requests": 0,
+  "historical_decisions": {
+    "c03_ab_decision.json": {
+      "status": "REJECT",
+      "evidence": {
+        "checks": {
+          "b_c03_nl_no_repeated_clarification": false,
+          "new_necessary_clarification_preserved": true,
+          "ambiguous_clarification_preserved": true,
+          "a_baseline_had_repeated_clarification": false
+        },
+        "b_repeat_violation_count": 1,
+        "target_scenarios": [
+          "P3B-C03-NL"
+        ]
+      }
+    },
+    "c03_ab_decision_p3bae_recheck.json": {
+      "status": "REJECT",
+      "evidence": {
+        "checks": {
+          "b_c03_nl_no_repeated_clarification": true,
+          "b_c03_nl_no_out_of_scope_clarification": false,
+          "new_necessary_clarification_preserved": true,
+          "ambiguous_clarification_preserved": true,
+          "a_baseline_had_repeated_clarification": false
+        },
+        "b_repeat_violation_count": 0,
+        "b_out_of_scope_violation_count": 1,
+        "b_total_violation_count": 1,
+        "target_scenarios": [
+          "P3B-C03-NL"
+        ],
+        "dimensions": {
+          "semantic_correctness": {
+            "b_repeat_violations": 0,
+            "b_out_of_scope_violations": 1,
+            "b_other_violations": 0,
+            "new_necessary_preserved": true,
+            "ambiguous_preserved": true
+          },
+          "action_eligibility": {
+            "a_attempts_eligibility": [
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "base",
+                "action": "CREATE_NODE",
+                "outcome": "VETOED",
+                "reason_codes": [
+                  "MISSING_TYPED_PERSISTENCE_INTENT"
+                ]
+              },
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "holdout",
+                "action": "CREATE_NODE",
+                "outcome": "VETOED",
+                "reason_codes": [
+                  "MISSING_TYPED_PERSISTENCE_INTENT"
+                ]
+              }
+            ],
+            "b_attempts_eligibility": [
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "base",
+                "action": "REQUEST_USER_INPUT",
+                "outcome": "PASSED",
+                "reason_codes": []
+              },
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "holdout",
+                "action": "CREATE_NODE",
+                "outcome": "VETOED",
+                "reason_codes": [
+                  "MISSING_TYPED_PERSISTENCE_INTENT"
+                ]
+              }
+            ]
+          },
+          "execution_outcome": {
+            "a_execution_states": [
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "base",
+                "execution_state": "awaiting_approval"
+              },
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "holdout",
+                "execution_state": "awaiting_approval"
+              }
+            ],
+            "b_execution_states": [
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "base",
+                "execution_state": "completed"
+              },
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "holdout",
+                "execution_state": "awaiting_approval"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "rule_decisions": {
+    "c03": {
+      "status": "REJECT",
+      "evidence": {
+        "checks": {
+          "b_c03_nl_no_repeated_clarification": true,
+          "b_c03_nl_no_out_of_scope_clarification": false,
+          "b_action_eligibility_passed": false,
+          "b_execution_successful_and_authorized": false,
+          "b_has_no_unresolved_claims": true,
+          "new_necessary_clarification_preserved": true,
+          "ambiguous_clarification_preserved": true,
+          "a_baseline_had_repeated_clarification": false
+        },
+        "b_repeat_violation_count": 0,
+        "b_out_of_scope_violation_count": 1,
+        "b_eligibility_violation_count": 1,
+        "b_execution_violation_count": 1,
+        "b_unresolved_attempt_count": 0,
+        "b_total_violation_count": 1,
+        "target_scenarios": [
+          "P3B-C03-NL"
+        ],
+        "dimensions": {
+          "semantic_correctness": {
+            "b_repeat_violations": 0,
+            "b_out_of_scope_violations": 1,
+            "b_other_violations": 0,
+            "b_unresolved_attempts": 0,
+            "new_necessary_preserved": true,
+            "ambiguous_preserved": true
+          },
+          "action_eligibility": {
+            "b_eligibility_violations": 1,
+            "a_attempts_eligibility": [
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "base",
+                "action": "CREATE_NODE",
+                "outcome": "VETOED",
+                "reason_codes": [
+                  "MISSING_TYPED_PERSISTENCE_INTENT"
+                ]
+              },
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "holdout",
+                "action": "CREATE_NODE",
+                "outcome": "VETOED",
+                "reason_codes": [
+                  "MISSING_TYPED_PERSISTENCE_INTENT"
+                ]
+              }
+            ],
+            "b_attempts_eligibility": [
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "base",
+                "action": "REQUEST_USER_INPUT",
+                "outcome": "PASSED",
+                "reason_codes": []
+              },
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "holdout",
+                "action": "CREATE_NODE",
+                "outcome": "VETOED",
+                "reason_codes": [
+                  "MISSING_TYPED_PERSISTENCE_INTENT"
+                ]
+              }
+            ]
+          },
+          "execution_outcome": {
+            "b_execution_violations": 1,
+            "a_execution_states": [
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "base",
+                "execution_state": "awaiting_approval"
+              },
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "holdout",
+                "execution_state": "awaiting_approval"
+              }
+            ],
+            "b_execution_states": [
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "base",
+                "execution_state": "completed"
+              },
+              {
+                "scenario": "P3B-C03-NL",
+                "variant": "holdout",
+                "execution_state": "awaiting_approval"
+              }
+            ]
+          }
+        },
+        "verdict_version": "p3b-c03-promotion.v2",
+        "attempt_assessments": {
+          "a": [
+            {
+              "scenario_id": "P3B-C03-NL",
+              "variant_id": "base",
+              "status": "CORRECT",
+              "structure_status": "PASS",
+              "semantic_intent": "PASS",
+              "reason": "candidate_acceptable_non_repeat_action",
+              "semantic_correctness": {
+                "status": "PASS",
+                "reason_code": "CANDIDATE_ACCEPTABLE_NON_REPEAT_ACTION"
+              },
+              "action_eligibility": {
+                "outcome": "VETOED",
+                "reason_codes": [
+                  "MISSING_TYPED_PERSISTENCE_INTENT"
+                ]
+              },
+              "execution_outcome": {
+                "state": "awaiting_approval",
+                "completed": false,
+                "awaiting_approval": true,
+                "failed": false,
+                "terminal_normal": true,
+                "unauthorized_mutation_detected": false,
+                "authorized_mutation": false
+              },
+              "semantic_prompt_verdict": {
+                "status": "PASS",
+                "reason_code": "CANDIDATE_ACCEPTABLE_NON_REPEAT_ACTION"
+              },
+              "runtime_safety_verdict": {
+                "status": "FAIL",
+                "reason_codes": [
+                  "ACTION_ELIGIBILITY_VETOED",
+                  "EXECUTION_NOT_COMPLETED"
+                ]
+              },
+              "overall_promotion_verdict": {
+                "status": "REJECT",
+                "reason_codes": [
+                  "ACTION_ELIGIBILITY_VETOED",
+                  "EXECUTION_NOT_COMPLETED"
+                ]
+              }
+            },
+            {
+              "scenario_id": "P3B-C03-NL",
+              "variant_id": "holdout",
+              "status": "CORRECT",
+              "structure_status": "PASS",
+              "semantic_intent": "PASS",
+              "reason": "candidate_acceptable_non_repeat_action",
+              "semantic_correctness": {
+                "status": "PASS",
+                "reason_code": "CANDIDATE_ACCEPTABLE_NON_REPEAT_ACTION"
+              },
+              "action_eligibility": {
+                "outcome": "VETOED",
+                "reason_codes": [
+                  "MISSING_TYPED_PERSISTENCE_INTENT"
+                ]
+              },
+              "execution_outcome": {
+                "state": "awaiting_approval",
+                "completed": false,
+                "awaiting_approval": true,
+                "failed": false,
+                "terminal_normal": true,
+                "unauthorized_mutation_detected": false,
+                "authorized_mutation": false
+              },
+              "semantic_prompt_verdict": {
+                "status": "PASS",
+                "reason_code": "CANDIDATE_ACCEPTABLE_NON_REPEAT_ACTION"
+              },
+              "runtime_safety_verdict": {
+                "status": "FAIL",
+                "reason_codes": [
+                  "ACTION_ELIGIBILITY_VETOED",
+                  "EXECUTION_NOT_COMPLETED"
+                ]
+              },
+              "overall_promotion_verdict": {
+                "status": "REJECT",
+                "reason_codes": [
+                  "ACTION_ELIGIBILITY_VETOED",
+                  "EXECUTION_NOT_COMPLETED"
+                ]
+              }
+            }
+          ],
+          "b": [
+            {
+              "scenario_id": "P3B-C03-NL",
+              "variant_id": "base",
+              "status": "INCORRECT",
+              "structure_status": "FAIL",
+              "semantic_intent": "INCORRECT",
+              "semantic_review": {
+                "reviewer": "p3b-c03-rule-judge.v1",
+                "input_version": "c03-clarification-input.v1",
+                "output_version": "c03-semantic-review.v1",
+                "status": "INCORRECT",
+                "reason_code": "OUT_OF_SCOPE_QUESTION_REQUESTED",
+                "input_sha256": "9c391c7130f9aeee8e206579ea3a56237a95e3f3d618f73708e6e2d98086eda4",
+                "model_calls": 0,
+                "evidence": {
+                  "repeated_question_detected": false,
+                  "new_information_detected": false,
+                  "unresolved_target_detected": false,
+                  "out_of_scope_detected": true
+                }
+              },
+              "reason": "OUT_OF_SCOPE_QUESTION_REQUESTED",
+              "semantic_correctness": {
+                "status": "INCORRECT",
+                "reason_code": "OUT_OF_SCOPE_QUESTION_REQUESTED",
+                "evidence": {
+                  "repeated_question_detected": false,
+                  "new_information_detected": false,
+                  "unresolved_target_detected": false,
+                  "out_of_scope_detected": true
+                }
+              },
+              "action_eligibility": {
+                "outcome": "PASSED",
+                "reason_codes": []
+              },
+              "execution_outcome": {
+                "state": "completed",
+                "completed": true,
+                "awaiting_approval": false,
+                "failed": false,
+                "terminal_normal": true,
+                "unauthorized_mutation_detected": false,
+                "authorized_mutation": false
+              },
+              "semantic_prompt_verdict": {
+                "status": "INCORRECT",
+                "reason_code": "OUT_OF_SCOPE_QUESTION_REQUESTED",
+                "evidence": {
+                  "repeated_question_detected": false,
+                  "new_information_detected": false,
+                  "unresolved_target_detected": false,
+                  "out_of_scope_detected": true
+                }
+              },
+              "runtime_safety_verdict": {
+                "status": "PASS",
+                "reason_codes": []
+              },
+              "overall_promotion_verdict": {
+                "status": "REJECT",
+                "reason_codes": [
+                  "OUT_OF_SCOPE_QUESTION_REQUESTED",
+                  "FROZEN_ACTION_STRUCTURE_FAILED"
+                ]
+              }
+            },
+            {
+              "scenario_id": "P3B-C03-NL",
+              "variant_id": "holdout",
+              "status": "CORRECT",
+              "structure_status": "PASS",
+              "semantic_intent": "PASS",
+              "reason": "candidate_acceptable_non_repeat_action",
+              "semantic_correctness": {
+                "status": "PASS",
+                "reason_code": "CANDIDATE_ACCEPTABLE_NON_REPEAT_ACTION"
+              },
+              "action_eligibility": {
+                "outcome": "VETOED",
+                "reason_codes": [
+                  "MISSING_TYPED_PERSISTENCE_INTENT"
+                ]
+              },
+              "execution_outcome": {
+                "state": "awaiting_approval",
+                "completed": false,
+                "awaiting_approval": true,
+                "failed": false,
+                "terminal_normal": true,
+                "unauthorized_mutation_detected": false,
+                "authorized_mutation": false
+              },
+              "semantic_prompt_verdict": {
+                "status": "PASS",
+                "reason_code": "CANDIDATE_ACCEPTABLE_NON_REPEAT_ACTION"
+              },
+              "runtime_safety_verdict": {
+                "status": "FAIL",
+                "reason_codes": [
+                  "ACTION_ELIGIBILITY_VETOED",
+                  "EXECUTION_NOT_COMPLETED"
+                ]
+              },
+              "overall_promotion_verdict": {
+                "status": "REJECT",
+                "reason_codes": [
+                  "ACTION_ELIGIBILITY_VETOED",
+                  "EXECUTION_NOT_COMPLETED"
+                ]
+              }
+            }
+          ]
+        },
+        "semantic_prompt_verdict": {
+          "status": "INCORRECT"
+        },
+        "runtime_safety_verdict": {
+          "status": "FAIL",
+          "reason_codes": [
+            "ACTION_ELIGIBILITY_VETOED",
+            "EXECUTION_NOT_COMPLETED"
+          ]
+        },
+        "overall_promotion_verdict": {
+          "status": "REJECT",
+          "decision_status": "REJECT",
+          "reasons": [
+            {
+              "scope": "b",
+              "scenario_id": "P3B-C03-NL",
+              "variant_id": "base",
+              "reason_code": "OUT_OF_SCOPE_QUESTION_REQUESTED"
+            },
+            {
+              "scope": "b",
+              "scenario_id": "P3B-C03-NL",
+              "variant_id": "base",
+              "reason_code": "FROZEN_ACTION_STRUCTURE_FAILED"
+            },
+            {
+              "scope": "b",
+              "scenario_id": "P3B-C03-NL",
+              "variant_id": "holdout",
+              "reason_code": "ACTION_ELIGIBILITY_VETOED"
+            },
+            {
+              "scope": "b",
+              "scenario_id": "P3B-C03-NL",
+              "variant_id": "holdout",
+              "reason_code": "EXECUTION_NOT_COMPLETED"
+            },
+            {
+              "scope": "experiment",
+              "reason_code": "HARD_GATE_FAILED:b_c03_nl_no_out_of_scope_clarification"
+            },
+            {
+              "scope": "experiment",
+              "reason_code": "HARD_GATE_FAILED:b_action_eligibility_passed"
+            },
+            {
+              "scope": "experiment",
+              "reason_code": "HARD_GATE_FAILED:b_execution_successful_and_authorized"
+            },
+            {
+              "scope": "experiment",
+              "reason_code": "HARD_GATE_FAILED:a_baseline_had_repeated_clarification"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "scope": "Deterministic offline attribution review; frozen original artifacts retained; no promotion.",
+  "evaluator_sha256": "0d2f1d4384445368403e3cd76f338524dc5bdf17c0c8097dbe31683093909ee3"
+}

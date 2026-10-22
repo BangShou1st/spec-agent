@@ -38,6 +38,9 @@ public enum ContinuationVerdict {
      */
     PARKED_APPROVAL,
 
+    /** Explicit PENDING invocation owned by this run; RUNNING is not a dependency. */
+    PARKED_DEPENDENCY,
+
     /**
      * 证据:存在该 run 的 {@code RESPOND_MESSAGE} 事件行。本轮只产出了
      * 回答、没有其他持久化产物;v1 在此结束链路。
@@ -56,6 +59,18 @@ public enum ContinuationVerdict {
      * 证据:{@code agent_runs} 行状态为 {@code FAILED}。
      */
     FAILED,
+
+    /**
+     * 证据:{@code agent_runs} 行存在,但状态仍是非终态(例如仍在执行中的
+     * 调用方 Run)。此时**还不能**裁决续跑:链路的裁决必须基于一个已结束的
+     * run。
+     *
+     * <p>这不是调用方错误,而是"还没到裁决时点"。调度器据此按代次正常收口这条
+     * 检查(而不是每个 tick 反复认领并重试同一条记录);run 终态化时
+     * {@code AgentRunTerminalizationService} 会重新请求同一条检查,因此仍然
+     * 可恢复的续跑不会被丢弃。
+     */
+    RUN_NOT_TERMINAL,
 
     /**
      * 证据:以上任何行或事件对本 run 均不存在。本轮已终结,但产生不出

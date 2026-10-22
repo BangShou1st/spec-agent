@@ -16,12 +16,14 @@ public final class AgentProtocol {
 
     public static final String INPUT_PROTOCOL_VERSION_V2 = "agent-input.v2";
     public static final String INPUT_PROTOCOL_VERSION_V3 = "agent-input.v3";
+    public static final String INPUT_PROTOCOL_VERSION_V4 = "agent-input.v4";
 
     /** 默认的旧版请求协议版本;携带 eligibility 的决策走 V3。 */
     public static final String INPUT_PROTOCOL_VERSION = INPUT_PROTOCOL_VERSION_V2;
 
     public static final String DECISION_PROTOCOL_VERSION_V2 = "agent-decision.v2";
     public static final String DECISION_PROTOCOL_VERSION_V3 = "agent-decision.v3";
+    public static final String DECISION_PROTOCOL_VERSION_V4 = "agent-decision.v4";
 
     /** 默认的旧版响应协议版本;携带 eligibility 的决策走 V3。 */
     public static final String DECISION_PROTOCOL_VERSION = DECISION_PROTOCOL_VERSION_V2;

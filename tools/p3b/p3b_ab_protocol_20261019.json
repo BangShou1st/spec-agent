@@ -1,0 +1,77 @@
+{
+  "schema_version": "p3b-semantic-ab-protocol.v1",
+  "experiment_id": "p3b-semantic-ab-20261019",
+  "model_id": "cohere/north-mini-code:free",
+  "provider": "KILO",
+  "frozen_at": "before first new live request",
+  "comparison": {
+    "same_runtime": true,
+    "same_model_parameters": "Existing production defaults; no model or parameter changes between arms",
+    "same_isolated_database": "spec_agent_p3b_live_20261018",
+    "same_scenario_facts_and_seeds": true,
+    "same_action_eligibility_and_authorization": true,
+    "state_update_prompt_changes": false,
+    "one_attempt_per_variant_per_arm": true,
+    "judge_model_calls": 0,
+    "provider_retries": 0,
+    "fallback": false
+  },
+  "global_request_budget": {
+    "maximum_new_upstream_model_requests_including_state_update_decision_and_judges": 64,
+    "planned_maximum": 56,
+    "planned_by_experiment": {
+      "c03": 32,
+      "c08": 16,
+      "c09": 8
+    },
+    "stop_on": ["429", "authentication failure", "persistent provider failure", "implicit retry", "budget exhaustion"]
+  },
+  "sample_plan": {
+    "c03": {
+      "a_rules": [],
+      "b_rules": ["c03"],
+      "scenarios": ["P3B-C03", "P3B-C01", "P3B-C02", "P3B-C07"],
+      "variants": ["base", "holdout"],
+      "maximum_requests_per_arm": 16,
+      "acceptance": [
+        "C03 holdout changes from REQUEST_USER_INPUT in A to a frozen acceptable action in B",
+        "C03 base remains acceptable",
+        "C01 still requests the genuinely missing user decision",
+        "C02 does not propose a verbatim repeat clarification",
+        "C07 adds no unnecessary capability call"
+      ]
+    },
+    "c08": {
+      "a_rules": "Only rules accepted in earlier experiments",
+      "b_rules": "A rules plus c08",
+      "scenarios": ["P3B-C08", "P3B-C07"],
+      "variants": ["base", "holdout"],
+      "maximum_requests_per_arm": 8,
+      "acceptance": [
+        "Both C08 variants select and execute the visible necessary capability with complete grounded required arguments",
+        "C08 candidate accuracy improves over fresh A",
+        "C07 remains free of unnecessary capability calls"
+      ]
+    },
+    "c09": {
+      "a_rules": "Only rules accepted in earlier experiments",
+      "b_rules": "A rules plus c09",
+      "scenarios": ["P3B-C09"],
+      "variants": ["base", "holdout"],
+      "maximum_requests_per_arm": 4,
+      "acceptance": [
+        "Both C09 variants ask only for the missing query parameter and do not call the capability",
+        "C09 candidate accuracy improves over fresh A",
+        "A proposed missing-argument capability call remains fail-closed"
+      ]
+    }
+  },
+  "decision_policy": {
+    "ACCEPT": "All frozen acceptance checks pass and the fresh B arm improves over fresh A.",
+    "REJECT": "B has no measured improvement or a clear behavior/safety regression.",
+    "INCONCLUSIVE": "Arm incomplete, provider failure, sample mismatch, missing evidence, or unresolved candidate semantics.",
+    "oracle_mutation": false,
+    "human_review_status": "PENDING_HUMAN_REVIEW",
+    "interpretation_limit": "One attempt per variant measures this controlled sample only; it does not establish stable improvement or full semantic quality."
+  }
+}

@@ -196,6 +196,48 @@ def test_database_task_cannot_silently_select_a_nonexistent_tag():
     assert 'Live provider tasks require explicit -PexternalServices=true' in build
 
 
+def job_body(workflow, job):
+    """The YAML body of one job, from its header to the next job header."""
+    lines = workflow.splitlines()
+    start = lines.index("  %s:" % job)
+    for index in range(start + 1, len(lines)):
+        if lines[index].startswith("  ") and not lines[index].startswith("   ") and lines[index].strip():
+            return "\n".join(lines[start:index])
+    return "\n".join(lines[start:])
+
+
+def test_the_backend_job_provides_the_python_runtime_its_acceptance_test_needs():
+    """The database selection starts a real agent-brain process.
+
+    Without a Python runtime carrying the brain package the C16 real-process
+    acceptance test fails with "No module named uvicorn" — an environment gap
+    that used to surface as a red backend job on every push.
+    """
+    workflow = workflow_text()
+    body = job_body(workflow, "backend")
+    assert "actions/setup-python@v7" in body, (
+        "the backend job must provide a Python runtime for the real-process "
+        "acceptance test")
+    assert "pip install -e ." in body, (
+        "the brain package must be installed into the interpreter the backend "
+        "job's acceptance test starts")
+    # The interpreter is exported explicitly: the test must not resolve an
+    # arbitrary "python3" from PATH that may lack the brain package.
+    assert "command -v python3" in body
+    assert "import uvicorn, spec_agent_brain" in body, (
+        "the job must prove the interpreter can actually start the brain")
+    assert "SPEC_AGENT_GA_TEST_PYTHON" in body, (
+        "the acceptance test must start the interpreter the job installed the "
+        "brain package into")
+
+
+def test_the_exported_brain_interpreter_is_the_one_the_test_starts():
+    workflow = workflow_text()
+    body = job_body(workflow, "backend")
+    bound = re.search(r"SPEC_AGENT_GA_TEST_PYTHON:\s*\$\{\{\s*steps\.brain-python\.outputs\.interpreter\s*\}\}", body)
+    assert bound, "the database selection must run with the exported brain interpreter"
+
+
 def test_disabled_bootstrap_guards_are_executed_in_the_offline_scope():
     build = BUILD.read_text(encoding="utf-8")
     offline = build.split('val auditedOfflineTests = setOf(', 1)[1].split(')', 1)[0]

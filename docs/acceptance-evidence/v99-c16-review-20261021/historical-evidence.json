@@ -1,0 +1,1374 @@
+{
+  "schema_version": "p3b-independent-evidence-audit.v1",
+  "status": "PASS",
+  "scope": "historical local artifacts only; no new model requests or database access",
+  "kilo": {
+    "attempt_count": 13,
+    "requests": 26,
+    "model_selection": {
+      "correct": 6,
+      "measured": 10,
+      "not_measured": 3
+    },
+    "completed": {
+      "count": 10,
+      "measured_decisions": 10
+    },
+    "c07_unnecessary_calls": {
+      "count": 0,
+      "measured": 2
+    },
+    "c03_repeated_clarifications": {
+      "count": 1,
+      "measured": 2
+    },
+    "scenarios_observed": [
+      "P3B-C03",
+      "P3B-C07",
+      "P3B-C08",
+      "P3B-C09",
+      "P3B-C13",
+      "P3B-C15"
+    ],
+    "per_run_requests": [
+      2,
+      12,
+      8,
+      4
+    ],
+    "request_totals_consistent": true,
+    "action_eligibility_modes": [
+      "shadow"
+    ],
+    "rows": [
+      {
+        "scenario_id": "P3B-C03",
+        "variant_id": "base",
+        "attempt_id": "210be4ad-ac9a-45a6-a538-bcaf947259e0",
+        "reported_run_id": null,
+        "model_selected_action": null,
+        "model_selection_measured": false,
+        "model_selection_acceptable": false,
+        "eligibility_outcome": "UNKNOWN",
+        "eligibility_reason_codes": [],
+        "accepted_action": null,
+        "executed_action": null,
+        "action_acceptable": false,
+        "action_measured": false,
+        "payload_validity": "NOT_MEASURED",
+        "execution_result": "failed:AgentBrainUnavailableException: Agent brain call failed: /v1/decisions",
+        "failure_classification": "RATE_LIMITED",
+        "model_request_count": 2,
+        "successful_model_requests": 1,
+        "failed_model_requests": 1,
+        "provider_failure_categories": [
+          "RATE_LIMITED"
+        ],
+        "attribution_basis": "request_evidence:RATE_LIMITED",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": false,
+        "manual_semantic_review_required": true,
+        "decision_output": null,
+        "duration_ms": 5819,
+        "measured_duration_ms": 5907,
+        "stage_latency_ms": {
+          "total": 5819,
+          "inference.STATE_UPDATE": 2187
+        },
+        "evidence_file": "p3b_live_run1_poolside_20261018.json"
+      },
+      {
+        "scenario_id": "P3B-C03",
+        "variant_id": "base",
+        "attempt_id": "545111c8-ce1a-4807-90a6-096c2909a89e",
+        "reported_run_id": null,
+        "model_selected_action": "RESPOND_TO_USER",
+        "model_selection_measured": true,
+        "model_selection_acceptable": true,
+        "eligibility_outcome": "PASSED",
+        "eligibility_reason_codes": [],
+        "accepted_action": "RESPOND_TO_USER",
+        "executed_action": "RESPOND_TO_USER",
+        "action_acceptable": true,
+        "action_measured": true,
+        "payload_validity": "VALID",
+        "execution_result": "completed",
+        "failure_classification": "NONE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_failure_categories": [],
+        "attribution_basis": "final_execution",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": false,
+        "manual_semantic_review_required": true,
+        "decision_output": {
+          "actionFamily": "RESPOND_TO_USER",
+          "payload": {
+            "message": "��л���Ļش����Ѽ�¼��\"[P3B-C03:answer#p0]\"��"
+          },
+          "baseContextSnapshotId": "3c25270c-091f-4cbd-9ef0-cf7879ff78d2",
+          "baseContextHash": "913aa6a2386c23a860bf58a83ab2f5447e411d7ba8601c6dbbf5fc2567de5cf9",
+          "sourceRefs": [
+            "node:ecce37e4-407f-41ce-af62-28e41c39bd93",
+            "answer:612c4041-3cba-4e5b-8043-7bdab910700d"
+          ],
+          "proposalId": "8a8ab3de-98f1-4fd0-a692-de1780d2988f",
+          "idempotencyKey": "545111c8-ce1a-4807-90a6-096c2909a89e",
+          "anchorRefs": []
+        },
+        "duration_ms": 18553,
+        "measured_duration_ms": 18644,
+        "stage_latency_ms": {
+          "inference.STATE_UPDATE": 4824,
+          "total": 18553,
+          "inference.DECISION": 10597
+        },
+        "evidence_file": "p3b_live_run2_cohere_20261018.json"
+      },
+      {
+        "scenario_id": "P3B-C03",
+        "variant_id": "holdout",
+        "attempt_id": "de245736-a961-417e-8625-70cbe2afd74d",
+        "reported_run_id": null,
+        "model_selected_action": "REQUEST_USER_INPUT",
+        "model_selection_measured": true,
+        "model_selection_acceptable": false,
+        "eligibility_outcome": "PASSED",
+        "eligibility_reason_codes": [],
+        "accepted_action": "REQUEST_USER_INPUT",
+        "executed_action": "REQUEST_USER_INPUT",
+        "action_acceptable": false,
+        "action_measured": true,
+        "payload_validity": "VALID",
+        "execution_result": "completed",
+        "failure_classification": "NONE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_failure_categories": [],
+        "attribution_basis": "final_execution",
+        "capability_calls": 0,
+        "repeated_clarification": true,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": true,
+        "manual_semantic_review_required": true,
+        "decision_output": {
+          "actionFamily": "REQUEST_USER_INPUT",
+          "payload": {
+            "allowFreeAnswer": true,
+            "allowMultiSelect": false,
+            "kind": "INTERACTION",
+            "options": [],
+            "purpose": "��˵�����ύ�Ĵ𰸺��壬�Ա������ƽ�����������",
+            "questionText": "���ղŻش�� '[P3B-C03:answer#p1]' �Ƿ������ã�����ϣ������˵����"
+          },
+          "baseContextSnapshotId": "73ab751b-551c-4f66-8502-e34b19025d0f",
+          "baseContextHash": "40564f9f3ae0c7918ae83cedbbe7c3fa7e26f082546fefc5779cfa85ef3ace86",
+          "sourceRefs": [
+            "answer:5246dd1d-0442-4ccf-9da5-fb296682525c",
+            "node:df2f298e-84e1-44f5-a1c3-13aa71c99818"
+          ],
+          "proposalId": "eeabe8c3-ad41-4c8d-8265-db5aa5320651",
+          "idempotencyKey": "de245736-a961-417e-8625-70cbe2afd74d",
+          "anchorRefs": [
+            "node:df2f298e-84e1-44f5-a1c3-13aa71c99818"
+          ]
+        },
+        "duration_ms": 34789,
+        "measured_duration_ms": 34835,
+        "stage_latency_ms": {
+          "inference.STATE_UPDATE": 7568,
+          "total": 34789,
+          "inference.DECISION": 25889
+        },
+        "evidence_file": "p3b_live_run2_cohere_20261018.json"
+      },
+      {
+        "scenario_id": "P3B-C07",
+        "variant_id": "base",
+        "attempt_id": "4cc7191f-ed24-488c-8117-b36a42b8c155",
+        "reported_run_id": null,
+        "model_selected_action": "RESPOND_TO_USER",
+        "model_selection_measured": true,
+        "model_selection_acceptable": true,
+        "eligibility_outcome": "PASSED",
+        "eligibility_reason_codes": [],
+        "accepted_action": "RESPOND_TO_USER",
+        "executed_action": "RESPOND_TO_USER",
+        "action_acceptable": true,
+        "action_measured": true,
+        "payload_validity": "VALID",
+        "execution_result": "completed",
+        "failure_classification": "NONE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_failure_categories": [],
+        "attribution_basis": "final_execution",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": false,
+        "manual_semantic_review_required": false,
+        "decision_output": {
+          "actionFamily": "RESPOND_TO_USER",
+          "payload": {
+            "message": "���յ����Ļش�[P3B-C07:answer#p0]������Ҫ������Щ��Ϣ��"
+          },
+          "baseContextSnapshotId": "15a8257e-4e68-43ce-a2e0-8d305a3528ec",
+          "baseContextHash": "8c8e332ab7592653065d0adccdf5f7266abb68eeb7c1ce7a88557393a8703342",
+          "sourceRefs": [
+            "node:40002041-4901-4373-a942-e8bcf437c29f",
+            "answer:6665cc03-de1f-4f25-94aa-812457d43ca0"
+          ],
+          "proposalId": "5e8c4786-9f13-4d8b-90ee-ce03c6796f05",
+          "idempotencyKey": "4cc7191f-ed24-488c-8117-b36a42b8c155",
+          "anchorRefs": []
+        },
+        "duration_ms": 44621,
+        "measured_duration_ms": 44663,
+        "stage_latency_ms": {
+          "inference.STATE_UPDATE": 4093,
+          "total": 44621,
+          "inference.DECISION": 39330
+        },
+        "evidence_file": "p3b_live_run2_cohere_20261018.json"
+      },
+      {
+        "scenario_id": "P3B-C07",
+        "variant_id": "holdout",
+        "attempt_id": "639d617f-ec41-4616-8600-50633b0b6ca8",
+        "reported_run_id": null,
+        "model_selected_action": "REQUEST_USER_INPUT",
+        "model_selection_measured": true,
+        "model_selection_acceptable": true,
+        "eligibility_outcome": "PASSED",
+        "eligibility_reason_codes": [],
+        "accepted_action": "REQUEST_USER_INPUT",
+        "executed_action": "REQUEST_USER_INPUT",
+        "action_acceptable": true,
+        "action_measured": true,
+        "payload_validity": "VALID",
+        "execution_result": "completed",
+        "failure_classification": "NONE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_failure_categories": [],
+        "attribution_basis": "final_execution",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": false,
+        "manual_semantic_review_required": false,
+        "decision_output": {
+          "actionFamily": "REQUEST_USER_INPUT",
+          "payload": {
+            "allowFreeAnswer": true,
+            "allowMultiSelect": false,
+            "kind": "INTERACTION",
+            "options": [],
+            "purpose": "��Ϊ��ǰ�ش���ռλ������Ҫ������Ϣ�Լ���������",
+            "questionText": "���ṩ����ϸ�Ĵ𰸣��Ա����������"
+          },
+          "baseContextSnapshotId": "b1f39ebc-57d1-4ccc-87b3-bb224310569a",
+          "baseContextHash": "aafa3374baa962ed9e7d14ca315f72cbfa007abbea2bc1bdd83fd8ca2ee4bf1f",
+          "sourceRefs": [
+            "answer:07826260-c410-48d7-b8ac-a3a3216f79da",
+            "claim:2230614e-379e-3e3d-9622-f1368f83df78",
+            "node:09b5f457-a421-42e1-81aa-f205b9fb385d"
+          ],
+          "proposalId": "d498c31e-68f6-46a1-ac78-34006554500e",
+          "idempotencyKey": "639d617f-ec41-4616-8600-50633b0b6ca8",
+          "anchorRefs": []
+        },
+        "duration_ms": 27483,
+        "measured_duration_ms": 27544,
+        "stage_latency_ms": {
+          "inference.STATE_UPDATE": 15296,
+          "total": 27483,
+          "inference.DECISION": 10801
+        },
+        "evidence_file": "p3b_live_run2_cohere_20261018.json"
+      },
+      {
+        "scenario_id": "P3B-C08",
+        "variant_id": "base",
+        "attempt_id": "1f338688-9d46-44f6-9721-021ed34b1369",
+        "reported_run_id": null,
+        "model_selected_action": "REQUEST_USER_INPUT",
+        "model_selection_measured": true,
+        "model_selection_acceptable": false,
+        "eligibility_outcome": "PASSED",
+        "eligibility_reason_codes": [],
+        "accepted_action": "REQUEST_USER_INPUT",
+        "executed_action": "REQUEST_USER_INPUT",
+        "action_acceptable": false,
+        "action_measured": true,
+        "payload_validity": "VALID",
+        "execution_result": "completed",
+        "failure_classification": "NONE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_failure_categories": [],
+        "attribution_basis": "final_execution",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": true,
+        "manual_semantic_review_required": false,
+        "decision_output": {
+          "actionFamily": "REQUEST_USER_INPUT",
+          "payload": {
+            "allowFreeAnswer": true,
+            "allowMultiSelect": false,
+            "kind": "INTERACTION",
+            "options": [],
+            "purpose": "�����û��Ļش���Ϊ��ǰ�ظ��ƺ���ռλ����",
+            "questionText": "�ܷ��ṩ����ϸ�Ĵ𰸣�"
+          },
+          "baseContextSnapshotId": "96c28502-a452-4e7c-a056-3dda95db3014",
+          "baseContextHash": "4dd06af46f6f621cec67d79c430490a56950da556734a1329fa08772256c2184",
+          "sourceRefs": [
+            "answer:6bbd7f6e-136a-44fb-811e-5604ea72c05c"
+          ],
+          "proposalId": "68f73eb6-f07b-4e1f-a444-f8fe48a7e056",
+          "idempotencyKey": "1f338688-9d46-44f6-9721-021ed34b1369",
+          "anchorRefs": []
+        },
+        "duration_ms": 32207,
+        "measured_duration_ms": 32240,
+        "stage_latency_ms": {
+          "inference.STATE_UPDATE": 4861,
+          "total": 32207,
+          "inference.DECISION": 25990
+        },
+        "evidence_file": "p3b_live_run2_cohere_20261018.json"
+      },
+      {
+        "scenario_id": "P3B-C08",
+        "variant_id": "holdout",
+        "attempt_id": "90498a63-d08b-4dfb-9c7a-5a619fd0e5e6",
+        "reported_run_id": null,
+        "model_selected_action": null,
+        "model_selection_measured": false,
+        "model_selection_acceptable": false,
+        "eligibility_outcome": "UNKNOWN",
+        "eligibility_reason_codes": [],
+        "accepted_action": null,
+        "executed_action": null,
+        "action_acceptable": false,
+        "action_measured": false,
+        "payload_validity": "NOT_MEASURED",
+        "execution_result": "failed:AgentBrainUnavailableException: Agent brain call failed: /v1/decisions",
+        "failure_classification": "UNKNOWN_FAILURE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_failure_categories": [],
+        "attribution_basis": "request_evidence:UNKNOWN_FAILURE",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": false,
+        "manual_semantic_review_required": false,
+        "decision_output": null,
+        "duration_ms": 34599,
+        "measured_duration_ms": 34644,
+        "stage_latency_ms": {
+          "inference.STATE_UPDATE": 7957,
+          "total": 34599,
+          "inference.DECISION": 23969
+        },
+        "evidence_file": "p3b_live_run2_cohere_20261018.json"
+      },
+      {
+        "scenario_id": "P3B-C13",
+        "variant_id": "base",
+        "attempt_id": "1161d02a-1b3f-4ddc-a194-32462cd75af2",
+        "reported_run_id": null,
+        "model_selected_action": "RESPOND_TO_USER",
+        "model_selection_measured": true,
+        "model_selection_acceptable": true,
+        "eligibility_outcome": "PASSED",
+        "eligibility_reason_codes": [],
+        "accepted_action": "RESPOND_TO_USER",
+        "executed_action": "RESPOND_TO_USER",
+        "action_acceptable": true,
+        "action_measured": true,
+        "payload_validity": "VALID",
+        "execution_result": "completed",
+        "failure_classification": "NONE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_failure_categories": [],
+        "attribution_basis": "final_execution",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": false,
+        "manual_semantic_review_required": true,
+        "decision_output": {
+          "actionFamily": "RESPOND_TO_USER",
+          "payload": {
+            "message": "���Ļش��Ѽ�¼�ڽ����ڵ��ϡ��ظ� \"[P3B-C13:p3b-c13-answer#p0]\" �����ǵ�ǰ·�ߵ���ɲ��֡������ϣ����һ��˵������壬���֪��"
+          },
+          "baseContextSnapshotId": "381ea95c-d7a8-4086-9501-254d2677e956",
+          "baseContextHash": "c15414c213e6de2c2b386214920b8b661e008c838086bb24e196becb194fc2f1",
+          "sourceRefs": [],
+          "proposalId": "a88ab894-3485-4cad-b36a-fdad5ab8a0a5",
+          "idempotencyKey": "1161d02a-1b3f-4ddc-a194-32462cd75af2",
+          "anchorRefs": []
+        },
+        "duration_ms": 30138,
+        "measured_duration_ms": 30239,
+        "stage_latency_ms": {
+          "inference.DECISION": 17748,
+          "inference.STATE_UPDATE": 7901,
+          "total": 30138
+        },
+        "evidence_file": "p3b_live_run3_c13c15c09_20261018.json"
+      },
+      {
+        "scenario_id": "P3B-C13",
+        "variant_id": "holdout",
+        "attempt_id": "ce5097ce-55b5-485e-b943-86e7501bbaba",
+        "reported_run_id": null,
+        "model_selected_action": "REQUEST_USER_INPUT",
+        "model_selection_measured": true,
+        "model_selection_acceptable": false,
+        "eligibility_outcome": "PASSED",
+        "eligibility_reason_codes": [],
+        "accepted_action": "REQUEST_USER_INPUT",
+        "executed_action": "REQUEST_USER_INPUT",
+        "action_acceptable": false,
+        "action_measured": true,
+        "payload_validity": "VALID",
+        "execution_result": "completed",
+        "failure_classification": "NONE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_failure_categories": [],
+        "attribution_basis": "final_execution",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": true,
+        "manual_semantic_review_required": true,
+        "decision_output": {
+          "actionFamily": "REQUEST_USER_INPUT",
+          "payload": {
+            "allowFreeAnswer": true,
+            "allowMultiSelect": false,
+            "kind": "INTERACTION",
+            "options": [],
+            "purpose": "��Ҫ�˽⻼�ɵ��û����������Կ��경����.",
+            "questionText": "˵������������������ '[P3B-C13:p3b-c13-answer#p1]' ���������Ҫ��˵��Đ���"
+          },
+          "baseContextSnapshotId": "bafcc266-1e1f-4328-960c-3244360dd888",
+          "baseContextHash": "344f8ea213224931c303d3b9ec53aadf5e8ea0a5a3d8caa9894e75a48ebe2ce4",
+          "sourceRefs": [
+            "node:5b0fb89f-c36b-4313-ad31-92d61c33e998",
+            "answer:8bbca8a3-d4d3-4559-92e7-7b42e8b4e0d5"
+          ],
+          "proposalId": "e6cab6f6-2a4d-4d7b-b148-87534d238398",
+          "idempotencyKey": "ce5097ce-55b5-485e-b943-86e7501bbaba",
+          "anchorRefs": [
+            "node:5b0fb89f-c36b-4313-ad31-92d61c33e998"
+          ]
+        },
+        "duration_ms": 77546,
+        "measured_duration_ms": 77657,
+        "stage_latency_ms": {
+          "inference.DECISION": 57663,
+          "inference.STATE_UPDATE": 17320,
+          "total": 77546
+        },
+        "evidence_file": "p3b_live_run3_c13c15c09_20261018.json"
+      },
+      {
+        "scenario_id": "P3B-C15",
+        "variant_id": "base",
+        "attempt_id": "5ff9fb3b-d363-4dd2-a72c-488f7c7df893",
+        "reported_run_id": null,
+        "model_selected_action": "REQUEST_USER_INPUT",
+        "model_selection_measured": true,
+        "model_selection_acceptable": true,
+        "eligibility_outcome": "PASSED",
+        "eligibility_reason_codes": [],
+        "accepted_action": "REQUEST_USER_INPUT",
+        "executed_action": "REQUEST_USER_INPUT",
+        "action_acceptable": true,
+        "action_measured": true,
+        "payload_validity": "VALID",
+        "execution_result": "completed",
+        "failure_classification": "NONE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_failure_categories": [],
+        "attribution_basis": "final_execution",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": false,
+        "manual_semantic_review_required": true,
+        "decision_output": {
+          "actionFamily": "REQUEST_USER_INPUT",
+          "payload": {
+            "allowFreeAnswer": true,
+            "allowMultiSelect": false,
+            "kind": "INTERACTION",
+            "options": [],
+            "purpose": "��ǰ����һ��δ resolved ������Ҫ����Ҫ�û��ṩ���ڸո��ύ�𰸵���ϸ��Ϣ��",
+            "questionText": "����ϸ˵�����ո��ύ�Ĵ𰸣������㵱ǰ����Ҫ��"
+          },
+          "baseContextSnapshotId": "eb0c624d-e149-4eba-8e88-bd58a4e70d79",
+          "baseContextHash": "223f86e0a458fd8afe7ec3b8a46898e197a928a96d017f3f6467e65ca2ab0ae1",
+          "sourceRefs": [
+            "node:c8944a07-b02c-4123-a65c-4795b000fb93",
+            "answer:d2bede9b-198a-4b33-90de-7438010b233d",
+            "claim:832438e5-91ab-36c0-8788-8740d81eaac4"
+          ],
+          "proposalId": "7d3c2be0-3cdf-4bb1-9c14-0e491913a480",
+          "idempotencyKey": "5ff9fb3b-d363-4dd2-a72c-488f7c7df893",
+          "anchorRefs": []
+        },
+        "duration_ms": 38543,
+        "measured_duration_ms": 38617,
+        "stage_latency_ms": {
+          "inference.DECISION": 19078,
+          "inference.STATE_UPDATE": 17007,
+          "total": 38543
+        },
+        "evidence_file": "p3b_live_run3_c13c15c09_20261018.json"
+      },
+      {
+        "scenario_id": "P3B-C15",
+        "variant_id": "holdout",
+        "attempt_id": "b600f09b-0ff5-4feb-9c11-2a18118284af",
+        "reported_run_id": null,
+        "model_selected_action": null,
+        "model_selection_measured": false,
+        "model_selection_acceptable": false,
+        "eligibility_outcome": "UNKNOWN",
+        "eligibility_reason_codes": [],
+        "accepted_action": null,
+        "executed_action": null,
+        "action_acceptable": false,
+        "action_measured": false,
+        "payload_validity": "NOT_MEASURED",
+        "execution_result": "failed:AgentBrainUnavailableException: Agent brain call failed: /v1/decisions",
+        "failure_classification": "UNKNOWN_FAILURE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_failure_categories": [],
+        "attribution_basis": "request_evidence:UNKNOWN_FAILURE",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": false,
+        "manual_semantic_review_required": true,
+        "decision_output": null,
+        "duration_ms": 30895,
+        "measured_duration_ms": 30938,
+        "stage_latency_ms": {
+          "inference.DECISION": 16879,
+          "inference.STATE_UPDATE": 12426,
+          "total": 30895
+        },
+        "evidence_file": "p3b_live_run3_c13c15c09_20261018.json"
+      },
+      {
+        "scenario_id": "P3B-C09",
+        "variant_id": "base",
+        "attempt_id": "6ba104da-9696-48a2-a936-86c0882b0520",
+        "reported_run_id": null,
+        "model_selected_action": "RESPOND_TO_USER",
+        "model_selection_measured": true,
+        "model_selection_acceptable": false,
+        "eligibility_outcome": "PASSED",
+        "eligibility_reason_codes": [],
+        "accepted_action": "RESPOND_TO_USER",
+        "executed_action": "RESPOND_TO_USER",
+        "action_acceptable": false,
+        "action_measured": true,
+        "payload_validity": "VALID",
+        "execution_result": "completed",
+        "failure_classification": "NONE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_failure_categories": [],
+        "attribution_basis": "final_execution",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": true,
+        "manual_semantic_review_required": false,
+        "decision_output": {
+          "actionFamily": "RESPOND_TO_USER",
+          "payload": {
+            "message": "��л���Ļش�[P3B-C09:answer#p0]����������ϣ����ô����"
+          },
+          "baseContextSnapshotId": "090294df-134a-451b-a2a7-c3b673c02f13",
+          "baseContextHash": "c5f2f8c38460de7f7817086acda1242ec394c11672b88d207d02ecc6d85d5392",
+          "sourceRefs": [],
+          "proposalId": "468a359f-02a2-4a52-bf70-3ec82cd6f554",
+          "idempotencyKey": "6ba104da-9696-48a2-a936-86c0882b0520",
+          "anchorRefs": []
+        },
+        "duration_ms": 42028,
+        "measured_duration_ms": 42142,
+        "stage_latency_ms": {
+          "total": 42028,
+          "inference.STATE_UPDATE": 5195,
+          "inference.DECISION": 33712
+        },
+        "evidence_file": "p3b_live_run4_c09_20261018.json"
+      },
+      {
+        "scenario_id": "P3B-C09",
+        "variant_id": "holdout",
+        "attempt_id": "7c5210d6-1e2d-4e49-836e-ad54a77bb9f0",
+        "reported_run_id": null,
+        "model_selected_action": "REQUEST_USER_INPUT",
+        "model_selection_measured": true,
+        "model_selection_acceptable": true,
+        "eligibility_outcome": "PASSED",
+        "eligibility_reason_codes": [],
+        "accepted_action": "REQUEST_USER_INPUT",
+        "executed_action": "REQUEST_USER_INPUT",
+        "action_acceptable": true,
+        "action_measured": true,
+        "payload_validity": "VALID",
+        "execution_result": "completed",
+        "failure_classification": "NONE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_failure_categories": [],
+        "attribution_basis": "final_execution",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": false,
+        "manual_semantic_review_required": false,
+        "decision_output": {
+          "actionFamily": "REQUEST_USER_INPUT",
+          "payload": {
+            "allowFreeAnswer": true,
+            "allowMultiSelect": false,
+            "kind": "INTERACTION",
+            "options": [
+              {
+                "label": "��¼Ϊ֪ʶ��",
+                "recommended": false
+              },
+              {
+                "label": "���ں�������",
+                "recommended": false
+              },
+              {
+                "label": "���������",
+                "recommended": false
+              }
+            ],
+            "purpose": "����ԭʼ���ⲻ�ɼ�������Ҫ֪����δ������Ļش�",
+            "questionText": "������δ������Ļش�"
+          },
+          "baseContextSnapshotId": "52f4044f-407d-407c-83b8-dc2398911d0d",
+          "baseContextHash": "62f1f18e07b356c37d57ef90618ef0026cde2c54b4028ac215098f5f7c3376e7",
+          "sourceRefs": [
+            "node:d9d75c25-7848-43a2-8a6e-0e29ce8df749",
+            "answer:5a15ae6f-fde4-4d3e-95f2-258087800b4d",
+            "claim:25777952-b29f-36db-8119-b0dfdc073665"
+          ],
+          "proposalId": "969dd948-c602-4578-b5db-2e4888ed933d",
+          "idempotencyKey": "7c5210d6-1e2d-4e49-836e-ad54a77bb9f0",
+          "anchorRefs": []
+        },
+        "duration_ms": 50634,
+        "measured_duration_ms": 50657,
+        "stage_latency_ms": {
+          "total": 50634,
+          "inference.STATE_UPDATE": 19108,
+          "inference.DECISION": 30346
+        },
+        "evidence_file": "p3b_live_run4_c09_20261018.json"
+      }
+    ]
+  },
+  "gemini": {
+    "attempt_count": 4,
+    "requests": 8,
+    "model_selection": {
+      "correct": 3,
+      "measured": 4,
+      "not_measured": 0
+    },
+    "completed": {
+      "count": 1,
+      "measured_decisions": 4
+    },
+    "c07_unnecessary_calls": {
+      "count": 0,
+      "measured": 0
+    },
+    "c03_repeated_clarifications": {
+      "count": 0,
+      "measured": 0
+    },
+    "scenarios_observed": [
+      "P3B-C03-NL"
+    ],
+    "report_sidecar_consistent": true,
+    "historical_decision": "REJECT",
+    "human_review_status": "PENDING_HUMAN_REVIEW",
+    "rows": [
+      {
+        "scenario_id": "P3B-C03-NL",
+        "variant_id": "base",
+        "run_correlation_id": "d1278182541986b5345a",
+        "scenario_hash": "e055f0d21ac07c63",
+        "candidate_label_status": "PENDING_HUMAN_REVIEW",
+        "oracle_candidate": {
+          "expected_gate": "NO_DETERMINISTIC_SURFACE",
+          "acceptable_primary_actions": [
+            "CREATE_NODE",
+            "RESPOND_TO_USER"
+          ],
+          "forbidden_actions": [
+            "INVOKE_CAPABILITY",
+            "REQUEST_USER_INPUT"
+          ],
+          "expected_veto_reason_codes": []
+        },
+        "model_request_events": [
+          {
+            "call_type": "STATE_UPDATE",
+            "status": "SUCCESS",
+            "gateway_category": null
+          },
+          {
+            "call_type": "DECISION",
+            "status": "SUCCESS",
+            "gateway_category": null
+          }
+        ],
+        "run_failed_evidence": {
+          "reason": "NONE",
+          "error_code": "NONE",
+          "present": false
+        },
+        "input_evidence": {
+          "answered_lineage_entries": 1,
+          "unresolved_effective_claims": 0,
+          "memory_search_query_required": true,
+          "memory_search_provided_argument_names": [],
+          "required_arguments_verified": true,
+          "available_capabilities": [
+            {
+              "required_arguments": [
+                "query"
+              ],
+              "id": "memory.search"
+            }
+          ],
+          "memory_search_visible": true,
+          "memory_search_missing_arguments": [
+            "query"
+          ],
+          "allowed_source_ref_count": 8,
+          "allowed_source_refs_sha256": "b3108ac4f0e9581ce302b4e1f38dfb02ea31328a4155e2f442753524fc3f0aeb",
+          "retrieved_context_count": 1
+        },
+        "model_selected_action": "CREATE_NODE",
+        "model_selection_measured": true,
+        "model_selection_acceptable": true,
+        "eligibility_outcome": "VETOED",
+        "eligibility_reason_codes": [
+          "MISSING_TYPED_PERSISTENCE_INTENT"
+        ],
+        "accepted_action": "CREATE_NODE",
+        "executed_action": null,
+        "action_acceptable": true,
+        "action_measured": true,
+        "payload_validity": "VALID",
+        "execution_state": "awaiting_approval",
+        "failure_classification": "NONE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_retries": 0,
+        "judge_model_calls": 0,
+        "reported_production_model_calls": 2,
+        "provider_failure_categories": [],
+        "attribution_basis": "final_execution",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": false,
+        "manual_semantic_review_required": false,
+        "model_raw_action": {
+          "action_family": "CREATE_NODE",
+          "payload": {
+            "content": {
+              "text": "��Ŀ�������ݿ���ȷ������ PostgreSQL���汾Ϊ 16��"
+            },
+            "kind": "KNOWLEDGE",
+            "subtype": "DECISION"
+          },
+          "source_ref_count": 3
+        },
+        "prompt_hashes": {
+          "state_update_input": "d8490e85d7a408fdb549cd7e0ac1cfd8e64ebd36ad0910d17d72015105351d77",
+          "decision_input": "5afccda858be56e57de75b617cb6239eaf41594f4293b3d9aaa455b0298f5449"
+        },
+        "source_reference_audit": {
+          "invalidated_source_reference_used": false,
+          "anchor_ref_count": 0,
+          "status": "DETERMINISTIC_VERIFIED",
+          "source_ref_count": 3,
+          "source_ref_manifest_sha256": "7ff3910ff4a11b9b47f8ba5238ed9fe9c84023895639871ae4c585b299ce954f",
+          "source_refs_allowed": true,
+          "invalidated_source_ref_count": 0
+        },
+        "automatic_semantic_review": {
+          "status": "AUTO_REVIEWED",
+          "reviewer": "p3b-deterministic-evidence-audit.v1",
+          "review_scope": "fixture facts, candidate oracle alignment, protocol, source refs, declared parameters, and execution trace",
+          "oracle_human_review_status": "PENDING_HUMAN_REVIEW",
+          "candidate_oracle_action_match": true,
+          "answered_lineage_present": true,
+          "unresolved_effective_claim_count": 0,
+          "capability_argument_audit": {
+            "status": "NOT_APPLICABLE"
+          },
+          "clarification_structure_audit": {
+            "status": "NOT_APPLICABLE"
+          },
+          "capability_invocation_count": 0,
+          "cycle_completed": false,
+          "failure_classification": "NONE",
+          "source_reference_audit": {
+            "invalidated_source_reference_used": false,
+            "anchor_ref_count": 0,
+            "status": "DETERMINISTIC_VERIFIED",
+            "source_ref_count": 3,
+            "source_ref_manifest_sha256": "7ff3910ff4a11b9b47f8ba5238ed9fe9c84023895639871ae4c585b299ce954f",
+            "source_refs_allowed": true,
+            "invalidated_source_ref_count": 0
+          },
+          "semantic_equivalence": "UNRESOLVED",
+          "unsupported_factual_assertions": "UNRESOLVED",
+          "basis": [
+            "The frozen candidate label was compared without editing it.",
+            "The report records structural facts and runtime outcomes; no independent judge model was called."
+          ]
+        },
+        "duration_ms": 13393,
+        "measured_duration_ms": 13455,
+        "stage_latency_ms": {
+          "total": 13393,
+          "inference.STATE_UPDATE": 5818,
+          "inference.DECISION": 1805
+        },
+        "arm": "a"
+      },
+      {
+        "scenario_id": "P3B-C03-NL",
+        "variant_id": "holdout",
+        "run_correlation_id": "6e87e11fcd07a3b98ad2",
+        "scenario_hash": "e055f0d21ac07c63",
+        "candidate_label_status": "PENDING_HUMAN_REVIEW",
+        "oracle_candidate": {
+          "expected_gate": "NO_DETERMINISTIC_SURFACE",
+          "acceptable_primary_actions": [
+            "CREATE_NODE",
+            "RESPOND_TO_USER"
+          ],
+          "forbidden_actions": [
+            "INVOKE_CAPABILITY",
+            "REQUEST_USER_INPUT"
+          ],
+          "expected_veto_reason_codes": []
+        },
+        "model_request_events": [
+          {
+            "call_type": "STATE_UPDATE",
+            "status": "SUCCESS",
+            "gateway_category": null
+          },
+          {
+            "call_type": "DECISION",
+            "status": "SUCCESS",
+            "gateway_category": null
+          }
+        ],
+        "run_failed_evidence": {
+          "reason": "NONE",
+          "error_code": "NONE",
+          "present": false
+        },
+        "input_evidence": {
+          "answered_lineage_entries": 1,
+          "unresolved_effective_claims": 0,
+          "memory_search_query_required": true,
+          "memory_search_provided_argument_names": [],
+          "required_arguments_verified": true,
+          "available_capabilities": [
+            {
+              "required_arguments": [
+                "query"
+              ],
+              "id": "memory.search"
+            }
+          ],
+          "memory_search_visible": true,
+          "memory_search_missing_arguments": [
+            "query"
+          ],
+          "allowed_source_ref_count": 8,
+          "allowed_source_refs_sha256": "89609652a68ddbb62483d74be57ac10ff771ea4b39dd429b98fa1d925fe39cda",
+          "retrieved_context_count": 1
+        },
+        "model_selected_action": "CREATE_NODE",
+        "model_selection_measured": true,
+        "model_selection_acceptable": true,
+        "eligibility_outcome": "VETOED",
+        "eligibility_reason_codes": [
+          "MISSING_TYPED_PERSISTENCE_INTENT"
+        ],
+        "accepted_action": "CREATE_NODE",
+        "executed_action": null,
+        "action_acceptable": true,
+        "action_measured": true,
+        "payload_validity": "VALID",
+        "execution_state": "awaiting_approval",
+        "failure_classification": "NONE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_retries": 0,
+        "judge_model_calls": 0,
+        "reported_production_model_calls": 2,
+        "provider_failure_categories": [],
+        "attribution_basis": "final_execution",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": false,
+        "manual_semantic_review_required": false,
+        "model_raw_action": {
+          "action_family": "CREATE_NODE",
+          "payload": {
+            "content": {
+              "text": "ϵͳȷ������ PostgreSQL 16 ��Ϊ���洢���ݿ⡣"
+            },
+            "kind": "KNOWLEDGE",
+            "subtype": "DECISION"
+          },
+          "source_ref_count": 3
+        },
+        "prompt_hashes": {
+          "state_update_input": "d8490e85d7a408fdb549cd7e0ac1cfd8e64ebd36ad0910d17d72015105351d77",
+          "decision_input": "5afccda858be56e57de75b617cb6239eaf41594f4293b3d9aaa455b0298f5449"
+        },
+        "source_reference_audit": {
+          "invalidated_source_reference_used": false,
+          "anchor_ref_count": 0,
+          "status": "DETERMINISTIC_VERIFIED",
+          "source_ref_count": 3,
+          "source_ref_manifest_sha256": "022a3cdb557231750f81792713271606ed3cfd9f46cee9cc85e3a69b109d040c",
+          "source_refs_allowed": true,
+          "invalidated_source_ref_count": 0
+        },
+        "automatic_semantic_review": {
+          "status": "AUTO_REVIEWED",
+          "reviewer": "p3b-deterministic-evidence-audit.v1",
+          "review_scope": "fixture facts, candidate oracle alignment, protocol, source refs, declared parameters, and execution trace",
+          "oracle_human_review_status": "PENDING_HUMAN_REVIEW",
+          "candidate_oracle_action_match": true,
+          "answered_lineage_present": true,
+          "unresolved_effective_claim_count": 0,
+          "capability_argument_audit": {
+            "status": "NOT_APPLICABLE"
+          },
+          "clarification_structure_audit": {
+            "status": "NOT_APPLICABLE"
+          },
+          "capability_invocation_count": 0,
+          "cycle_completed": false,
+          "failure_classification": "NONE",
+          "source_reference_audit": {
+            "invalidated_source_reference_used": false,
+            "anchor_ref_count": 0,
+            "status": "DETERMINISTIC_VERIFIED",
+            "source_ref_count": 3,
+            "source_ref_manifest_sha256": "022a3cdb557231750f81792713271606ed3cfd9f46cee9cc85e3a69b109d040c",
+            "source_refs_allowed": true,
+            "invalidated_source_ref_count": 0
+          },
+          "semantic_equivalence": "UNRESOLVED",
+          "unsupported_factual_assertions": "UNRESOLVED",
+          "basis": [
+            "The frozen candidate label was compared without editing it.",
+            "The report records structural facts and runtime outcomes; no independent judge model was called."
+          ]
+        },
+        "duration_ms": 17319,
+        "measured_duration_ms": 17340,
+        "stage_latency_ms": {
+          "total": 17319,
+          "inference.STATE_UPDATE": 9687,
+          "inference.DECISION": 2688
+        },
+        "arm": "a"
+      },
+      {
+        "scenario_id": "P3B-C03-NL",
+        "variant_id": "base",
+        "run_correlation_id": "4724cf423b445b2573f7",
+        "scenario_hash": "e055f0d21ac07c63",
+        "candidate_label_status": "PENDING_HUMAN_REVIEW",
+        "oracle_candidate": {
+          "forbidden_actions": [
+            "INVOKE_CAPABILITY",
+            "REQUEST_USER_INPUT"
+          ],
+          "expected_veto_reason_codes": [],
+          "expected_gate": "NO_DETERMINISTIC_SURFACE",
+          "acceptable_primary_actions": [
+            "CREATE_NODE",
+            "RESPOND_TO_USER"
+          ]
+        },
+        "model_request_events": [
+          {
+            "call_type": "STATE_UPDATE",
+            "status": "SUCCESS",
+            "gateway_category": null
+          },
+          {
+            "call_type": "DECISION",
+            "status": "SUCCESS",
+            "gateway_category": null
+          }
+        ],
+        "run_failed_evidence": {
+          "error_code": "NONE",
+          "present": false,
+          "reason": "NONE"
+        },
+        "input_evidence": {
+          "answered_lineage_entries": 1,
+          "unresolved_effective_claims": 0,
+          "memory_search_provided_argument_names": [],
+          "required_arguments_verified": true,
+          "available_capabilities": [
+            {
+              "required_arguments": [
+                "query"
+              ],
+              "id": "memory.search"
+            }
+          ],
+          "memory_search_visible": true,
+          "memory_search_missing_arguments": [
+            "query"
+          ],
+          "memory_search_query_required": true,
+          "allowed_source_ref_count": 8,
+          "allowed_source_refs_sha256": "7fc66f46380a45a4537732cdd5cb5d75410a1fb2a30250546506e12fcbce39d1",
+          "retrieved_context_count": 1
+        },
+        "model_selected_action": "REQUEST_USER_INPUT",
+        "model_selection_measured": true,
+        "model_selection_acceptable": false,
+        "eligibility_outcome": "PASSED",
+        "eligibility_reason_codes": [],
+        "accepted_action": "REQUEST_USER_INPUT",
+        "executed_action": "REQUEST_USER_INPUT",
+        "action_acceptable": false,
+        "action_measured": true,
+        "payload_validity": "VALID",
+        "execution_state": "completed",
+        "failure_classification": "NONE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_retries": 0,
+        "judge_model_calls": 0,
+        "reported_production_model_calls": 2,
+        "provider_failure_categories": [],
+        "attribution_basis": "final_execution",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": true,
+        "manual_semantic_review_required": false,
+        "model_raw_action": {
+          "action_family": "REQUEST_USER_INPUT",
+          "payload": {
+            "allowFreeAnswer": true,
+            "allowMultiSelect": false,
+            "kind": "INTERACTION",
+            "options": [
+              {
+                "label": "�ǵģ���Ҫ����ȷ�����桢��Ϣ���е����",
+                "recommended": true
+              },
+              {
+                "label": "�ݲ���Ҫ����ǰ�׶�ֻ��ȷ�����ݿ�",
+                "recommended": false
+              }
+            ],
+            "purpose": "�������ݿ�ȷ���󣬼�����ȷ�����ܹ��������",
+            "questionText": "��Ŀ�Ƿ���Ҫȷ���������ļ���ջ���м��ѡ�ͣ�"
+          },
+          "source_ref_count": 2
+        },
+        "prompt_hashes": {
+          "state_update_input": "d8490e85d7a408fdb549cd7e0ac1cfd8e64ebd36ad0910d17d72015105351d77",
+          "decision_input": "670f13edcccd36aea4b20e21d063987f9ccbb7162b1fc246ef5b054d51a967ea"
+        },
+        "source_reference_audit": {
+          "anchor_ref_count": 0,
+          "status": "DETERMINISTIC_VERIFIED",
+          "source_ref_count": 2,
+          "source_ref_manifest_sha256": "ef79338f12a296a175d8152815f1935456f5baaa2a6033480972000c9001eb6c",
+          "source_refs_allowed": true,
+          "invalidated_source_ref_count": 0,
+          "invalidated_source_reference_used": false
+        },
+        "automatic_semantic_review": {
+          "status": "AUTO_REVIEWED",
+          "reviewer": "p3b-deterministic-evidence-audit.v1",
+          "review_scope": "fixture facts, candidate oracle alignment, protocol, source refs, declared parameters, and execution trace",
+          "oracle_human_review_status": "PENDING_HUMAN_REVIEW",
+          "candidate_oracle_action_match": false,
+          "answered_lineage_present": true,
+          "unresolved_effective_claim_count": 0,
+          "capability_argument_audit": {
+            "status": "NOT_APPLICABLE"
+          },
+          "clarification_structure_audit": {
+            "question_text_present": true,
+            "semantic_intent": "UNRESOLVED",
+            "status": "DETERMINISTIC_VERIFIED"
+          },
+          "capability_invocation_count": 0,
+          "cycle_completed": true,
+          "failure_classification": "NONE",
+          "source_reference_audit": {
+            "anchor_ref_count": 0,
+            "status": "DETERMINISTIC_VERIFIED",
+            "source_ref_count": 2,
+            "source_ref_manifest_sha256": "ef79338f12a296a175d8152815f1935456f5baaa2a6033480972000c9001eb6c",
+            "source_refs_allowed": true,
+            "invalidated_source_ref_count": 0,
+            "invalidated_source_reference_used": false
+          },
+          "semantic_equivalence": "UNRESOLVED",
+          "unsupported_factual_assertions": "UNRESOLVED",
+          "basis": [
+            "The frozen candidate label was compared without editing it.",
+            "The report records structural facts and runtime outcomes; no independent judge model was called."
+          ]
+        },
+        "duration_ms": 22468,
+        "measured_duration_ms": 22533,
+        "stage_latency_ms": {
+          "inference.STATE_UPDATE": 9226,
+          "inference.DECISION": 7170,
+          "total": 22468
+        },
+        "arm": "b"
+      },
+      {
+        "scenario_id": "P3B-C03-NL",
+        "variant_id": "holdout",
+        "run_correlation_id": "6c694336442516f155f1",
+        "scenario_hash": "e055f0d21ac07c63",
+        "candidate_label_status": "PENDING_HUMAN_REVIEW",
+        "oracle_candidate": {
+          "forbidden_actions": [
+            "INVOKE_CAPABILITY",
+            "REQUEST_USER_INPUT"
+          ],
+          "expected_veto_reason_codes": [],
+          "expected_gate": "NO_DETERMINISTIC_SURFACE",
+          "acceptable_primary_actions": [
+            "CREATE_NODE",
+            "RESPOND_TO_USER"
+          ]
+        },
+        "model_request_events": [
+          {
+            "call_type": "STATE_UPDATE",
+            "status": "SUCCESS",
+            "gateway_category": null
+          },
+          {
+            "call_type": "DECISION",
+            "status": "SUCCESS",
+            "gateway_category": null
+          }
+        ],
+        "run_failed_evidence": {
+          "error_code": "NONE",
+          "present": false,
+          "reason": "NONE"
+        },
+        "input_evidence": {
+          "answered_lineage_entries": 1,
+          "unresolved_effective_claims": 0,
+          "memory_search_provided_argument_names": [],
+          "required_arguments_verified": true,
+          "available_capabilities": [
+            {
+              "required_arguments": [
+                "query"
+              ],
+              "id": "memory.search"
+            }
+          ],
+          "memory_search_visible": true,
+          "memory_search_missing_arguments": [
+            "query"
+          ],
+          "memory_search_query_required": true,
+          "allowed_source_ref_count": 8,
+          "allowed_source_refs_sha256": "38eae4e8731c3266a161c92184c9f4276c29ef8fca8085fefbaa6bf49d8bfd77",
+          "retrieved_context_count": 1
+        },
+        "model_selected_action": "CREATE_NODE",
+        "model_selection_measured": true,
+        "model_selection_acceptable": true,
+        "eligibility_outcome": "VETOED",
+        "eligibility_reason_codes": [
+          "MISSING_TYPED_PERSISTENCE_INTENT"
+        ],
+        "accepted_action": "CREATE_NODE",
+        "executed_action": null,
+        "action_acceptable": true,
+        "action_measured": true,
+        "payload_validity": "VALID",
+        "execution_state": "awaiting_approval",
+        "failure_classification": "NONE",
+        "model_request_count": 2,
+        "successful_model_requests": 2,
+        "failed_model_requests": 0,
+        "provider_retries": 0,
+        "judge_model_calls": 0,
+        "reported_production_model_calls": 2,
+        "provider_failure_categories": [],
+        "attribution_basis": "final_execution",
+        "capability_calls": 0,
+        "repeated_clarification": false,
+        "unnecessary_capability_call": false,
+        "unresolved_semantic_error_signal": false,
+        "manual_semantic_review_required": false,
+        "model_raw_action": {
+          "action_family": "CREATE_NODE",
+          "payload": {
+            "content": {
+              "text": "ϵͳ��ȷ�ϲ��� PostgreSQL 16 ��Ϊ���洢���ݿ⡣"
+            },
+            "kind": "KNOWLEDGE",
+            "subtype": "DECISION"
+          },
+          "source_ref_count": 3
+        },
+        "prompt_hashes": {
+          "state_update_input": "d8490e85d7a408fdb549cd7e0ac1cfd8e64ebd36ad0910d17d72015105351d77",
+          "decision_input": "670f13edcccd36aea4b20e21d063987f9ccbb7162b1fc246ef5b054d51a967ea"
+        },
+        "source_reference_audit": {
+          "anchor_ref_count": 0,
+          "status": "DETERMINISTIC_VERIFIED",
+          "source_ref_count": 3,
+          "source_ref_manifest_sha256": "2711ad810777c14c3ae04f5b9a8c6668b6fa3d2a029782a118bf78b22748426e",
+          "source_refs_allowed": true,
+          "invalidated_source_ref_count": 0,
+          "invalidated_source_reference_used": false
+        },
+        "automatic_semantic_review": {
+          "status": "AUTO_REVIEWED",
+          "reviewer": "p3b-deterministic-evidence-audit.v1",
+          "review_scope": "fixture facts, candidate oracle alignment, protocol, source refs, declared parameters, and execution trace",
+          "oracle_human_review_status": "PENDING_HUMAN_REVIEW",
+          "candidate_oracle_action_match": true,
+          "answered_lineage_present": true,
+          "unresolved_effective_claim_count": 0,
+          "capability_argument_audit": {
+            "status": "NOT_APPLICABLE"
+          },
+          "clarification_structure_audit": {
+            "status": "NOT_APPLICABLE"
+          },
+          "capability_invocation_count": 0,
+          "cycle_completed": false,
+          "failure_classification": "NONE",
+          "source_reference_audit": {
+            "anchor_ref_count": 0,
+            "status": "DETERMINISTIC_VERIFIED",
+            "source_ref_count": 3,
+            "source_ref_manifest_sha256": "2711ad810777c14c3ae04f5b9a8c6668b6fa3d2a029782a118bf78b22748426e",
+            "source_refs_allowed": true,
+            "invalidated_source_ref_count": 0,
+            "invalidated_source_reference_used": false
+          },
+          "semantic_equivalence": "UNRESOLVED",
+          "unsupported_factual_assertions": "UNRESOLVED",
+          "basis": [
+            "The frozen candidate label was compared without editing it.",
+            "The report records structural facts and runtime outcomes; no independent judge model was called."
+          ]
+        },
+        "duration_ms": 20490,
+        "measured_duration_ms": 20507,
+        "stage_latency_ms": {
+          "inference.STATE_UPDATE": 8972,
+          "inference.DECISION": 6565,
+          "total": 20490
+        },
+        "arm": "b"
+      }
+    ],
+    "independent_recheck_schema": "p3bae3-offline-recheck.v2"
+  },
+  "document_only_claims": {
+    "kilo_diagnostic_requests": 2,
+    "gemini_compatibility_probe_requests": 1
+  },
+  "missing_evidence": [
+    "Kilo C06 live attempt",
+    "Kilo two diagnostic request-level artifacts",
+    "Gemini compatibility probe request-level artifact",
+    "independent persisted business outcome audit",
+    "independent human approval of candidate oracle"
+  ],
+  "input_sha256": {
+    "tools/p3b/p3b_live_run1_poolside_20261018.json": "40f0961a57a1c6399ef2dabd6fd9f8e73ceb9ba6b13b6aac021a6a1951eb8500",
+    "tools/p3b/p3b_live_run2_cohere_20261018.json": "fa66aa44fa5aed0ebc586d2c332cddab67ca7d65cfb63d34b9efd262ea8d8ab5",
+    "tools/p3b/p3b_live_run3_c13c15c09_20261018.json": "49a14d3f9fd09f563b0152fb192b054400258af985f69115f90231d47ece9eb9",
+    "tools/p3b/p3b_live_run4_c09_20261018.json": "c285c098e3f966952d1f5b48baca6f85c70e58a3ae6a4c272e7f3a4a0a65a32b",
+    "tools/p3b/c03-live-runs/gemini-lite-20261020/c03_a.json": "04904967d92a1ab05d1a04cf098cfc745824fa61520cb738042a49b3d32a6114",
+    "tools/p3b/c03-live-runs/gemini-lite-20261020/c03_a.json.attempts.jsonl": "066bcf0dadf7e3eed46d26927744bdeeac47578844f49e4b4a1d3333e97c6413",
+    "tools/p3b/c03-live-runs/gemini-lite-20261020/c03_b.json": "c7d0df727f1ab242b7aa8e2e27c027e2c4088aa2858f9c4d38a4f1d6390d8fa0",
+    "tools/p3b/c03-live-runs/gemini-lite-20261020/c03_b.json.attempts.jsonl": "a8bb07696042f3441b1af62da44069d681a69e77a98f11a74c000a45275bef9e",
+    "tools/p3b/c03-live-runs/gemini-lite-20261020/c03_ab_decision.json": "60738f8bbef347a78ed1d3953473b3da6707261b6f2f4ba14432e24b89cde0b5",
+    "tools/p3b/c03-live-runs/gemini-lite-20261020/c03_ab_decision_p3bae3_recheck_v2.json": "272d7813b16bacb736e7675428a9353c9ba5bc3ec337ba3fae2a0be9371faabf"
+  }
+}

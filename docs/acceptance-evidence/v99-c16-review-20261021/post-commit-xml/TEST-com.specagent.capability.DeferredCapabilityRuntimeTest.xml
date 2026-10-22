@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.specagent.capability.DeferredCapabilityRuntimeTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-21T03:29:02" hostname="榜首" time="0.019">
+  <properties/>
+  <testcase name="completionRequiresIdentityAndCurrentAdapterAuthorizationBeforeOneCas()" classname="com.specagent.capability.DeferredCapabilityRuntimeTest" time="0.01"/>
+  <testcase name="revokedCompletionCannotWakeOrChangeAnyInvocation()" classname="com.specagent.capability.DeferredCapabilityRuntimeTest" time="0.001"/>
+  <testcase name="crashWindowRunningIsStillInProgressAndNeverARegisteredDependency()" classname="com.specagent.capability.DeferredCapabilityRuntimeTest" time="0.002"/>
+  <testcase name="explicitPendingRegistrationIsDurableAndDuplicateDoesNotResubmit()" classname="com.specagent.capability.DeferredCapabilityRuntimeTest" time="0.002"/>
+  <testcase name="legacyAndApplicationCallersCannotSubmitDeferredJobs()" classname="com.specagent.capability.DeferredCapabilityRuntimeTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

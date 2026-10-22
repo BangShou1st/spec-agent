@@ -60,7 +60,7 @@ class RebuildLeaseIntegrationTest {
         }
         var f=new Fixture(actor,project,id);fixtures.add(f);return f;
     }
-    private RebuildLeaseCoordinator secondWorker() {return new RebuildLeaseCoordinator(named,authorization,transactions,120);}
+    private RebuildLeaseCoordinator secondWorker() {return new RebuildLeaseCoordinator(named,authorization,transactions,120,3,0);}
     private void expire(Fixture f) {jdbc.update("UPDATE embedding_rebuilds SET lease_until=clock_timestamp()-interval '1 second' WHERE id=?",f.id);}
     private IndexBatch batch(RebuildLeaseCoordinator.Token token) {
         try(var scope=RebuildLeaseContext.bind(token)) {return jobs.claim(token.corpus(),token.id()).orElseThrow();}

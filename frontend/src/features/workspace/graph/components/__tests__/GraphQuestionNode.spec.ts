@@ -208,6 +208,28 @@ describe('graph question node', () => {
     expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{ selectedOptionId: null, selectedOptionIds: null, freeText: 'free text answer', nodeId: 'n1', routeId: 'r1' }])
   })
 
+  it('renders and submits free text as the only answer when there are no options', async () => {
+    const wrapper = mountNode(currentData({ node: nodeData({ options: [] }) }))
+    const input = wrapper.get<HTMLTextAreaElement>('[data-test="free-text"]')
+    const submit = wrapper.get<HTMLButtonElement>('[data-test="submit-answer"]')
+
+    expect(wrapper.findAll('[data-test="option"]')).toHaveLength(0)
+    expect(input.attributes('placeholder')).toBe('请输入回答')
+    expect(submit.attributes('disabled')).toBeDefined()
+
+    await input.setValue('查找上周讨论的离线同步冲突')
+    expect(submit.attributes('disabled')).toBeUndefined()
+    await submit.trigger('click')
+
+    expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{
+      selectedOptionId: null,
+      selectedOptionIds: null,
+      freeText: '查找上周讨论的离线同步冲突',
+      nodeId: 'n1',
+      routeId: 'r1',
+    }])
+  })
+
   it('submits combined option + free text payload', async () => {
     const wrapper = mountNode(currentData())
     await wrapper.find('input[type=radio][value="opt-a"]').setValue()

@@ -1,0 +1,52 @@
+{
+  "classification": [
+    "CODE_COMPLETE",
+    "OFFLINE_VERIFIED",
+    "INTEGRATION_NOT_VERIFIED",
+    "RELEASE_BLOCKED"
+  ],
+  "base": "8fb328b9ddfe1a00e5f56e90eb1a250b9fd80872",
+  "codeCommit": "22b4398f579fafbebc21c79d578558012ac44a25",
+  "root": {
+    "tests": 206,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "independent": {
+    "tests": 110,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "pythonPassed": 507,
+  "javaSuitesOverlap": true,
+  "contractReplay": {
+    "fixtureCount": 11,
+    "outcomeMatched": 11,
+    "actionMatched": 11,
+    "payloadMismatches": []
+  },
+  "historicalEvidence": "PASS",
+  "c03Decision": "REJECT",
+  "terminalFenceMutant": {
+    "tests": 17,
+    "failed": 3,
+    "restored": true
+  },
+  "protected": {
+    "paths": 627,
+    "changed": []
+  },
+  "notRun": [
+    "database connection",
+    "migration execution V99/V100/V101/V103",
+    "real transaction races",
+    "real cross-process recovery",
+    "full Spring assembly",
+    "live model/embedding",
+    "E2E"
+  ],
+  "bootJar": "PASS",
+  "unsafeGraphsRejected": 3
+}

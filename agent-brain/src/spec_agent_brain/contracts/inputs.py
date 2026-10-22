@@ -150,6 +150,13 @@ class CapabilityResultView(StrictModel):
     source_refs: List[str] = Field(default_factory=list)
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("status")
+    @classmethod
+    def _completed_observation_only(cls, value: str) -> str:
+        if value == "PENDING":
+            raise ValueError("deferred dependencies remain Host-owned in existing wire versions")
+        return value
+
 
 class AvailableSkillView(StrictModel):
     """冻结输入快照中的一条有界 Skill 目录项。
@@ -374,12 +381,67 @@ class AgentV3RequestEnvelope(AgentV2RequestEnvelope):
     action_eligibility: ActionEligibility
 
 
+class PendingDependency(StrictModel):
+    invocation_id: UUID
+    owner_run_id: UUID
+    capability_id: str = Field(min_length=1)
+    deadline: str
+
+    @field_validator("deadline")
+    @classmethod
+    def _instant(cls, value: str) -> str:
+        from datetime import datetime
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            raise ValueError("dependency deadline requires timezone")
+        return value
+
+
+class PendingDependencyProjection(StrictModel):
+    version: Literal["pending-dependencies.v1"]
+    run_id: UUID
+    snapshot_id: UUID
+    context_hash: str
+    project_id: UUID
+    route_id: Optional[UUID]
+    anchor_node_id: Optional[UUID]
+    dependencies: List[PendingDependency] = Field(max_length=20)
+    completed_results: List[CapabilityResultView] = Field(max_length=1)
+
+    @model_validator(mode="after")
+    def _owned_unique(self):
+        ids = [d.invocation_id for d in self.dependencies]
+        if len(set(ids)) != len(ids) or any(d.owner_run_id == self.run_id for d in self.dependencies):
+            raise ValueError("invalid dependency ownership or duplicate")
+        if self.dependencies and self.route_id is None:
+            raise ValueError("dependency requires route")
+        if any(r.status not in {"SUCCEEDED", "FAILED"} for r in self.completed_results):
+            raise ValueError("expected settled dependency result")
+        return self
+
+
+class AgentV4RequestEnvelope(AgentV3RequestEnvelope):
+    protocol_version: Literal[protocol.INPUT_PROTOCOL_VERSION_V4]
+    pending_dependencies: PendingDependencyProjection
+
+    @model_validator(mode="after")
+    def _dependency_scope(self):
+        p, s = self.pending_dependencies, self.snapshot
+        if (p.run_id != self.run_id or p.snapshot_id != s.snapshot_id
+                or p.context_hash != s.context_hash or p.project_id != s.project_id
+                or p.route_id != s.route_id or p.anchor_node_id != s.anchor_node_id):
+            raise ValueError("pending projection scope mismatch")
+        return self
+
+
 def parse_request_envelope(
-        payload: Dict[str, Any]) -> AgentV2RequestEnvelope | AgentV3RequestEnvelope:
+        payload: Dict[str, Any]) -> AgentV2RequestEnvelope | AgentV3RequestEnvelope | AgentV4RequestEnvelope:
     """把原始 JSON 对象解析成请求信封,未知版本 fail-closed。"""
     version = payload.get("protocolVersion")
     if version == protocol.INPUT_PROTOCOL_VERSION:
         return AgentV2RequestEnvelope.model_validate(payload)
+    if version == protocol.INPUT_PROTOCOL_VERSION_V4:
+        return AgentV4RequestEnvelope.model_validate(payload)
     if version == protocol.INPUT_PROTOCOL_VERSION_V3:
         return AgentV3RequestEnvelope.model_validate(payload)
     # 保留 Pydantic 的 ValidationError,而不是为未知版本另造一套并行异常。

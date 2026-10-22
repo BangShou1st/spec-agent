@@ -178,7 +178,7 @@ public class OpenRouterSettingsService implements OpenRouterRuntimeSettingsPort 
     public RuntimeOpenRouterSettings requireRuntimeSettings() {
         OpenRouterSettings s = requireStored();
         requireActivatable();
-        return new RuntimeOpenRouterSettings(s.apiKey(), s.selectedModel());
+        return new RuntimeOpenRouterSettings(s.apiKey(), s.selectedModel(), s.configRevision());
     }
 
     private JsonNode fetchModelRoot(String apiKey, String context) {

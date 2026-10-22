@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.specagent.eval.P3BLiveDatabaseGuardTest" tests="26" skipped="0" failures="0" errors="0" timestamp="2026-10-21T03:25:31" hostname="榜首" time="3.645">
+  <properties/>
+  <testcase name="verifyTargetDatabaseIsolationRefusesNonLiveEvalDatabase()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="1.991"/>
+  <testcase name="verifyTargetDatabaseIsolationRefusesMissingOrBlankUrl()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.007"/>
+  <testcase name="verifyTargetDatabaseIsolationRefusesForbiddenDatabase()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.006"/>
+  <testcase name="seedingAWrongDatabaseChangesZeroRows()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.005"/>
+  <testcase name="validateTargetDatabaseUrlStaticRefusesUndeterminableDatabaseName()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.003"/>
+  <testcase name="validateTargetDatabaseUrlStaticRefusesNonLiveEvalDatabase()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.002"/>
+  <testcase name="aHistoricalNonLiveEvalDatabaseIsRefusedToo()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.003"/>
+  <testcase name="validateTargetDatabaseUrlStaticAcceptsDesignatedLiveDatabase()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.001"/>
+  <testcase name="anUndeterminableIdentityIsRefused()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.002"/>
+  <testcase name="preflightRequiresExplicitCredentialsAndEndpointBeforeConnecting()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.278"/>
+  <testcase name="verifyTargetDatabaseIsolationRefusesUndeterminableIdentity()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.004"/>
+  <testcase name="seedingWithAMismatchedConfiguredNameChangesZeroRows()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.006"/>
+  <testcase name="ordinaryDevelopmentAndTestDatabasesAreRefused()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.002"/>
+  <testcase name="preflightStaticFailureNeverOpensConnection()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.002"/>
+  <testcase name="aConfiguredNameThatDoesNotMatchTheRealConnectionIsRefused()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.003"/>
+  <testcase name="preflightChecksDatabaseAndSameNameServerDriftAndClosesResources()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.619"/>
+  <testcase name="preflightConnectionFailureIsClosedWithoutLeakingDriverDetails()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.03"/>
+  <testcase name="validateTargetDatabaseUrlStaticRefusesForbiddenDatabases()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.003"/>
+  <testcase name="verifyTargetDatabaseIsolationAcceptsMatchingLiveDatabase()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.014"/>
+  <testcase name="unauthorizedPlainSpringBootstrapFailsBeforeDynamicPropertiesAndBeans()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.598"/>
+  <testcase name="onlyADesignatedLiveEvaluationDatabaseIsAccepted()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.005"/>
+  <testcase name="validateTargetDatabaseUrlStaticRefusesMissingOrBlank()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.005"/>
+  <testcase name="databaseNameIsParsedFromTheJdbcUrl()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.001"/>
+  <testcase name="invalidDynamicPropertyTargetRejectsWithoutAnyJdbcConnection()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.004"/>
+  <testcase name="anUnresolvedConfiguredDatabaseNameIsRefused()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.005"/>
+  <testcase name="verifyTargetDatabaseIsolationRefusesMismatchedConnection()" classname="com.specagent.eval.P3BLiveDatabaseGuardTest" time="0.007"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[WARNING: A Java agent has been loaded dynamically (C:\Users\32962\.gradle\caches\modules-2\files-2.1\net.bytebuddy\byte-buddy-agent\1.14.18\417558ea01fe9f0e8a94af28b9469d281c4e3984\byte-buddy-agent-1.14.18.jar)
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
+]]></system-err>
+</testsuite>

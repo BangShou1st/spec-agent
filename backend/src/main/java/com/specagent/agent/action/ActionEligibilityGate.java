@@ -40,6 +40,10 @@ public class ActionEligibilityGate {
     private final ActionEligibilityEvaluator evaluator;
     private final ActionEligibilityValidator validator;
     private final Mode mode;
+    private ActionEligibilityDependencyPort dependencies;
+
+    @Autowired
+    public void setDependencies(ActionEligibilityDependencyPort dependencies) { this.dependencies = dependencies; }
 
     @Autowired
     public ActionEligibilityGate(
@@ -62,6 +66,15 @@ public class ActionEligibilityGate {
     public AgentRequestEnvelope prepareDecisionRequest(AgentRequestEnvelope base) {
         if (mode == Mode.SHADOW) {
             return base;
+        }
+        if (dependencies != null) {
+            var projection = dependencies.freeze(base);
+            var candidate = new AgentRequestEnvelope(AgentProtocol.INPUT_PROTOCOL_VERSION_V4,
+                    base.runId(), base.event(), base.snapshot(), base.capabilities(), base.decisionBudget(),
+                    evaluator.evaluate(base), projection);
+            return new AgentRequestEnvelope(candidate.protocolVersion(), candidate.runId(), candidate.event(),
+                    candidate.snapshot(), candidate.capabilities(), candidate.decisionBudget(),
+                    evaluator.evaluate(candidate), projection);
         }
         ActionEligibility eligibility = evaluator.evaluate(base);
         return new AgentRequestEnvelope(
@@ -92,6 +105,8 @@ public class ActionEligibilityGate {
             throw new ActionIneligibleException(assessment.reasonCodes().get(0));
         }
     }
+
+    public boolean isEnforced() { return mode == Mode.ENFORCED; }
 
     public record Assessment(Mode mode,
                              ActionEligibility eligibility,

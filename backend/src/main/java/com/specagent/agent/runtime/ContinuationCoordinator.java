@@ -51,6 +51,12 @@ public class ContinuationCoordinator {
     private final NodeRepository nodeRepository;
     private final LoopProperties loopProperties;
     private final RunService runService;
+    private WaitDependencyRepository waitDependencies;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setWaitDependencies(WaitDependencyRepository dependencies) { this.waitDependencies = dependencies; }
+    private WorkspaceRunActorRepository runActors;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRunActors(WorkspaceRunActorRepository actors) { this.runActors = actors; }
 
     public ContinuationCoordinator(AgentRunService agentRunService,
                                    AgentRunRepository agentRunRepository,
@@ -94,15 +100,34 @@ public class ContinuationCoordinator {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Agent run not found: " + runId));
         try {
-            return Optional.of(runService.createContinueRun(parent).run());
+            // 续跑调度在后台轮询线程上执行，那里没有任何请求级身份：子 run 的
+            // 委托必须来自父 run 持久化的 workspace 授权，而不是环境里的偶然身份。
+            // 没有持久化委托的旧 run 保持原行为(由既有授权检查 fail-closed)。
+            var actor = persistedActor(runId);
+            if (actor == null) {
+                return Optional.of(runService.createContinueRun(parent).run());
+            }
+            try (var scope = com.specagent.access.ActorContextHolder.bind(actor)) {
+                return Optional.of(runService.createContinueRun(parent).run());
+            }
         } catch (StaleRunTargetException stale) {
             return Optional.empty();
         }
     }
 
+    /** 父 run 持久化的委托身份；没有则返回 null(调用方保持既有行为)。 */
+    private com.specagent.access.ActorContext persistedActor(UUID runId) {
+        if (runActors == null) return null;
+        try {
+            return runActors.require(runId);
+        } catch (com.specagent.access.AccessDeniedException missing) {
+            return null;
+        }
+    }
     /**
      * 从持久化状态裁决单个 run。终态 {@code FAILED} 映射到 {@code FAILED};
-     * 非终态 run 属于调用方错误,直接抛异常。
+     * 非终态 run 映射到 {@link ContinuationVerdict#RUN_NOT_TERMINAL}——它
+     * 不是调用方错误,而是"还没到裁决时点"。
      */
     public ContinuationDecision evaluate(UUID runId) {
         AgentRun run = agentRunService.getRun(runId)
@@ -113,8 +138,13 @@ public class ContinuationCoordinator {
                     "run terminally failed");
         }
         if (run.status() != AgentRunStatus.COMPLETED) {
-            throw new IllegalStateException(
-                    "Continuation needs a terminal run: " + runId);
+            // 抛异常会让调度器在 run 终态化之前每个 tick 都重新认领并重试同一条
+            // 检查:没有重试上限、没有退避、也没有可观察的失败状态,持续占用
+            // outbox 并刷告警。按代次正常收口这条检查即可;run 终态化时
+            // AgentRunTerminalizationService 会重新请求它,仍然可恢复的续跑
+            // 因此不会被丢弃。
+            return ContinuationDecision.of(runId, ContinuationVerdict.RUN_NOT_TERMINAL,
+                    "run is not terminal yet: " + run.status());
         }
         if (agentRunRepository.findChildByParentRunId(runId).isPresent()) {
             return ContinuationDecision.of(runId, ContinuationVerdict.ALREADY_CONTINUED,
@@ -139,6 +169,21 @@ public class ContinuationCoordinator {
         if (events.stream().anyMatch(ContinuationCoordinator::isRespondMessage)) {
             return ContinuationDecision.of(runId, ContinuationVerdict.TERMINAL_RESPONSE,
                     "run emitted a response message");
+        }
+        if (waitDependencies != null) {
+            var waiting = waitDependencies.state(runId);
+            if (waiting.isPresent()) {
+                return switch (waiting.get()) {
+                    case "WAITING" -> ContinuationDecision.of(runId, ContinuationVerdict.PARKED_DEPENDENCY, "WAIT subscription pending");
+                    case "READY" -> ContinuationDecision.of(runId, ContinuationVerdict.EXECUTED_NEW_OBSERVATION, "WAIT dependency settled");
+                    default -> ContinuationDecision.of(runId, ContinuationVerdict.NO_EFFECT, "WAIT subscription invalidated");
+                };
+            }
+        }
+        if (invocationRepository.findByRunId(run.id()).stream()
+                .anyMatch(record -> record.status() == CapabilityResult.Status.PENDING)) {
+            return ContinuationDecision.of(runId, ContinuationVerdict.PARKED_DEPENDENCY,
+                    "a registered deferred capability is pending");
         }
         if (hasNewFacts(run)) {
             return ContinuationDecision.of(runId,

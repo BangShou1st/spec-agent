@@ -27,9 +27,11 @@ from spec_agent_brain.contracts.inputs import parse_request_envelope
 from spec_agent_brain.decision import (
     AmbiguousSourceRefsError,
     BrainContractError,
+    ModelOutputContractError,
     UngroundedReferenceError,
     handle_decision,
 )
+from spec_agent_brain.decision.engine import _parse_model_output
 from spec_agent_brain.model_client import Completion
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "contracts" / "fixtures"
@@ -160,9 +162,10 @@ def test_two_different_source_refs_lists_are_rejected_and_never_merged():
         handle_decision(_request(), ScriptedClient(content))
 
     message = str(raised.value)
-    # 两份列表都被上报,保证冲突可诊断;并且绝不产生并集或覆盖。
-    assert ALLOWED_REF in message
-    assert OTHER_ALLOWED_REF in message
+    # 只上报足以定位的结构和数量，不回显模型生成的 ref 值。
+    assert "action_count=1 top_level_count=1" in message
+    assert ALLOWED_REF not in message
+    assert OTHER_ALLOWED_REF not in message
 
 
 def test_conflicting_lists_are_rejected_even_when_both_are_allowed():
@@ -234,7 +237,9 @@ def test_unknown_top_level_field_is_still_rejected():
     with pytest.raises(BrainContractError) as raised:
         handle_decision(_request(), ScriptedClient(content))
 
-    assert "mysteryField" in str(raised.value)
+    assert "mysteryField" not in str(raised.value)
+    assert raised.value.diagnostic.machine_code == "MODEL_OUTPUT_SCHEMA_INVALID"
+    assert raised.value.diagnostic.field_path is None
 
 
 def test_non_list_top_level_source_refs_is_still_rejected():
@@ -272,16 +277,15 @@ def test_contract_failure_diagnostic_reports_layout_without_model_content():
         handle_decision(_request(), ScriptedClient(content))
 
     message = str(raised.value)
-    assert "layout=keys(" in message
-    assert "topLevelSourceRefs=" in message
-    assert "actionSourceRefs=" in message
+    assert "layout=object" in message
+    assert "topLevelSourceRefs=array[1]" in message
+    assert "actionSourceRefs=absent" in message
     # 有界诊断:模型自己的文本绝不能泄漏进错误信息。
     assert "敏感内容不应进入日志" not in message
 
 
 def test_ambiguous_source_refs_diagnostic_is_length_bounded():
-    # refs 同样是模型输出:超长的条目必须被截断,而不是整段涌进日志行或
-    # 有类型的错误 detail。
+    # refs 同样是模型输出:异常文本不得回显条目，即使其尺寸不受约束。
     oversized = "r" * 8000
     content = _decision_output(
         action_refs=[oversized], top_level_refs=["s" * 8000])
@@ -290,6 +294,37 @@ def test_ambiguous_source_refs_diagnostic_is_length_bounded():
         handle_decision(_request(), ScriptedClient(content))
 
     message = str(raised.value)
-    assert len(message) < 2000
+    assert len(message) < 500
     assert oversized not in message
-    assert "..." in message
+    assert "action_count=1" in message
+    assert "top_level_count=1" in message
+    assert raised.value.diagnostic.machine_code == "MODEL_OUTPUT_AMBIGUOUS_SOURCE_REFS"
+
+
+def test_model_output_schema_diagnostic_is_structured_and_never_contains_values():
+    raw = json.loads(_decision_output())
+    raw["action"]["sourceRefs"] = {
+        "privateValue": "DO_NOT_LOG_THIS_PRIVATE_VALUE"
+    }
+
+    with pytest.raises(ModelOutputContractError) as raised:
+        _parse_model_output(json.dumps(raw, ensure_ascii=False))
+
+    diagnostic = raised.value.diagnostic
+    assert diagnostic.stage == "brain.model_output_validation"
+    assert diagnostic.validator_id == "ModelDecisionOutput"
+    assert diagnostic.machine_code == "MODEL_OUTPUT_SCHEMA_INVALID"
+    assert diagnostic.field_path == "action.sourceRefs"
+    assert diagnostic.expected_type == "array"
+    assert diagnostic.actual_type == "object"
+    assert "DO_NOT_LOG_THIS_PRIVATE_VALUE" not in str(raised.value)
+
+
+def test_invalid_model_json_has_a_specific_parser_failure_code():
+    from spec_agent_brain.decision.engine import ModelOutputContractError
+
+    with pytest.raises(ModelOutputContractError) as raised:
+        _parse_model_output("{not-json")
+
+    assert raised.value.diagnostic.machine_code == "MODEL_OUTPUT_INVALID_JSON"
+    assert raised.value.diagnostic.validator_id == "json.loads"

@@ -7,11 +7,17 @@ package com.specagent.model.contract;
  * 所需的字段;提供商密钥绝不出现在诊断信息中。
  */
 public record RuntimeOpenRouterSettings(String apiKey,
-                                         String selectedModel) {
+                                         String selectedModel,
+                                         long configRevision) {
+
+    public RuntimeOpenRouterSettings(String apiKey, String selectedModel) {
+        this(apiKey, selectedModel, 0);
+    }
 
     /** 防止意外的诊断日志把提供商密钥暴露出去。 */
     @Override
     public String toString() {
-        return "RuntimeOpenRouterSettings[selectedModel=" + selectedModel + "]";
+        return "RuntimeOpenRouterSettings[selectedModel=" + selectedModel
+                + ", configRevision=" + configRevision + "]";
     }
 }

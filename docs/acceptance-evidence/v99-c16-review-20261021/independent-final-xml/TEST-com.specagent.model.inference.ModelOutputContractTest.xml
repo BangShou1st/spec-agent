@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.specagent.model.inference.ModelOutputContractTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-10-21T03:25:34" hostname="榜首" time="0.061">
+  <properties/>
+  <testcase name="jsonSchemaContractIsAnImmutableSnapshot()" classname="com.specagent.model.inference.ModelOutputContractTest" time="0.012"/>
+  <testcase name="requestKeepsExplicitContract()" classname="com.specagent.model.inference.ModelOutputContractTest" time="0.013"/>
+  <testcase name="jsonSchemaContractCarriesNameAndSchema()" classname="com.specagent.model.inference.ModelOutputContractTest" time="0.007"/>
+  <testcase name="jsonObjectContractExists()" classname="com.specagent.model.inference.ModelOutputContractTest" time="0.004"/>
+  <testcase name="requestKeepsExplicitJsonObjectContract()" classname="com.specagent.model.inference.ModelOutputContractTest" time="0.001"/>
+  <testcase name="invalidJsonSchemaContractsFailClosed()" classname="com.specagent.model.inference.ModelOutputContractTest" time="0.008"/>
+  <testcase name="requestWithoutExplicitContractDefaultsToText()" classname="com.specagent.model.inference.ModelOutputContractTest" time="0.005"/>
+  <testcase name="textContractExists()" classname="com.specagent.model.inference.ModelOutputContractTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
