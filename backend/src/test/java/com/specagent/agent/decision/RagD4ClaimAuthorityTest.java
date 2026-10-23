@@ -42,4 +42,45 @@ class RagD4ClaimAuthorityTest {
         var req=request("EXTERNAL_EVIDENCE");
         assertThatCode(()->validate(req,"confirmed",List.of())).doesNotThrowAnyException();
     }
+
+    // The current State Update cycle persists the immutable Answer it is processing
+    // before the model call. That Answer is not lineage yet, but it is the canonical
+    // evidence the runtime re-anchors every CONFIRMED claim to, so a model that cites
+    // it (as the prompt requires) must not be rejected.
+    static final String CURRENT_ANSWER="answer:55555555-5555-4555-8555-555555555555";
+    AgentRequestEnvelope requestWithRetrievedAnswer(String sourceKind,String scope,
+                                                    String authority,String originRoute) throws Exception {
+        var json=new ObjectMapper();
+        ObjectNode body=(ObjectNode)json.readTree(Files.readString(Path.of("../contracts/fixtures/agent-input-valid.json")));
+        ObjectNode snapshot=(ObjectNode)body.get("snapshot");
+        snapshot.withArray("allowedSourceRefs").add(CURRENT_ANSWER);
+        var item=new LinkedHashMap<String,Object>(Map.of("sourceRef",CURRENT_ANSWER,
+            "sourceKind",sourceKind,"scope",scope,"authority",authority,
+            "content","用户本次回答","provenance",Map.of(),"location",Map.of(),
+            "retrievalReason","current-route-memory"));
+        if(originRoute!=null) item.put("originRouteId",originRoute);
+        snapshot.set("retrievedContext",json.valueToTree(List.of(item)));
+        return AgentContracts.read(json.writeValueAsString(body),AgentRequestEnvelope.class);
+    }
+    static final String CURRENT_ROUTE="66666666-6666-6666-6666-666666666666";
+    @Test void currentRouteUserAuthoredAnswerConfirmsClaim() throws Exception {
+        var req=requestWithRetrievedAnswer("ANSWER","ROUTE","USER_AUTHORED",CURRENT_ROUTE);
+        assertThatCode(()->validate(req,"confirmed",List.of(CURRENT_ANSWER))).doesNotThrowAnyException();
+    }
+    @Test void currentRouteAnswerFromAnotherRouteStillCannotConfirm() throws Exception {
+        var req=requestWithRetrievedAnswer("ANSWER","ROUTE","USER_AUTHORED",
+            "88888888-8888-4888-8888-888888888888");
+        assertThatThrownBy(()->validate(req,"confirmed",List.of(CURRENT_ANSWER)))
+            .isInstanceOf(AgentContractException.class)
+            .hasMessageContaining("canonical answer evidence");
+    }
+    @ParameterizedTest @ValueSource(strings={"ANSWER|PROJECT|USER_AUTHORED","ANSWER|ROUTE|ASSUMED","NODE|ROUTE|USER_AUTHORED"})
+    void onlyCurrentRouteUserAuthoredAnswerConfirms(String variant) throws Exception {
+        String[] parts=variant.split("\\|");
+        var req=requestWithRetrievedAnswer(parts[0],parts[1],parts[2],CURRENT_ROUTE);
+        assertThatThrownBy(()->validate(req,"confirmed",List.of(CURRENT_ANSWER)))
+            .isInstanceOf(AgentContractException.class)
+            .hasMessageContaining("canonical answer evidence");
+        assertThatCode(()->validate(req,"assumed",List.of(CURRENT_ANSWER))).doesNotThrowAnyException();
+    }
 }

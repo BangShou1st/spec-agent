@@ -209,9 +209,35 @@ public final class AgentBrainResponseValidator {
                     .filter(entry -> entry.answer()!=null)
                     .anyMatch(entry -> claim.sourceRefs().contains("answer:"+entry.answer().id())
                             || claim.sourceRefs().contains("node:"+entry.node().id()));
-            if(!answeredLineage) throw new AgentContractException(
+            // The current route's own user-authored Answer is canonical evidence even
+            // when it is not in lineage yet: the State Update cycle is processing that
+            // very Answer and re-anchors every CONFIRMED claim to it. Retrieval of any
+            // other kind (external evidence, other routes, nodes, assumptions) still
+            // never authorizes confirmation.
+            boolean currentRouteUserAnswer = citesCurrentRouteUserAnswer(request, claim.sourceRefs());
+            if(!answeredLineage && !currentRouteUserAnswer) throw new AgentContractException(
                     "Confirmed claim requires canonical answer evidence, not retrieval alone");
         }
+    }
+
+    /**
+     * 当前路线自己的用户回答可以确认 claim。条件全部成立才放行:来源是
+     * ANSWER、范围是 ROUTE、权威级别是 USER_AUTHORED、且属于本次请求的路线。
+     * 外部证据、其他路线、节点/项目级检索以及任何非用户撰写的记忆都不在此列。
+     */
+    private static boolean citesCurrentRouteUserAnswer(AgentRequestEnvelope request,
+                                                       List<String> refs) {
+        AgentInputSnapshot snapshot = request.snapshot();
+        UUID routeId = snapshot.routeId();
+        if (routeId == null) {
+            return false;
+        }
+        return snapshot.retrievedContext().stream()
+                .filter(item -> item.sourceKind() == com.specagent.retrieval.RetrievalSourceKind.ANSWER)
+                .filter(item -> item.scope() == com.specagent.retrieval.RetrievalScope.ROUTE)
+                .filter(item -> item.authority() == com.specagent.retrieval.MemoryAuthority.USER_AUTHORED)
+                .filter(item -> routeId.equals(item.originRouteId()))
+                .anyMatch(item -> refs.contains(item.sourceRef()));
     }
 
     private static void validateObservation(com.specagent.agent.protocol.ObservationView observation) {

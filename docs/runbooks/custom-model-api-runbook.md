@@ -38,3 +38,7 @@ date: 2026-10-23
 - 标准 `SPEC_AGENT_TEST_DB_*` 隔离目标、服务端真实 endpoint 与显式 `-PdatabaseIntegration=true -PexternalServices=true`
 
 调用前 GET 目录核实免费，随后最多四次底层模型请求，无自动重试。没有 Key、免费证据或额度时不运行，不改用付费模型。未执行或跳过的 live Harness 不能报告为通过。
+
+目录完全不公布价格时（Gemini 的 OpenAI 兼容 `/models` 就是一例），零费用无法由元数据证明，必须由 owner 为该轮出具 `SPEC_AGENT_LIVE_COST_ATTESTATION` 声明，并把声明与请求硬上限一起记录在证据中。绝不由模型名称、`:free` 字样或历史价格推断免费。
+
+Gemini 目录返回 `models/<id>` 前缀，而 Chat Completions 端点使用裸 id；目录只是发现元数据，选中模型保持裸 id 并照常验证。V2-Live 端到端验收由 opt-in 的 `ModelServiceV2LiveAcceptanceTest` 驱动（`SPEC_AGENT_MODEL_V2_LIVE=true`）。

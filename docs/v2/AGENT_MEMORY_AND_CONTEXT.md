@@ -151,6 +151,10 @@ The Agent must not assume:
 
 Runtime must preserve provenance and status so the Decision Engine can distinguish these cases.
 
+### 9.1 Confirmation Authority
+
+A `CONFIRMED` claim must be anchored to a canonical Answer. Answers in the frozen lineage always qualify. The current route's own `USER_AUTHORED` Answer being processed by this State Update cycle also qualifies even though it is not in lineage yet: the cycle persists that immutable Answer before the model call and re-anchors every `CONFIRMED` claim to it. Retrieved external evidence, another route's Answer, node/project-scoped retrieval, and assumption or unresolved memory never authorize confirmation.
+
 ## 10. Context Snapshot Compatibility
 
 Existing `ContextSnapshot` lineage isolation is valuable and should be preserved during migration.
