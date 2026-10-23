@@ -8,7 +8,8 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { safeWebUrl } from '../presentation/webSources'
 export interface GaResourceRef { kind: string; id: string; label: string; metadata?: Record<string, unknown> | null }
-const props = defineProps<{ resources: GaResourceRef[] }>()
+const props = defineProps<{ resources: GaResourceRef[]; locatableSources?: boolean }>()
+const emit = defineEmits<{ 'open-source': [source: GaResourceRef] }>()
 const router = useRouter()
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 const items = computed(() => (props.resources ?? []).filter((r) => r && ['PROJECT', 'SOURCE', 'WEB_SOURCE'].includes(r.kind) && typeof r.id === 'string' && UUID_RE.test(r.id) && typeof r.label === 'string' && r.label.length > 0 && (r.kind !== 'WEB_SOURCE' || safeWebUrl(r.metadata?.url))).slice(0, 10))
@@ -38,7 +39,8 @@ async function openProject(id: string): Promise<void> { await router.push('/proj
           <p class="ga-source-excerpt">{{ r.metadata?.excerpt }}</p>
         </div>
         <div v-else class="ga-resources__btn" data-test="ga-source-evidence">
-          <span class="ga-resources__label">{{ r.label }}</span>
+          <button v-if="props.locatableSources && typeof r.metadata?.nodeId === 'string' && UUID_RE.test(r.metadata.nodeId)" type="button" class="ga-source-locate" data-test="source-locate" @click="emit('open-source', r)">{{ r.label }}</button>
+          <span v-else class="ga-resources__label">{{ r.label }}</span>
           <span class="ga-resources__meta">来源版本 {{ r.metadata?.sourceVersion }}<template v-if="r.metadata?.startOffset !== undefined"> · 位置 {{ r.metadata.startOffset }}–{{ r.metadata.endOffset }}</template></span>
           <p class="ga-source-excerpt">{{ r.metadata?.excerpt }}</p>
         </div>
@@ -55,5 +57,7 @@ async function openProject(id: string): Promise<void> { await router.push('/proj
 .ga-resources__btn:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: var(--color-focus); }
 .ga-resources__label { font-size: 13px; font-weight: 600; color: var(--color-text); overflow-wrap: anywhere; }
 .ga-source-excerpt { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }
-.ga-resources__meta { font-size: 12px; color: var(--color-text-muted); }
+.ga-source-locate { color: var(--color-text); background: transparent; border: 0; padding: 0; text-align: left; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; overflow-wrap: anywhere; }
+.ga-source-locate:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.ga-resources__meta { font-size: 12px; color: var(--color-text-muted); overflow-wrap: anywhere; }
 </style>

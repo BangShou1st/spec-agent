@@ -5,6 +5,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import NodeInspector from '@/features/workspace/components/NodeInspector.vue'
 import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'
+import { useGraphUiStore } from '@/features/workspace/state/graphUiStore'
 import type { SpecAgentGraphNodeData } from '@/features/workspace/graph/graphProjection'
 
 vi.mock('@/features/projects/api/projects', () => ({ getProject: vi.fn() }))
@@ -17,10 +18,11 @@ vi.mock('@/features/workspace/api/graph', () => ({ getProjectGraph: vi.fn() }))
 vi.mock('@/features/workspace/api/graphCommands', () => ({
   acceptProposal: vi.fn(),
   rejectProposal: vi.fn(),
+  getNodeQueryResult: vi.fn(),
 }))
 
 import { getProjectGraph } from '@/features/workspace/api/graph'
-import { acceptProposal, rejectProposal } from '@/features/workspace/api/graphCommands'
+import { acceptProposal, rejectProposal, getNodeQueryResult } from '@/features/workspace/api/graphCommands'
 
 const mockedGetProjectGraph = vi.mocked(getProjectGraph)
 const mockedAcceptProposal = vi.mocked(acceptProposal)
@@ -98,6 +100,86 @@ describe('node inspector ask AI proposal', () => {
     localStorage.clear()
     setActivePinia(createPinia())
     vi.clearAllMocks()
+  })
+  it('shows host sources and revalidates before locating the canonical source node', async () => {
+    const store = useWorkspaceStore()
+    const target = '11111111-1111-4111-8111-111111111111'
+    store.projectId = 'p1'
+    store.nodeQuery = { nodeId: 'n1', routeId: 'rA', question: 'q', runId: 'run-1', status: 'COMPLETED',
+      message: '正文中 resource:forged 不生成卡片', sourceStatus: 'AVAILABLE', resourceRefs: [
+        { kind: 'SOURCE', id: target, label: '宿主核验资料', metadata: { nodeId: target, sourceRef: 'node:' + target, sourceVersion: 'v1', excerpt: '可信片段' } },
+      ] }
+    const refresh = vi.spyOn(store, 'refreshNodeQueryResult').mockResolvedValue()
+    const wrapper = mount(NodeInspector, { props: { data: nodeData() } })
+    expect(wrapper.findAll('[data-test="ga-source-evidence"]')).toHaveLength(1)
+    await wrapper.get('[data-test="source-locate"]').trigger('click')
+    await flushPromises()
+    expect(refresh).toHaveBeenCalledOnce()
+    expect(useGraphUiStore().selectedNodeIds).toEqual([target])
+  })
+  it('removes answer and navigation when source authority refresh rejects the citation', async () => {
+    const store = useWorkspaceStore()
+    const target = '11111111-1111-4111-8111-111111111111'
+    store.nodeQuery = { nodeId: 'n1', routeId: 'rA', question: 'q', runId: 'run-1', status: 'COMPLETED',
+      message: '撤回后不应继续显示的内容', sourceStatus: 'AVAILABLE', resourceRefs: [{ kind: 'SOURCE', id: target, label: '资料', metadata: { nodeId: target } }] }
+    vi.spyOn(store, 'refreshNodeQueryResult').mockImplementation(async () => {
+      store.nodeQuery = { ...store.nodeQuery!, message: null, resourceRefs: [], sourceStatus: 'UNAVAILABLE' }
+    })
+    const wrapper = mount(NodeInspector, { props: { data: nodeData() } })
+    await wrapper.get('[data-test="source-locate"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="query-source-unavailable"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('撤回后不应继续显示的内容')
+    expect(wrapper.find('[data-test="source-locate"]').exists()).toBe(false)
+    expect(useGraphUiStore().selectedNodeIds).toEqual([])
+  })
+  it('does not manufacture citations for a legacy text-only response', () => {
+    const store = useWorkspaceStore()
+    store.nodeQuery = { nodeId: 'n1', routeId: 'rA', question: 'q', runId: 'run-1', status: 'COMPLETED', message: 'node:11111111-1111-4111-8111-111111111111' }
+    const wrapper = mount(NodeInspector, { props: { data: nodeData() } })
+    expect(wrapper.find('[data-test="ga-tool-resources"]').exists()).toBe(false)
+  })
+  it('cannot navigate via a second click while source revalidation is pending', async () => {
+    const store = useWorkspaceStore()
+    const target = '11111111-1111-4111-8111-111111111111'
+    store.nodeQuery = { nodeId: 'n1', routeId: 'rA', question: 'q', runId: 'run-1', status: 'COMPLETED',
+      message: '旧回答', sourceStatus: 'AVAILABLE', resourceRefs: [{ kind: 'SOURCE', id: target, label: '资料', metadata: { nodeId: target } }] }
+    let resolve!: () => void
+    const refresh = vi.spyOn(store, 'refreshNodeQueryResult').mockImplementation(() => new Promise<void>(r => { resolve = r }))
+    const wrapper = mount(NodeInspector, { props: { data: nodeData() } })
+    await wrapper.get('[data-test="source-locate"]').trigger('click')
+    await wrapper.get('[data-test="source-locate"]').trigger('click')
+    await flushPromises()
+    expect(refresh).toHaveBeenCalledOnce()
+    expect(useGraphUiStore().selectedNodeIds).toEqual([])
+    store.nodeQuery = { ...store.nodeQuery!, message: null, sourceStatus: 'UNAVAILABLE', resourceRefs: [] }
+    resolve()
+    await flushPromises()
+    expect(useGraphUiStore().selectedNodeIds).toEqual([])
+    expect(wrapper.find('[data-test="query-source-unavailable"]').exists()).toBe(true)
+  })
+  it('discards a citation refresh response from an earlier project session', async () => {
+    const store = useWorkspaceStore()
+    store.projectId = 'p1'
+    store.nodeQuery = { nodeId: 'n1', routeId: 'rA', question: 'q', runId: 'run-1', status: 'COMPLETED', message: 'old' }
+    let resolve!: (v: Awaited<ReturnType<typeof getNodeQueryResult>>) => void
+    vi.mocked(getNodeQueryResult).mockReturnValue(new Promise(r => { resolve = r }))
+    const pending = store.refreshNodeQueryResult('n1', 'run-1', { routeId: 'rA', question: 'q' })
+    store.projectId = 'p2'
+    store.projectSessionId++
+    store.nodeQuery = null
+    resolve({ runId: 'run-1', status: 'COMPLETED', producedNodeId: null, message: 'private old answer', sourceStatus: 'AVAILABLE', resourceRefs: [] })
+    await pending
+    expect(store.nodeQuery).toBeNull()
+  })
+  it('clears cached citation content when an authority refresh cannot be read', async () => {
+    const store = useWorkspaceStore()
+    store.projectId = 'p1'
+    store.nodeQuery = { nodeId: 'n1', routeId: 'rA', question: 'q', runId: 'run-1', status: 'COMPLETED', message: 'old', sourceStatus: 'AVAILABLE', resourceRefs: [] }
+    vi.mocked(getNodeQueryResult).mockRejectedValue(new Error('unavailable'))
+    await store.refreshNodeQueryResult('n1', 'run-1', { routeId: 'rA', question: 'q' })
+    expect(store.nodeQuery?.message).toBeNull()
+    expect(store.nodeQuery?.sourceStatus).toBe('VALIDATION_FAILED')
   })
 
   it('shows a visible proposal awaiting approval with accept/reject entry points', async () => {

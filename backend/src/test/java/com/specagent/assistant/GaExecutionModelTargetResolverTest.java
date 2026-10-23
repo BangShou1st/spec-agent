@@ -218,6 +218,16 @@ class GaExecutionModelTargetResolverTest {
         assertThat(resolution.target().settingsRevision()).isEqualTo("custom-settings:2");
         assertThat(resolution.mode()).isEqualTo(GaExecutionMode.TEXT_CHAT);
     }
+    @Test void onlyQualifiedValidatedCustomEndpointAndModelResolveAsNativeTools() {
+        hostSecret("secret");
+        when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
+        when(customSettings.requireStoredOrNull()).thenReturn(custom("CHAT_COMPLETIONS","lite",2));
+        when(customSettings.activatable()).thenReturn(true);
+        when(qualification.customQualified("https://custom.example/v1","lite")).thenReturn(true);
+        assertThat(ready(resolver().resolveActive()).mode()).isEqualTo(GaExecutionMode.NATIVE_TOOLS);
+        when(customSettings.activatable()).thenReturn(false);
+        assertThat(unavailableCode(resolver().resolveActive())).isEqualTo(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED);
+    }
 
     @Test
     void customNonChatCompletionsFormatIsProtocolUnsupported() {

@@ -1,0 +1,18 @@
+{
+  "review": "AI_AUDITED_SYNTHETIC_DELIVERY_EVALUATION",
+  "model": "gemini-3.5-flash-lite",
+  "maxUnderlyingRequests": 12,
+  "automaticRetries": 0,
+  "projectTitle": "D4 R2 引用交付验收",
+  "anchor": "交付快照验签约定",
+  "resource": "合成交付资源：交付快照每31天执行验签，验签失败证据保留730天。此资料不代表用户已确认任何新业务意图。",
+  "query": "根据资源，交付快照的验签周期和失败证据留存期限分别是多少？请给出两个数值及真实结构化引用，不修改Graph。",
+  "requiredFacts": ["31", "730"],
+  "requiredSource": "actual frozen resource-chunk sourceRef",
+  "assertions": ["vectorUnavailable=false", "real Java broker and Python Brain", "sourceRefs stored atomically with terminal response", "API sourceStatus=AVAILABLE", "host source card locates canonical resource", "withdrawal makes sourceStatus=UNAVAILABLE and hides answer/cards", "original audit and frozen replay retained"],
+  "globalAssistant": {
+    "queryTemplate": "请调用一次 project.get_summary 获取项目 {projectId} 的概况。只根据工具观测，报告项目标题，不执行任何写入。",
+    "capability": "project.get_summary",
+    "assertions": ["actual native provider tool_calls", "host argument and permission validation", "actual capability invocation SUCCEEDED", "ToolMessage observation reaches create_agent", "final answer contains actual project title", "checkpoint restored"]
+  }
+}

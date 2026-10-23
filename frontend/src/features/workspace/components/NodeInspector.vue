@@ -17,6 +17,7 @@ import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'
 import { useRunRegistryStore } from '@/features/workspace/state/runRegistryStore'
 import { useGraphUiStore } from '@/features/workspace/state/graphUiStore'
 import NodeRecoveryBar from '@/features/workspace/graph/components/NodeRecoveryBar.vue'
+import ProjectResourceList, { type GaResourceRef } from '@/features/global-assistant/components/ProjectResourceList.vue'
 import { useRouter } from 'vue-router'
 
 /**
@@ -182,6 +183,25 @@ const queryResult = computed(() => {
     actionFamily: pending.actionFamily,
   } as typeof workspace.nodeQuery
 })
+
+const verifyingSources = ref(false)
+async function refreshQuerySources(): Promise<void> {
+  const query = queryResult.value
+  if (!query || verifyingSources.value) return
+  verifyingSources.value = true
+  try { await workspace.refreshNodeQueryResult(query.nodeId, query.runId, { routeId: query.routeId, question: query.question }) }
+  finally { verifyingSources.value = false }
+}
+async function locateQuerySource(source: GaResourceRef): Promise<void> {
+  if (verifyingSources.value) return
+  const runId = queryResult.value?.runId
+  await refreshQuerySources()
+  const fresh = queryResult.value
+  if (!fresh || fresh.runId !== runId || fresh.sourceStatus !== 'AVAILABLE') return
+  const verified = fresh.resourceRefs?.find(r => r.id === source.id)
+  const nodeId = verified?.metadata?.nodeId
+  if (typeof nodeId === 'string' && /^[0-9a-f-]{36}$/i.test(nodeId)) graphUi.selectNode(nodeId)
+}
 
 const acceptingProposal = ref(false)
 const rejectingProposal = ref(false)
@@ -361,8 +381,13 @@ function relationDirectionLabel(relation: {
           <template v-else-if="queryResult.status === 'REJECTED'">
             <span class="badge badge-warn">提案已拒绝，Graph 保持不变</span>
           </template>
+          <template v-else-if="queryResult.sourceStatus === 'UNAVAILABLE' || queryResult.sourceStatus === 'VALIDATION_FAILED'">
+            <p role="status" data-test="query-source-unavailable">来源已变更或不可访问，原回答暂不可展示。请重新查询。</p>
+          </template>
           <template v-else-if="queryResult.status === 'COMPLETED' && queryResult.message">
             <p class="graph-answer-text">{{ queryResult.message }}</p>
+            <ProjectResourceList :resources="queryResult.resourceRefs ?? []" locatable-sources @open-source="locateQuerySource" />
+            <button v-if="queryResult.resourceRefs?.length" type="button" class="btn btn-small" :disabled="verifyingSources" data-test="query-refresh-sources" @click="refreshQuerySources">{{ verifyingSources ? '正在核验来源…' : '重新核验来源' }}</button>
           </template>
           <template v-else-if="queryResult.status === 'COMPLETED'">
             <span class="badge badge-warn">AI 未返回文字回答（可查看待确认提案）</span>

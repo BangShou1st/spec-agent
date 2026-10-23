@@ -260,7 +260,8 @@ public class GaExecutionModelTargetResolver {
         }
         return new Ready(new GaModelTarget(ModelProvider.CUSTOM.name(), stored.selectedModel(),
                 "custom-settings:" + stored.configRevision(), stored.apiKey()),
-                GaExecutionMode.TEXT_CHAT);
+                qualification.customQualified(stored.baseUrl(),stored.selectedModel())
+                    ? GaExecutionMode.NATIVE_TOOLS : GaExecutionMode.TEXT_CHAT);
     }
 
     private static Unavailable unavailable(String errorCode, String reason) {

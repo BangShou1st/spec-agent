@@ -1,7 +1,30 @@
+---
+status: Canonical
+authority: Current Authority
+---
+
 # Model Gateway
 
 Status: first-version design freeze  
 Date: 2026-08-17
+
+Current adapter clarification (2026-10-23, D4-R2): Custom Chat Completions
+uses the existing provider-neutral GA tool contract and adapter only when the
+exact base URL and model are explicitly registered in
+`spec.global-assistant.ga-native.custom-qualified-targets`. The default list is
+empty. Configuration must first pass the existing compatibility probe; every
+native request must match its frozen model and settings revision. Unqualified
+Custom targets and OpenRouter retain `requireTextOnly` rejection of tools and
+tool history. Registration requires independent real tool-round-trip evidence;
+text compatibility alone is insufficient. Java continues to validate model tool
+identity, catalog, scope, arguments, permissions, budgets and side effects.
+Credentials remain in the secure Java host, never Python or checkpoints.
+The existing Custom transport is buffered (one provider request per call), with
+no automatic retry, provider switch, or prompt-simulated tool calls.
+R2's Gemini 3.5 Flash Lite probe returned a native tool call but the subsequent
+model request failed with `PROVIDER_REQUEST_ERROR`. This does **not** qualify the
+complete Gemini tool protocol; no Gemini target is enabled in shared/default
+configuration. See [R2 evidence](acceptance-evidence/rag-d4-r2-20261023/summary.md).
 
 ## 1. Purpose
 

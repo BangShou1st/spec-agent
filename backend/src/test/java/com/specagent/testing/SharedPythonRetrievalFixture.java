@@ -31,16 +31,16 @@ public abstract class SharedPythonRetrievalFixture {
         int pythonPort;
         try(var socket=new java.net.ServerSocket(0)) { pythonPort=socket.getLocalPort(); }
         Path root=Path.of("..").toAbsolutePath().normalize();
-        Path logs=root.resolve("scratch/rag-d4-r1"); Files.createDirectories(logs);
+        Path logs=processLogDirectory(root); Files.createDirectories(logs);
         var builder=new ProcessBuilder(PythonExecutable.locate(root),"-m","uvicorn",
             "spec_agent_brain.app:create_app","--factory","--host","127.0.0.1","--port",Integer.toString(pythonPort));
         builder.directory(root.resolve("agent-brain").toFile());
         builder.environment().put("SPEC_AGENT_BRAIN_MODEL_MODE","broker");
         builder.environment().put("SPEC_AGENT_INTERNAL_BROKER_URL","http://127.0.0.1:"+port+"/internal/v1/model-inference");
         builder.environment().put("SPEC_AGENT_BRAIN_INTERNAL_SECRET",brain.getInternalSecret());
-        // Deterministic lexical-degradation fixture: no live embedding or paid model calls.
-        // Python fusion, authorized store RPC and source validation remain real.
-        builder.environment().put("SPEC_AGENT_OLLAMA_URL","http://127.0.0.1:1");
+        // Default fixture degrades to lexical retrieval. Explicit live subclasses may
+        // override embeddingUrl; Python fusion, host RPC and source validation remain real.
+        builder.environment().put("SPEC_AGENT_OLLAMA_URL",embeddingUrl());
         builder.redirectErrorStream(true).redirectOutput(Files.createTempFile(logs,"retrieval-",".log").toFile());
         process=builder.start();
         brain.setBaseUrl("http://127.0.0.1:"+pythonPort);
@@ -56,6 +56,9 @@ public abstract class SharedPythonRetrievalFixture {
         }
         fail("Matching Python fixture did not become ready");
     }
+
+    protected String embeddingUrl() {return "http://127.0.0.1:1";}
+    protected Path processLogDirectory(Path root) {return root.resolve("scratch/retrieval-fixtures");}
 
     protected Project createProject(String title) {
         Project project=fixtureProjects.createProject(title); ownedProjects.add(project.id()); return project;

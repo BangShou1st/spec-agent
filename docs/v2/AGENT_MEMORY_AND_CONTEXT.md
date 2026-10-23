@@ -15,6 +15,23 @@ Core principle:
 
 > **Graph is durable memory. Context is a selected reasoning view. Agent state is temporary cognition.**
 
+### NodeQuery source delivery (D4-R2)
+
+A validated read-only NodeQuery commits structured `sourceRefs` in its existing
+`RESPOND_MESSAGE` event in the same transaction as terminalization. This is audit
+provenance, not a new Graph fact or an Answer mutation. Historical events without
+that field remain text-only (`LEGACY`); answer text is never parsed into citations.
+Query reads replay the frozen input and recheck current Java source authority,
+project access, retraction, current source policy, version and content identity. Only those identities
+produce the existing `SOURCE` resource cards and canonical node navigation.
+The API exposes `sourceStatus` (`LEGACY`, `NONE`, `AVAILABLE`, `UNAVAILABLE`,
+`VALIDATION_FAILED`) with verified `sourceRefs` and `resourceRefs`. An unavailable
+or invalid source hides the answer and cards from this current presentation,
+while preserving original audit events and frozen replay. Validation errors are
+explicit, not ordinary zero hits. The UI revalidates before source navigation,
+clears cached content on authorization/read failure and ignores previous-project
+responses. Rechecking does not retrieve again, invoke a model, or rewrite history.
+
 ## 2. Memory Layers
 
 ```text

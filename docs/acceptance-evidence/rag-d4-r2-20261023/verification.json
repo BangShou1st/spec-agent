@@ -1,0 +1,315 @@
+{
+  "status": "D4_PARTIAL",
+  "baseline": "b880a1ac9f89884724660fd654b64b387f884b27",
+  "branch": "dev",
+  "review": "AI_AUDITED_SYNTHETIC_DELIVERY_EVALUATION",
+  "independentHumanLabels": false,
+  "newFixedLiveScenarios": 2,
+  "datasetSha256": "24de3f31424c3d5a5444af83ec8c1daee766380bd84498c2e7419362d5a2c97f",
+  "historicalScoresAndR102Unchanged": true,
+  "delivery": {
+    "A": "PASS_REAL_GEMINI_API_AND_DESKTOP_UI",
+    "B": "PASS_WITHDRAWAL_API_AND_STALE_CARD_CLICK",
+    "C": "PASS_NORMAL_OLLAMA_VECTOR",
+    "D": "NOT_QUALIFIED_SECOND_NATIVE_REQUEST_FAILED",
+    "structuredCitationPersistence": true,
+    "currentAuthorityProjection": true,
+    "plainTextNeverCreatesCards": true,
+    "legacyTextOnlyCompatible": true,
+    "auditAndFrozenReplayPreserved": true,
+    "actualProjectTitle": "D4 R2 引用交付验收",
+    "projectFacts": {
+      "correct": 2,
+      "required": 2
+    },
+    "projectAnswerScenarios": {
+      "correct": 1,
+      "total": 1
+    },
+    "requiredResourceCitations": {
+      "valid": 1,
+      "required": 1
+    },
+    "refusalScenarios": {
+      "tested": 0,
+      "rate": null
+    },
+    "unsupportedAssertions": {
+      "observed": 0,
+      "reviewedProjectScenarios": 1,
+      "reviewer": "AI"
+    },
+    "retrieval": {
+      "retrievalEngineVersion": "python-rag.v1",
+      "profileId": "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+      "indexGeneration": "57a2f31a-7f05-44a6-ad41-e55095cbeb80",
+      "vectorUnavailable": false,
+      "supplementalRetrievalUnavailable": false
+    },
+    "embeddingModel": "qwen3-embedding:0.6b",
+    "embeddingProfileUnchanged": true
+  },
+  "nativeTools": {
+    "provider": "Gemini",
+    "model": "gemini-3.5-flash-lite",
+    "nativeCallsReturned": 1,
+    "name": "project_get_summary",
+    "subsequentModelRequest": "PROVIDER_REQUEST_ERROR",
+    "pythonBrokerStatus": 502,
+    "finalAnswerCompleted": false,
+    "completeRoundTripQualified": false,
+    "exactProviderFailureDetail": "NOT_RETAINED_IN_FIRST_OBSERVATION",
+    "hostObservationDetail": "NOT_RETAINED_BEFORE_OWNED_THREAD_CLEANUP",
+    "rootCause": "NOT_PROVEN; do not infer a specific provider history/signature error",
+    "sharedDefaultQualifiedTargets": [],
+    "retainedSafety": [
+      "requireTextOnly for unqualified targets",
+      "exact endpoint/model qualification",
+      "frozen settings revision",
+      "Java tool catalog/identity/scope/argument/permission/budget enforcement",
+      "provider credentials remain Java-only"
+    ],
+    "blocksProjectCitationDelivery": false,
+    "blocksCompleteGeminiToolCloseout": true
+  },
+  "tests": {
+    "javaAffectedLatestUnique": 44,
+    "javaArchitectureUnique": 52,
+    "javaTotalUnique": 96,
+    "javaFailures": 0,
+    "javaErrors": 0,
+    "javaSkipped": 0,
+    "javaAffectedSelectionBeforeFinalPolicyAddition": 43,
+    "latestCitationClass": 9,
+    "latestBoundaryOfflineSelection": 14,
+    "frontend": {
+      "completed": 108,
+      "failures": 0,
+      "skipped": 0,
+      "typecheck": "PASS",
+      "build": "PASS"
+    },
+    "python": {
+      "completed": 63,
+      "failures": 0,
+      "skipped": 0
+    },
+    "liveHarness": {
+      "completed": 1,
+      "junitFailures": 0,
+      "skipped": 0,
+      "meaning": "A/B/C asserted; independent D failure explicitly recorded, not a full tool-chain PASS"
+    },
+    "initialDeterministicRun": {
+      "completed": 38,
+      "failures": 2,
+      "fixtureFailures": [
+        "revoked read throws typed 404 rather than returning ResponseEntity",
+        "Mockito re-stubbing invoked prior answer with null argument"
+      ],
+      "originalLogRetained": true
+    },
+    "confirmedWriteBoundary": "REAL_ISOLATED_DATABASE_PENDING_PROPOSAL_ONLY",
+    "unauthorizedConfirmedWrites": 0,
+    "duplicateGraphEffects": 0,
+    "invalidCitationCardsShown": 0,
+    "coveredSourceSafetyViolations": 0,
+    "scopeLimitation": "targeted revoked membership, stale/retracted/current-policy/forged source cases; not the full P2 Private identity matrix",
+    "javaArchitectureFinalSourceSelection": 52
+  },
+  "usage": {
+    "underlyingRequests": 4,
+    "compatibilityProbes": 1,
+    "gaNativeRequests": 2,
+    "projectRequests": 1,
+    "retries": 0,
+    "judgeCalls": 0,
+    "reportedInputTokens": 5508,
+    "reportedOutputTokens": 256,
+    "reportedTokens": 5764,
+    "unreportedUsage": [
+      "compatibility probe",
+      "failed native request"
+    ],
+    "successfulInferenceLatencyMs": {
+      "samples": [
+        1430,
+        1610
+      ],
+      "n": 2,
+      "p50": 1520,
+      "p95": 1601,
+      "method": "linear interpolation; excludes compatibility probe and failed call; too small for performance claims"
+    },
+    "projectWorkerTotalMs": 3120,
+    "firstAnsweredApiResponseFromUiSubmitMs": 4800.0,
+    "firstTokenOrDomPaintMs": null,
+    "billingTier": "free tier verified before dispatch",
+    "expectedAdditionalCostUsd": 0,
+    "actualBilledCost": "NOT_EXPOSED_BY_API_NO_BILLING_RECEIPT"
+  },
+  "browser": {
+    "driver": "browser-skill/bsk",
+    "networkRules": 0,
+    "replays": 0,
+    "droppedRequests": 0,
+    "desktop": "PASS",
+    "mobile": "WORKSPACE_LAYOUT_CLIPPING_OBSERVED_NOT_FIXED",
+    "scope": "new source card reuses existing component; existing GA callers must explicitly opt in to node navigation",
+    "pendingRevalidationDoubleClickGuard": "PASS_DETERMINISTIC_UI_TEST"
+  },
+  "limits": [
+    "No semantic entailment proof for arbitrary statements",
+    "R102 original failure unchanged; this is a different frozen R2 input",
+    "Gemini native continuation not qualified; no unconditional tools/history allow",
+    "No true SSE/first-token test",
+    "No full Private/cross-route/multi-worker/confirmed acceptance flow requalification",
+    "Normal retrieval used real local Ollama, no D3 candidates rerun",
+    "After first live observation only diagnostic retention and deterministic source-policy/UI handler guards were tightened; no live rerun"
+  ],
+  "cleanup": {
+    "isolatedDatabase": "spec_agent_p3b_live_rag_d4_r2_20261023",
+    "container": "spec-agent-rag-d4-r2-20261023",
+    "hostPort": 55435,
+    "businessDatabaseConnections": 0,
+    "remainingStoredProviderCredentials": 0,
+    "containerStoppedRetained": true,
+    "ownedViteStopped": true,
+    "browserSessionListEmpty": true,
+    "push": false,
+    "mainModified": false,
+    "pullRequestCreated": false
+  },
+  "protectedUserFile": {
+    "path": "docs/v2/evidence/SHARED_RAG_ACCEPTANCE_PRECHECK.json",
+    "blob": "2238c220801ec870658f511c78e4bafcdaf9c23d",
+    "unchangedByR2": true
+  },
+  "rawEvidenceManifest": [
+    {
+      "path": "scratch/rag-d4-r2/first-observation/freeze.json",
+      "sha256": "402e251964ec199bae685de46e8ec9cfb726b4efd51d379f332162d39dbe9980",
+      "bytes": 1766
+    },
+    {
+      "path": "scratch/rag-d4-r2/first-observation/requests.jsonl",
+      "sha256": "da087c41f4012771364af9cb1cd775835076e20af5582802ce5017c6e2cfcc89",
+      "bytes": 1627
+    },
+    {
+      "path": "scratch/rag-d4-r2/first-observation/project.json",
+      "sha256": "ffa910649633cd7b278a35f7def1239c2800131df82514ed3c38c56a78522491",
+      "bytes": 13362
+    },
+    {
+      "path": "scratch/rag-d4-r2/first-observation/api-available.json",
+      "sha256": "073e81c9e4a55bfd4cf209716718c3a7f83d89f2dd13d1628bd8956b226c9320",
+      "bytes": 1334
+    },
+    {
+      "path": "scratch/rag-d4-r2/first-observation/api-withdrawn.json",
+      "sha256": "94daf5876bfd3d3120c49ae88dc9d7bd2850a07ffc15bbe1cf648270df797612",
+      "bytes": 293
+    },
+    {
+      "path": "scratch/rag-d4-r2/first-observation/ga-failure.json",
+      "sha256": "59289b4d52e396a6ffc884e087b028e64fcd6fadae2854064d76a03760a19b1f",
+      "bytes": 96
+    },
+    {
+      "path": "scratch/rag-d4-r2/first-observation/ga-input.json",
+      "sha256": "96be434bda9a1eca555314ecba8d4c5835792aa67e76c27c67a83c3804f8b530",
+      "bytes": 1699
+    },
+    {
+      "path": "scratch/rag-d4-r2/first-observation/ga-python.log",
+      "sha256": "4144e94a132be618553ff76c94ba3c0d1a14580f261215de3420021f52b83a6f",
+      "bytes": 4730
+    },
+    {
+      "path": "scratch/rag-d4-r2/first-observation/execution.json",
+      "sha256": "72d0bd0c77a663f5bcee0e2c17933472e3e4b3e448793e8f1f7eb2f6df74b749",
+      "bytes": 245
+    },
+    {
+      "path": "scratch/rag-d4-r2/first-observation/browser-a-complete.json",
+      "sha256": "132707b4b7bf2d46ace8b76b146aa863cf7a69facc37ae1e68d8951eee741082",
+      "bytes": 375
+    },
+    {
+      "path": "scratch/rag-d4-r2/first-observation/browser-b-complete.json",
+      "sha256": "fa9b6573443415c22796e6f0dd0645a0be60d8523ced6d86bd7c6015a6c5104e",
+      "bytes": 290
+    },
+    {
+      "path": "scratch/rag-d4-r2/browser-debug.json",
+      "sha256": "3e6607fd4cccf2b3b2a5b954c17cd86875cde76602a7355e745bdb85dde9e30b",
+      "bytes": 3492639
+    },
+    {
+      "path": "scratch/rag-d4-r2/browser-answer.png",
+      "sha256": "f0d6f7da692fe6a2df931957990fda8e1004d0add646ccdc06b613c202d74395",
+      "bytes": 212832
+    },
+    {
+      "path": "scratch/rag-d4-r2/browser-source-located.png",
+      "sha256": "5128700b972b2593c72ea84950919c1319b3b152a8b4c3ef51c4ccdcb1344d58",
+      "bytes": 149428
+    },
+    {
+      "path": "scratch/rag-d4-r2/browser-withdrawn.png",
+      "sha256": "aae7afa0c5226826c996073c4c086cad20a0d3c086e05db958872e6e2e268368",
+      "bytes": 133591
+    },
+    {
+      "path": "scratch/rag-d4-r2/browser-mobile.png",
+      "sha256": "85728635df0b0ee4a5527dc8c1c4bf7d04d9ecb53844516bdc88b4ab090b7c96",
+      "bytes": 140998
+    },
+    {
+      "path": "scratch/rag-d4-r2/java-initial.log",
+      "sha256": "db56c18d06b2ef6a135318bc457f04f34779ad300b5b7fcd8489a8d05dffdd9b",
+      "bytes": 3170
+    },
+    {
+      "path": "scratch/rag-d4-r2/java-delivery-counts.json",
+      "sha256": "5e52fa0b9234796f60f44a557858dc166377bc6f67498451e6cb1586c8e4a407",
+      "bytes": 966
+    },
+    {
+      "path": "scratch/rag-d4-r2/java-policy-counts.json",
+      "sha256": "4f313e665c77992058ef9800f97c15e9d33e6753c55cb7642b5a80f6351120a8",
+      "bytes": 142
+    },
+    {
+      "path": "scratch/rag-d4-r2/java-architecture-counts.json",
+      "sha256": "7570aca87c54216591f806ccee1d91cbe17652f84eeb8746544b779f40e45e1e",
+      "bytes": 467
+    },
+    {
+      "path": "scratch/rag-d4-r2/architecture-full-final-counts.json",
+      "sha256": "e62f3a64da4d4cfa90ba23a3f1176b5f10c3c8d10907b55890639ae74a4f5253",
+      "bytes": 310
+    },
+    {
+      "path": "scratch/rag-d4-r2/frontend-race-final.log",
+      "sha256": "2fe4cb5c760f30ff2eb9df68341f963c092d5b958c1d4a99b072b62a7450efe9",
+      "bytes": 232
+    },
+    {
+      "path": "scratch/rag-d4-r2/frontend-race-type.log",
+      "sha256": "cb445e4b3030988a25da32d9be62aa80e00efdffbc763bdbcb36a35ef899a2aa",
+      "bytes": 63
+    },
+    {
+      "path": "scratch/rag-d4-r2/frontend-race-build.log",
+      "sha256": "13074a7d71b40f2f3505e9d8f1e0aa929f9a67bcc7e5c6703a1e959f26f7060d",
+      "bytes": 1267
+    },
+    {
+      "path": "scratch/rag-d4-r2/python-final.log",
+      "sha256": "c81dcf3f8f50ed0afb1e057b133df7f60149656a6952c2a02370abb1849eee5a",
+      "bytes": 101
+    }
+  ]
+}

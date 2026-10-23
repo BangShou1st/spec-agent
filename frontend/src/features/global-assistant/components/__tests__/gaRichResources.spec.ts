@@ -53,6 +53,16 @@ describe('sanitizeGaResourceRefs', () => {
   })
 })
 describe('ProjectResourceList', () => {
+  it('source navigation requires an explicitly enabled host handler', async () => {
+    const router = createRouter({ history: createWebHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+    const id = '123e4567-e89b-12d3-a456-426614174000'
+    const source = { kind: 'SOURCE', id, label: '宿主来源', metadata: { nodeId: id, sourceVersion: '1', excerpt: '正文' } }
+    const w = mount(ProjectResourceList, { props: { resources: [source] }, global: { plugins: [router] } })
+    expect(w.find('[data-test=source-locate]').exists()).toBe(false)
+    await w.setProps({ locatableSources: true })
+    await w.get('[data-test=source-locate]').trigger('click')
+    expect(w.emitted('open-source')).toEqual([[source]])
+  })
   it('clickable uuid navigation', async () => {
     const router = createRouter({ history: createWebHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/projects/:id', component: { template: '<div />' } }] })
     await router.push('/')
