@@ -200,6 +200,18 @@ public final class AgentBrainResponseValidator {
                     "Claim confidence must be between 0.0 and 1.0: " + claim.confidence());
         }
         validateSourceRefs(claim.sourceRefs(), request.snapshot());
+        // A retrieved item being allowed to enter context does not authorize confirmation.
+        // Legacy empty refs still use AnswerCycle's current immutable Answer grounding.
+        // Explicit citations must include an answered canonical lineage record, never only
+        // an external resource, assumption, metadata or another route's discovery result.
+        if ("confirmed".equals(claim.status()) && !claim.sourceRefs().isEmpty()) {
+            boolean answeredLineage=request.snapshot().lineage().stream()
+                    .filter(entry -> entry.answer()!=null)
+                    .anyMatch(entry -> claim.sourceRefs().contains("answer:"+entry.answer().id())
+                            || claim.sourceRefs().contains("node:"+entry.node().id()));
+            if(!answeredLineage) throw new AgentContractException(
+                    "Confirmed claim requires canonical answer evidence, not retrieval alone");
+        }
     }
 
     private static void validateObservation(com.specagent.agent.protocol.ObservationView observation) {

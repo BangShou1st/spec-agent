@@ -31,6 +31,8 @@ public class HelpSearchCapability implements PreparedCapabilityAdapter {
         return invocation -> {
             if(!run.equals(invocation.runId())) throw new IllegalStateException("STALE_WORKLOAD");
             var checked=store.validateSources(new Validation(result.protocolVersion(),result.requestId(),result.workload(),result.scopeGrant(),result.profileId(),result.indexGeneration(),result.deadline(),result.items().stream().map(Ranked::source).toList()));
+            if(!checked.rejectedEntryIds().isEmpty())
+                return GlobalAssistantToolFailures.failed(invocation,"help.search","SOURCE_VERSION_MISMATCH","Retrieved evidence is no longer current or available");
             var allowed=new HashSet<>(checked.allowedEntryIds()); var items=result.items().stream().filter(item->allowed.contains(item.source().entryId())).toList();
             return new CapabilityResult(invocation.invocationId(),invocation.invocationKey(),"help.search",CapabilityResult.Status.SUCCEEDED,
                 Map.of("sources",items,"retrievalEngineVersion","python-rag.v1","profileId",result.profileId(),"indexGeneration",result.indexGeneration().toString(),"vectorUnavailable",result.vectorUnavailable()),

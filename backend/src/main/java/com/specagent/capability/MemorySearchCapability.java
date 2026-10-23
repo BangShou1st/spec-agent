@@ -89,10 +89,17 @@ public class MemorySearchCapability implements InternalCapabilityAdapter {
             RetrievalSearchService.SearchResult result = searchService.search(
                     invocation.projectId(), routeId, query, scope, maxResults);
             List<Map<String, Object>> items = result.items().stream().map(this::wireItem).toList();
+            Map<String,Object> content=new LinkedHashMap<>(result.retrievalState());
+            content.put("items",items); content.put("scope",scope.name());
             return new CapabilityResult(invocation.invocationId(), invocation.invocationKey(),
                     CAPABILITY_ID, CapabilityResult.Status.SUCCEEDED,
-                    Map.of("items", items, "scope", scope.name()), result.sourceRefs(),
+                    content, result.sourceRefs(),
                     Map.of("kind", "RETRIEVAL_EVIDENCE", "scope", scope.name()), List.of());
+        } catch (IllegalStateException ex) {
+            if(!com.specagent.retrieval.context.RetrievalContextService.isDegradable(ex)) throw ex;
+            return new CapabilityResult(invocation.invocationId(),invocation.invocationKey(),CAPABILITY_ID,
+                    CapabilityResult.Status.FAILED,Map.of("errorCode",ex.getMessage(),"reason","Retrieval evidence is unavailable"),
+                    List.of(),Map.of(),List.of());
         } catch (IllegalArgumentException ex) {
             return CapabilityResult.failed(invocation.invocationId(), invocation.invocationKey(),
                     CAPABILITY_ID, ex.getMessage());

@@ -1,3 +1,8 @@
+---
+status: Canonical
+authority: Current Authority
+---
+
 # Agent Memory and Context Architecture V2
 
 ## 1. Purpose
@@ -153,3 +158,11 @@ The runtime contract that closes this gap:
 - the frozen **source fingerprint set** (`NODE` + `RELATED_NODE` body hashes, derived from the same canonical body shape that enters the payload) is persisted alongside the payload and powers the live mutation staleness gate — it is not part of the wire payload itself, and it never leaks secrets;
 - **frozen input identity ≠ live stale validation.** The frozen projection proves what the model saw (replay is always byte-identical to what was frozen); live execution eligibility is a separate gate. Graph-mutating proposals (`CREATE_NODE`, `CONNECT_NODE`, `INVOKE_CAPABILITY`) compare the frozen fingerprint set with current authoritative node bodies before any graph write and reject a mismatch as `STALE_CONTEXT` with zero mutations. Read-only families (`RESPOND_TO_USER`, `WAIT`) are never gated by this check, and unrelated workspace changes that were not model-visible never mark a proposal stale. The existing `baseContextSnapshotId` / `baseContextHash` / anchor-refs / route-tip checks stay in place as the identity/anchor layer; the fingerprint gate is the mutable-content layer on top;
 - **legacy replay gap.** Snapshots that were already model-consumed before the frozen-input contract (no frozen row + `DECISION_STARTED`/`STATE_UPDATE` evidence exists) cannot be semantic-replayed by rebuilding current live state and pretending it is the old input. A typed domain failure `LEGACY_FROZEN_INPUT_UNAVAILABLE` is raised fail-closed: no second `Answer`, no second `Patch`, no silent `STATE_UPDATE` rerun, no live reconstruction of the old `DECISION` input. The caller must retry from a fresh `ContextSnapshot`; a never-consumed snapshot (no model-called evidence) still freezes normally on first projection.
+
+## 12. D4 evidence consumption boundary (2026-10-23)
+
+Search hits are evidence candidates, not proof of answer sufficiency. Answer supported parts, identify missing required sources/facts, and keep help, external evidence, assumptions, projects and routes distinct. Use existing sourceRefs and Capability Observations; do not introduce a second citation system or a serial Critic call.
+
+Java final source validation rejects a returned-but-now-invalid source as `SOURCE_VERSION_MISMATCH`; it must not silently turn that result into ordinary zero hits. GA Capability warnings travel inside the existing content envelope. Both project discovery and explicit memory.search retain vector availability even with no items; explicit search availability failures are FAILED observations. First-freeze/replay and the P2 authorization/delegation model are unchanged.
+
+At Java STATE_UPDATE validation, a confirmed claim with explicit sourceRefs must include an answered canonical lineage node or Answer. Retrieval authority labels, confidence, a resource, or another route's result alone cannot authorize confirmation. Legacy empty-ref claims retain the existing current immutable Answer grounding behavior. This is a provenance constraint, **not a semantic entailment proof**: arbitrary statements with a valid citation, implicit empty-ref grounding, historical citation freshness in retained GA conversations and end-to-end confirmed-state safety are not certified by D4. See [D4 evidence and limitations](../acceptance-evidence/rag-d4-20261023/summary.md).
