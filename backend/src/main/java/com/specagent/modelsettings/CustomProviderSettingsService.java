@@ -279,6 +279,11 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         return settings;
     }
 
+    @Override
+    public RuntimeCustomSettings requireRuntimeSettings(java.util.UUID selectedId) {
+        return selectedId == null ? legacyRuntimeSettings() : connectionSettings(selectedId,null);
+    }
+
     private RuntimeCustomSettings connectionSettings(java.util.UUID id, Long revision) {
         if (connections == null) throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
         ModelProviderRecord row = connections.findById(id)

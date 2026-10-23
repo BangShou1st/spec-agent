@@ -43,9 +43,9 @@ public class ModelProviderSettingsController {
 
     @GetMapping("/active")
     public ActiveResponse active() {
-        return new ActiveResponse(providerSettings.activeProviderCode(),
-                providerSettings.activeProviderId() == null
-                        ? null : providerSettings.activeProviderId().toString());
+        var selected = providerSettings.selection();
+        return new ActiveResponse(selected.providerCode(),selected.providerId() == null
+                ? null : selected.providerId().toString());
     }
 
     @PostMapping("/activate")

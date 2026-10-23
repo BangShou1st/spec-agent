@@ -88,13 +88,16 @@ public class GaExecutionModelTargetResolver {
                     "GA host internal secret is not configured");
         }
         ModelProvider active;
+        java.util.UUID selectedId;
         try {
-            active = providers.activeProvider();
+            var selected = providers.selection();
+            active = selected.provider();
+            selectedId = selected.providerId();
         } catch (RuntimeException ex) {
             return unavailable(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED,
                     "The active model provider could not be resolved");
         }
-        return resolveProvider(active, true);
+        return active == ModelProvider.CUSTOM ? resolveCustom(true,selectedId) : resolveProvider(active, true);
     }
 
     /**
@@ -220,9 +223,13 @@ public class GaExecutionModelTargetResolver {
      * 明确失败,绝不被默认为受支持;这些格式的模型也绝不因此获得普通聊天准入。
      */
     private Resolution resolveCustom(boolean applyPreparationGate) {
-        if (applyPreparationGate && providers.activeProviderId() != null) {
+        return resolveCustom(applyPreparationGate,null);
+    }
+
+    private Resolution resolveCustom(boolean applyPreparationGate, java.util.UUID selectedId) {
+        if (applyPreparationGate && selectedId != null) {
             try {
-                var settings = customSettings.requireRuntimeSettings();
+                var settings = customSettings.requireRuntimeSettings(selectedId);
                 if (CustomApiFormat.fromCode(settings.apiFormat()) != CustomApiFormat.CHAT_COMPLETIONS) {
                     return unavailable(GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED,
                             "GA requires the custom provider to speak Chat Completions");

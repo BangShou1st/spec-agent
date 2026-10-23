@@ -13,6 +13,14 @@ public interface CustomRuntimeSettingsPort {
     /** 返回可激活的自定义设置;配置不可用时抛出 NOT_CONFIGURED 类失败。 */
     RuntimeCustomSettings requireRuntimeSettings();
 
+    default RuntimeCustomSettings requireRuntimeSettings(java.util.UUID selectedId) {
+        RuntimeCustomSettings settings = requireRuntimeSettings();
+        if (!java.util.Objects.equals(settings.providerId(),selectedId)) {
+            throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+        }
+        return settings;
+    }
+
     /** Resolve an existing run by its immutable connection identity. */
     default RuntimeCustomSettings requireRuntimeSettings(String frozenRevision) {
         RuntimeCustomSettings settings = requireRuntimeSettings();

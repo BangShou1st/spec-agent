@@ -125,6 +125,7 @@ class KiloCredentialBoundaryTest {
     private static GaExecutionModelTargetResolver resolver(KiloSettingsService kiloSettings) {
         ModelProviderSettingsService providers = mock(ModelProviderSettingsService.class);
         when(providers.activeProvider()).thenReturn(ModelProvider.KILO);
+        when(providers.selection()).thenAnswer(i -> new ModelProviderSettingsService.Selection(providers.activeProvider(),null));
         GaBrainSettings host = mock(GaBrainSettings.class);
         when(host.getInternalSecret()).thenReturn("secret");
         GaNativeModelQualification qualification = mock(GaNativeModelQualification.class);

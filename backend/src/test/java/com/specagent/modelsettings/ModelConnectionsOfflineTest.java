@@ -96,4 +96,17 @@ class ModelConnectionsOfflineTest {
     @Test void deprecatedProviderCodeIsRejected() {
         assertThatThrownBy(()->ModelProvider.fromCode("OPENROUTER")).isInstanceOf(IllegalArgumentException.class);
     }
+    @Test void atomicSelectionNeverMixesProviderCodeWithAnotherConnectionsUuid() {
+        var a=validated();var b=service.create(patch("B","model-b","fixture-b"));
+        when(active.selection()).thenReturn(new ModelProviderSettingsService.Selection(ModelProvider.CUSTOM,a.id()));
+        when(active.activeProviderId()).thenReturn(b.id());
+        var custom=new CustomProviderSettingsService(mock(CustomProviderSettingsRepository.class),
+                new ObjectMapper(),mock(ProtocolAdapterRegistry.class),probe);
+        custom.setConnections(repository,active);
+        var targets=new ActiveModelTargetService(active,mock(com.specagent.model.contract.OpenCodeRuntimeSettingsPort.class),
+                mock(com.specagent.model.contract.KiloRuntimeSettingsPort.class),custom);
+        var target=targets.activeTarget().orElseThrow();
+        assertThat(((RuntimeCustomSettings)target.runtimeSettings()).providerId()).isEqualTo(a.id());
+        verify(active,never()).activeProviderId();
+    }
 }

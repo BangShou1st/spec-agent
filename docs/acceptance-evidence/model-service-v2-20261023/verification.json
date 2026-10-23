@@ -11,11 +11,11 @@
   "java": {
     "testOffline": {
       "counts": {
-        "completed": 395,
+        "completed": 396,
         "failures": 0,
         "errors": 0,
         "skipped": 0,
-        "passed": 395
+        "passed": 396
       },
       "selectedClasses": [
         "com.specagent.agent.action.ActionEligibilityWaitV4Test",
@@ -52,6 +52,7 @@
         "com.specagent.model.provider.ModelProviderTransportHarnessTest",
         "com.specagent.model.provider.PublishedZenStarterCompatibilityTest",
         "com.specagent.modelsettings.ModelConnectionsOfflineTest",
+        "com.specagent.retrieval.RagD4SharedSourceValidationTest",
         "com.specagent.retrieval.context.RagD4MemoryEvidenceTest",
         "com.specagent.retrieval.context.RetrievalContextServiceErrorClassificationTest",
         "com.specagent.retrieval.eval.RetrievalAcceptanceGateValidatorTest",
@@ -60,7 +61,6 @@
         "com.specagent.retrieval.eval.RetrievalExecutionClaimManagerTest",
         "com.specagent.retrieval.eval.RetrievalQualityScorerTest",
         "com.specagent.retrieval.eval.RetrievalRecoveryGateTest",
-        "com.specagent.retrieval.RagD4SharedSourceValidationTest",
         "com.specagent.retrieval.workload.RebuildReadinessOfflineTest",
         "com.specagent.support.DatabaseTestContextGuardTest",
         "com.specagent.support.DatabaseTestDiscoveryTest"
@@ -68,11 +68,11 @@
     },
     "test": {
       "counts": {
-        "completed": 458,
+        "completed": 459,
         "failures": 0,
         "errors": 0,
         "skipped": 0,
-        "passed": 458
+        "passed": 459
       },
       "selectedClasses": [
         "com.specagent.access.ModelSettingsIsolationIntegrationTest",
@@ -177,5 +177,13 @@
     "card-mobile.png": "2024bc4a1e48c21569a03bafc4cabcf42522c5debb7b1530f3fcafeea261fb60",
     "editor-mobile.png": "ae508658ab10e8e1e059bc144153e85a4c4ee1288f2598db1945e792324d36d8",
     "final-desktop.png": "0ab1f83e9d31e38a96c3b7c17ba8c72387a8a5f9c22f889a5ffed43d3b86dc29"
-  }
+  },
+  "atomicProviderSelection": true,
+  "builtinRunReferences": true,
+  "newDeterministicCases": 39,
+  "originalUnrelatedChangesPreserved": [
+    "backend/src/main/java/com/specagent/assistant/api/GaNativeModelBroker.java",
+    "docs/v2/evidence/SHARED_RAG_ACCEPTANCE_PRECHECK.json",
+    "other pre-existing untracked evidence and live-delivery files"
+  ]
 }

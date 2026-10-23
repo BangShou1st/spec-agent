@@ -39,8 +39,8 @@ Gemini R3 的签名/extra_content 回传、Broker 认证和 SafeCheckpointCodec 
 
 | 检查 | completed / failures / skipped | 说明 |
 | --- | --- | --- |
-| Java `testOffline` | 395 / 0 / 0 | 审计过的离线集合；不代表全部集成测试 |
-| Java 定向 `test` | 458 / 0 / 0 | model、modelsettings、architecture、模型设置隔离、GA 目标解析；专用 PostgreSQL |
+| Java `testOffline` | 396 / 0 / 0 | 审计过的离线集合；不代表全部集成测试 |
+| Java 定向 `test` | 459 / 0 / 0 | model、modelsettings、architecture、模型设置隔离、GA 目标解析；专用 PostgreSQL |
 | Python | 21 / 0 / 0 | Global Assistant 与 Checkpoint 回归 |
 | 前端 | 988 / 0 / 1 | 987 通过；真实产品流回放由 `SPEC_AGENT_GA_LIVE_REPLAY=true` 门禁控制，本轮未配置 |
 | 前端类型检查/构建 | 通过 | 仍有既有 chunk-size 提示，不是构建失败 |
@@ -49,7 +49,7 @@ Gemini R3 的签名/extra_content 回传、Broker 认证和 SafeCheckpointCodec 
 
 两个 Java 任务包含重叠案例，不相加计算独立通过数；定向 `test` 不是全量 `testNonLive` 或 `testDatabaseIntegration`。
 
-新增 5 个确定性测试类共 38 个案例：连接离线 9、价格元数据 1、协议 Harness 8、三提供商传输 Harness 11、隔离数据库集成 9。另增加一个默认不执行的通用 live qualification 类，按连接 UUID/模型/四次预算 opt-in。
+新增 5 个确定性测试类共 39 个案例：连接离线 10、价格元数据 1、协议 Harness 8、三提供商传输 Harness 11、隔离数据库集成 9。另增加一个默认不执行的通用 live qualification 类，按连接 UUID/模型/四次预算 opt-in。
 
 迁移 11 个现有 Java 测试文件、重写注册表/编辑器/状态测试以适配 UUID 及共享 UI；原 OpenRouter 元数据筛选和专用卡片测试随业务入口移除，安全意图迁到通用价格、真实协议资格、冻结与权限测试。Gemini 签名专项 7、Kilo 原生传输专项 11、Zen 主传输专项 37 均通过；其他 Zen/Kilo 凭据、冻结、流式与架构专项也在上述定向 `test` 内。没有因框架迁移而跳过相关安全测试。
 

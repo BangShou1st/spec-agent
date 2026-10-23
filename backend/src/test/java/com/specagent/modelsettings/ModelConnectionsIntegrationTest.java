@@ -183,6 +183,7 @@ class ModelConnectionsIntegrationTest {
                     com.specagent.agent.runtime.AgentRunTriggerType.DECISION_CYCLE,null,null);
             var selected=mock(ModelProviderSettingsService.class);
             Mockito.when(selected.activeProvider()).thenReturn(provider);
+            Mockito.when(selected.selection()).thenAnswer(i -> new ModelProviderSettingsService.Selection(selected.activeProvider(),null));
             var legacyCustom=mock(CustomRuntimeSettingsPort.class);
             var resolver=new ActiveModelTargetService(selected,
                     ()->new RuntimeOpenCodeSettings("fixture-zen","zen-model"),

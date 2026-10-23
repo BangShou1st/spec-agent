@@ -87,6 +87,7 @@ class CustomFrozenTargetBindingTest {
                                                    AtomicInteger settingsReads) {
         ModelProviderSettingsService providers = mock(ModelProviderSettingsService.class);
         when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
+        when(providers.selection()).thenAnswer(i -> new ModelProviderSettingsService.Selection(providers.activeProvider(),null));
         CustomRuntimeSettingsPort countedPort = () -> {
             settingsReads.incrementAndGet();
             return port.requireRuntimeSettings();

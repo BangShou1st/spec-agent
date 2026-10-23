@@ -39,15 +39,20 @@ public class ActiveModelTargetService implements ActiveModelTargetPort {
 
     @Override
     public Optional<Target> activeTarget() {
-        return targetForProvider(providers.activeProvider());
+        var selected = providers.selection();
+        return targetForProvider(selected.provider(),selected.providerId());
     }
 
     private Optional<Target> targetForProvider(ModelProvider provider) {
+        return targetForProvider(provider,null);
+    }
+
+    private Optional<Target> targetForProvider(ModelProvider provider, java.util.UUID selectedId) {
         Object runtime = switch (provider) {
             case OPENCODE_ZEN -> openCode.requireRuntimeSettings();
             case KILO -> kilo.requireRuntimeSettings();
 
-            case CUSTOM -> custom.requireRuntimeSettings();
+            case CUSTOM -> custom.requireRuntimeSettings(selectedId);
         };
         String model = switch (runtime) {
             case com.specagent.model.contract.RuntimeOpenCodeSettings value -> value.selectedModel();

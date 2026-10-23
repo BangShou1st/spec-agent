@@ -113,6 +113,7 @@ class KiloFrozenModelBindingTest {
                                                         boolean switchFreeToPaidAfterSnapshot) {
         ModelProviderSettingsService providers = mock(ModelProviderSettingsService.class);
         when(providers.activeProvider()).thenReturn(ModelProvider.KILO);
+        when(providers.selection()).thenAnswer(i -> new ModelProviderSettingsService.Selection(providers.activeProvider(),null));
         KiloSettingsService settings = new KiloSettingsService(
                 repository, mock(KiloGatewayClient.class), properties, new ObjectMapper());
         ActiveModelTargetService resolver = new ActiveModelTargetService(providers,
@@ -215,6 +216,7 @@ class KiloFrozenModelBindingTest {
         when(repository.find()).thenReturn(Optional.of(stored("paid-key-A", "paid-model-A")));
         ModelProviderSettingsService providers = mock(ModelProviderSettingsService.class);
         when(providers.activeProvider()).thenReturn(ModelProvider.KILO);
+        when(providers.selection()).thenAnswer(i -> new ModelProviderSettingsService.Selection(providers.activeProvider(),null));
         KiloSettingsService settings = new KiloSettingsService(
                 repository, mock(KiloGatewayClient.class), properties, new ObjectMapper());
         ActiveModelTargetService resolver = new ActiveModelTargetService(providers,
@@ -246,6 +248,7 @@ class KiloFrozenModelBindingTest {
         when(repository.find()).thenReturn(Optional.of(stored(null, FROZEN_MODEL)));
         ModelProviderSettingsService providers = mock(ModelProviderSettingsService.class);
         when(providers.activeProvider()).thenReturn(ModelProvider.KILO);
+        when(providers.selection()).thenAnswer(i -> new ModelProviderSettingsService.Selection(providers.activeProvider(),null));
         KiloSettingsService settings = new KiloSettingsService(
                 repository, mock(KiloGatewayClient.class), properties, new ObjectMapper());
         ActiveModelTargetService resolver = new ActiveModelTargetService(providers,
@@ -278,6 +281,7 @@ class KiloFrozenModelBindingTest {
         when(repository.find()).thenAnswer(invocation -> Optional.of(current.get()));
         ModelProviderSettingsService providers = mock(ModelProviderSettingsService.class);
         when(providers.activeProvider()).thenReturn(ModelProvider.KILO);
+        when(providers.selection()).thenAnswer(i -> new ModelProviderSettingsService.Selection(providers.activeProvider(),null));
         KiloSettingsService settings = new KiloSettingsService(
                 repository, mock(KiloGatewayClient.class), properties, new ObjectMapper());
         ActiveModelTargetService resolver = new ActiveModelTargetService(providers,

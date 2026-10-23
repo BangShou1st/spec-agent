@@ -45,6 +45,8 @@ class GaExecutionModelTargetResolverTest {
     private final GaBrainSettings host = mock(GaBrainSettings.class);
 
     private GaExecutionModelTargetResolver resolver() {
+        org.mockito.Mockito.doAnswer(i -> new ModelProviderSettingsService.Selection(providers.activeProvider(),providers.activeProviderId()))
+                .when(providers).selection();
         return new GaExecutionModelTargetResolver(providers, openCodeRepository, openCodeSettings,
                 openCodeModelProtocols, kiloSettings, customSettings, qualification, host);
     }

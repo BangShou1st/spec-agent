@@ -53,14 +53,15 @@ public class ModelProviderViewService {
 
     /** 把预设与用户自建行合成一份统一列表。 */
     public ProviderListView listView() {
+        var selected = active.selection();
         List<ProviderView> views = new ArrayList<>();
         views.add(presetView(ModelProvider.OPENCODE_ZEN));
         views.add(presetView(ModelProvider.KILO));
         for (ModelProviderRecord record : providers.list()) {
             views.add(rowView(record));
         }
-        return new ProviderListView(views, active.activeProviderCode(),
-                active.activeProviderId() == null ? null : active.activeProviderId().toString());
+        return new ProviderListView(views, selected.provider().name(),
+                selected.providerId() == null ? null : selected.providerId().toString());
     }
 
     public ProviderView rowView(ModelProviderRecord record) {
