@@ -172,6 +172,8 @@ class HostCheckpointSaver(BaseCheckpointSaver):
         """Ask Java to convert persisted v1 provider payloads into a real sidecar ref."""
         if type(value) is list:
             return [self._migrate_legacy_checkpoint(v) for v in value]
+        if type(value) is tuple:
+            return tuple(self._migrate_legacy_checkpoint(v) for v in value)
         if type(value) is dict:
             return {k: self._migrate_legacy_checkpoint(v) for k, v in value.items()}
         if isinstance(value, AIMessage) and value.additional_kwargs.get("tool_call_extra_content"):
@@ -230,7 +232,9 @@ class HostCheckpointSaver(BaseCheckpointSaver):
 
     def _load_and_migrate(self, envelope):
         loaded = self.codec.loads(envelope)
-        return self._migrate_legacy_checkpoint(loaded) if envelope["codecVersion"] == "ga-json.v1" else loaded
+        # Java re-wraps stored pending writes under the current envelope version;
+        # migrate by payload shape, never by the possibly re-wrapped outer version.
+        return self._migrate_legacy_checkpoint(loaded)
 
     def get_tuple(self, config):
         with self.lock:

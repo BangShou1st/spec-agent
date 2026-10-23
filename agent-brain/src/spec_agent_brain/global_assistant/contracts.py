@@ -11,7 +11,6 @@ class ToolCall(WireModel):
     id: str = Field(min_length=1, max_length=128)
     name: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
     arguments: dict[str, Any]
-    extra_content: dict[str, Any] | None = Field(default=None, alias="extraContent")
 
     @field_validator("id")
     @classmethod
@@ -35,8 +34,6 @@ class Message(WireModel):
             raise ValueError("only assistant messages may carry tool calls")
         if self.continuation_ref and (self.role != "assistant" or not self.tool_calls):
             raise ValueError("continuation requires assistant tool calls")
-        if any(call.extra_content for call in self.tool_calls):
-            raise ValueError("provider extra content is forbidden on GA wire messages")
         if (self.role == "tool") != bool(self.tool_call_id):
             raise ValueError("tool messages require toolCallId; other roles forbid it")
         if self.role != "assistant" and not self.content.strip():
@@ -126,8 +123,6 @@ class ModelResponse(WireModel):
             raise ValueError("finish reason disagrees with tool calls")
         if len({call.id for call in self.tool_calls}) != len(self.tool_calls):
             raise ValueError("duplicate tool call id")
-        if any(call.extra_content for call in self.tool_calls):
-            raise ValueError("provider extra content is forbidden in GA model responses")
         if not self.content.strip() and not self.tool_calls:
             raise ValueError("empty model response")
         if self.continuation_ref and (self.finish_reason != "tool_calls" or not self.tool_calls):

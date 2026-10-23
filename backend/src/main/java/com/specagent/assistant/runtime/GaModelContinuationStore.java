@@ -38,24 +38,28 @@ public class GaModelContinuationStore {
 
     public record Source(UUID orgId, UUID threadId, UUID sourceRunId, UUID sourceCallId) {}
 
-    /** Extracts the protocol-minimal continuation shape (currently Gemini thought signatures). */
-    public Map<String, Object> extract(List<Map<String, Object>> perCallExtra) {
-        if (perCallExtra == null || perCallExtra.isEmpty()) return null;
-        Map<String, Object> merged = new LinkedHashMap<>();
-        for (Map<String, Object> extra : perCallExtra) {
+    /**
+     * Extracts a per-tool-call Gemini continuation map. Every call that carries
+     * private material must use exactly one `google.thought_signature` entry;
+     * unrelated namespaces and mixed shapes fail closed instead of being merged.
+     */
+    public Map<String, Object> extract(List<String> toolCallIds, List<Map<String, Object>> perCallExtra) {
+        require(toolCallIds != null && perCallExtra != null && toolCallIds.size() == perCallExtra.size(),
+                "continuation tool identity mismatch");
+        Map<String, Object> byToolCall = new LinkedHashMap<>();
+        boolean any = false;
+        for (int index = 0; index < toolCallIds.size(); index++) {
+            Map<String, Object> extra = perCallExtra.get(index);
             if (extra == null || extra.isEmpty()) continue;
-            require(extra.size() <= 5, "too many continuation namespaces");
-            for (Map.Entry<String, Object> entry : extra.entrySet()) {
-                require(entry.getValue() instanceof Map<?, ?> nested && nested.size() == 1
-                                && nested.containsKey("thought_signature")
-                                && nested.get("thought_signature") instanceof String signature
-                                && !signature.isBlank() && signature.length() <= 1024,
-                        "unsupported continuation material");
-                require(merged.put(entry.getKey(), entry.getValue()) == null,
-                        "duplicate continuation namespace");
-            }
+            require(extra.size() == 1 && "google".equals(extra.keySet().iterator().next())
+                            && extra.get("google") instanceof Map<?, ?> nested && nested.size() == 1
+                            && nested.get("thought_signature") instanceof String signature
+                            && !signature.isBlank() && signature.length() <= 1024,
+                    "unsupported continuation material");
+            byToolCall.put(toolCallIds.get(index), extra);
+            any = true;
         }
-        return merged.isEmpty() ? null : merged;
+        return any ? byToolCall : null;
     }
 
     public String persist(Source source, GaExecutionStore.Binding binding, UUID sourceCallId,
@@ -147,7 +151,14 @@ public class GaModelContinuationStore {
         Map<String, Object> state;
         try {
             state = mapper.readValue(plain, new com.fasterxml.jackson.core.type.TypeReference<>() {});
-            require(mapper.writeValueAsString(state).equals(mapper.writeValueAsString(extract(List.of(state)))),
+            List<Map<String, Object>> values = new ArrayList<>();
+            for (Object value : state.values()) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> typed = (Map<String, Object>) value;
+                values.add(typed);
+            }
+            require(mapper.writeValueAsString(state).equals(mapper.writeValueAsString(
+                            extract(new ArrayList<>(state.keySet()), values))),
                     "unsupported continuation material");
         } catch (Exception ex) {
             throw new IllegalStateException("GA_CONTINUATION_STATE_INVALID");

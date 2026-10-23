@@ -203,8 +203,9 @@ public class GaNativeModelBroker {
                     .map(com.specagent.assistant.tool.GaCatalogProjection.Descriptor::name).collect(java.util.stream.Collectors.toSet());
                 if(response.toolCalls().stream().anyMatch(call->!approved.contains(call.name()))) throw new IllegalArgumentException("GA batch must contain only admitted read-only business tools");
             }
-            var extras = response.toolCalls().stream().map(GaModelContract.ToolCall::extraContent).toList();
-            var state = continuations.extract(extras);
+            var state = continuations.extract(response.toolCalls().stream()
+                            .map(GaModelContract.ToolCall::id).toList(),
+                    response.toolCalls().stream().map(GaModelContract.ToolCall::extraContent).toList());
             UUID continuationId = state == null ? null : UUID.randomUUID();
             String ref = continuationId == null ? null : "gacr-" + continuationId;
             var wire = response.sanitizeForWire(request.protocolVersion(), ref);
@@ -321,8 +322,17 @@ public class GaNativeModelBroker {
         }
         var calls = message.toolCalls().stream()
                 .map(call -> new GaModelContract.ToolCall(call.id(), call.name(), call.arguments(),
-                        resolved.state())).toList();
+                        perToolExtra(resolved.state(), call.id()))).toList();
         return new GaModelContract.Message(message.role(), message.content(), calls,
                 message.toolCallId(), message.continuationRef(), null);
+    }
+
+    private static java.util.Map<String, Object> perToolExtra(java.util.Map<String, Object> state, String toolCallId) {
+        if (!(state.get(toolCallId) instanceof java.util.Map<?, ?> extra)) {
+            throw new IllegalStateException("GA_CONTINUATION_BINDING_MISMATCH");
+        }
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> typed = (java.util.Map<String, Object>) extra;
+        return typed;
     }
 }

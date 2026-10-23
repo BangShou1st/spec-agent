@@ -82,3 +82,23 @@ Thread、跨组织、跨模型、跨连接失败关闭。
 
 离线/数据库/Python 回归结果与关键证据见
 [MS-C1 验收摘要](../acceptance-evidence/ga-ms-c1-continuation-20261024/summary.md)。
+
+## R1 修复（2026-10-24）
+
+独立审查确认并修复五处缺陷：
+
+1. Java v2 `parseRequest` 校验 `continuationRef` 后未赋值，导致引用在真实
+   JSON 行线上丢失；现保留到 `Message.continuationRef` 并由跨语言 fixture
+   回归覆盖。
+2. Python `ToolCall` 保留 `extra_content` 可选字段会在实际
+   `model_dump_json` 中输出 `extraContent:null`；已从 v2 契约彻底移除该字段，
+   Pydantic `extra=forbid` 使显式 extraContent 直接拒绝。
+3. 旧 Checkpoint 迁移把 sidecar 绑定到当前消费者 Run；现从单条同 Thread
+   SUCCEEDED MODEL 记录解析真实 `sourceRunId/sourceCallId`，多候选歧义
+   失败关闭，重复迁移幂等。
+4. Java 重包 pending writes 外层为 v2 后 Python 跳过旧格式迁移；现按载荷
+   形状递归扫描 `tool_call_extra_content`（含 tuple/Send/dict/list），不再
+   依赖外层 codec 版本。
+5. `extract()` 曾把多工具签名合并后复制给所有工具；现按 ToolCall ID 保存
+   独立签名，仅允许单一 `google.thought_signature` 命名空间，恢复时按
+   `call.id` 精确注入。

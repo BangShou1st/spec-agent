@@ -61,8 +61,28 @@ class GaModelContinuationIntegrationTest {
         return Map.of("google", Map.of("thought_signature", "sig_" + UUID.randomUUID()));
     }
 
+    @Test void multiToolSignaturesStayPerToolCallAndUnknownNamespacesFail() {
+        Map<String, Object> alpha = Map.of("google", Map.of("thought_signature", "sig-alpha"));
+        Map<String, Object> beta = Map.of("google", Map.of("thought_signature", "sig-beta"));
+        var state = continuations.extract(List.of("call-1", "call-2"), List.<Map<String, Object>>of(alpha, beta));
+        assertEquals(Map.of("call-1", alpha, "call-2", beta), state);
+        // Order changes are distinct continuation identities, never merged or copied.
+        var reversed = continuations.extract(List.of("call-2", "call-1"), List.<Map<String, Object>>of(beta, alpha));
+        assertEquals(Map.of("call-2", beta, "call-1", alpha), reversed);
+        assertEquals(alpha, reversed.get("call-1"));
+        assertEquals(beta, reversed.get("call-2"));
+        assertThrows(RuntimeException.class,
+                () -> continuations.extract(List.of("call-1"), List.of(Map.of("anthropic", Map.of("thinking", "x")))));
+        assertThrows(RuntimeException.class,
+                () -> continuations.extract(List.of("call-1"), List.of(Map.of("google", Map.of("thought_signature", " ")))));
+        assertThrows(RuntimeException.class,
+                () -> continuations.extract(List.of("call-1"), List.of(Map.of("google", Map.of("thought_signature", "x".repeat(1025))))));
+        assertThrows(RuntimeException.class,
+                () -> continuations.extract(List.of("call-1", "call-2"), List.<Map<String, Object>>of(alpha)));
+    }
+
     @Test void sidecarIsEncryptedBoundToOwnerAndResolvable() throws Exception {
-        var state = signature();
+        Map<String, Object> state = Map.of("call-1", signature());
         executions.reserve(scope, callId, "MODEL", Hashes.sha256Hex("source"));
         executions.complete(scope, callId, "{}");
         var ref = continuations.persist(new GaModelContinuationStore.Source(
@@ -102,9 +122,10 @@ class GaModelContinuationIntegrationTest {
     }
 
     @Test void migrationRequiresRecordedSuccessfulLedgerAndIsIdempotent() throws Exception {
-        var state = signature();
+        var rawSignature = signature();
+        Map<String, Object> state = Map.of("native-1", rawSignature);
         var toolIds = List.of("native-1");
-        var call = new GaModelContract.ToolCall("native-1", "project_search", Map.of("query", "x"), state);
+        var call = new GaModelContract.ToolCall("native-1", "project_search", Map.of("query", "x"), rawSignature);
         var legacy = new GaModelContract.Response(GaModelContract.VERSION, "", List.of(call),
                 "tool_calls", new GaModelContract.Usage(1, 1));
         executions.reserve(scope, callId, "MODEL", Hashes.sha256Hex("legacy"));
@@ -117,7 +138,7 @@ class GaModelContinuationIntegrationTest {
         assertEquals(ref, ((Map<?, ?>) second.get("result")).get("continuationRef").toString());
         assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM ga_model_continuations WHERE source_call_id=?", Integer.class, callId));
 
-        var forged = migrationRequest(toolIds, Map.of("google", Map.of("thought_signature", "forged")));
+        var forged = migrationRequest(toolIds, Map.of("native-1", Map.of("google", Map.of("thought_signature", "forged"))));
         assertThrows(RuntimeException.class,
                 () -> checkpoints.apply("MIGRATE_CONTINUATION", mapper.writeValueAsString(forged)));
     }
@@ -127,7 +148,7 @@ class GaModelContinuationIntegrationTest {
         executions.complete(scope, callId, "{}");
         var ref = continuations.persist(new GaModelContinuationStore.Source(
                 jdbc.queryForObject("SELECT org_id FROM global_assistant_threads WHERE id=?", UUID.class, thread),
-                thread, run, callId), binding, callId, List.of("call-1"), signature());
+                thread, run, callId), binding, callId, List.of("call-1"), Map.of("call-1", signature()));
         var stale = new GaExecutionStore.Scope(run, 2, lease);
         assertThrows(RuntimeException.class, () -> continuations.resolve(ref, stale, binding));
         // Tool identity tampering is rejected by the broker-level expected-id check.
@@ -135,6 +156,48 @@ class GaModelContinuationIntegrationTest {
         assertNotEquals(List.of("tampered"), resolved.toolCallIds());
         jdbc.update("UPDATE global_assistant_runs SET cancel_requested_at=now() WHERE id=?", run);
         assertThrows(RuntimeException.class, () -> continuations.resolve(ref, scope, binding));
+    }
+
+    @Test void migrationBindsSidecarToHistoricalSourceRunNotCurrentConsumer() throws Exception {
+        // Run A recorded a successful v1 Gemini tool response.
+        var rawSignature = signature();
+        var state = Map.of("native-1", rawSignature);
+        var call = new GaModelContract.ToolCall("native-1", "project_search", Map.of("query", "x"), rawSignature);
+        var legacy = new GaModelContract.Response(GaModelContract.VERSION, "", List.of(call),
+                "tool_calls", new GaModelContract.Usage(1, 1));
+        executions.reserve(scope, callId, "MODEL", Hashes.sha256Hex("legacy"));
+        executions.complete(scope, callId, mapper.writeValueAsString(legacy));
+        // A thread can host only one active run: finish Run A before starting Run B.
+        jdbc.update("UPDATE global_assistant_runs SET status='FAILED' WHERE id=?", run);
+
+        // Run B is a later consumer on the same thread with the same frozen binding.
+        var runB = conversations.createRun(thread, "ga.v1", "ga.v1", "v1").id();
+        var leaseB = UUID.randomUUID();
+        var scopeB = new GaExecutionStore.Scope(runB, 1, leaseB);
+        var bindingB = new GaExecutionStore.Binding(thread, UUID.randomUUID(), binding.provider(),
+                binding.model(), binding.settingsRevision(), Instant.now().plusSeconds(120), List.of());
+        executions.initialize(scopeB, bindingB);
+        jdbc.update("UPDATE global_assistant_runs SET status='RUNNING' WHERE id=?", runB);
+        try {
+            var request = Map.<String, Object>of("protocolVersion", "ga-checkpoint.v1", "runId", runB.toString(),
+                    "executionEpoch", 1, "leaseId", leaseB.toString(), "threadId", thread.toString(),
+                    "namespace", "ga:langchain-ga.v1", "expectedVersion", 0,
+                    "toolCallIds", List.of("native-1"), "continuationPayload", mapper.writeValueAsString(state));
+            var first = checkpoints.apply("MIGRATE_CONTINUATION", mapper.writeValueAsString(request));
+            var ref = ((Map<?, ?>) first.get("result")).get("continuationRef").toString();
+            var row = jdbc.queryForMap("SELECT source_run_id, source_call_id FROM ga_model_continuations WHERE id=?",
+                    UUID.fromString(ref.substring("gacr-".length())));
+            assertEquals(run, row.get("source_run_id"));
+            assertEquals(callId, row.get("source_call_id"));
+            var second = checkpoints.apply("MIGRATE_CONTINUATION", mapper.writeValueAsString(request));
+            assertEquals(ref, ((Map<?, ?>) second.get("result")).get("continuationRef").toString());
+            assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM ga_model_continuations", Integer.class));
+            // The historical Run B consumer can resolve the same sidecar reference.
+            var resolved = continuations.resolve(ref, scopeB, bindingB);
+            assertEquals(state, resolved.state());
+        } finally {
+            jdbc.update("UPDATE global_assistant_runs SET status='FAILED' WHERE id=?", runB);
+        }
     }
 
     @Test void threadDeletionRemovesContinuationSidecar() throws Exception {

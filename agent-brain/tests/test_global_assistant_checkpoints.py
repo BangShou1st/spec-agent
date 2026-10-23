@@ -181,6 +181,37 @@ def test_v1_checkpoint_is_readable_and_migrates_via_host():
     assert restored_message.additional_kwargs == {"model_continuation_ref": "gacr-00000000-0000-4000-8000-000000000001"}
 
 
+def test_v1_pending_write_rewrapped_as_v2_still_migrates():
+    e = execution()
+
+    def rpc(operation, request):
+        if operation == "MIGRATE_CONTINUATION":
+            return {"protocolVersion": "ga-checkpoint.v1", "version": 0,
+                    "result": {"continuationRef": "gacr-00000000-0000-4000-8000-000000000001"}}
+        pytest.fail(f"unexpected operation {operation}")
+
+    codec = SafeCheckpointCodec()
+    legacy = AIMessage(content="", tool_calls=[{"id": "c1", "name": "search", "args": {}, "type": "tool_call"}],
+                       additional_kwargs={"tool_call_extra_content": {"c1": {"google": {"thought_signature": "sig123"}}}})
+    inner_payload = codec._encode(legacy, legacy=True)
+    inner = {"codecVersion": "ga-json.v1", "frameworkVersion": "langgraph-1.2.12/checkpoint-4.2.0",
+             "stateVersion": "langchain-ga.v1", "payload": json.dumps(inner_payload, sort_keys=True,
+             separators=(",", ":"), ensure_ascii=False)}
+    inner["payloadHash"] = __import__("hashlib").sha256(inner["payload"].encode()).hexdigest()
+    # Java tuple() rewraps each stored write value under the current envelope.
+    write_tuple = {"tag": "tuple", "value": ["task-1", "messages", json.loads(inner["payload"])]}
+    outer_payload = json.dumps({"tag": "list", "value": [write_tuple]}, sort_keys=True,
+                                separators=(",", ":"), ensure_ascii=False)
+    rewrapped = {"codecVersion": "ga-json.v2", "frameworkVersion": "langgraph-1.2.12/checkpoint-4.2.0",
+                 "stateVersion": "langchain-ga.v1", "payload": outer_payload,
+                 "payloadHash": __import__("hashlib").sha256(outer_payload.encode()).hexdigest()}
+    saver = HostCheckpointSaver(e, rpc)
+    restored = saver.codec.loads(rewrapped)
+    migrated = saver._migrate_legacy_checkpoint(restored)
+    message = migrated[0][2]
+    assert message.additional_kwargs == {"model_continuation_ref": "gacr-00000000-0000-4000-8000-000000000001"}
+
+
 def test_saver_refuses_other_threads_and_regressing_host_version():
     e = execution()
     saver = HostCheckpointSaver(e, lambda op, request: {"protocolVersion": "ga-checkpoint.v1", "version": -1, "result": None})

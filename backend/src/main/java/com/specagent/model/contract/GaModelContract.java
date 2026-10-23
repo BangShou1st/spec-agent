@@ -112,6 +112,7 @@ public final class GaModelContract {
                 if (refNode != null && !refNode.isNull()) {
                     require(Boolean.TRUE.equals(wireV2), "v1 forbids continuationRef");
                     validateContinuationRef(requiredText(node, "continuationRef", 80));
+                    ref = refNode.textValue();
                 }
                 messages.add(new Message(requiredText(node, "role", 10),
                         text(node.get("content"), 131072), calls,

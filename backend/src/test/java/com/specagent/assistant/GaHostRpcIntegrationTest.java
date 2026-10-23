@@ -56,6 +56,9 @@ class GaHostRpcIntegrationTest {
         thread=conversations.createThread().id(); lease=UUID.randomUUID(); binding=UUID.randomUUID();
         run=conversations.createRun(thread,"ga.v1","ga.v1","v1").id();
         var template = GaModelContract.readRequest(Files.readString(Path.of("../contracts/global-assistant/fixtures/ga-model-request-valid.json")));
+        var templateMessages = template.messages().stream()
+                .map(message -> new GaModelContract.Message(message.role(), message.content(),
+                        message.toolCalls(), message.toolCallId())).toList();
         businessCatalog=info.getTestMethod().orElseThrow().getName().startsWith("capability") ? catalogs.current() : null;
         if (info.getTestMethod().orElseThrow().getName().equals("capabilityLiveFrameworkBusinessRpcAgainstConfiguredModel")) {
             var readOnly=businessCatalog.descriptors().stream().filter(d -> d.capabilityId().equals("project.list_recent")).toList();
@@ -64,7 +67,7 @@ class GaHostRpcIntegrationTest {
                     Hashes.sha256Hex(catalogs.canonical(readOnly)),readOnly,tools);
         }
         request = new GaModelContract.Request(GaModelContract.VERSION,run,1,lease,UUID.randomUUID(),"AGENT",binding,
-                template.messages(),businessCatalog==null ? template.tools() : businessCatalog.tools(),"auto",1024,false);
+                templateMessages,businessCatalog==null ? template.tools() : businessCatalog.tools(),"auto",1024,false);
         revision=Instant.now();
         when(settings.find()).thenReturn(Optional.of(new OpenCodeSettings("test-key-no-network", "work", "test-model", revision, revision)));
         when(transport.completeNativeGa(any(),any(),any(),any(),any(),any())).thenReturn(

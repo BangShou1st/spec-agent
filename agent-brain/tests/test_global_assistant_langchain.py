@@ -80,7 +80,7 @@ def test_model_continuation_ref_roundtrip_without_private_payloads():
     assert assistant_msg.role == "assistant"
     assert assistant_msg.tool_calls[0].id == "native-sig-1"
     assert assistant_msg.continuation_ref == ref
-    assert assistant_msg.tool_calls[0].extra_content is None
+    assert "extraContent" not in json.loads(assistant_msg.model_dump_json(by_alias=True))
     assert "thought_signature" not in broker.requests[1].model_dump_json(by_alias=True)
     # Verify tool message
     tool_msg = broker.requests[1].messages[3]
@@ -243,6 +243,17 @@ def test_shared_model_golden_fixtures():
                 cls.model_validate_json(path.read_text(encoding="utf-8"))
         else:
             cls.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def test_ms_c1_r1_python_wire_fixtures_match_current_contract():
+    root = Path(__file__).resolve().parents[2] / "contracts" / "global-assistant" / "fixtures" / "ms-c1-r1"
+    first = ModelRequest.model_validate_json((root / "python-first-request.json").read_text(encoding="utf-8"))
+    second = ModelRequest.model_validate_json((root / "python-second-request.json").read_text(encoding="utf-8"))
+    assert first.tool_choice == "required"
+    assert second.messages[1].continuation_ref == "gacr-00000000-0000-4000-8000-000000000042"
+    for wire in (first, second):
+        raw = wire.model_dump_json(by_alias=True)
+        assert "extraContent" not in raw
 
 
 def test_multiple_read_only_calls_keep_separate_arguments_results_and_follow_up():

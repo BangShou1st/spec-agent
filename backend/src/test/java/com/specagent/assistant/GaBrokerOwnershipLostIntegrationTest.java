@@ -101,8 +101,11 @@ class GaBrokerOwnershipLostIntegrationTest {
         run = conversations.createRun(thread, "ga.v1", "ga.v1", "v1").id();
         var template = GaModelContract.readRequest(Files.readString(
                 Path.of("../contracts/global-assistant/fixtures/ga-model-request-valid.json")));
+        var templateMessages = template.messages().stream()
+                .map(message -> new GaModelContract.Message(message.role(), message.content(),
+                        message.toolCalls(), message.toolCallId())).toList();
         request = new GaModelContract.Request(GaModelContract.VERSION, run, 1, lease,
-                UUID.randomUUID(), "AGENT", binding, template.messages(), template.tools(),
+                UUID.randomUUID(), "AGENT", binding, templateMessages, template.tools(),
                 "auto", 1024, false);
         revision = Instant.now();
         when(settings.find()).thenReturn(Optional.of(new OpenCodeSettings(

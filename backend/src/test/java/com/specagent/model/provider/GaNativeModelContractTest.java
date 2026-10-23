@@ -52,6 +52,65 @@ class GaNativeModelContractTest {
     }
 
     @Test
+    void v2RequestJsonPreservesContinuationRefThroughReadRequest() {
+        String ref = "gacr-0a1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d";
+        String json = """
+                {"protocolVersion":"ga-model-inference.v2",
+                 "runId":"00000000-0000-4000-8000-000000000001","executionEpoch":1,
+                 "leaseId":"00000000-0000-4000-8000-000000000001",
+                 "callId":"00000000-0000-4000-8000-000000000002","callType":"AGENT",
+                 "modelBindingId":"00000000-0000-4000-8000-000000000001",
+                 "messages":[
+                   {"role":"user","content":"查找项目"},
+                   {"role":"assistant","content":"","toolCalls":[
+                     {"id":"native-1","name":"project_search","arguments":{"query":"项目"}}],
+                    "continuationRef":"%s"},
+                   {"role":"tool","content":"{}","toolCallId":"native-1"}],
+                 "tools":[{"name":"project_search","description":"Find projects",
+                           "parameters":{"type":"object"}}],
+                 "toolChoice":"auto","maxOutputTokens":2048,"stream":false}
+                """.formatted(ref);
+        var request = GaModelContract.readRequest(json);
+        assertEquals(ref, request.messages().get(1).continuationRef());
+    }
+
+    @Test
+    void v2RequestRejectsContinuationRefMisuse() {
+        String ref = "gacr-0a1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d";
+        // v1 must never accept a ref.
+        String v1 = """
+                {"protocolVersion":"ga-model-inference.v1",
+                 "runId":"00000000-0000-4000-8000-000000000001","executionEpoch":1,
+                 "leaseId":"00000000-0000-4000-8000-000000000001",
+                 "callId":"00000000-0000-4000-8000-000000000002","callType":"AGENT",
+                 "modelBindingId":"00000000-0000-4000-8000-000000000001",
+                 "messages":[{"role":"user","content":"x"},
+                   {"role":"assistant","content":"","toolCalls":[
+                     {"id":"native-1","name":"project_search","arguments":{}}],
+                    "continuationRef":"%s"},
+                   {"role":"tool","content":"{}","toolCallId":"native-1"}],
+                 "tools":[{"name":"project_search","description":"d",
+                           "parameters":{"type":"object"}}],
+                 "toolChoice":"auto","maxOutputTokens":2048,"stream":false}
+                """.formatted(ref);
+        assertThrows(IllegalArgumentException.class, () -> GaModelContract.readRequest(v1));
+        // Non-assistant roles and malformed refs fail closed.
+        String malformed = v1.replace("ga-model-inference.v1", "ga-model-inference.v2")
+                .replace("gacr-0a1b2c3d", "not-a-ref");
+        assertThrows(IllegalArgumentException.class, () -> GaModelContract.readRequest(malformed));
+        String onUser = """
+                {"protocolVersion":"ga-model-inference.v2",
+                 "runId":"00000000-0000-4000-8000-000000000001","executionEpoch":1,
+                 "leaseId":"00000000-0000-4000-8000-000000000001",
+                 "callId":"00000000-0000-4000-8000-000000000002","callType":"AGENT",
+                 "modelBindingId":"00000000-0000-4000-8000-000000000001",
+                 "messages":[{"role":"user","content":"x","continuationRef":"%s"}],
+                 "tools":[],"toolChoice":"none","maxOutputTokens":2048,"stream":false}
+                """.formatted(ref);
+        assertThrows(IllegalArgumentException.class, () -> GaModelContract.readRequest(onUser));
+    }
+
+    @Test
     void nativeToolCallIsParsedWithoutLeakingReasoning() {
         var response = adapter.parse("""
                 {"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":null,

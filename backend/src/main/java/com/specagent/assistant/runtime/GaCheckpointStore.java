@@ -180,15 +180,14 @@ public class GaCheckpointStore {
                 }
                 // The source MODEL call must already be recorded as successful; a
                 // forged payload without matching ledger tool identity fails closed.
-                require(findRecordedContinuationSource(thread, toolIds, state));
-                UUID callId = requireNonNullCallId(thread, toolIds);
+                var source = recordedContinuationSource(thread, toolIds, state);
                 var actor = actors.require(scope.runId());
                 var existing = jdbc.queryForList("SELECT id FROM ga_model_continuations WHERE source_run_id=:run AND source_call_id=:call",
-                        Maps.of("run", scope.runId(), "call", callId), UUID.class);
+                        Maps.of("run", source.sourceRunId(), "call", source.sourceCallId()), UUID.class);
                 String ref;
                 if (existing.isEmpty()) {
                     ref = continuations.persist(new GaModelContinuationStore.Source(actor.orgId(), thread,
-                            scope.runId(), callId), binding, callId, toolIds, state);
+                            source.sourceRunId(), source.sourceCallId()), binding, source.sourceCallId(), toolIds, state);
                 } else {
                     ref = "gacr-" + existing.getFirst();
                 }
@@ -220,33 +219,27 @@ public class GaCheckpointStore {
                         "stateVersion", "langchain-ga.v1", "payload", payload, "payloadHash", Hashes.sha256Hex(payload)));
     }
 
-    private boolean findRecordedContinuationSource(UUID thread, List<String> toolIds, Map<String, Object> state) {
+    private record RecordedContinuationSource(UUID sourceRunId, UUID sourceCallId) {}
+
+    private RecordedContinuationSource recordedContinuationSource(UUID thread, List<String> toolIds, Map<String, Object> state) {
         var params = Maps.of("thread", thread);
-        for (String json : jdbc.queryForList("""
-                SELECT c.result FROM ga_execution_calls c JOIN ga_executions e ON e.run_id=c.run_id
+        List<RecordedContinuationSource> matches = new ArrayList<>();
+        for (var row : jdbc.queryForList("""
+                SELECT c.run_id, c.call_id, c.result FROM ga_execution_calls c JOIN ga_executions e ON e.run_id=c.run_id
                 WHERE e.thread_id=:thread AND c.kind='MODEL' AND c.status='SUCCEEDED' ORDER BY c.call_sequence
-                """, params, String.class)) {
-            var response = GaModelContract.readResponse(json);
+                """, params)) {
+            var response = GaModelContract.readResponse((String) row.get("result"));
             List<String> ids = response.toolCalls().stream().map(GaModelContract.ToolCall::id).toList();
             if (!ids.equals(toolIds)) continue;
             var extras = response.toolCalls().stream().map(GaModelContract.ToolCall::extraContent).toList();
-            return state.equals(continuations.extract(extras));
+            if (state.equals(continuations.extract(ids, extras))) {
+                matches.add(new RecordedContinuationSource((UUID) row.get("run_id"), (UUID) row.get("call_id")));
+            }
         }
-        return false;
-    }
-
-    private UUID requireNonNullCallId(UUID thread, List<String> toolIds) {
-        var params = Maps.of("thread", thread);
-        var rows = jdbc.queryForList("""
-                SELECT c.call_id, c.result FROM ga_execution_calls c JOIN ga_executions e ON e.run_id=c.run_id
-                WHERE e.thread_id=:thread AND c.kind='MODEL' AND c.status='SUCCEEDED' ORDER BY c.call_sequence
-                """, params);
-        for (var row : rows) {
-            var response = GaModelContract.readResponse((String) row.get("result"));
-            List<String> ids = response.toolCalls().stream().map(GaModelContract.ToolCall::id).toList();
-            if (ids.equals(toolIds)) return (UUID) row.get("call_id");
-        }
-        throw new IllegalArgumentException("Invalid GA checkpoint payload");
+        // Multiple identical historical records cannot be disambiguated from the
+        // checkpoint payload alone; never guess an arbitrary source.
+        if (matches.size() != 1) throw new IllegalArgumentException("Invalid GA checkpoint payload");
+        return matches.getFirst();
     }
     private String envelope(JsonNode node) {
         fields(node, Set.of("codecVersion", "frameworkVersion", "stateVersion", "payload", "payloadHash"));
