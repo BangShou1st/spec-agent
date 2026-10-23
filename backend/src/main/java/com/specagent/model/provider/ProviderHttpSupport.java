@@ -22,7 +22,7 @@ import java.util.Map;
 /**
  * 文件名:ProviderHttpSupport.java
  *
- * 用途:OpenRouter / Custom 共用的有界 HTTP 执行工具。绝不跟随重定向
+ * 用途:其他 Provider / Custom 共用的有界 HTTP 执行工具。绝不跟随重定向
  * (凭据绝不能被转发到另一个源),强制限制请求体大小和超时,并在所有消息中
  * 脱敏密钥。
  */

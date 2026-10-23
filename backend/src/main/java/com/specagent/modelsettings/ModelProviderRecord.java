@@ -57,4 +57,10 @@ public record ModelProviderRecord(
         }
         return preset.defaultDisplayName();
     }
+
+    @Override
+    public String toString() {
+        return "ModelProviderRecord[id=" + id + ", preset=" + preset
+                + ", configRevision=" + configRevision + "]";
+    }
 }

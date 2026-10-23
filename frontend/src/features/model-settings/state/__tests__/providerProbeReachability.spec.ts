@@ -11,28 +11,16 @@ import {
   validateCustom,
 } from '@/features/model-settings/api/modelProviders'
 import { useCustomProviderStore } from '@/features/model-settings/state/customProviderStore'
-import {
-  listOpenRouterModels,
-  probeOpenRouter,
-  validateOpenRouter,
-} from '@/features/model-settings/api/modelProviders'
-import { useOpenRouterStore } from '@/features/model-settings/state/openRouterStore'
 
 vi.mock('@/features/model-settings/api/modelProviders', () => ({
   discoverCustom: vi.fn(),
   getCustomStatus: vi.fn(),
   validateCustom: vi.fn(),
-  listOpenRouterModels: vi.fn(),
-  probeOpenRouter: vi.fn(),
-  validateOpenRouter: vi.fn(),
 }))
 
 const mockedDiscover = vi.mocked(discoverCustom)
 const mockedCustomStatus = vi.mocked(getCustomStatus)
 const mockedValidateCustom = vi.mocked(validateCustom)
-const mockedList = vi.mocked(listOpenRouterModels)
-const mockedProbe = vi.mocked(probeOpenRouter)
-const mockedValidate = vi.mocked(validateOpenRouter)
 
 const RATE_LIMITED = new ApiError(
   'The model provider is temporarily rate limited',
@@ -72,7 +60,6 @@ describe('provider probe reachability semantics', () => {
       configRevision: 0,
       validated: false,
     })
-    mockedList.mockResolvedValue({ allModels: [], freeModels: [] })
     mockedValidateCustom.mockResolvedValue({
       configured: true,
       apiFormat: 'CHAT_COMPLETIONS',
@@ -86,67 +73,6 @@ describe('provider probe reachability semantics', () => {
       configRevision: 1,
       validated: true,
     })
-  })
-
-  it('treats a rate limited OpenRouter probe as a reachable upstream and keeps the rate limited state', async () => {
-    mockedProbe.mockRejectedValue(RATE_LIMITED)
-    const store = useOpenRouterStore()
-    store.configured = true
-
-    await expect(store.probe('key')).resolves.toEqual([])
-
-    // 上游可达:绝不是「测试失败」。
-    expect(store.failed).toBe(false)
-    expect(store.rateLimited).toBe(true)
-    // 限流状态与错误信息都保留下来。
-    expect(store.error?.code).toBe('MODEL_PROVIDER_RATE_LIMITED')
-    expect(store.error?.message).toContain('上游可达')
-  })
-
-  it('treats an authentication failure as a failed probe', async () => {
-    mockedProbe.mockRejectedValue(AUTH_FAILED)
-    const store = useOpenRouterStore()
-    store.configured = true
-
-    await expect(store.probe('key')).resolves.toEqual([])
-
-    expect(store.failed).toBe(true)
-    expect(store.rateLimited).toBe(false)
-    expect(store.error?.code).toBe('MODEL_PROVIDER_AUTHENTICATION')
-  })
-
-  it('treats an unreachable upstream as a failed probe', async () => {
-    mockedProbe.mockRejectedValue(UNREACHABLE)
-    const store = useOpenRouterStore()
-    store.configured = true
-
-    await expect(store.probe('key')).resolves.toEqual([])
-
-    expect(store.failed).toBe(true)
-    expect(store.rateLimited).toBe(false)
-  })
-
-  it('treats a timeout as a failed probe', async () => {
-    mockedProbe.mockRejectedValue(TIMEOUT)
-    const store = useOpenRouterStore()
-    store.configured = true
-
-    await expect(store.probe('key')).resolves.toEqual([])
-
-    expect(store.failed).toBe(true)
-    expect(store.rateLimited).toBe(false)
-  })
-
-  it('treats a rate limited model catalog refresh as a reachable upstream', async () => {
-    mockedList.mockRejectedValue(RATE_LIMITED)
-    const store = useOpenRouterStore()
-    store.configured = true
-
-    await store.refreshModels()
-
-    expect(store.failed).toBe(false)
-    expect(store.rateLimited).toBe(true)
-    expect(store.error?.code).toBe('MODEL_PROVIDER_RATE_LIMITED')
   })
 
   it('treats a rate limited custom discover as a reachable upstream', async () => {
@@ -179,19 +105,7 @@ describe('provider probe reachability semantics', () => {
     expect(store.failed).toBe(true)
   })
 
-  it('never treats a rate limited OpenRouter validation as a validated provider', async () => {
-    mockedValidate.mockRejectedValue(RATE_LIMITED)
-    const store = useOpenRouterStore()
-    store.configured = true
-    store.validated = true
 
-    store.rateLimited = true
-    await expect(store.validate()).resolves.toBe(false)
-    expect(store.rateLimited).toBe(false)
-
-    expect(store.validated).toBe(false)
-    expect(store.failed).toBe(true)
-  })
 })
 
 

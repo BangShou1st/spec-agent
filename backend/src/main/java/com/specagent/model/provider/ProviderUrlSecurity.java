@@ -9,7 +9,7 @@ import java.util.Set;
 /**
  * 文件名:ProviderUrlSecurity.java
  *
- * 用途:OpenRouter(固定 base)与 Custom 共用的规范化 URL 策略。
+ * 用途:其他 Provider(固定 base)与 Custom 共用的规范化 URL 策略。
  *
  * Base URL 指向 API 版本根(通常以 {@code /v1} 结尾)。适配器只追加一个规范
  * 后缀,绝不会再补第二个 {@code /v1}。校验采用 fail-closed 策略,且不会泄漏

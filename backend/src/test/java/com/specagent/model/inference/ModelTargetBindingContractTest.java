@@ -5,7 +5,6 @@ import com.specagent.model.contract.ActiveModelTargetPort.Target;
 import com.specagent.model.contract.RuntimeKiloSettings;
 import com.specagent.model.contract.RuntimeCustomSettings;
 import com.specagent.model.contract.RuntimeOpenCodeSettings;
-import com.specagent.model.contract.RuntimeOpenRouterSettings;
 import org.junit.jupiter.api.Test;
 import java.util.Arrays;
 import java.util.UUID;
@@ -35,9 +34,6 @@ class ModelTargetBindingContractTest {
         assertThat(new Target("OPENCODE_ZEN", "model-a", new RuntimeOpenCodeSettings("dummy-a", "model-a"))
                 .bindingFingerprint()).isNotEqualTo(new Target("OPENCODE_ZEN", "model-a",
                 new RuntimeOpenCodeSettings("dummy-b", "model-a")).bindingFingerprint());
-        assertThat(new Target("OPENROUTER", "model-a", new RuntimeOpenRouterSettings("dummy", "model-a", 1))
-                .bindingFingerprint()).isNotEqualTo(new Target("OPENROUTER", "model-a",
-                new RuntimeOpenRouterSettings("dummy", "model-a", 2)).bindingFingerprint());
         var baseline = new Target("CUSTOM", "model-a", new RuntimeCustomSettings(
                 "CHAT_COMPLETIONS", "https://example.invalid/v1", "dummy-a", "model-a", 1));
         for (var changed : java.util.List.of(

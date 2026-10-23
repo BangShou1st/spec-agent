@@ -11,6 +11,7 @@ class ToolCall(WireModel):
     id: str = Field(min_length=1, max_length=128)
     name: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
     arguments: dict[str, Any]
+    extra_content: dict[str, Any] | None = Field(default=None, alias="extraContent")
 
     @field_validator("id")
     @classmethod

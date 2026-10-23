@@ -1,165 +1,119 @@
-<!--
-  文件名:ProviderSettingsSection.vue
-  用途:Provider 注册表界面:胶囊 Tab 只决定当前编辑哪份配置,
-       绝不切换运行时 Provider;切换必须是卡片上显式的「设为当前 Provider」操作。
-       同时管理自定义 Provider 的创建/编辑弹窗。
--->
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { accessSession } from '@/features/access/accessSession'
 import { useOrganizationCapability } from '@/features/access/useOrganizationCapability'
-import { computed, onMounted, ref } from 'vue'
-import { useProviderSettingsStore } from '@/features/model-settings/state/providerSettingsStore'
-import { useCustomProviderStore } from '@/features/model-settings/state/customProviderStore'
-import { providerDisplayName } from '@/features/model-settings/presentation/providerPresentation'
-import type { ModelProvider } from '@/features/model-settings/api/modelProviders'
+import { useProviderSettingsStore } from '../state/providerSettingsStore'
+import { providerDisplayName } from '../presentation/providerPresentation'
+import { listConnections, deleteConnection, validateConnection, activateConnection,
+  type ProviderConnection } from '../api/modelProviders'
+import { toDisplayError } from '@/shared/http/displayError'
 import OpenCodeProviderSettings from './OpenCodeProviderSettings.vue'
-import OpenRouterProviderSettings from './OpenRouterProviderSettings.vue'
 import KiloProviderSettings from './KiloProviderSettings.vue'
+import ProviderConnectionEditor from './ProviderConnectionEditor.vue'
 import CustomProviderSettings from './CustomProviderSettings.vue'
-import CustomProviderDialog from './CustomProviderDialog.vue'
-
-/**
- * Provider 注册表界面。胶囊只选择当前正在编辑的配置——
- * 它们绝不切换运行时 Provider;切换始终是每张卡片上
- * 显式的「设为当前 Provider」操作。
- */
+import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'
+import UiDialogShell from '@/shared/ui/UiDialogShell.vue'
 const providers = useProviderSettingsStore()
 const canManage = useOrganizationCapability('CREDENTIAL_MANAGE')
-const custom = useCustomProviderStore()
-
-// 预设 Provider 是常驻 Tab；Custom 是用户自建项：未配置时通过末尾 “+” 创建，
-// 配置完成后以胶囊加入（与预设同样式），点击胶囊进入编辑卡片。
-const presetTabs: Array<{ value: ModelProvider; label: string }> = [
-  { value: 'OPENCODE_ZEN', label: 'OpenCode Zen' },
-  { value: 'OPENROUTER', label: 'OpenRouter' },
-  { value: 'KILO', label: 'Kilo Gateway' },
-]
-
-const activeLabel = computed(() => providerDisplayName(providers.activeProvider))
-const customConfigured = computed(() => custom.configured)
-const customLabel = computed(() => custom.displayName?.trim() || 'Custom')
-const viewingCustom = computed(() => providers.viewing === 'CUSTOM')
-
+function scopeKey() {
+  const identity = accessSession.identity
+  return identity?.authenticated ? JSON.stringify([identity.userId, identity.orgId, identity.orgCapabilities.slice().sort()]) : null
+}
+const rows = ref<ProviderConnection[]>([])
+const selected = ref('OPENCODE_ZEN')
+const activeId = ref<string | null>(null)
+const editing = ref<ProviderConnection | null>(null)
 const dialogOpen = ref(false)
-const dialogMode = ref<'create' | 'edit'>('create')
-
-function selectTab(value: ModelProvider): void {
-  providers.view(value)
+const busy = ref(false)
+const error = ref<{ code: string; message: string } | null>(null)
+const deleting = ref(false)
+const customRows = computed(() => rows.value.filter(row => row.preset === 'CUSTOM'))
+const current = computed(() => customRows.value.find(row => row.id === selected.value))
+const activeLabel = computed(() => activeId.value
+  ? rows.value.find(row => row.id === activeId.value)?.displayName || '连接不可用'
+  : providerDisplayName(providers.activeProvider))
+const presetTabs = [{ value: 'OPENCODE_ZEN', label: 'OpenCode Zen' }, { value: 'KILO', label: 'Kilo Gateway' }]
+let loadGeneration = 0
+async function load() {
+  const identity = scopeKey()
+  const generation = ++loadGeneration
+  try {
+    const result = await listConnections()
+    if (scopeKey() !== identity || generation !== loadGeneration) return
+    rows.value = result.providers; activeId.value = result.activeProviderId
+    providers.activeProvider = result.activeProvider
+  } catch (err) { if (scopeKey() === identity && generation === loadGeneration) error.value = toDisplayError(err) }
 }
-
-/**
- * 打开创建弹窗时**不能**改动当前正在查看的配置。
- *
- * 之前这里调了 providers.view('CUSTOM')，而未配置时 Custom 面板的 v-if 与
- * 两个预设面板都不成立 —— 整个卡片区被卸载，看起来就成了「弹窗把底下的东西
- * 盖没了」。弹窗只是浮层，底下的卡片必须留在原地。
- * 视图的切换推迟到创建成功、胶囊真正出现之后。
- */
-function openCreate(): void {
+watch(scopeKey, () => {
+  loadGeneration++
+  rows.value = []; activeId.value = null; dialogOpen.value = false; editing.value = null
+  selected.value = 'OPENCODE_ZEN'; error.value = null; busy.value = false
+  if (accessSession.identity?.authenticated) void load()
+}, { immediate: true, flush: 'sync' })
+watch(() => providers.activeProvider, () => { void load() })
+function openEditor(row: ProviderConnection | null) {
   if (!canManage.value) return
-  custom.clearError()
-  dialogMode.value = 'create'
-  dialogOpen.value = true
+  editing.value = row; dialogOpen.value = true
 }
-
-/** 编辑复用创建弹窗,因此显示名称在创建后仍可编辑。 */
-function openEdit(): void {
-  if (!canManage.value) return
-  custom.clearError()
-  dialogMode.value = 'edit'
-  dialogOpen.value = true
+function select(id: string) { selected.value = id; deleting.value = false; error.value = null }
+async function saved(row: ProviderConnection) { dialogOpen.value = false; await load(); selected.value = row.id }
+async function perform(action: 'validate' | 'activate' | 'delete') {
+  const row = current.value
+  if (!row || busy.value || !canManage.value) return
+  const identity = scopeKey()
+  busy.value = true; error.value = null
+  try {
+    if (action === 'validate') await validateConnection(row.id)
+    if (action === 'activate') await activateConnection(row.id)
+    if (action === 'delete') await deleteConnection(row.id)
+    if (scopeKey() !== identity) return
+    if (action === 'delete') select('OPENCODE_ZEN')
+    await load()
+  } catch (err) { if (scopeKey() === identity) error.value = toDisplayError(err) }
+  finally { if (scopeKey() === identity) busy.value = false }
 }
-
-/**
- * 关闭弹窗：只有 Custom 确实已配置（新建成功，或本来就在编辑它）才切过去
- * 展示新卡片；否则保持用户原本正在看的那张卡不变。
- */
-function closeDialog(): void {
-  dialogOpen.value = false
-  if (customConfigured.value) {
-    providers.view('CUSTOM')
-  }
-}
-
-onMounted(() => {
-  void providers.loadActive()
-  // 胶囊需要知道 Custom 是否已配置及其显示名。
-  void custom.loadStatus()
-})
 </script>
-
 <template>
   <section class="provider-section" data-test="provider-section">
     <div class="provider-active-banner" data-test="active-provider-banner">
-      <span class="provider-active-banner__label">当前使用</span>
-      <strong data-test="active-provider-name">{{ activeLabel }}</strong>
+      <span class="provider-active-banner__label">当前使用</span><strong data-test="active-provider-name">{{ activeLabel }}</strong>
     </div>
-
+    <ApiErrorBanner v-if="error && !current" :code="error.code" :message="error.message" retry-label="重新加载" @retry="load" />
     <div class="provider-tabs" role="tablist" aria-label="AI Provider" data-test="provider-tabs">
-      <button
-        v-for="tab in presetTabs"
-        :key="tab.value"
-        role="tab"
-        type="button"
-        class="provider-tab"
-        :class="{ 'provider-tab--selected': providers.viewing === tab.value }"
-        :aria-selected="providers.viewing === tab.value"
-        :data-test="`provider-tab-${tab.value.toLowerCase()}`"
-        @click="selectTab(tab.value)"
-      >
-        {{ tab.label }}
-        <span
-          v-if="providers.activeProvider === tab.value"
-          class="provider-tab__badge"
-          data-test="provider-active-badge"
-        >当前</span>
+      <button v-for="tab in presetTabs" :key="tab.value" type="button" role="tab" class="provider-tab"
+        :class="{ 'provider-tab--selected': selected === tab.value }" :aria-selected="selected === tab.value"
+        :data-test="`provider-tab-${tab.value.toLowerCase()}`" @click="select(tab.value)">
+        {{ tab.label }}<span v-if="!activeId && providers.activeProvider === tab.value" class="provider-tab__badge">当前</span>
       </button>
-      <button
-        v-if="customConfigured"
-        role="tab"
-        type="button"
-        class="provider-tab"
-        :class="{ 'provider-tab--selected': viewingCustom }"
-        :aria-selected="viewingCustom"
-        data-test="provider-tab-custom"
-        @click="selectTab('CUSTOM')"
-      >
-        {{ customLabel }}
-        <span
-          v-if="providers.activeProvider === 'CUSTOM'"
-          class="provider-tab__badge"
-          data-test="provider-active-badge"
-        >当前</span>
+      <button v-for="row in customRows" :key="row.id" type="button" role="tab" class="provider-tab"
+        :class="{ 'provider-tab--selected': selected === row.id }" :aria-selected="selected === row.id"
+        :data-test="`provider-tab-${row.id}`" @click="select(row.id)">
+        {{ row.displayName }}<span v-if="activeId === row.id" class="provider-tab__badge">当前</span>
       </button>
-      <button
-        v-if="canManage && !customConfigured"
-        type="button"
-        class="provider-tab provider-tab--add"
-        aria-label="添加自定义 Provider"
-        title="添加自定义 Provider"
-        data-test="provider-add-custom"
-        @click="openCreate"
-      >
-        +
-      </button>
+      <button v-if="canManage" type="button" class="provider-tab provider-tab--add" aria-label="添加自定义 Provider"
+        data-test="provider-add-custom" @click="openEditor(null)">+</button>
     </div>
-
-    <div v-if="viewingCustom && customConfigured" role="tabpanel">
-      <CustomProviderSettings @edit="openEdit" />
+    <div v-if="selected === 'OPENCODE_ZEN'" role="tabpanel"><OpenCodeProviderSettings /></div>
+    <div v-else-if="selected === 'KILO'" role="tabpanel"><KiloProviderSettings /></div>
+    <div v-else-if="current" role="tabpanel">
+      <CustomProviderSettings :connection="current" :busy="busy" :error="error" :active="activeId === current.id"
+        @edit="openEditor(current)" @validate="perform('validate')" @activate="perform('activate')"
+        @delete="deleting = true" @retry="perform('validate')" />
     </div>
-    <div v-else-if="providers.viewing === 'OPENCODE_ZEN'" role="tabpanel">
-      <OpenCodeProviderSettings />
-    </div>
-    <div v-else-if="providers.viewing === 'OPENROUTER'" role="tabpanel">
-      <OpenRouterProviderSettings />
-    </div>
-    <div v-else-if="providers.viewing === 'KILO'" role="tabpanel">
-      <KiloProviderSettings />
-    </div>
-
-    <CustomProviderDialog :open="dialogOpen" :mode="dialogMode" @close="closeDialog" />
+    <UiDialogShell :open="deleting && !!current && canManage" title="删除自定义连接"
+      description="删除后，绑定此连接的历史运行将无法继续调用模型。" test-id="connection-delete-dialog" @close="deleting = false">
+      <p class="settings-field__hint">确认删除「{{ current?.displayName }}」？其他连接不受影响。</p>
+      <template #actions>
+        <button class="btn settings-action" type="button" :disabled="busy" @click="deleting = false">取消</button>
+        <button class="btn btn-danger settings-action" type="button" :disabled="busy" @click="perform('delete')">确认删除</button>
+      </template>
+    </UiDialogShell>
+    <UiDialogShell :open="dialogOpen && canManage" :title="editing ? '编辑自定义连接' : '添加自定义连接'"
+      description="填写 API 地址和模型，保存后测试连接，再设为当前模型。" test-id="connection-dialog" @close="dialogOpen = false">
+      <ProviderConnectionEditor v-if="dialogOpen" :connection="editing" @saved="saved" />
+    </UiDialogShell>
   </section>
 </template>
-
 <style scoped>
 .provider-section {
   display: flex;
@@ -218,4 +172,5 @@ onMounted(() => {
   padding: 8px 12px;
   color: var(--color-text-muted);
 }
+.provider-tab { max-width: 100%; overflow-wrap: anywhere; }
 </style>

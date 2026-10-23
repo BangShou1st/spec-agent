@@ -3,10 +3,8 @@ package com.specagent.modelsettings;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.model.contract.CustomRuntimeSettingsPort;
 import com.specagent.model.contract.OpenCodeRuntimeSettingsPort;
-import com.specagent.model.contract.OpenRouterRuntimeSettingsPort;
 import com.specagent.model.contract.RuntimeCustomSettings;
 import com.specagent.model.contract.RuntimeOpenCodeSettings;
-import com.specagent.model.contract.RuntimeOpenRouterSettings;
 import com.specagent.model.provider.ChatCompletionsProtocolAdapter;
 import com.specagent.model.provider.CompatibilityProbeService;
 import com.specagent.model.provider.CustomApiFormat;
@@ -23,9 +21,6 @@ import com.specagent.modelsettings.CustomProviderSettingsService;
 import com.specagent.modelsettings.OpenCodeSettings;
 import com.specagent.modelsettings.OpenCodeSettingsRepository;
 import com.specagent.modelsettings.OpenCodeSettingsService;
-import com.specagent.modelsettings.OpenRouterSettings;
-import com.specagent.modelsettings.OpenRouterSettingsRepository;
-import com.specagent.modelsettings.OpenRouterSettingsService;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -47,49 +42,11 @@ class RuntimeSettingsPortTest {
 
     // ---- OpenRouter -----------------------------------------------------
 
-    @Test
-    void openRouterPortFailsClosedWhenUnconfigured() {
-        OpenRouterSettingsService svc = openRouterService(new MemOpenRouterRepo());
-        OpenRouterRuntimeSettingsPort port = svc;
 
-        assertThatThrownBy(port::requireRuntimeSettings)
-                .isInstanceOf(ModelProviderException.class)
-                .hasMessageContaining("not configured");
-    }
 
-    @Test
-    void openRouterPortFailsClosedWhenRevisionIsNotValidated() {
-        MemOpenRouterRepo repo = new MemOpenRouterRepo();
-        Instant now = Instant.now();
-        // 从未在当前配置修订号下校验过。
-        repo.stored = new OpenRouterSettings("or-secret-key", "e-key", "m:free",
-                2, null, now, now, null);
-        OpenRouterRuntimeSettingsPort port = openRouterService(repo);
 
-        assertThatThrownBy(port::requireRuntimeSettings)
-                .isInstanceOf(ModelProviderException.class);
 
-        // 在过期修订号下校验过的同样 fail-closed。
-        repo.stored = new OpenRouterSettings("or-secret-key", "e-key", "m:free",
-                2, 1L, now, now, now);
-        assertThatThrownBy(port::requireRuntimeSettings)
-                .isInstanceOf(ModelProviderException.class);
-    }
 
-    @Test
-    void openRouterPortProjectsKeyAndModelAfterValidation() {
-        MemOpenRouterRepo repo = new MemOpenRouterRepo();
-        Instant now = Instant.now();
-        repo.stored = new OpenRouterSettings("or-secret-key", "e-key", "m:free",
-                2, 2L, now, now, now);
-        OpenRouterRuntimeSettingsPort port = openRouterService(repo);
-
-        RuntimeOpenRouterSettings settings = port.requireRuntimeSettings();
-
-        assertThat(settings.apiKey()).isEqualTo("or-secret-key");
-        assertThat(settings.selectedModel()).isEqualTo("m:free");
-        assertThat(settings.toString()).doesNotContain("or-secret-key");
-    }
 
     // ---- Custom ---------------------------------------------------------
 
@@ -184,18 +141,13 @@ class RuntimeSettingsPortTest {
     private static CompatibilityProbeService noopProbe() {
         return new CompatibilityProbeService(new ObjectMapper(), registry(),
                 new com.specagent.model.provider.CompatibilityProbeSemantics()) {
-            @Override
-            public void probeOpenRouter(String apiKey, String model) {
-            }
-            @Override
+@Override
             public void probeCustom(CustomApiFormat format, String base, String key, String model) {
             }
         };
     }
 
-    private static OpenRouterSettingsService openRouterService(OpenRouterSettingsRepository repo) {
-        return new OpenRouterSettingsService(repo, new ObjectMapper(), registry(), noopProbe());
-    }
+
 
     private static CustomProviderSettingsService customService(CustomProviderSettingsRepository repo) {
         return new CustomProviderSettingsService(repo, new ObjectMapper(), registry(), noopProbe());
@@ -209,26 +161,7 @@ class RuntimeSettingsPortTest {
                 validatedRevision == null ? null : now);
     }
 
-    private static final class MemOpenRouterRepo implements OpenRouterSettingsRepository {
-        OpenRouterSettings stored;
 
-        @Override
-        public Optional<OpenRouterSettings> find() {
-            return Optional.ofNullable(stored);
-        }
-
-        @Override
-        public void upsert(OpenRouterSettings settings) {
-            stored = settings;
-        }
-
-        @Override
-        public void markValidated(long revision) {
-            stored = new OpenRouterSettings(stored.apiKey(), stored.maskedSuffix(),
-                    stored.selectedModel(), stored.configRevision(), revision,
-                    stored.createdAt(), stored.updatedAt(), Instant.now());
-        }
-    }
 
     private static final class MemCustomRepo implements CustomProviderSettingsRepository {
         CustomProviderSettings stored;

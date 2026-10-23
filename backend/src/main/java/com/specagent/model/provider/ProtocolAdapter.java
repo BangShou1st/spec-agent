@@ -10,7 +10,7 @@ import java.util.Map;
  * 文件名:ProtocolAdapter.java
  *
  * 用途:单一 API 格式的高内聚线上格式翻译接口。输入输出都是提供商无关的。
- * 绝不执行 Agent 工具、绝不访问数据库、也绝不感知 OPENROUTER / CUSTOM 路由。
+ * 绝不执行 Agent 工具、绝不访问数据库、也绝不感知 提供商 路由。
  */
 public interface ProtocolAdapter {
 

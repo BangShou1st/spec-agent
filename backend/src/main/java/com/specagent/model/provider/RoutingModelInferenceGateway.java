@@ -10,7 +10,6 @@ import com.specagent.model.contract.ModelProvider;
 import com.specagent.model.contract.RuntimeCustomSettings;
 import com.specagent.model.contract.RuntimeKiloSettings;
 import com.specagent.model.contract.RuntimeOpenCodeSettings;
-import com.specagent.model.contract.RuntimeOpenRouterSettings;
 import com.specagent.common.InMemoryRunModelBindingPort;
 import com.specagent.common.RunModelBindingPort;
 import java.util.Collections;
@@ -41,7 +40,6 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
     private final ActiveProviderPort providerSettings;
     private final ActiveModelTargetPort modelTargets;
     private final OpenCodeModelInferenceGateway openCode;
-    private final OpenRouterInferenceGateway openRouter;
     private final KiloInferenceGateway kilo;
     private final CustomInferenceGateway custom;
     private final RunModelBindingPort runBindings;
@@ -59,10 +57,9 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
     public RoutingModelInferenceGateway(ActiveProviderPort providerSettings,
                                         ActiveModelTargetPort modelTargets,
                                         OpenCodeModelInferenceGateway openCode,
-                                        OpenRouterInferenceGateway openRouter,
                                         KiloInferenceGateway kilo,
                                         CustomInferenceGateway custom) {
-        this(providerSettings, modelTargets, openCode, openRouter, kilo, custom,
+        this(providerSettings, modelTargets, openCode, kilo, custom,
                 new InMemoryRunModelBindingPort());
     }
 
@@ -70,14 +67,12 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
     public RoutingModelInferenceGateway(ActiveProviderPort providerSettings,
                                         ActiveModelTargetPort modelTargets,
                                         OpenCodeModelInferenceGateway openCode,
-                                        OpenRouterInferenceGateway openRouter,
                                         KiloInferenceGateway kilo,
                                         CustomInferenceGateway custom,
                                         RunModelBindingPort runBindings) {
         this.providerSettings = providerSettings;
         this.modelTargets = modelTargets;
         this.openCode = openCode;
-        this.openRouter = openRouter;
         this.kilo = kilo;
         this.custom = custom;
         this.runBindings = runBindings;
@@ -94,7 +89,6 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
         }
         return switch (ModelProvider.fromCode(target.provider())) {
             case OPENCODE_ZEN -> completeOpenCode(request, target);
-            case OPENROUTER -> completeOpenRouter(request, target);
             case KILO -> completeKilo(request, target);
             case CUSTOM -> completeCustom(request, target);
         };
@@ -111,7 +105,6 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
         }
         return switch (ModelProvider.fromCode(target.provider())) {
             case OPENCODE_ZEN -> completeOpenCodeStreaming(request, listener, target);
-            case OPENROUTER -> completeOpenRouterStreaming(request, listener, target);
             case KILO -> completeKiloStreaming(request, listener, target);
             case CUSTOM -> completeCustomStreaming(request, listener, target);
         };
@@ -123,11 +116,7 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
                 ? openCode.complete(request, snapshot) : openCode.complete(request, target.model());
     }
 
-    private ModelInferenceResponse completeOpenRouter(ModelInferenceRequest request,
-                                                       ActiveModelTargetPort.Target target) {
-        return target.runtimeSettings() instanceof RuntimeOpenRouterSettings snapshot
-                ? openRouter.complete(request, snapshot) : openRouter.complete(request, target.model());
-    }
+
 
     private ModelInferenceResponse completeKilo(ModelInferenceRequest request,
                                                  ActiveModelTargetPort.Target target) {
@@ -148,12 +137,7 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
                 : openCode.completeStreaming(request, listener, target.model());
     }
 
-    private ModelInferenceResponse completeOpenRouterStreaming(ModelInferenceRequest request,
-            FragmentListener listener, ActiveModelTargetPort.Target target) {
-        return target.runtimeSettings() instanceof RuntimeOpenRouterSettings snapshot
-                ? openRouter.completeStreaming(request, listener, snapshot)
-                : openRouter.completeStreaming(request, listener, target.model());
-    }
+
 
     private ModelInferenceResponse completeKiloStreaming(ModelInferenceRequest request,
             FragmentListener listener, ActiveModelTargetPort.Target target) {
@@ -173,7 +157,6 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
     private ModelInferenceGateway legacyDelegate() {
         return switch (providerSettings.activeProvider()) {
             case OPENCODE_ZEN -> openCode;
-            case OPENROUTER -> openRouter;
             case KILO -> kilo;
             case CUSTOM -> custom;
         };
@@ -185,16 +168,27 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
      * between instances and survives eviction/restart.
      */
     private ActiveModelTargetPort.Target resolveBoundTarget(UUID runId) {
-        ActiveModelTargetPort.Target current = currentTargetOrNull();
         if (runId == null) {
-            return current;
+            return currentTargetOrNull();
         }
+        ActiveModelTargetPort.Target current;
+        var frozenReference = runBindings.connectionReference(runId);
+        if (frozenReference.isPresent()) {
+            try { current = modelTargets.targetForConnectionReference(frozenReference.get()).orElse(null); }
+            catch (RuntimeException unavailable) { throw bindingMismatch(runId); }
+        } else current = currentTargetOrNull();
         synchronized (frozenRunTargets) {
             String fingerprint = current == null ? null : current.bindingFingerprint();
+            String reference = current != null && current.runtimeSettings() instanceof RuntimeCustomSettings custom
+                    && custom.providerId() != null ? custom.bindingRevision() : null;
+            if (current != null && ("OPENCODE_ZEN".equals(current.provider()) || "KILO".equals(current.provider()))) {
+                reference = "builtin:" + current.provider();
+            }
             String cached = frozenRunTargets.get(runId);
             if (current == null || !hasProviderSnapshot(current)
                     || (cached != null && !cached.equals(fingerprint))
-                    || !runBindings.bindOrVerify(runId, fingerprint)) {
+                    || !(reference == null ? runBindings.bindOrVerify(runId, fingerprint)
+                        : runBindings.bindOrVerify(runId, fingerprint, reference))) {
                 throw bindingMismatch(runId);
             }
             if (cached == null) {
@@ -209,7 +203,6 @@ public class RoutingModelInferenceGateway implements ModelInferenceGateway {
         try {
             return switch (ModelProvider.fromCode(target.provider())) {
                 case OPENCODE_ZEN -> target.runtimeSettings() instanceof RuntimeOpenCodeSettings;
-                case OPENROUTER -> target.runtimeSettings() instanceof RuntimeOpenRouterSettings;
                 case KILO -> target.runtimeSettings() instanceof RuntimeKiloSettings;
                 case CUSTOM -> target.runtimeSettings() instanceof RuntimeCustomSettings;
             };

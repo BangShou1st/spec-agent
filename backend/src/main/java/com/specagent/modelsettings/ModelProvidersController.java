@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 用途:提供商注册表的 REST 接口(/api/v1/settings/providers),把预设与
  * 用户自建行合成一份统一列表。这是系统的扩展点:新增提供商就是一次 POST,
  * 不需要新增控制器、表或枚举值。预设的请求形状比较特殊(OpenCode Zen 需要
- * 带额外头部的绝对直连调用,OpenRouter 有资格验证流程),其投影仍保留在
+ * 带额外头部的绝对直连调用,其他 Provider 有资格验证流程),其投影仍保留在
  * {@link ModelProviderViewService} 中,但对设置页而言它们只是列表里普通的两张卡片。
  */
 @RestController
@@ -45,7 +45,8 @@ public class ModelProvidersController {
     public record ProbeRequest(String apiFormat, String baseUrl, String apiKey) {
     }
 
-    public record DiscoveryView(List<String> models, boolean manualModel, String endpointPreview) {
+    public record DiscoveryView(List<String> models, List<String> freeModels,
+                                boolean manualModel, String endpointPreview) {
     }
 
     @GetMapping
@@ -56,6 +57,11 @@ public class ModelProvidersController {
     @PostMapping
     public ProviderView create(@RequestBody PatchRequest request) {
         return views.rowView(providers.create(toPatch(request)));
+    }
+
+    @PostMapping("/discover")
+    public DiscoveryView discover(@RequestBody ProbeRequest request) {
+        return toView(providers.discover(null, request.apiFormat(), request.baseUrl(), request.apiKey()));
     }
 
     @PutMapping("/{id}")
@@ -98,7 +104,8 @@ public class ModelProvidersController {
     }
 
     private static DiscoveryView toView(ProviderModelCatalogService.Discovery discovery) {
-        return new DiscoveryView(discovery.allModels(), discovery.manualModel(), discovery.endpointPreview());
+        return new DiscoveryView(discovery.allModels(), discovery.freeModels(),
+                discovery.manualModel(), discovery.endpointPreview());
     }
 
     private static ModelProvidersService.Patch toPatch(PatchRequest request) {

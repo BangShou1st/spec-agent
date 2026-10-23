@@ -1,7 +1,6 @@
 package com.specagent.modelsettings;
 
 import com.specagent.modelsettings.CustomProviderSettingsController;
-import com.specagent.modelsettings.OpenRouterSettingsController;
 
 import com.specagent.common.ApiErrorResponse;
 import org.springframework.http.HttpStatus;
@@ -20,7 +19,6 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
         ModelProvidersController.class,
         ModelProviderSettingsController.class,
         CustomProviderSettingsController.class,
-        OpenRouterSettingsController.class,
         KiloSettingsController.class})
 public class SettingsProvidersErrorAdvice {
 

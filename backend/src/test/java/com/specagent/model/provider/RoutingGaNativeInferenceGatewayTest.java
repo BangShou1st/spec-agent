@@ -89,11 +89,11 @@ class RoutingGaNativeInferenceGatewayTest {
     }
 
     @Test
-    void openRouterAndCustomUseTheTextOnlyChatCompletionsTransport() {
+    void customUsesTheChatCompletionsTransport() {
         when(textChat.complete(any(), any(), any(), any())).thenReturn(response());
         when(textChat.stream(any(), any(), any(), any(), any())).thenReturn(response());
 
-        gateway.complete(target("OPENROUTER", "openrouter/auto"), UUID.randomUUID(), request(),
+        gateway.complete(target("CUSTOM", "custom-model"), UUID.randomUUID(), request(),
                 Duration.ofSeconds(30), () -> true);
         gateway.stream(target("CUSTOM", "local-llama"), UUID.randomUUID(), request(),
                 Duration.ofSeconds(30), () -> true, text -> true);

@@ -130,7 +130,7 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
     }
 
     /**
-     * 重新验证已持久化的配置,但不写任何东西。与 OpenRouter 的契约一致:
+     * 重新验证已持久化的配置,但不写任何东西。与 其他 Provider 的契约一致:
      * 可达性检查针对实际存储的那个模型执行,让设置卡片能提供显式的
      * "再次测试"操作,且永远不会改动已保存的配置对。
      */

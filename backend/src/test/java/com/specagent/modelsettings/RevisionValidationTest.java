@@ -11,9 +11,6 @@ import com.specagent.model.provider.AnthropicMessagesProtocolAdapter;
 import com.specagent.modelsettings.CustomProviderSettings;
 import com.specagent.modelsettings.CustomProviderSettingsRepository;
 import com.specagent.modelsettings.CustomProviderSettingsService;
-import com.specagent.modelsettings.OpenRouterSettings;
-import com.specagent.modelsettings.OpenRouterSettingsRepository;
-import com.specagent.modelsettings.OpenRouterSettingsService;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -32,19 +29,7 @@ import static org.assertj.core.api.Assertions.*;
  */
 class RevisionValidationTest {
 
-    static class MemOpenRouterRepo implements OpenRouterSettingsRepository {
-        OpenRouterSettings stored;
-        public Optional<OpenRouterSettings> find() {
-            return Optional.ofNullable(stored);
-        }
-        public void upsert(OpenRouterSettings s) {
-            stored = s;
-        }
-        public void markValidated(long rev) {
-            stored = new OpenRouterSettings(stored.apiKey(), stored.maskedSuffix(), stored.selectedModel(),
-                    stored.configRevision(), rev, stored.createdAt(), stored.updatedAt(), Instant.now());
-        }
-    }
+
 
     static class MemCustomRepo implements CustomProviderSettingsRepository {
         CustomProviderSettings stored;
@@ -71,28 +56,13 @@ class RevisionValidationTest {
     private CompatibilityProbeService noopProbe() {
         return new CompatibilityProbeService(new ObjectMapper(), registry(),
                 new com.specagent.model.provider.CompatibilityProbeSemantics()) {
-            @Override
-            public void probeOpenRouter(String apiKey, String model) {
-            }
-            @Override
+@Override
             public void probeCustom(CustomApiFormat format, String base, String key, String model) {
             }
         };
     }
 
-    @Test void openrouterChangeInvalidatesAndRevalidateAllows() {
-        MemOpenRouterRepo repo = new MemOpenRouterRepo();
-        Instant now = Instant.now();
-        repo.stored = new OpenRouterSettings("k1", "k1", "m:free", 1, 1L, now, now, now);
-        // 通过直接写 repo 模拟"换模型后的保存"(service.save 会做线上发现,
-        // 所以修订语义在这里只在 repository + 门禁层面断言)。
-        repo.stored = new OpenRouterSettings("k1", "k1", "m2:free", 2, null, now, now, null);
-        OpenRouterSettingsService svc = new OpenRouterSettingsService(repo, new ObjectMapper(), registry(), noopProbe());
-        assertThatThrownBy(svc::requireActivatable)
-                .isInstanceOf(ModelProviderException.class);
-        repo.markValidated(2);
-        svc.requireActivatable();
-    }
+
 
     @Test void customChangeInvalidates() {
         MemCustomRepo repo = new MemCustomRepo();

@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 /**
  * 文件名:ChatCompletionsGaTextTransport.java
  *
- * 用途:OpenRouter 与 Custom(Chat Completions 格式)共用的 GA 纯文本传输。
+ * 用途:其他 Provider 与 Custom(Chat Completions 格式)共用的 GA 纯文本传输。
  *
  * <p><b>只承担协议转换职责,绝不是第二套模型客户端</b>:它把 GA 的
  * {@link GaModelContract.Request} 直接交给既有的 {@link GaChatCompletionsAdapter}
@@ -35,6 +35,14 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class ChatCompletionsGaTextTransport {
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ChatCompletionsGaTextTransport.class);
+    private final java.util.concurrent.atomic.AtomicReference<GaHttpSafetyDiagnostic> lastDiagnostic =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
+    public GaHttpSafetyDiagnostic lastSafetyDiagnostic() {
+        return lastDiagnostic.get();
+    }
 
     private final CustomRuntimeSettingsPort customSettings;
     private final ObjectMapper mapper;
@@ -72,24 +80,46 @@ public class ChatCompletionsGaTextTransport {
             throw new IllegalArgumentException("Invalid GA execution deadline");
         }
         if (!active.getAsBoolean()) throw new StreamCancelledException("GA execution no longer active");
-        if(!target.provider().equals("CUSTOM") || !qualification.hasCustomTargets()) requireTextOnly(request);
+        if (!target.provider().equals("CUSTOM")
+                || (!target.settingsRevision().startsWith("custom-provider:") && !qualification.hasCustomTargets())) requireTextOnly(request);
         Resolved resolved = resolve(target);
         if(!resolved.nativeTools()) requireTextOnly(request);
         GaChatCompletionsAdapter adapter = new GaChatCompletionsAdapter();
         Map<String, Object> body = adapter.requestBody(request, target.model());
         // This existing buffered transport returns a complete provider-neutral response.
         body.put("stream",false);
-        ProviderHttpSupport.HttpResult result = ProviderHttpSupport.postJson(client, mapper,
-                resolved.endpoint(), resolved.headers(), body, remainingBudget.compareTo(ProviderHttpSupport.INFERENCE_TIMEOUT)<0?remainingBudget:ProviderHttpSupport.INFERENCE_TIMEOUT,
-                resolved.context());
-        String json;
         try {
-            json = mapper.writeValueAsString(result.json());
-        } catch (Exception ex) {
-            throw ModelProviderException.invalidResponse(resolved.context(),
-                    "Failed to re-encode the GA text response");
+            ProviderHttpSupport.HttpResult result = ProviderHttpSupport.postJson(client, mapper,
+                    resolved.endpoint(), resolved.headers(), body,
+                    remainingBudget.compareTo(ProviderHttpSupport.INFERENCE_TIMEOUT)<0?remainingBudget:ProviderHttpSupport.INFERENCE_TIMEOUT,
+                    resolved.context());
+            String json;
+            try {
+                json = mapper.writeValueAsString(result.json());
+            } catch (Exception ex) {
+                throw ModelProviderException.invalidResponse(resolved.context(),
+                        "Failed to re-encode the GA text response");
+            }
+            GaModelContract.Response response = adapter.validateResponse(request, adapter.parse(json));
+            GaHttpSafetyDiagnostic diag = GaHttpSafetyDiagnostic.capture(
+                    resolved.context(), target.model(), "chat_completions",
+                    200, "NONE", "SUCCEEDED", request);
+            lastDiagnostic.set(diag);
+            return response;
+        } catch (ModelProviderException ex) {
+            GaHttpSafetyDiagnostic diag = GaHttpSafetyDiagnostic.capture(
+                    resolved.context(), target.model(), "chat_completions",
+                    ex.httpStatus(), ex.gatewayCategory().name(), "UPSTREAM_REQUEST_FAILED", request);
+            lastDiagnostic.set(diag);
+            log.warn("GA native HTTP request failed diagnostic: {}", diag);
+            throw ex;
+        } catch (RuntimeException ex) {
+            GaHttpSafetyDiagnostic diag = GaHttpSafetyDiagnostic.capture(
+                    resolved.context(), target.model(), "chat_completions",
+                    null, ex.getClass().getSimpleName(), "LOCAL_FAILURE", request);
+            lastDiagnostic.set(diag);
+            throw ex;
         }
-        return adapter.validateResponse(request, adapter.parse(json));
     }
 
     /**
@@ -123,27 +153,23 @@ public class ChatCompletionsGaTextTransport {
             throw new UnsupportedOperationException("UNSUPPORTED_AGENT_MODEL");
         }
         return switch (provider) {
-            case OPENROUTER -> {
-                // 固定 base URL、固定 Chat Completions;凭据取<b>已冻结</b>的 target,
-                // 绝不重新读取设置里的密钥——运行中切换提供商/模型不会改变本 Run。
-                Map<String, String> headers = new LinkedHashMap<>(
-                        new ChatCompletionsProtocolAdapter().authHeaders(target.credential()));
-                headers.put("HTTP-Referer", "https://spec-agent.local");
-                headers.put("X-Title", "Spec Agent");
-                yield new Resolved(OpenRouterGatewaySupport.BASE_URL + "/chat/completions",
-                        headers, "openrouter",false);
-            }
             case CUSTOM -> {
-                RuntimeCustomSettings settings = customSettings.requireRuntimeSettings();
+                RuntimeCustomSettings settings = customSettings.requireRuntimeSettings(target.settingsRevision());
+                if (!settings.selectedModel().equals(target.model())
+                        || !settings.bindingRevision().equals(target.settingsRevision())
+                        || !java.util.Objects.equals(settings.apiKey(),target.credential())) {
+                    throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+                }
                 CustomApiFormat format = CustomApiFormat.fromCode(settings.apiFormat());
                 if (format != CustomApiFormat.CHAT_COMPLETIONS) {
                     throw new UnsupportedOperationException("UNSUPPORTED_AGENT_MODEL");
                 }
                 // 绝不放宽自定义 URL 的 SSRF / 安全源检查:端点仍走既有的 fail-closed 校验。
                 String normalized = ProviderUrlSecurity.validateAndNormalizeBaseUrl(settings.baseUrl());
-                boolean nativeTools=qualification.customQualified(normalized,target.model());
+                boolean nativeTools=settings.providerId() != null ? settings.nativeToolsVerified()
+                        : qualification.customQualified(normalized,target.model());
                 if(nativeTools && (!settings.selectedModel().equals(target.model())
-                        || !target.settingsRevision().equals("custom-settings:"+settings.configRevision())))
+                        || !target.settingsRevision().equals(settings.bindingRevision())))
                     throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
                 yield new Resolved(ProviderUrlSecurity.canonicalEndpoint(normalized, format),
                         new ChatCompletionsProtocolAdapter().authHeaders(target.credential()),

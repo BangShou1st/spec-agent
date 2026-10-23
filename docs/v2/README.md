@@ -1,3 +1,8 @@
+---
+status: Canonical
+authority: Current Authority
+---
+
 # Spec Agent V2 设计索引
 
 > Status: **Frozen product contract / core runtime implemented on `main`**\
@@ -21,6 +26,8 @@
 **Frozen Graph V2 core contract（速览；权威定义见 `GRAPH_MODEL_V2.md`）：** Shared Node = Shared State（对 canonical Question：project-wide 至多一个 immutable Answer identity；divergence fail closed `SHARED_STATE_DIVERGENCE`；不存在 route-specific Answer selector，Focus 不选择 Answer）；unanswered Interaction Question 必须保持 Route tip（`UNANSWERED_QUESTION_HAS_CHILD`）；re-answer 创建 fresh canonical Question identity；`RESUME_QUESTION` 产品功能不存在（inactive/open Route 的未答 tip 通过激活原 Route 回答；`RESUME_ANSWER` 是独立的 runtime repair）；Focus ≠ Active；semantic relation 与 lineage 严格分离，禁止 rejoin / historical insertion；Canvas 拖拽只产生 pending relation proposal（Scheme C）；unresolved conflict 必须直接进入冲突解决（`REQUEST_USER_INPUT` 或 confirmable `CREATE_NODE (KNOWLEDGE/DECISION)`），Agent-authored DECISION 属于 `CONFIRMED_INTENT_CHANGE` 必须用户确认。
 
 ## 2. Canonical 文档
+
+- [MODEL_SERVICE_V2.md](MODEL_SERVICE_V2.md) — 两个内置提供商、多 Custom UUID 连接、冻结模型身份、能力验证与通用测试边界。
 
 按职责阅读：
 

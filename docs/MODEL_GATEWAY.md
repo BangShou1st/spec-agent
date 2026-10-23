@@ -5,6 +5,11 @@ authority: Current Authority
 
 # Model Gateway
 
+> 2026-10-23 Model Service V2：连接身份、内置入口、能力资格与历史迁移以
+> [MODEL_SERVICE_V2.md](v2/MODEL_SERVICE_V2.md) 为最新权威。OpenRouter 专用业务代码已退役，
+> 仅按普通 Custom 使用；下文早期阶段的 OpenRouter 内置描述与静态 Custom 资格仅供理解迁移前基线，
+> 不能作为当前新增连接的规则。Zen/Kilo 的冻结传输、Java 凭据边界与 Runtime 门禁继续有效。
+
 Status: first-version design freeze  
 Date: 2026-08-17
 
@@ -21,11 +26,10 @@ identity, catalog, scope, arguments, permissions, budgets and side effects.
 Credentials remain in the secure Java host, never Python or checkpoints.
 The existing Custom transport is buffered (one provider request per call), with
 no automatic retry, provider switch, or prompt-simulated tool calls.
-R2's Gemini 3.5 Flash Lite probe returned a native tool call but the subsequent
-model request failed with `PROVIDER_REQUEST_ERROR`. This does **not** qualify the
-complete Gemini tool protocol; no Gemini target is enabled in shared/default
-configuration. See [R2 evidence](acceptance-evidence/rag-d4-r2-20261023/summary.md).
-
+In D4-R3, the second-request failure was resolved by preserving `thought_signature` / `extra_content` across the protocol adapter, model broker and checkpoint layers. Complete closed-loop native tool continuation has now been verified for the exact target:
+- Base URL: `https://generativelanguage.googleapis.com/v1beta/openai`
+- Model: `gemini-3.5-flash-lite`
+The qualification switch remains opt-in via `spec.global-assistant.ga-native.custom-qualified-targets` (default list remains empty, failing closed with `requireTextOnly`). See [R3 evidence](acceptance-evidence/rag-d4-r3-20261023/summary.md).
 ## 1. Purpose
 
 Model Gateway is the only boundary through which Spec Agent talks to external model providers.

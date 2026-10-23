@@ -7,8 +7,6 @@ import com.specagent.model.provider.ModelProviderException;
 import com.specagent.model.provider.OpenCodeModelCatalog;
 import com.specagent.model.provider.OpenCodeModelErrorCategory;
 import com.specagent.model.provider.OpenCodeModelException;
-import com.specagent.model.provider.OpenRouterGatewaySupport;
-import com.specagent.model.provider.OpenRouterModelQualification;
 import com.specagent.model.provider.ProtocolAdapter;
 import com.specagent.model.provider.ProtocolAdapterRegistry;
 import com.specagent.model.provider.ProviderHttpSupport;
@@ -22,7 +20,7 @@ import org.springframework.stereotype.Service;
  * 文件名:ProviderModelCatalogService.java
  *
  * 用途:模型目录发现服务,每种预设类型走一条专属代码路径。这是刻意设计的
- * 唯一知道"某预设如何暴露其目录"的地方:OpenCode Zen 与 OpenRouter 通过各自的
+ * 唯一知道"某预设如何暴露其目录"的地方:OpenCode Zen 与 其他 Provider 通过各自的
  * 特殊传输层发布经过资格筛选的模型列表;Custom 网关则通过协商出的协议适配器
  * 探测,不支持 {@code /models} 时退化为手动填写模型。
  */
@@ -60,7 +58,6 @@ public class ProviderModelCatalogService {
                            String apiKey, ModelProviderRecord stored) {
         return switch (com.specagent.model.contract.ModelProvider.fromCode(presetCode)) {
             case OPENCODE_ZEN -> discoverOpenCode(apiKey);
-            case OPENROUTER -> discoverOpenRouter(apiKey);
             case KILO -> discoverKilo();
             case CUSTOM -> discoverCustom(draftApiFormat, draftBaseUrl, apiKey, stored);
         };
@@ -70,7 +67,6 @@ public class ProviderModelCatalogService {
     public Discovery list(ModelProviderRecord record) {
         return switch (record.preset()) {
             case OPENCODE_ZEN -> discoverOpenCode(record.apiKey());
-            case OPENROUTER -> discoverOpenRouter(record.apiKey());
             case KILO -> discoverKilo();
             case CUSTOM -> discoverCustom(record.apiFormat(), record.baseUrl(), null, record);
         };
@@ -97,14 +93,7 @@ public class ProviderModelCatalogService {
         return new Discovery(models.allModels(), models.freeModels(), false, null);
     }
 
-    private Discovery discoverOpenRouter(String apiKey) {
-        var ids = OpenRouterModelQualification.qualifiedModelIds(
-                fetchModelRoot(apiKey, "openrouter"), "openrouter");
-        List<String> free = ids.all().stream()
-                .filter(OpenRouterGatewaySupport::isFreeModelId)
-                .toList();
-        return new Discovery(ids.all(), free, false, null);
-    }
+
 
     /**
      * Custom 网关协商自己的协议,因此发现走适配器注册表;
@@ -138,7 +127,9 @@ public class ProviderModelCatalogService {
             return new Discovery(List.of(), List.of(), true, preview);
         }
         List<String> ids = adapter.parseModelList(result.json(), context);
-        return new Discovery(ids, ids, false, preview);
+        return new Discovery(ids,
+                com.specagent.model.provider.ModelPriceMetadata.explicitlyFreeIds(result.json(), ids),
+                ids.isEmpty(), preview);
     }
 
     /**
@@ -164,15 +155,5 @@ public class ProviderModelCatalogService {
         }
     }
 
-    private JsonNode fetchModelRoot(String apiKey, String context) {
-        var adapter = registry.require(CustomApiFormat.CHAT_COMPLETIONS);
-        ProviderHttpSupport.HttpResult result = ProviderHttpSupport.getJson(
-                client, mapper, OpenRouterGatewaySupport.BASE_URL + "/models",
-                adapter.authHeaders(apiKey), ProviderHttpSupport.SETTINGS_TIMEOUT, context);
-        JsonNode root = result.json();
-        if (root == null) {
-            throw ModelProviderException.invalidResponse(context, "OpenRouter model list unsupported");
-        }
-        return root;
-    }
+
 }

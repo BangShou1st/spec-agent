@@ -6,7 +6,6 @@ import {
   CUSTOM_FORMAT_OPTIONS,
   endpointPreview,
   formatLabel,
-  openRouterState,
   providerCardState,
   stateLabel,
 } from '@/features/model-settings/presentation/providerPresentation'
@@ -33,11 +32,11 @@ describe('provider presentation', () => {
   })
 
   it('distinguishes configured, validated and active', () => {
-    expect(openRouterState(false, false, false, false)).toBe('unconfigured')
-    expect(openRouterState(true, false, false, false)).toBe('configured-unvalidated')
-    expect(openRouterState(true, true, false, false)).toBe('valid-inactive')
-    expect(openRouterState(true, true, true, false)).toBe('active')
-    expect(openRouterState(true, false, false, true)).toBe('invalid')
+    expect(providerCardState(false, false, false, false)).toBe('unconfigured')
+    expect(providerCardState(true, false, false, false)).toBe('configured-unvalidated')
+    expect(providerCardState(true, true, false, false)).toBe('valid-inactive')
+    expect(providerCardState(true, true, true, false)).toBe('active')
+    expect(providerCardState(true, false, false, true)).toBe('invalid')
     expect(stateLabel('configured-unvalidated')).not.toBe('Connected')
     expect(stateLabel('valid-inactive')).not.toBe('Disconnected')
   })

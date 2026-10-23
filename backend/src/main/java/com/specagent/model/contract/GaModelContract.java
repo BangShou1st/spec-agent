@@ -54,12 +54,22 @@ public final class GaModelContract {
         }
     }
 
-    public record ToolCall(String id, String name, Map<String, Object> arguments) {
+    public record ToolCall(String id, String name, Map<String, Object> arguments,
+                           @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                           Map<String, Object> extraContent) {
+        public ToolCall(String id, String name, Map<String, Object> arguments) {
+            this(id, name, arguments, null);
+        }
+
         public ToolCall {
             text(id, 128);
             toolName(name);
             require(arguments != null, "tool arguments required");
             arguments = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(arguments));
+            if (extraContent != null) {
+                require(extraContent.size() <= 16, "too many extra content entries");
+                extraContent = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(extraContent));
+            }
         }
     }
 

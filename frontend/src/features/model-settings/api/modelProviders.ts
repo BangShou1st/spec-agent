@@ -1,25 +1,53 @@
 // 文件名:modelProviders.ts
 // 用途:模型设置(Provider)的 API 封装与类型:激活的 Provider 查询/切换,
-//       OpenRouter 的状态/探测/模型列表/保存/校验,以及自定义 Provider 的
+//       其他 Provider 的状态/探测/模型列表/保存/校验,以及自定义 Provider 的
 //       状态/发现/保存/校验端点。
 
 import { apiClient } from '@/shared/http/client'
 
-export type ModelProvider = 'OPENCODE_ZEN' | 'OPENROUTER' | 'KILO' | 'CUSTOM'
+export type ModelProvider = 'OPENCODE_ZEN' | 'KILO' | 'CUSTOM'
 export type CustomApiFormat = 'CHAT_COMPLETIONS' | 'RESPONSES' | 'ANTHROPIC_MESSAGES'
 
 export interface ActiveProviderResponse {
   activeProvider: ModelProvider
+  activeProviderId?: string | null
 }
 
-export interface OpenRouterStatus {
-  configured: boolean
-  maskedKey: string | null
-  selectedModel: string | null
-  configRevision: number
-  validated: boolean
+export interface ProviderConnection extends CustomStatus {
+  id: string
+  preset: ModelProvider
   active: boolean
+  verifiedCapabilities: Record<'CHAT' | 'STRUCTURED' | 'NATIVE_TOOLS', string>
+  capabilities: { userNamed: boolean; selectableFormat: boolean; editableBaseUrl: boolean; requiresApiKey: boolean; builtInCatalog: boolean }
 }
+export interface ProviderConnections {
+  providers: ProviderConnection[]
+  activeProvider: ModelProvider
+  activeProviderId: string | null
+}
+export interface ConnectionPatch {
+  displayName: string
+  apiFormat: CustomApiFormat
+  baseUrl: string
+  apiKey?: string
+  selectedModel: string
+  modelSource: 'MANUAL' | 'DISCOVERED'
+}
+export interface ConnectionModels {
+  models: string[]
+  freeModels: string[]
+  manualModel: boolean
+  endpointPreview: string | null
+}
+export const listConnections = () => apiClient.get<ProviderConnections>('/settings/providers')
+export const saveConnection = (id: string | null, patch: ConnectionPatch) => id
+  ? apiClient.put<ProviderConnection>(`/settings/providers/${id}`, patch)
+  : apiClient.post<ProviderConnection>('/settings/providers', patch)
+export const deleteConnection = (id: string) => apiClient.delete<void>(`/settings/providers/${id}`)
+export const validateConnection = (id: string) => apiClient.post<ProviderConnection>(`/settings/providers/${id}/validate`)
+export const activateConnection = (id: string) => apiClient.post<ProviderConnections>(`/settings/providers/${id}/activate`)
+export const discoverConnection = (id: string | null, patch: Pick<ConnectionPatch, 'apiFormat' | 'baseUrl' | 'apiKey'>) =>
+  apiClient.post<ConnectionModels>(id ? `/settings/providers/${id}/probe` : '/settings/providers/discover', patch)
 
 export interface CustomStatus {
   configured: boolean
@@ -42,26 +70,6 @@ export function getActiveProvider(): Promise<ActiveProviderResponse> {
 
 export function activateProvider(provider: ModelProvider): Promise<ActiveProviderResponse> {
   return apiClient.post<ActiveProviderResponse>('/settings/providers/activate', { provider })
-}
-
-export function getOpenRouterStatus(): Promise<OpenRouterStatus> {
-  return apiClient.get<OpenRouterStatus>('/settings/openrouter')
-}
-
-export function probeOpenRouter(apiKey: string): Promise<{ allModels?: string[]; freeModels: string[] }> {
-  return apiClient.post<{ allModels?: string[]; freeModels: string[] }>('/settings/openrouter/probe', { apiKey })
-}
-
-export function listOpenRouterModels(): Promise<{ allModels?: string[]; freeModels: string[] }> {
-  return apiClient.get<{ allModels?: string[]; freeModels: string[] }>('/settings/openrouter/models')
-}
-
-export function saveOpenRouter(apiKey: string | null, selectedModel: string): Promise<OpenRouterStatus> {
-  return apiClient.put<OpenRouterStatus>('/settings/openrouter', { apiKey, selectedModel })
-}
-
-export function validateOpenRouter(): Promise<OpenRouterStatus> {
-  return apiClient.post<OpenRouterStatus>('/settings/openrouter/validate')
 }
 
 export function getCustomStatus(): Promise<CustomStatus> {

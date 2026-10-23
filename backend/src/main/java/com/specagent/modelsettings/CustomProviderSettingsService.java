@@ -31,6 +31,18 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
     private final ProtocolAdapterRegistry registry;
     private final CompatibilityProbeService probe;
     private final HttpClient client;
+    private ModelProviderRepository connections;
+    private ModelProviderSettingsService active;
+    private ModelConnectionCapabilities capabilities;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setCapabilities(ModelConnectionCapabilities capabilities) { this.capabilities = capabilities; }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setConnections(ModelProviderRepository connections, ModelProviderSettingsService active) {
+        this.connections = connections;
+        this.active = active;
+    }
 
     public CustomProviderSettingsService(CustomProviderSettingsRepository repository, ObjectMapper mapper,
                                          ProtocolAdapterRegistry registry, CompatibilityProbeService probe) {
@@ -241,6 +253,48 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
      */
     @Override
     public RuntimeCustomSettings requireRuntimeSettings() {
+        if (active != null && active.activeProviderId() != null) {
+            return connectionSettings(active.activeProviderId(), null);
+        }
+        return legacyRuntimeSettings();
+    }
+
+    @Override
+    public RuntimeCustomSettings requireRuntimeSettings(String frozenRevision) {
+        if (frozenRevision != null && frozenRevision.startsWith("custom-provider:")) {
+            String[] parts = frozenRevision.split(":", -1);
+            try {
+                if (parts.length != 3) throw new IllegalArgumentException();
+                return connectionSettings(java.util.UUID.fromString(parts[1]), Long.parseLong(parts[2]));
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+            }
+        }
+        // Legacy runs keep the original singleton identity after a new
+        // connection is selected; they must never resolve the new active row.
+        RuntimeCustomSettings settings = legacyRuntimeSettings();
+        if (!settings.bindingRevision().equals(frozenRevision)) {
+            throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+        }
+        return settings;
+    }
+
+    private RuntimeCustomSettings connectionSettings(java.util.UUID id, Long revision) {
+        if (connections == null) throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+        ModelProviderRecord row = connections.findById(id)
+                .orElseThrow(() -> new IllegalStateException("GA_MODEL_BINDING_MISMATCH"));
+        if (row.preset() != com.specagent.model.contract.ModelProvider.CUSTOM
+                || !row.configured() || !row.validated()
+                || (revision != null && row.configRevision() != revision)) {
+            throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+        }
+        ProviderUrlSecurity.validateAndNormalizeBaseUrl(row.baseUrl());
+        return new RuntimeCustomSettings(row.apiFormat(), row.baseUrl(), row.apiKey(),
+                row.selectedModel(), row.configRevision(), row.id(), capabilities != null
+                && "VERIFIED".equals(capabilities.status(row).get("NATIVE_TOOLS")));
+    }
+
+    private RuntimeCustomSettings legacyRuntimeSettings() {
         CustomProviderSettings s = requireStored();
         requireActivatable();
         return new RuntimeCustomSettings(s.apiFormat(), s.baseUrl(), s.apiKey(), s.selectedModel(),

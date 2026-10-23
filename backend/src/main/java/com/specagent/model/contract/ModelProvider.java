@@ -20,8 +20,6 @@ public enum ModelProvider {
     OPENCODE_ZEN("OpenCode Zen", "https://opencode.ai/inference/v1",
             false, false, false, true, true),
 
-    OPENROUTER("OpenRouter", "https://openrouter.ai/api/v1",
-            false, false, false, true, true),
 
     // Kilo Gateway:与 OpenCode Zen 相同的预设形态——固定 base URL、固定 Chat
     // Completions 协议、自带模型目录;免费模型匿名可用,故不强制密钥。
@@ -76,7 +74,7 @@ public enum ModelProvider {
         return editableBaseUrl;
     }
 
-    /** OpenCode Zen / OpenRouter 必须提供凭据才能保存。 */
+    /** OpenCode Zen / 其他 Provider 必须提供凭据才能保存。 */
     public boolean requiresApiKey() {
         return requiresApiKey;
     }
@@ -95,7 +93,6 @@ public enum ModelProvider {
         }
         return switch (code.trim().toUpperCase()) {
             case "OPENCODE_ZEN" -> OPENCODE_ZEN;
-            case "OPENROUTER" -> OPENROUTER;
             case "KILO" -> KILO;
             case "CUSTOM" -> CUSTOM;
             default -> throw new IllegalArgumentException("Unknown model provider: " + code);

@@ -38,16 +38,7 @@ public class CompatibilityProbeService {
         this.client = ProviderHttpSupport.newClient(Duration.ofSeconds(10));
     }
 
-    public void probeOpenRouter(String apiKey, String model) {
-        String context = "openrouter";
-        if (apiKey == null || apiKey.isBlank()) {
-            throw ModelProviderException.notConfigured(context, "OpenRouter API key is required");
-        }
-        String m = ProviderUrlSecurity.normalizeModelId(model);
-        ProtocolAdapter adapter = registry.require(CustomApiFormat.CHAT_COMPLETIONS);
-        String endpoint = OpenRouterGatewaySupport.BASE_URL + "/chat/completions";
-        runProbe(adapter, endpoint, apiKey.trim(), m, context);
-    }
+
 
     public void probeCustom(CustomApiFormat format, String normalizedBaseUrl, String apiKey, String model) {
         String context = "custom-" + format.name().toLowerCase();
@@ -59,6 +50,32 @@ public class CompatibilityProbeService {
         ProtocolAdapter adapter = registry.require(format);
         String endpoint = ProviderUrlSecurity.canonicalEndpoint(normalizedBaseUrl, format);
         runProbe(adapter, endpoint, apiKey == null ? null : apiKey.trim(), m, context);
+    }
+
+    public void probeChat(CustomApiFormat format, String baseUrl, String apiKey, String model) {
+        ProtocolAdapter adapter = registry.require(format);
+        var request = new ModelInferenceRequest(UUID.randomUUID(), "compatibility-chat",
+                List.of(new ModelInferenceMessage("user", "Reply with probe ok.")),
+                64, ModelOutputContract.text());
+        var result = ProviderHttpSupport.postJson(client, mapper,
+                ProviderUrlSecurity.canonicalEndpoint(baseUrl, format), adapter.authHeaders(apiKey),
+                adapter.buildRequestBody(request, model), ProviderHttpSupport.SETTINGS_TIMEOUT, "custom-probe");
+        var response = adapter.parseNonStreamResponse(result.json(), "custom-probe");
+        if (response.content() == null || response.content().isBlank()) {
+            throw ModelProviderException.invalidResponse("custom-probe", "Chat probe returned empty content");
+        }
+    }
+
+    /** A harmless local tool fixture; never invokes the application's tools. */
+    public void probeNativeTools(String baseUrl, String apiKey, String model) {
+        var adapter = new GaChatCompletionsAdapter();
+        String endpoint = ProviderUrlSecurity.canonicalEndpoint(baseUrl, CustomApiFormat.CHAT_COMPLETIONS);
+        var headers = registry.require(CustomApiFormat.CHAT_COMPLETIONS).authHeaders(apiKey);
+        new NativeToolRoundTripVerifier().verify(request -> {
+            var result = ProviderHttpSupport.postJson(client, mapper, endpoint, headers,
+                    adapter.requestBody(request, model), ProviderHttpSupport.SETTINGS_TIMEOUT, "custom-native-probe");
+            return adapter.parse(result.json().toString());
+        });
     }
 
     private void runProbe(ProtocolAdapter adapter, String endpoint, String apiKey,

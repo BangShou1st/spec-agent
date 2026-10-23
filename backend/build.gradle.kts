@@ -85,6 +85,10 @@ implementation("io.modelcontextprotocol.sdk:mcp:0.18.4")
 // Deliberately small, reviewed offline set. Expand only after reviewing inheritance,
 // extensions, static initialization and the entire invoked fixture/call chain.
 val auditedOfflineTests = setOf(
+    "com.specagent.modelsettings.ModelConnectionsOfflineTest",
+    "com.specagent.model.provider.ModelPriceMetadataTest",
+    "com.specagent.model.provider.ModelProtocolHarnessTest",
+    "com.specagent.model.provider.ModelProviderTransportHarnessTest",
     // D4 adapter boundary: Mockito store/JDBC/host only; no Spring bootstrap or external calls.
     "com.specagent.assistant.tool.RagD4EvidenceBoundaryTest",
     "com.specagent.assistant.api.RagD4BrokerObservationTest",
@@ -92,6 +96,9 @@ val auditedOfflineTests = setOf(
     "com.specagent.retrieval.RagD4SharedSourceValidationTest",
     "com.specagent.agent.decision.RagD4ClaimAuthorityTest",
     "com.specagent.model.provider.PublishedZenStarterCompatibilityTest",
+    "com.specagent.model.provider.GaGeminiProtocolOfflineTest",
+    "com.specagent.model.provider.ChatCompletionsGaTextTransportTest",
+    "com.specagent.model.provider.GaNativeModelContractTest",
     "com.specagent.eval.P3BLiveDatabaseGuardTest",
     "com.specagent.eval.P3BC03NaturalLanguageScenarioTest",
     "com.specagent.eval.P3BGateMeasurementTest",

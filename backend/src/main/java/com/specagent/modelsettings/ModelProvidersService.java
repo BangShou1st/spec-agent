@@ -1,6 +1,5 @@
 package com.specagent.modelsettings;
 
-import com.specagent.model.provider.CompatibilityProbeService;
 import com.specagent.model.provider.CustomApiFormat;
 import com.specagent.model.contract.ModelProvider;
 import com.specagent.model.provider.ModelProviderException;
@@ -15,9 +14,8 @@ import org.springframework.stereotype.Service;
  * 文件名:ModelProvidersService.java
  *
  * 用途:"每个提供商一行"的管理服务:用户新建提供商就是插入一行,
- * 设置页支持"再多一个网关"无需改代码。预设行由迁移种子生成,并通过
- * {@link ModelProvider} 保持可区分,使 OpenCode Zen 的直连请求形状与
- * OpenRouter 的资格验证流程得以特殊处理。
+ * 设置页支持继续添加兼容网关,内置提供商保留共享库和运行时端口。
+ * 连接身份、配置修订和能力证明不会因使用同一种协议而合并。
  */
 @Service
 public class ModelProvidersService {
@@ -27,17 +25,22 @@ public class ModelProvidersService {
 
     private final ModelProviderRepository repository;
     private final ProviderModelCatalogService catalog;
-    private final CompatibilityProbeService probe;
     private final ModelProviderSettingsService active;
+    private final ModelConnectionCapabilities capabilities;
+    private final com.specagent.access.OrganizationConfigurationScope scope;
+
+    private void requireManagement() { scope.writeOrg(); }
 
     public ModelProvidersService(ModelProviderRepository repository,
                                  ProviderModelCatalogService catalog,
-                                 CompatibilityProbeService probe,
-                                 ModelProviderSettingsService active) {
+                                 ModelProviderSettingsService active,
+                                 ModelConnectionCapabilities capabilities,
+                                 com.specagent.access.OrganizationConfigurationScope scope) {
         this.repository = repository;
         this.catalog = catalog;
-        this.probe = probe;
         this.active = active;
+        this.capabilities = capabilities;
+        this.scope = scope;
     }
 
     /**
@@ -70,7 +73,9 @@ public class ModelProvidersService {
      * 快速创建:只允许创建用户自建提供商。预设是种子行,其 Base URL 和
      * 请求形状由后端固定,不接受通过 API 修改。
      */
+    @org.springframework.transaction.annotation.Transactional
     public ModelProviderRecord create(Patch patch) {
+        requireManagement();
         String displayName = requireDisplayName(patch.displayName());
         String apiFormat = requireFormat(patch.apiFormat());
         String baseUrl = ProviderUrlSecurity.validateAndNormalizeBaseUrl(patch.baseUrl());
@@ -102,8 +107,11 @@ public class ModelProvidersService {
      * 应用补丁更新。密钥、协议或 Base URL 的任何变更都会递增修订号并
      * 作废之前的验证结果,确保激活永远不会依赖一份已不能描述当前配置的测试。
      */
+    @org.springframework.transaction.annotation.Transactional
     public ModelProviderRecord update(UUID id, Patch patch) {
-        ModelProviderRecord current = require(id);
+        requireManagement();
+        ModelProviderRecord current = repository.findByIdForUpdate(id).orElseThrow(
+                () -> new IllegalArgumentException("Unknown model connection"));
         String displayName = patch.displayName() == null
                 ? current.displayName() : requireDisplayName(patch.displayName());
         String apiFormat = patch.apiFormat() == null
@@ -135,7 +143,8 @@ public class ModelProvidersService {
 
         boolean identityChanged = !equalsNullable(current.apiFormat(), apiFormat)
                 || !equalsNullable(current.baseUrl(), baseUrl)
-                || !equalsNullable(current.apiKey(), apiKey);
+                || !equalsNullable(current.apiKey(), apiKey)
+                || !equalsNullable(current.selectedModel(), model);
         boolean changed = identityChanged
                 || !equalsNullable(current.selectedModel(), model)
                 || !equalsNullable(current.displayName(), displayName)
@@ -154,14 +163,21 @@ public class ModelProvidersService {
         return updated;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public void delete(UUID id) {
-        require(id);
+        requireManagement();
+        repository.findByIdForUpdate(id).orElseThrow(() -> new IllegalArgumentException("Unknown model connection"));
+        if (active.isActiveId(id)) {
+            throw new IllegalArgumentException("Select another connection before deleting the active connection");
+        }
         repository.delete(id);
     }
 
     /** 针对未保存编辑的草稿发现;已存行提供兜底密钥。 */
+    @org.springframework.transaction.annotation.Transactional
     public ProviderModelCatalogService.Discovery discover(UUID id, String apiFormat, String baseUrl,
                                                           String apiKey) {
+        requireManagement();
         ModelProviderRecord stored = id == null ? null : require(id);
         String format = apiFormat != null && !apiFormat.isBlank()
                 ? apiFormat : (stored == null ? CustomApiFormat.CHAT_COMPLETIONS.name() : stored.apiFormat());
@@ -174,7 +190,9 @@ public class ModelProvidersService {
     }
 
     /** 使用已存密钥查询模型目录;不会要求重新提供密钥。 */
+    @org.springframework.transaction.annotation.Transactional
     public ProviderModelCatalogService.Discovery listModels(UUID id) {
+        requireManagement();
         return catalog.list(require(id));
     }
 
@@ -184,26 +202,25 @@ public class ModelProvidersService {
      */
     public ModelProviderRecord validate(UUID id) {
         ModelProviderRecord record = require(id);
-        CustomApiFormat format = CustomApiFormat.fromCode(record.apiFormat());
-        if (format == CustomApiFormat.ANTHROPIC_MESSAGES) {
-            throw ModelProviderException.providerRequestError("custom",
-                    "Anthropic Messages cannot serve the required JSON_OBJECT contract in V1", null);
+        ProviderUrlSecurity.validateAndNormalizeBaseUrl(record.baseUrl());
+        ProviderUrlSecurity.normalizeModelId(record.selectedModel());
+        // A catalog is discovery metadata, never an allow-list. A manually
+        // entered model can prove compatibility even when /models omits it.
+        capabilities.verify(record);
+        if ("VERIFIED".equals(capabilities.status(record).get("STRUCTURED"))) {
+            repository.markValidated(record.id(), record.configRevision());
         }
-        String normalized = ProviderUrlSecurity.validateAndNormalizeBaseUrl(record.baseUrl());
-        String model = ProviderUrlSecurity.normalizeModelId(record.selectedModel());
-        var discovery = catalog.list(record);
-        if (!discovery.manualModel() && !discovery.allModels().contains(model)) {
-            throw ModelProviderException.invalidModel("custom",
-                    "Selected model is not currently available", null);
-        }
-        probe.probeCustom(format, normalized, record.apiKey(), model);
-        repository.markValidated(record.id(), record.configRevision());
         return require(id);
     }
 
     /** 把一个已配置的行标记为新运行的激活模型目标。 */
+    @org.springframework.transaction.annotation.Transactional
     public void activate(ModelProviderRecord record) {
-        active.setActiveTarget(record.preset().name(), record.id());
+        requireManagement();
+        ModelProviderRecord current = repository.findByIdForUpdate(record.id()).orElseThrow(
+                () -> new IllegalArgumentException("Unknown model connection"));
+        requireActivatable(current);
+        active.setActiveTarget(current.preset().name(), current.id());
     }
 
     /** 激活门禁:该行必须已配置,且在当前修订号下通过过验证。 */
@@ -269,6 +286,6 @@ public class ModelProvidersService {
             return null;
         }
         // 取末 4 位作为脱敏后缀;密钥本身不外泄
-        return key.length() <= 4 ? key : key.substring(key.length() - 4);
+        return key.length() <= 4 ? null : key.substring(key.length() - 4);
     }
 }

@@ -120,6 +120,12 @@ def test_codec_preserves_messages_and_rejects_objects_hashes_versions_and_metada
         codec.dumps(object())
     with pytest.raises(ValueError, match="metadata"):
         codec.dumps(AIMessage(content="public", additional_kwargs={"reasoning_content": "private"}))
+    with pytest.raises(ValueError, match="metadata"):
+        codec.dumps(AIMessage(content="public", additional_kwargs={"unknown_field": "disallowed"}))
+    # tool_call_extra_content is permitted and preserved
+    extra_msg = AIMessage(content="", tool_calls=[{"id": "c1", "name": "search", "args": {}, "type": "tool_call"}],
+                          additional_kwargs={"tool_call_extra_content": {"c1": {"google": {"thought_signature": "sig123"}}}})
+    assert codec.loads(codec.dumps(extra_msg)) == extra_msg
     envelope = codec.dumps(value)
     envelope["payloadHash"] = "0" * 64
     with pytest.raises(ValueError, match="hash"):

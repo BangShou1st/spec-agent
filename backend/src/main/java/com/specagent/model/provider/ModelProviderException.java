@@ -6,9 +6,9 @@ import com.specagent.model.contract.ModelGatewayException;
 /**
  * 文件名:ModelProviderException.java
  *
- * 用途:OpenRouter / Custom 边界的提供商无关失败异常。把每一种协议专属失败
+ * 用途:其他 Provider / Custom 边界的提供商无关失败异常。把每一种协议专属失败
  * 映射到既有的 {@link ModelGatewayErrorCategory} 词汇上,使 Agent 业务代码永远
- * 看不到 {@code ANTHROPIC_429}、{@code OPENROUTER_ERROR} 或
+ * 看不到 {@code ANTHROPIC_429}、供应商私有错误或
  * {@code RESPONSES_BAD_EVENT} 之类的原始错误。提供商/格式上下文只保留在消息
  * 前缀中(对 Settings API 是安全的),密钥绝不进入消息。
  */

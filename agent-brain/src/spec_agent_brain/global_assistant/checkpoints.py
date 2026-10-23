@@ -23,8 +23,9 @@ MESSAGE_TYPES = {"ai": AIMessage, "human": HumanMessage, "system": SystemMessage
 
 def _safe_message_metadata(data):
     metadata = data.get("response_metadata", {})
+    extra_keys = set(data.get("additional_kwargs", {}))
     return (type(data.get("content")) is str and not data.get("invalid_tool_calls")
-            and not data.get("additional_kwargs") and type(metadata) is dict
+            and extra_keys <= {"tool_call_extra_content"} and type(metadata) is dict
             and set(metadata) <= {"finish_reason"}
             and (not metadata or metadata.get("finish_reason") in {"stop", "tool_calls"}))
 

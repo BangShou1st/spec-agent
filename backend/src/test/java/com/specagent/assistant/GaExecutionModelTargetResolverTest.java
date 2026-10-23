@@ -21,8 +21,6 @@ import com.specagent.modelsettings.ModelProviderSettingsService;
 import com.specagent.modelsettings.OpenCodeSettings;
 import com.specagent.modelsettings.OpenCodeSettingsRepository;
 import com.specagent.modelsettings.OpenCodeSettingsService;
-import com.specagent.modelsettings.OpenRouterSettings;
-import com.specagent.modelsettings.OpenRouterSettingsService;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -42,14 +40,13 @@ class GaExecutionModelTargetResolverTest {
     private final OpenCodeSettingsService openCodeSettings = mock(OpenCodeSettingsService.class);
     private final OpenCodeModelCatalog openCodeModelProtocols = mock(OpenCodeModelCatalog.class);
     private final KiloSettingsService kiloSettings = mock(KiloSettingsService.class);
-    private final OpenRouterSettingsService openRouterSettings = mock(OpenRouterSettingsService.class);
     private final CustomProviderSettingsService customSettings = mock(CustomProviderSettingsService.class);
     private final GaNativeModelQualification qualification = mock(GaNativeModelQualification.class);
     private final GaBrainSettings host = mock(GaBrainSettings.class);
 
     private GaExecutionModelTargetResolver resolver() {
         return new GaExecutionModelTargetResolver(providers, openCodeRepository, openCodeSettings,
-                openCodeModelProtocols, kiloSettings, openRouterSettings, customSettings, qualification, host);
+                openCodeModelProtocols, kiloSettings, customSettings, qualification, host);
     }
 
     private void hostSecret(String secret) {
@@ -74,10 +71,7 @@ class GaExecutionModelTargetResolverTest {
         return new KiloSettings(key, key == null ? null : "1234", model, updatedAt, updatedAt);
     }
 
-    private static OpenRouterSettings openRouter(String model, long revision) {
-        Instant now = Instant.now();
-        return new OpenRouterSettings("or-key", "1234", model, revision, revision, now, now, now);
-    }
+
 
     private static CustomProviderSettings custom(String format, String model, long revision) {
         Instant now = Instant.now();
@@ -179,31 +173,9 @@ class GaExecutionModelTargetResolverTest {
         assertThat(resolution.mode()).isEqualTo(GaExecutionMode.TEXT_CHAT);
     }
 
-    @Test
-    void configuredOpenRouterResolvesAsTextChat() {
-        hostSecret("secret");
-        when(providers.activeProvider()).thenReturn(ModelProvider.OPENROUTER);
-        when(openRouterSettings.requireStoredOrNull()).thenReturn(openRouter("openrouter/auto", 3));
-        when(openRouterSettings.activatable()).thenReturn(true);
 
-        var resolution = ready(resolver().resolveActive());
-        assertThat(resolution.target().provider()).isEqualTo("OPENROUTER");
-        assertThat(resolution.target().model()).isEqualTo("openrouter/auto");
-        assertThat(resolution.target().settingsRevision()).isEqualTo("openrouter-settings:3");
-        // 原生工具传输尚未验证,但普通聊天仍然可用。
-        assertThat(resolution.mode()).isEqualTo(GaExecutionMode.TEXT_CHAT);
-    }
 
-    @Test
-    void unvalidatedOpenRouterIsNotConfigured() {
-        hostSecret("secret");
-        when(providers.activeProvider()).thenReturn(ModelProvider.OPENROUTER);
-        when(openRouterSettings.requireStoredOrNull()).thenReturn(openRouter("openrouter/auto", 3));
-        when(openRouterSettings.activatable()).thenReturn(false);
 
-        assertThat(unavailableCode(resolver().resolveActive()))
-                .isEqualTo(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED);
-    }
 
     @Test
     void customChatCompletionsResolvesAsTextChat() {
@@ -282,18 +254,7 @@ class GaExecutionModelTargetResolverTest {
         assertThat(target.model()).isEqualTo("poolside/laguna-s-2.1:free");
     }
 
-    @Test
-    void frozenOpenRouterBindingIsReResolvedFromTheFrozenProvider() {
-        hostSecret("secret");
-        when(providers.activeProvider()).thenReturn(ModelProvider.KILO);
-        when(openRouterSettings.requireStoredOrNull()).thenReturn(openRouter("openrouter/auto", 3));
 
-        GaModelTarget target = resolver().requireFrozen("OPENROUTER", "openrouter/auto",
-                "openrouter-settings:3");
-
-        assertThat(target.provider()).isEqualTo("OPENROUTER");
-        assertThat(target.model()).isEqualTo("openrouter/auto");
-    }
 
     @Test
     void frozenBindingRejectsModelAndRevisionDrift() {

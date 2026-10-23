@@ -14,11 +14,9 @@ import com.specagent.model.contract.ModelInferenceMessage;
 import com.specagent.model.contract.ModelInferenceRequest;
 import com.specagent.model.contract.ModelProvider;
 import com.specagent.model.contract.OpenCodeRuntimeSettingsPort;
-import com.specagent.model.contract.OpenRouterRuntimeSettingsPort;
 import com.specagent.model.contract.RuntimeCustomSettings;
 import com.specagent.model.contract.RuntimeKiloSettings;
 import com.specagent.model.contract.RuntimeOpenCodeSettings;
-import com.specagent.model.contract.RuntimeOpenRouterSettings;
 import com.specagent.model.contract.KiloRuntimeSettingsPort;
 import com.specagent.model.provider.CustomInferenceGateway;
 import com.specagent.model.provider.ProtocolAdapterRegistry;
@@ -95,7 +93,7 @@ class CustomFrozenTargetBindingTest {
         };
         ActiveModelTargetService resolver = new ActiveModelTargetService(providers,
                 mock(OpenCodeRuntimeSettingsPort.class), mock(KiloRuntimeSettingsPort.class),
-                mock(OpenRouterRuntimeSettingsPort.class), countedPort);
+                countedPort);
         AtomicInteger snapshots = new AtomicInteger();
         ActiveModelTargetPort targets = () -> {
             Optional<ActiveModelTargetPort.Target> target = resolver.activeTarget();
@@ -109,8 +107,7 @@ class CustomFrozenTargetBindingTest {
                 new AnthropicMessagesProtocolAdapter()));
         CustomInferenceGateway custom = new CustomInferenceGateway(countedPort, registry, new ObjectMapper());
         return new RoutingModelInferenceGateway(mock(ActiveProviderPort.class), targets,
-                mock(OpenCodeModelInferenceGateway.class), mock(OpenRouterInferenceGateway.class),
-                mock(KiloInferenceGateway.class), custom, new InMemoryRunModelBindingPort());
+                mock(OpenCodeModelInferenceGateway.class), mock(KiloInferenceGateway.class), custom, new InMemoryRunModelBindingPort());
     }
 
     private static String base(HttpServer server) {
@@ -152,14 +149,14 @@ class CustomFrozenTargetBindingTest {
                 new RuntimeOpenCodeSettings("key-A", MODEL, "public-fallback"))
                 .bindingFingerprint()).isNotEqualTo(openCode);
 
-        String openRouter = new ActiveModelTargetPort.Target("OPENROUTER", MODEL,
-                new RuntimeOpenRouterSettings("key-A", MODEL, 1))
+        String openRouter = new ActiveModelTargetPort.Target("CUSTOM", MODEL,
+                new RuntimeCustomSettings("CHAT_COMPLETIONS", "http://localhost:9/v1", "key-A", MODEL, 1))
                 .bindingFingerprint();
-        assertThat(new ActiveModelTargetPort.Target("OPENROUTER", MODEL,
-                new RuntimeOpenRouterSettings("key-B", MODEL, 1))
+        assertThat(new ActiveModelTargetPort.Target("CUSTOM", MODEL,
+                new RuntimeCustomSettings("CHAT_COMPLETIONS", "http://localhost:9/v1", "key-B", MODEL, 1))
                 .bindingFingerprint()).isNotEqualTo(openRouter);
-        assertThat(new ActiveModelTargetPort.Target("OPENROUTER", MODEL,
-                new RuntimeOpenRouterSettings("key-A", MODEL, 2))
+        assertThat(new ActiveModelTargetPort.Target("CUSTOM", MODEL,
+                new RuntimeCustomSettings("CHAT_COMPLETIONS", "http://localhost:9/v1", "key-A", MODEL, 2))
                 .bindingFingerprint()).isNotEqualTo(openRouter);
 
         String kilo = new ActiveModelTargetPort.Target("KILO", MODEL,

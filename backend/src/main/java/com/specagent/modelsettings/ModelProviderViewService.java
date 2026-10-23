@@ -1,10 +1,8 @@
 package com.specagent.modelsettings;
 
 import com.specagent.model.contract.ModelProvider;
-import com.specagent.modelsettings.CustomProviderSettingsService;
 import com.specagent.modelsettings.KiloSettingsService;
 import com.specagent.modelsettings.OpenCodeSettingsService;
-import com.specagent.modelsettings.OpenRouterSettingsService;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -22,19 +20,20 @@ public class ModelProviderViewService {
     private final ModelProvidersService providers;
     private final ModelProviderSettingsService active;
     private final OpenCodeSettingsService openCode;
-    private final OpenRouterSettingsService openRouter;
     private final KiloSettingsService kilo;
-    private final CustomProviderSettingsService custom;
+    private final ProviderModelCatalogService catalog;
+    private final ModelConnectionCapabilities qualifications;
 
     public ModelProviderViewService(ModelProvidersService providers, ModelProviderSettingsService active,
-                                    OpenCodeSettingsService openCode, OpenRouterSettingsService openRouter,
-                                    KiloSettingsService kilo, CustomProviderSettingsService custom) {
+                                    OpenCodeSettingsService openCode,
+                                    KiloSettingsService kilo, ProviderModelCatalogService catalog,
+                                    ModelConnectionCapabilities qualifications) {
         this.providers = providers;
         this.active = active;
         this.openCode = openCode;
-        this.openRouter = openRouter;
         this.kilo = kilo;
-        this.custom = custom;
+        this.catalog = catalog;
+        this.qualifications = qualifications;
     }
 
     /** 该预设的卡片允许展示的编辑能力。 */
@@ -45,7 +44,8 @@ public class ModelProviderViewService {
     public record ProviderView(String id, String preset, String displayName, String apiFormat, String baseUrl,
                                String endpointPreview, boolean hasKey, String maskedKey, String selectedModel,
                                boolean manualModel, boolean configured, long configRevision, boolean validated,
-                               boolean active, Capabilities capabilities) {
+                               boolean active, Capabilities capabilities,
+                               java.util.Map<String, String> verifiedCapabilities) {
     }
 
     public record ProviderListView(List<ProviderView> providers, String activeProvider, String activeProviderId) {
@@ -55,7 +55,6 @@ public class ModelProviderViewService {
     public ProviderListView listView() {
         List<ProviderView> views = new ArrayList<>();
         views.add(presetView(ModelProvider.OPENCODE_ZEN));
-        views.add(presetView(ModelProvider.OPENROUTER));
         views.add(presetView(ModelProvider.KILO));
         for (ModelProviderRecord record : providers.list()) {
             views.add(rowView(record));
@@ -71,16 +70,16 @@ public class ModelProviderViewService {
                 record.effectiveDisplayName(),
                 record.apiFormat(),
                 record.baseUrl(),
-                custom.previewEndpoint(record.apiFormat(), record.baseUrl()),
+                catalog.previewEndpoint(record.apiFormat(), record.baseUrl()),
                 record.hasKey(),
-                mask(record.maskedSuffix()),
+                record.hasKey() && record.apiKey().length() > 4 ? mask(record.maskedSuffix()) : null,
                 record.selectedModel(),
                 record.manualModel(),
                 record.configured(),
                 record.configRevision(),
                 record.validated(),
                 active.isActiveId(record.id()),
-                capabilitiesOf(record.preset()));
+                capabilitiesOf(record.preset()), qualifications.status(record));
     }
 
     private ProviderView presetView(ModelProvider preset) {
@@ -96,10 +95,7 @@ public class ModelProviderViewService {
             return presetStatusView(preset, status.configured(), status.maskedKey(),
                     status.selectedModel(), 0L, false);
         }
-        boolean isActive = active.isActiveCode(preset.name());
-        var status = openRouter.status(isActive);
-        return presetStatusView(preset, status.configured(), status.maskedKey(),
-                status.selectedModel(), status.configRevision(), status.validated());
+        throw new IllegalArgumentException("Unknown built-in provider");
     }
 
     private ProviderView presetStatusView(ModelProvider preset, boolean configured, String maskedKey,
@@ -108,7 +104,7 @@ public class ModelProviderViewService {
         return new ProviderView(
                 preset.name(), preset.name(), preset.defaultDisplayName(), "CHAT_COMPLETIONS",
                 preset.defaultBaseUrl(), null, maskedKey != null, maskedKey, selectedModel, false,
-                configured, configRevision, validated, isActive, capabilitiesOf(preset));
+                configured, configRevision, validated, isActive, capabilitiesOf(preset), java.util.Map.of());
     }
 
     private static Capabilities capabilitiesOf(ModelProvider preset) {

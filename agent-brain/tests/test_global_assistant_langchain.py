@@ -56,6 +56,38 @@ def setup_agent(e, broker, invoke, guard=lambda: None):
     return graph, config, saver
 
 
+def test_tool_call_extra_content_thought_signature_roundtrip():
+    e = execution()
+    sig = {"google": {"thought_signature": "enc_sig_xyz123"}}
+    calls = [ToolCall(id="native-sig-1", name="project_search", arguments={"query": "项目"}, extraContent=sig)]
+    broker = ScriptBroker([response(calls=calls), response(content="找到一个项目")])
+    invoked = []
+
+    def invoke(request):
+        invoked.append(request)
+        return CapabilityResponse(protocolVersion="ga-capability-result.v1", toolCallId=request.tool_call_id,
+                                  status="SUCCEEDED", content={"projects": [{"projectId": str(uuid4())}]},
+                                  sourceRefs=["project:verified"])
+
+    graph, config, saver = setup_agent(e, broker, invoke)
+    output = graph.invoke({"messages": [HumanMessage(content=e.content, id=str(e.message_id))]}, config)
+    assert output["messages"][-1].content == "找到一个项目"
+    assert len(invoked) == 1 and invoked[0].tool_call_id == "native-sig-1"
+    assert len(broker.requests) == 2
+    # Verify the assistant turn echoes the thought_signature in extraContent
+    assistant_msg = broker.requests[1].messages[2]
+    assert assistant_msg.role == "assistant"
+    assert assistant_msg.tool_calls[0].id == "native-sig-1"
+    assert assistant_msg.tool_calls[0].extra_content == sig
+    # Verify thought_signature NEVER leaks into visible agent content
+    assert "enc_sig_xyz123" not in assistant_msg.content
+    assert "enc_sig_xyz123" not in output["messages"][-1].content
+    # Verify tool message
+    tool_msg = broker.requests[1].messages[3]
+    assert tool_msg.role == "tool" and tool_msg.tool_call_id == "native-sig-1"
+    assert saver.get_tuple(config).checkpoint["channel_values"]["messages"][-1].content == "找到一个项目"
+
+
 def test_framework_native_tool_result_follow_up_and_checkpoint():
     e = execution()
     calls = [ToolCall(id="native-call-1", name="project_search", arguments={"query": "项目"})]

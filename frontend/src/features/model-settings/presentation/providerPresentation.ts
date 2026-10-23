@@ -49,8 +49,6 @@ export function providerDisplayName(provider: ModelProvider): string {
   switch (provider) {
     case 'OPENCODE_ZEN':
       return 'OpenCode Zen'
-    case 'OPENROUTER':
-      return 'OpenRouter'
     case 'KILO':
       return 'Kilo Gateway'
     case 'CUSTOM':
@@ -103,9 +101,6 @@ export function providerCardState(
   return 'configured-unvalidated'
 }
 
-export function openRouterState(configured: boolean, validated: boolean, active: boolean, failed: boolean): ProviderState {
-  return providerCardState(configured, validated, active, failed)
-}
 
 export function stateLabel(state: ProviderState): string {
   switch (state) {

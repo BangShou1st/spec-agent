@@ -23,12 +23,25 @@ public final class GaChatCompletionsAdapter {
         for (GaModelContract.Message message : request.messages()) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("role", message.role());
-            item.put("content", message.content());
+            if ("assistant".equals(message.role()) && !message.toolCalls().isEmpty()
+                    && (message.content() == null || message.content().isEmpty())) {
+                item.put("content", null);
+            } else {
+                item.put("content", message.content());
+            }
             if (message.toolCallId() != null) item.put("tool_call_id", message.toolCallId());
             if (!message.toolCalls().isEmpty()) {
-                item.put("tool_calls", message.toolCalls().stream().map(call -> Map.of(
-                        "id", call.id(), "type", "function", "function", Map.of(
-                                "name", call.name(), "arguments", argumentsJson(call.arguments())))).toList());
+                item.put("tool_calls", message.toolCalls().stream().map(call -> {
+                    Map<String, Object> callMap = new LinkedHashMap<>();
+                    callMap.put("id", call.id());
+                    callMap.put("type", "function");
+                    callMap.put("function", Map.of(
+                            "name", call.name(), "arguments", argumentsJson(call.arguments())));
+                    if (call.extraContent() != null && !call.extraContent().isEmpty()) {
+                        callMap.put("extra_content", call.extraContent());
+                    }
+                    return callMap;
+                }).toList());
             }
             messages.add(item);
         }
@@ -93,8 +106,18 @@ public final class GaChatCompletionsAdapter {
                     if (function == null || !function.path("arguments").isTextual()) throw new IllegalArgumentException();
                     JsonNode args = mapper.readTree(function.get("arguments").textValue());
                     if (args == null || !args.isObject()) throw new IllegalArgumentException();
+                    Map<String, Object> extra = null;
+                    JsonNode extraNode = call.get("extra_content");
+                    if (extraNode == null) extraNode = call.get("extraContent");
+                    if (extraNode == null && nativeCalls.size() == 1) {
+                        extraNode = message.get("extra_content");
+                        if (extraNode == null) extraNode = message.get("extraContent");
+                    }
+                    if (extraNode != null && extraNode.isObject()) {
+                        extra = mapper.convertValue(extraNode, new TypeReference<>() {});
+                    }
                     calls.add(new GaModelContract.ToolCall(requiredText(call, "id"),
-                            requiredText(function, "name"), mapper.convertValue(args, new TypeReference<>() {})));
+                            requiredText(function, "name"), mapper.convertValue(args, new TypeReference<>() {}), extra));
                 }
             }
             JsonNode usage = root.get("usage");

@@ -1,0 +1,57 @@
+{
+  "status": "D4_R3_QUALIFIED",
+  "baseline": "106f14ff43081fa34c94ee2efffff037746bb2f0",
+  "branch": "dev",
+  "review": "AI_AUDITED_SYNTHETIC_DELIVERY_EVALUATION",
+  "independentHumanLabels": false,
+  "datasetSha256": "4b971a81bcbf8da95ff3c8a98ddc42d33e5c9b0cf34c767f400782e38c351f0c",
+  "historicalScoresAndR2Unchanged": true,
+  "delivery": {
+    "geminiNativeToolClosedLoop": "PASS",
+    "actualProjectTitle": "D4 R3 Gemini 工具续接验收",
+    "hostObservationSucceeded": true,
+    "checkpointRestored": true,
+    "finalAnswerLength": 82,
+    "messagesCount": 4,
+    "underlyingRequests": 3,
+    "maxUnderlyingRequestsBudget": 8,
+    "automaticRetries": 0,
+    "protocol": {
+      "providerContext": "custom-chat_completions",
+      "modelId": "gemini-3.5-flash-lite",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "hasThoughtSignature": true,
+      "toolCallIdMatched": true,
+      "assistantContentNullWhenToolsPresent": true,
+      "diagnosticHttpStatus": 200,
+      "failurePhase": "SUCCEEDED"
+    }
+  },
+  "qualification": {
+    "qualified": true,
+    "target": {
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "model": "gemini-3.5-flash-lite"
+    },
+    "qualificationMechanism": "spec.global-assistant.ga-native.custom-qualified-targets",
+    "defaultConfig": "empty (fail-closed, requireTextOnly unless explicitly configured)"
+  },
+  "tests": {
+    "javaOfflineTests": 367,
+    "javaOfflineFailures": 0,
+    "pythonTests": 341,
+    "pythonFailures": 0,
+    "liveDeliveryTest": "PASS"
+  },
+  "costs": {
+    "underlyingRequests": 3,
+    "retries": 0,
+    "promptTokens": 2162,
+    "completionTokens": 105,
+    "totalTokens": 2267,
+    "currency": "USD",
+    "expectedCost": 0.0,
+    "actualCharge": "NOT_EXPOSED_BY_API",
+    "billingTier": "verified free tier"
+  }
+}

@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
  * 对应的原生传输,不做请求构建、不做 SSE 解析、不做降级、不重试、不切换提供商或模型。
  *
  * <p>OpenCode Zen 与 Kilo Gateway 使用各自已验证的原生传输(同时承载
- * {@code TEXT_CHAT} 与 {@code NATIVE_TOOLS});OpenRouter 默认为纯文本，Custom 仅在
+ * {@code TEXT_CHAT} 与 {@code NATIVE_TOOLS});其他 Provider 默认为纯文本，Custom 仅在
  * 精确地址与模型取得显式资格后允许原生工具，由 {@link ChatCompletionsGaTextTransport}
  * 复用既有协议适配器与安全传输层实现。任何未注册原生传输的形态一律以
  * {@link UnsupportedOperationException} 失败关闭——绝不退回文本模拟工具调用,也绝不
@@ -47,7 +47,7 @@ public class RoutingGaNativeInferenceGateway implements GaNativeInferenceGateway
                     OpenCodeZenSessionIds.forConversation(conversationId), request, target.model(),
                     remainingBudget, active);
             case KILO -> kilo.complete(target, request, remainingBudget, active);
-            case OPENROUTER, CUSTOM -> textChat.complete(target, request, remainingBudget, active);
+            case CUSTOM -> textChat.complete(target, request, remainingBudget, active);
         };
     }
 
@@ -60,7 +60,7 @@ public class RoutingGaNativeInferenceGateway implements GaNativeInferenceGateway
                     OpenCodeZenSessionIds.forConversation(conversationId), request, target.model(),
                     remainingBudget, active, listener);
             case KILO -> kilo.stream(target, request, remainingBudget, active, listener);
-            case OPENROUTER, CUSTOM -> textChat.stream(target, request, remainingBudget, active, listener);
+            case CUSTOM -> textChat.stream(target, request, remainingBudget, active, listener);
         };
     }
 

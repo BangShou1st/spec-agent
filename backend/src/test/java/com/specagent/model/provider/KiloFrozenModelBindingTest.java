@@ -12,12 +12,10 @@ import com.specagent.model.contract.ModelInferenceResponse;
 import com.specagent.model.contract.ActiveModelTargetPort;
 import com.specagent.model.contract.ActiveProviderPort;
 import com.specagent.model.contract.OpenCodeRuntimeSettingsPort;
-import com.specagent.model.contract.OpenRouterRuntimeSettingsPort;
 import com.specagent.model.contract.CustomRuntimeSettingsPort;
 import com.specagent.common.InMemoryRunModelBindingPort;
 import com.specagent.model.provider.CustomInferenceGateway;
 import com.specagent.model.provider.OpenCodeModelInferenceGateway;
-import com.specagent.model.provider.OpenRouterInferenceGateway;
 import com.specagent.model.provider.RoutingModelInferenceGateway;
 import com.specagent.modelsettings.ActiveModelTargetService;
 import com.specagent.modelsettings.KiloSettings;
@@ -119,7 +117,7 @@ class KiloFrozenModelBindingTest {
                 repository, mock(KiloGatewayClient.class), properties, new ObjectMapper());
         ActiveModelTargetService resolver = new ActiveModelTargetService(providers,
                 mock(OpenCodeRuntimeSettingsPort.class), settings,
-                mock(OpenRouterRuntimeSettingsPort.class), mock(CustomRuntimeSettingsPort.class));
+                mock(CustomRuntimeSettingsPort.class));
         ActiveModelTargetPort targets = () -> {
             Optional<ActiveModelTargetPort.Target> target = resolver.activeTarget();
             if (switchFreeToPaidAfterSnapshot) {
@@ -128,8 +126,7 @@ class KiloFrozenModelBindingTest {
             return target;
         };
         return new RoutingModelInferenceGateway(mock(ActiveProviderPort.class), targets,
-                mock(OpenCodeModelInferenceGateway.class), mock(OpenRouterInferenceGateway.class),
-                new KiloInferenceGateway(settings, properties, new ObjectMapper()),
+                mock(OpenCodeModelInferenceGateway.class), new KiloInferenceGateway(settings, properties, new ObjectMapper()),
                 mock(CustomInferenceGateway.class), new InMemoryRunModelBindingPort());
     }
 
@@ -222,7 +219,7 @@ class KiloFrozenModelBindingTest {
                 repository, mock(KiloGatewayClient.class), properties, new ObjectMapper());
         ActiveModelTargetService resolver = new ActiveModelTargetService(providers,
                 mock(OpenCodeRuntimeSettingsPort.class), settings,
-                mock(OpenRouterRuntimeSettingsPort.class), mock(CustomRuntimeSettingsPort.class));
+                mock(CustomRuntimeSettingsPort.class));
         ActiveModelTargetPort targets = () -> {
             Optional<ActiveModelTargetPort.Target> target = resolver.activeTarget();
             when(repository.find()).thenReturn(Optional.of(stored(null, FREE_MODEL)));
@@ -230,7 +227,7 @@ class KiloFrozenModelBindingTest {
         };
         RoutingModelInferenceGateway routed = new RoutingModelInferenceGateway(
                 mock(ActiveProviderPort.class), targets, mock(OpenCodeModelInferenceGateway.class),
-                mock(OpenRouterInferenceGateway.class), new KiloInferenceGateway(settings, properties,
+                new KiloInferenceGateway(settings, properties,
                         new ObjectMapper()), mock(CustomInferenceGateway.class),
                 new InMemoryRunModelBindingPort());
 
@@ -253,7 +250,7 @@ class KiloFrozenModelBindingTest {
                 repository, mock(KiloGatewayClient.class), properties, new ObjectMapper());
         ActiveModelTargetService resolver = new ActiveModelTargetService(providers,
                 mock(OpenCodeRuntimeSettingsPort.class), settings,
-                mock(OpenRouterRuntimeSettingsPort.class), mock(CustomRuntimeSettingsPort.class));
+                mock(CustomRuntimeSettingsPort.class));
         ActiveModelTargetPort targets = () -> {
             Optional<ActiveModelTargetPort.Target> target = resolver.activeTarget();
             properties.setBaseUrl("http://127.0.0.1:1");
@@ -261,7 +258,7 @@ class KiloFrozenModelBindingTest {
         };
         RoutingModelInferenceGateway routed = new RoutingModelInferenceGateway(
                 mock(ActiveProviderPort.class), targets, mock(OpenCodeModelInferenceGateway.class),
-                mock(OpenRouterInferenceGateway.class), new KiloInferenceGateway(settings, properties,
+                new KiloInferenceGateway(settings, properties,
                         new ObjectMapper()), mock(CustomInferenceGateway.class),
                 new InMemoryRunModelBindingPort());
 
@@ -285,11 +282,11 @@ class KiloFrozenModelBindingTest {
                 repository, mock(KiloGatewayClient.class), properties, new ObjectMapper());
         ActiveModelTargetService resolver = new ActiveModelTargetService(providers,
                 mock(OpenCodeRuntimeSettingsPort.class), settings,
-                mock(OpenRouterRuntimeSettingsPort.class), mock(CustomRuntimeSettingsPort.class));
+                mock(CustomRuntimeSettingsPort.class));
         ActiveModelTargetPort targets = resolver::activeTarget;
         RoutingModelInferenceGateway routed = new RoutingModelInferenceGateway(
                 mock(ActiveProviderPort.class), targets, mock(OpenCodeModelInferenceGateway.class),
-                mock(OpenRouterInferenceGateway.class), new KiloInferenceGateway(settings, properties,
+                new KiloInferenceGateway(settings, properties,
                         new ObjectMapper()), mock(CustomInferenceGateway.class),
                 new InMemoryRunModelBindingPort());
         UUID firstRun = UUID.randomUUID();

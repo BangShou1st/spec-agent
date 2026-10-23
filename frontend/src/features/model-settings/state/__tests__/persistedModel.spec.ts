@@ -3,7 +3,6 @@
 //       可用列表不含已下架值、保存门槛据此禁止写回不可用模型、手动模式不受影响。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { useOpenRouterStore } from '@/features/model-settings/state/openRouterStore'
 import { useCustomProviderStore } from '@/features/model-settings/state/customProviderStore'
 import * as api from '@/features/model-settings/api/modelProviders'
 
@@ -11,8 +10,6 @@ vi.mock('@/features/model-settings/api/modelProviders', async (importOriginal) =
   const actual = await importOriginal<typeof import('@/features/model-settings/api/modelProviders')>()
   return {
     ...actual,
-    getOpenRouterStatus: vi.fn(),
-    listOpenRouterModels: vi.fn(),
     getCustomStatus: vi.fn(),
     discoverCustom: vi.fn(),
   }
@@ -22,74 +19,6 @@ describe('persisted model restoration', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.resetAllMocks()
-  })
-
-  it('openrouter shows the persisted model before any fetch', async () => {
-    vi.mocked(api.getOpenRouterStatus).mockResolvedValue({
-      configured: true, maskedKey: 'xx', selectedModel: 'saved:free',
-      configRevision: 1, validated: false, active: false,
-    })
-    const store = useOpenRouterStore()
-    await store.loadStatus()
-    expect(store.allModels).toContain('saved:free')
-    expect(store.selectedModel).toBe('saved:free')
-  })
-
-  it('openrouter flags unavailable after refresh drops it', async () => {
-    vi.mocked(api.getOpenRouterStatus).mockResolvedValue({
-      configured: true, maskedKey: 'xx', selectedModel: 'saved:free',
-      configRevision: 1, validated: true, active: false,
-    })
-    vi.mocked(api.listOpenRouterModels).mockResolvedValue({ allModels: ['other:free'], freeModels: ['other:free'] })
-    const store = useOpenRouterStore()
-    await store.loadStatus()
-    await store.refreshModels()
-    expect(store.allModels).toContain('saved:free')
-    expect(store.modelUnavailable).toBe(true)
-  })
-
-  it('openrouter unavailable persisted stays visible but not saveable', async () => {
-    vi.mocked(api.getOpenRouterStatus).mockResolvedValue({
-      configured: true, maskedKey: 'xx', selectedModel: 'saved:free',
-      configRevision: 1, validated: true, active: false,
-    })
-    vi.mocked(api.listOpenRouterModels).mockResolvedValue({ allModels: ['other:free'], freeModels: ['other:free'] })
-    const store = useOpenRouterStore()
-    await store.loadStatus()
-    await store.refreshModels()
-    // 注入值保证可见性。
-    expect(store.allModels).toContain('saved:free')
-    // 真实可用列表不包含注入的不可用值。
-    expect(store.availableModels).not.toContain('saved:free')
-    expect(store.availableModels).toContain('other:free')
-    // 组件保存门槛:展示列表含选中项而可用列表不含。
-    const canSave = store.selectedModel !== null
-      && store.allModels.includes(store.selectedModel)
-      && (store.availableModels.length > 0
-        ? store.availableModels.includes(store.selectedModel)
-        : !store.modelUnavailable)
-    expect(store.modelUnavailable).toBe(true)
-    expect(canSave).toBe(false)
-  })
-
-  it('openrouter recovers after selecting a real available model', async () => {
-    vi.mocked(api.getOpenRouterStatus).mockResolvedValue({
-      configured: true, maskedKey: 'xx', selectedModel: 'saved:free',
-      configRevision: 1, validated: true, active: false,
-    })
-    vi.mocked(api.listOpenRouterModels).mockResolvedValue({ allModels: ['other:free'], freeModels: ['other:free'] })
-    const store = useOpenRouterStore()
-    await store.loadStatus()
-    await store.refreshModels()
-    store.selectedModel = 'other:free'
-    const isUnavailable = store.availableModels.length > 0
-      ? !store.availableModels.includes(store.selectedModel)
-      : store.modelUnavailable
-    expect(isUnavailable).toBe(false)
-    const canSave = store.selectedModel !== null
-      && store.allModels.includes(store.selectedModel)
-      && !isUnavailable
-    expect(canSave).toBe(true)
   })
 
   it('custom restores persisted manual mode after reload', async () => {
