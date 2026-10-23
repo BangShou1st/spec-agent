@@ -1,0 +1,135 @@
+{
+  "status": "Historical",
+  "authority": "Historical Reference Only",
+  "stage": "RAG-D3_CLOSED",
+  "verdict": "PASS",
+  "mode": "RECOVERY_RUN",
+  "runId": "582744d0-00ad-4265-a10b-157168399246",
+  "parentRunId": "2a419207-4cf2-4e3d-9361-0eb4219a6199",
+  "evaluatedHead": "65591d7c090cbaf4ad2f3159bc6d55682bd92296",
+  "candidateSha256": "eb1262001f1f67a28c6210a6cd7846b8b7adf547de3453096d68554c635f4199",
+  "freezeSha256": "0f2583dd500a14c43a8a57d8ca83d73642d6efe626a5a539874529bd4f684c7c",
+  "aiAuditSha256": "61c215e3878be2663cff7f7f7316ec718a66652a2554cd3a495af5e01a177a05",
+  "metrics": {
+    "recallAt8": 0.9897959183673469,
+    "mrr": 1.0,
+    "multiSourceAllOfCoverage": 0.875,
+    "sourceIdentityValidity": 1.0,
+    "canonicalStaleLeaks": 0,
+    "privateLeaks": 0,
+    "forbiddenLeaks": 0,
+    "permissionLeaks": 0,
+    "p50Ms": 918,
+    "p95Ms": 1237
+  },
+  "thresholds": {
+    "macroSourceRecallAt8": 0.85,
+    "firstRelevantMrr": 0.75,
+    "multiSourceAllOfCoverage": 0.75,
+    "staleSourceLeakCount": 0,
+    "permissionLeakCount": 0,
+    "sourceIdentityValidity": 1.0
+  },
+  "diagnostics": {
+    "nearNoAnswerCount": 8,
+    "pureNoAnswerCount": 3,
+    "pureNoAnswerZeroHitRate": 0.3333333333333333,
+    "nearNoAnswerBackgroundReturnedCount": 7,
+    "nearNoAnswerAnyReturnedCount": 8,
+    "pureNoAnswerNonEmptyReturnedCount": 2,
+    "noAnswerPolicy": "DIAGNOSTIC_RETRIEVAL_NOISE"
+  },
+  "failureDistribution": {
+    "MISSING_EXPECTED_SOURCE": [
+      "B045"
+    ],
+    "INCOMPLETE_ALL_OF": [
+      "B045"
+    ]
+  },
+  "queryCount": 68,
+  "historyDisclosure": "B001 is a second formal observation; B002-B068 obtain first formal retrieval observations.",
+  "localEvidenceNotUploaded": {
+    "manifest": {
+      "path": "data/retrieval-eval-recovery/authorization.v1.json",
+      "sha256": "cd7409ed48c2e83742946fd94683ce83c3029a39d2bf57eb4bf6a6d58a69881c"
+    },
+    "codeIdentity": {
+      "path": "data/retrieval-eval-recovery/code-identity.v1.json",
+      "sha256": "7520e0b987993c680906362ff37f097350673dcb0209f2a896b397fa09885f32"
+    },
+    "byteExactDiff": {
+      "path": "data/retrieval-eval-recovery/executor-byte-diff.v1.json",
+      "sha256": "61512fa1b20287b86fec9dfd65be3f08666bbf785599276aa79564fcfe27fc3f"
+    },
+    "readablePatch": {
+      "path": "data/retrieval-eval-recovery/executor-repair.v1.patch",
+      "sha256": "975e44f619b0ea0c721ec8527ccad2314488982823a92a3d9d153e6524b4dc39"
+    },
+    "claim": {
+      "path": "data/retrieval-eval-claims/recovery-4542279958e6f7b60366f0c9f32cee30cc7b379b304cfe15fa25f299d54b190e.claim.json",
+      "sha256": "d0131e4328218054d57b0a2ed4cbbd0a958061820580f585fa7be5c7a1d18da1"
+    },
+    "terminalReceipt": {
+      "path": "data/retrieval-eval-claims/eb1262001f1f67a28c6210a6cd7846b8b7adf547de3453096d68554c635f4199.582744d0-00ad-4265-a10b-157168399246.receipt.json",
+      "sha256": "390d09a9be5e6eb96ee2503c697ea8c04dd382e690ec9ef010838a99de516137"
+    },
+    "completeReport": {
+      "path": "data/retrieval-eval-recovery/582744d0-00ad-4265-a10b-157168399246.quality-report.json",
+      "sha256": "d6c35e813853478f83f25655335030d8c9012acddfafa4fc25e3cb7140de2100"
+    },
+    "all68QueryResults": {
+      "path": "data/retrieval-eval-recovery/582744d0-00ad-4265-a10b-157168399246.query-results.json",
+      "sha256": "71d77d7f029639d2a7727e21f6a006677eccbb11d32d2dba77376400797f6904"
+    },
+    "originalInterruptedReceipt": {
+      "path": "data/retrieval-eval-claims/eb1262001f1f67a28c6210a6cd7846b8b7adf547de3453096d68554c635f4199.2a419207-4cf2-4e3d-9361-0eb4219a6199.receipt.json",
+      "sha256": "0c0fa6ac945c722c3e6576cfd82a84e136007a152525f3708e78b344ad13441e"
+    }
+  },
+  "originalAuthorityReport": {
+    "path": "docs/acceptance-evidence/rag-d3-recovery-582744d0-00ad-4265-a10b-157168399246/report.json",
+    "sha256": "20b344630671503b8f094382db03ceca947f12274114beb5839e99839002b1ce"
+  },
+  "originalAuthorityVerification": {
+    "path": "docs/acceptance-evidence/rag-d3-recovery-582744d0-00ad-4265-a10b-157168399246/verification.json",
+    "sha256": "86d7535d5f48f9418a491bdfa5484e0c5989328972701593113de06dcc3fb085"
+  },
+  "codeFilesAtEvaluation": {
+    "backend/build.gradle.kts": "be4cb48d4d30ce7480e5d18ba3407e0ec7010b3ea83e84876b68cde7f1f5c9f7",
+    "backend/src/test/java/com/specagent/retrieval/SharedRetrievalIntegrationTest.java": "7b74674cc6ea90021a0420ccb51e2fa75a84496355b4c7d8d9809c101de0200d",
+    "backend/src/test/java/com/specagent/retrieval/eval/RetrievalEvaluationJournal.java": "444ae5de0653c2c7154cf23f6d98ae25c770b355fdd06457edbe424702b04aef",
+    "backend/src/test/java/com/specagent/retrieval/eval/RetrievalEvaluationJournalTest.java": "f0cba1b07fc8ae5c30375f0c12ba69a541d3db7e33d35181c0ce80a7a373c799",
+    "backend/src/test/java/com/specagent/retrieval/eval/RetrievalEvaluationSnapshot.java": "9afb73ad65c42a7b04b500898ce22739de4e31165eac21e482249521728adffd",
+    "backend/src/test/java/com/specagent/retrieval/eval/RetrievalEvaluationSnapshotTest.java": "b3fc41105afda27e0a12ab60e77b73530257595c8061343cc67d8bf07ea3a956",
+    "backend/src/test/java/com/specagent/retrieval/eval/RetrievalExecutionClaimManager.java": "00fe6de0f041743aaff20557e971bdbe8095a86090f547073592497f78a6a289",
+    "backend/src/test/java/com/specagent/retrieval/eval/RetrievalRecoveryGate.java": "9dfa2c15480b404fd3f026b7b043c3374ebd2e443ca4b3038c31d234384fb41b",
+    "backend/src/test/java/com/specagent/retrieval/eval/RetrievalRecoveryGateTest.java": "a4a8dce0ad2e1113e1308a24cae0de3ca388f0c15df8d2e829e280862ba7365a",
+    "backend/src/test/resources/retrieval/executor-smoke.v1.json": "b2075e31ac797022450210a11413f08893b629d779065bfe5ccd150245dc8246"
+  },
+  "priorValidation": {
+    "offline": {
+      "completed": 322,
+      "failures": 0,
+      "skipped": 0
+    },
+    "syntheticRecovery": {
+      "completed": 2,
+      "failures": 0,
+      "skipped": 0
+    },
+    "formalRecovery": {
+      "completed": 1,
+      "failures": 0,
+      "skipped": 0,
+      "queries": 68
+    }
+  },
+  "identityChecks": {
+    "allManifestCodeFilesMatch": 1012,
+    "rawTop8FilesVerified": 68,
+    "originalHistoryUnchanged": true
+  },
+  "archiveScope": "Code/tests/runbook plus this concise summary and identity index; raw ledgers, authorization contents, traces and runtime database configuration stay local.",
+  "thisGitClosureFormalQueries": 0
+}

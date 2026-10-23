@@ -49,7 +49,16 @@ public record RetrievalEvaluationSnapshot(String datasetFile, String datasetRaw,
     }
 
     public void validate(Path root) {
+        validate(root, Map.of());
+    }
+
+    // Only RecoveryGate calls this after validating the immutable, byte-exact repair allowlist.
+    void validate(Path root, Map<String,String> authorizedRepairs) {
         JsonNode candidate = dataset(), frozen = freeze();
+        if(!authorizedRepairs.isEmpty()) {
+            var code=(com.fasterxml.jackson.databind.node.ObjectNode)frozen.path("codeHashes");
+            authorizedRepairs.forEach((file,hash)->{ if(code.has(file)) code.put(file,hash); });
+        }
         if (!datasetFile.equals(frozen.path("datasetFile").asText())) throw new IllegalArgumentException("Frozen dataset filename mismatch");
         if (aiAudited) {
             RetrievalAcceptanceGateValidator.validateAiBaseline(candidate, datasetRaw, frozen, root);
@@ -77,8 +86,8 @@ public record RetrievalEvaluationSnapshot(String datasetFile, String datasetRaw,
             require("NEVER_USED".equals(audit.path("tuningUse").asText()) && audit.path("executedQueries").isIntegralNumber()
                     && audit.path("executedQueries").canConvertToInt()
                     && audit.path("executedQueries").asInt() == 0, "Audit execution/tuning history");
-            validateDecisions(audit.path("queryDecisions"), candidate.path("queries"), "queryId", "id", root, datasetSha256());
-            validateDecisions(audit.path("sourceDecisions"), candidate.path("sources"), "sourceAlias", "alias", root, datasetSha256());
+            validateDecisions(audit.path("queryDecisions"), candidate.path("queries"), "queryId", "id", root, datasetSha256(),authorizedRepairs,freeze());
+            validateDecisions(audit.path("sourceDecisions"), candidate.path("sources"), "sourceAlias", "alias", root, datasetSha256(),authorizedRepairs,freeze());
             require(candidate.path("parentDatasetSha256").asText().equals(audit.path("parentDatasetSha256").asText()), "Parent binding");
             Path parent = root.resolve("contracts/retrieval/evaluation/acceptance-candidate.v2.2.json");
             require(candidate.path("parentDatasetSha256").asText().equals(fileSha(parent)), "Parent hash");
@@ -90,7 +99,8 @@ public record RetrievalEvaluationSnapshot(String datasetFile, String datasetRaw,
         }
     }
 
-    private static void validateDecisions(JsonNode decisions, JsonNode entries, String key, String entryKey, Path root, String datasetSha) {
+    private static void validateDecisions(JsonNode decisions, JsonNode entries, String key, String entryKey, Path root, String datasetSha,
+            Map<String,String> authorizedRepairs,JsonNode originalFreeze) {
         require(decisions.isArray() && decisions.size() == entries.size(), "Complete audit required");
         Map<String, JsonNode> indexed = new HashMap<>();
         entries.forEach(entry -> indexed.put(entry.path(entryKey).asText(), entry));
@@ -112,7 +122,12 @@ public record RetrievalEvaluationSnapshot(String datasetFile, String datasetRaw,
                 require(path.toAbsolutePath().startsWith(root.toAbsolutePath().normalize()) && Files.isRegularFile(path), "Invalid evidence file");
                 require(ref.path("line").isIntegralNumber() && ref.path("line").asInt() > 0, "Invalid evidence line");
                 require(ref.path("line").asInt() <= read(path).lines().count(), "Evidence line outside file");
-                require(fileSha(path).equals(ref.path("sha256").asText()), "Evidence drift");
+                String file=ref.path("file").asText(),expected=ref.path("sha256").asText();
+                if(authorizedRepairs.containsKey(file)) {
+                    require(expected.equals(originalFreeze.path("codeHashes").path(file).asText()),"Repair evidence parent binding");
+                    expected=authorizedRepairs.get(file);
+                }
+                require(fileSha(path).equals(expected), "Evidence drift");
             }
         }
     }

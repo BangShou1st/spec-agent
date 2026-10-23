@@ -59,6 +59,28 @@ public final class RetrievalExecutionClaimManager {
             throw new IllegalStateException("Terminal outcome cannot be overwritten", exists);
         } catch (IOException ex) { throw new UncheckedIOException(ex); }
     }
+    /** Stable eligibility key; a fresh random runId never renews an interrupted recovery. */
+    public static String recoveryFamily(ExecutionClaim parent) {
+        return "recovery-"+com.specagent.common.Hashes.sha256Hex(parent.datasetSha256()+":"+parent.freezeSha256()+":"+parent.runId()+":1");
+    }
+    public static ExecutionClaim claimRecovery(ExecutionClaim parent,String manifestSha,Path directory) {
+        safe(manifestSha);
+        try {
+            var original=MAPPER.readValue(directory.resolve(parent.evaluationFamilyId()+".claim.json").toFile(),ExecutionClaim.class);
+            var terminal=MAPPER.readValue(receiptPath(parent,directory).toFile(),ExecutionClaim.class);
+            if(!parent.equals(original) || !"CLAIMED".equals(parent.status()) || !"INTERRUPTED_OR_ERROR".equals(terminal.status())
+                    || !terminal.runId().equals(parent.runId()) || !terminal.datasetSha256().equals(parent.datasetSha256())
+                    || !terminal.freezeSha256().equals(parent.freezeSha256()) || !terminal.evaluationFamilyId().equals(parent.evaluationFamilyId()))
+                throw new IllegalStateException("Recovery requires the original consumed claim and interrupted receipt");
+            String family=recoveryFamily(parent);
+            var recovery=new ExecutionClaim(UUID.randomUUID().toString(),parent.datasetSha256(),parent.freezeSha256(),
+                Instant.now().toString(),"CLAIMED",MAPPER.writeValueAsString(Map.of("mode","RECOVERY_RUN","parentRunId",parent.runId(),
+                    "manifestSha256",manifestSha,"recoveryOrdinal",1)),family);
+            append(directory.resolve(family+".claim.json"),recovery);
+            return recovery;
+        } catch(FileAlreadyExistsException exists) { throw new ClaimCollisionException("Recovery attempt already consumed"); }
+        catch(IOException ex) { throw new UncheckedIOException(ex); }
+    }
     public static boolean hasOutcome(ExecutionClaim claim, Path directory) {
         return Files.exists(receiptPath(claim, directory));
     }

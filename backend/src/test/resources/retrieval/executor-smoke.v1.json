@@ -1,0 +1,16 @@
+{
+  "datasetRole": "EXECUTOR_SYNTHETIC_SMOKE",
+  "authorship": "Independent executor fixture created after interruption; never a candidate holdout",
+  "humanReviewStatus": "NOT_REQUESTED",
+  "sources": [
+    {"alias":"SM_NODE","kind":"NODE","text":"Synthetic executor smoke: telescope calibration token SMOKE-CAL-ALPHA; calibration interval is seven days."},
+    {"alias":"SM_RESOURCE","kind":"RESOURCE","text":"Synthetic executor smoke: telescope calibration token SMOKE-CAL-BETA; calibration requires a sapphire reference plate."},
+    {"alias":"P_SM_PRIVATE","kind":"PRIVATE_NODE","text":"Synthetic executor smoke private telescope calibration token SMOKE-CAL-PRIVATE."},
+    {"alias":"SM_STALE","kind":"STALE_NODE","text":"Synthetic executor smoke obsolete telescope calibration token SMOKE-CAL-STALE."}
+  ],
+  "queries": [
+    {"id":"SM001","category":"SINGLE_SOURCE_NODE","query":"SMOKE-CAL-ALPHA telescope calibration interval","scopes":["PROJECT"],"expectedAliases":["SM_NODE"],"forbiddenAliases":["P_SM_PRIVATE","SM_STALE"]},
+    {"id":"SM002","category":"RESOURCE_CONTENT","query":"SMOKE-CAL-BETA sapphire reference plate","scopes":["RESOURCE"],"expectedAliases":["SM_RESOURCE"],"forbiddenAliases":["P_SM_PRIVATE","SM_STALE"]},
+    {"id":"SM003","category":"MULTI_SOURCE","query":"telescope calibration SMOKE-CAL-ALPHA interval and SMOKE-CAL-BETA reference plate","scopes":["PROJECT","RESOURCE"],"expectedAliases":["SM_NODE","SM_RESOURCE"],"forbiddenAliases":["P_SM_PRIVATE","SM_STALE"]}
+  ]
+}
