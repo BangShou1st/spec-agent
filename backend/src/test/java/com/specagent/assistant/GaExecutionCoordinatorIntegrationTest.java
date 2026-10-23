@@ -518,9 +518,13 @@ class GaExecutionCoordinatorIntegrationTest {
         long epoch=prepared.scope().epoch();
         // 冲突分支(ON CONFLICT DO UPDATE)只可能被重新初始化触达;已提交执行的 Run 处于
         // RUNNING,因此任何"再绑定"都在状态围栏处失败,绝不可能覆盖已冻结的快照。
+        // 重新绑定必须使用当前契约中合法的、但与原冻结目标不同的提供商:用已退役的编码
+        // (例如 OPENROUTER)会先在 registeredProvider 校验处抛 IllegalArgumentException,
+        // 根本到不了状态围栏,测试也就证明不了它要证明的东西。原冻结目标是 OPENCODE_ZEN,
+        // 因此这里换成同样合法、但确实不同的 KILO。
         assertThrows(IllegalStateException.class,()->executions.initialize(
                 new GaExecutionStore.Scope(run.id(),epoch,UUID.randomUUID()),
-                new GaExecutionStore.Binding(thread,UUID.randomUUID(),"OPENROUTER","rebind-attempt","rebind-revision",
+                new GaExecutionStore.Binding(thread,UUID.randomUUID(),"KILO","rebind-attempt","rebind-revision",
                         Instant.now().plusSeconds(120),List.of())));
         assertEquals(provider,jdbc.queryForObject("SELECT provider FROM ga_executions WHERE run_id=?",String.class,run.id()));
         assertEquals(model,jdbc.queryForObject("SELECT model FROM ga_executions WHERE run_id=?",String.class,run.id()));

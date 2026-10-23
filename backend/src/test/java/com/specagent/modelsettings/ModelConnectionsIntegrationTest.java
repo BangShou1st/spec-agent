@@ -168,6 +168,92 @@ class ModelConnectionsIntegrationTest {
             assertThat(connections.list()).isEmpty();
         }
     }
+
+    /**
+     * 旧单例的 validated_revision 只描述旧身份的验证,不描述新连接的
+     * (org, provider_id, config_revision)。导入绝不能继承它——否则一条
+     * 从未在当前修订号下证明过能力的连接会以"已验证"的样子出现并允许激活。
+     */
+    @Test void importedLegacyValidationIsNeverInheritedWithoutACurrentCapabilityProof() {
+        try(var actor=ActorContextHolder.bind(ActorContext.oidc(user,org))) {
+            String encrypted=crypto.encryptScoped("fixture-legacy-validated",org,"openrouter_settings",1);
+            jdbc.update("""
+                    INSERT INTO openrouter_settings(org_id,singleton_id,api_key,masked_suffix,selected_model,
+                        config_revision,validated_revision,validated_at)
+                    VALUES (?,1,?,'ated','fixed-free-model',3,3,CURRENT_TIMESTAMP)
+                    """,org,encrypted);
+            migrator.run(null);
+            var row=connections.list().stream().filter(r->"OpenRouter".equals(r.displayName())).findFirst().orElseThrow();
+            // 修订号仍然被复制(身份/失效语义不变),但验证状态一律不继承。
+            assertThat(row.configRevision()).isEqualTo(3L);
+            assertThat(row.validatedRevision()).isNull();
+            assertThat(row.validated()).isFalse();
+            assertThat(qualifications.status(row)).containsOnly(
+                    Map.entry("CHAT","UNTESTED"),Map.entry("STRUCTURED","UNTESTED"),
+                    Map.entry("NATIVE_TOOLS","UNTESTED"));
+            // 没有当前能力证明就不允许激活。
+            assertThatThrownBy(()->connections.activate(row)).isInstanceOf(ModelProviderException.class);
+            assertThatThrownBy(()->connections.requireActivatable(row)).isInstanceOf(ModelProviderException.class);
+            // 凭据仍然正确解密并重新加密到新作用域,且没有被销毁。
+            assertThat(row.apiKey()).isEqualTo("fixture-legacy-validated");
+        }
+    }
+
+    /** 重新在当前修订号下通过 STRUCTURED 验证后,导入的连接可以正常激活。 */
+    @Test void importedConnectionActivatesOnlyAfterAFreshStructuredProof() throws Exception {
+        try(var fake=new FakeModelProvider();var actor=ActorContextHolder.bind(ActorContext.oidc(user,org))) {
+            String encrypted=crypto.encryptScoped("fixture-legacy-reproof",org,"openrouter_settings",1);
+            jdbc.update("""
+                    INSERT INTO openrouter_settings(org_id,singleton_id,api_key,masked_suffix,selected_model,
+                        config_revision,validated_revision,validated_at)
+                    VALUES (?,1,?,'roof','fixed-free-model',2,2,CURRENT_TIMESTAMP)
+                    """,org,encrypted);
+            migrator.run(null);
+            var imported=connections.list().stream().filter(r->"OpenRouter".equals(r.displayName())).findFirst().orElseThrow();
+            // 重新指向本地 Fake 提供方,再走一次真实的 validate() 能力探测。
+            // 换了来源就必须显式给出新密钥,否则来源守卫会拒绝沿用旧密钥。
+            var reproved=connections.update(imported.id(),new ModelProvidersService.Patch(null,null,
+                    "CHAT_COMPLETIONS",fake.baseUrl(),"fixture-reproof-key","manual-unlisted","MANUAL"));
+            reproved=connections.validate(reproved.id());
+            assertThat(reproved.validated()).isTrue();
+            assertThat(qualifications.status(reproved)).containsEntry("STRUCTURED","VERIFIED");
+            connections.activate(reproved);
+            assertThat(targets.activeTarget().orElseThrow().runtimeSettings()).isNotNull();
+        }
+    }
+
+    /**
+     * V109 必须修复"已经跑过 V104-V108 的数据库":那时导入行可能仍带着继承来的
+     * validated_revision,而标记表会让 ApplicationRunner 永远不再碰它。
+     */
+    @Test void capabilityProofMigrationScrubsInheritedValidationButKeepsRealProofs() throws java.io.IOException {
+        try(var actor=ActorContextHolder.bind(ActorContext.oidc(user,org))) {
+            var inherited=connections.create(new ModelProvidersService.Patch(null,"Inherited proof",
+                    "CHAT_COMPLETIONS","https://inherited.example/v1",null,"manual-unlisted","MANUAL"));
+            var proven=connections.create(new ModelProvidersService.Patch(null,"Real proof",
+                    "CHAT_COMPLETIONS","https://proven.example/v1",null,"manual-unlisted","MANUAL"));
+            // 两条行都显示"已验证",但只有一条真的在当前修订号下有 STRUCTURED 证明。
+            // legacy_source 在同一组织内唯一,两条行必须用不同的来源标记。
+            jdbc.update("UPDATE model_providers SET validated_revision=config_revision,"
+                    + "validated_at=CURRENT_TIMESTAMP,legacy_source='OPENROUTER' WHERE id=?",inherited.id());
+            jdbc.update("UPDATE model_providers SET validated_revision=config_revision,"
+                    + "validated_at=CURRENT_TIMESTAMP,legacy_source='CUSTOM' WHERE id=?",proven.id());
+            jdbc.update("""
+                    INSERT INTO model_connection_capabilities(org_id,provider_id,config_revision,capability,status)
+                    VALUES (?,?,?,'STRUCTURED','VERIFIED')
+                    """,org,proven.id(),proven.configRevision());
+            jdbc.update(new String(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(
+                    "src/main/resources/db/migration/V109__require_current_capability_proof.sql"))));
+            assertThat(connections.require(inherited.id()).validated())
+                    .as("an inherited flag without a current STRUCTURED proof must be scrubbed")
+                    .isFalse();
+            assertThat(connections.require(proven.id()).validated())
+                    .as("a real current-revision proof must survive the migration")
+                    .isTrue();
+            // 凭据与配置不受迁移影响。
+            assertThat(connections.require(inherited.id()).selectedModel()).isEqualTo("manual-unlisted");
+        }
+    }
     @Test void onlyTwoBuiltinPresetsAreExposed() {
         try(var actor=ActorContextHolder.bind(ActorContext.oidc(user,org))) {
             assertThat(views.listView().providers()).extracting(ModelProviderViewService.ProviderView::preset)

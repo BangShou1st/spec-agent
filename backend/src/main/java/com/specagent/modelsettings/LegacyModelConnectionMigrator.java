@@ -69,8 +69,13 @@ public class LegacyModelConnectionMigrator implements ApplicationRunner {
                     .addValue("key", crypto.encryptScoped(key, org, "model_providers", id))
                     .addValue("suffix", source.get("masked_suffix"))
                     .addValue("model", model).addValue("revision", source.get("config_revision"))
-                    .addValue("validated", router ? source.get("validated_revision") : null)
-                    .addValue("validatedAt", router ? source.get("validated_at") : null);
+                    // Legacy validated state is NEVER inherited. V105 moved the real
+                    // proof to model_connection_capabilities, keyed by
+                    // (org_id, provider_id, config_revision, capability); the old
+                    // singleton flag cannot express that identity. An imported row
+                    // must therefore start unvalidated and earn a fresh proof.
+                    .addValue("validated", null)
+                    .addValue("validatedAt", null);
             jdbc.update("""
                     INSERT INTO model_providers(org_id,id,preset,display_name,api_format,base_url,
                         api_key,masked_suffix,selected_model,model_source,config_revision,

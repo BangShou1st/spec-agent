@@ -1,11 +1,21 @@
-
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
-import { test, expect } from './helpers'
+import type { Route } from '@playwright/test'
+import { test, expect, type Page } from './helpers'
 
-// 截图产物写入"每次运行独立"的目录:避免固定路径下的陈旧/被占用文件
-// 让 PNG 落盘出现 UNKNOWN 错误,也让重复执行互不覆盖。需要固定位置时
-// 用 PLAYWRIGHT_SHOTS_DIR 覆盖。
+/**
+ * Provider 设置的截图与行为验收。
+ *
+ * 产品现状(Provider 注册表 V2):内置只有 OpenCode Zen 与 Kilo Gateway 两张卡;
+ * 任意多个自定义连接通过末尾的「＋」弹窗创建,并各自成为一枚 Tab。
+ * OpenRouter 不再是内置提供商——如果它出现,只能是一条普通的自定义连接。
+ * 因此本用例既产出截图,也把「没有内置 OpenRouter 入口」「多个自定义连接共存」
+ * 「创建 / 编辑 / 切换 / 删除」这些产品行为断言成真实通过,而不是靠删掉用例来消红。
+ *
+ * 截图产物写入"每次运行独立"的目录:避免固定路径下的陈旧/被占用文件
+ * 让 PNG 落盘出现 UNKNOWN 错误,也让重复执行互不覆盖。需要固定位置时
+ * 用 PLAYWRIGHT_SHOTS_DIR 覆盖。
+ */
 const SHOTS = process.env.PLAYWRIGHT_SHOTS_DIR
   ?? path.join('test-results', 'provider-shots',
     new Date().toISOString().replace(/[:.]/g, '-'))
@@ -16,182 +26,308 @@ test.afterAll(async () => {
   test.info().annotations.push({ type: 'shots-dir', description: SHOTS })
 })
 
-test.describe('provider settings screenshots', () => {
-  test('capture all required states', async ({ page }) => {
-    const state = {
-      active: 'OPENCODE_ZEN',
-      openrouter: { configured: false, maskedKey: null as string | null, selectedModel: null as string | null, configRevision: 0, validated: false },
-      openrouterModels: [] as string[],
-      custom: { configured: false, apiFormat: 'CHAT_COMPLETIONS', baseUrl: '', endpointPreview: null as string | null, hasKey: false, maskedKey: null as string | null, selectedModel: '', configRevision: 0, validated: false, displayName: null as string | null },
-      customDiscover: { models: [] as string[], manualModel: false, endpointPreview: null as string | null, failAuth: false },
-    }
-    let statusManual = false
-    const statusBody = () => ({ ...state.custom, manualModel: statusManual })
+test.setTimeout(240_000)
 
-    await page.route('**/api/v1/settings/providers/active', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ activeProvider: state.active, activeProviderId: null }) })
-    })
-    await page.route('**/api/v1/settings/opencode', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ configured: true, maskedKey: '••••zen1', selectedModel: 'zen-model-free' }) })
-    })
-    await page.route('**/api/v1/settings/opencode/models', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ allModels: ['zen-model-free'], freeModels: ['zen-model-free'] }) })
-    })
-    await page.route('**/api/v1/settings/openrouter', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...state.openrouter, active: state.active === 'OPENROUTER' }) })
-    })
-    await page.route('**/api/v1/settings/openrouter/probe', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ freeModels: state.openrouterModels }) })
-    })
-    await page.route('**/api/v1/settings/openrouter/models', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ freeModels: state.openrouterModels }) })
-    })
-    await page.route('**/api/v1/settings/openrouter/validate', async (route) => {
-      state.openrouter.validated = true
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...state.openrouter, active: state.active === 'OPENROUTER' }) })
-    })
-    await page.route('**/api/v1/settings/custom', async (route) => {
-      const method = route.request().method()
-      if (method === 'GET') {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(statusBody()) })
-      } else {
-        state.custom.configured = true
-        state.custom.validated = false
-        statusManual = state.customDiscover.manualModel
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(statusBody()) })
-      }
-    })
-    await page.route('**/api/v1/settings/custom/discover', async (route) => {
-      if (state.customDiscover.failAuth) {
-        // The real backend contract: an upstream provider that rejects the
-        // credential is a provider failure (503 + MODEL_PROVIDER_AUTHENTICATION).
-        // A 401 is reserved for the user's own session, and answering with one
-        // here would conflate "the upstream refused the key" with "the user
-        // must sign in again" — the latter tears the whole page down and hides
-        // the very error this screenshot is meant to show.
-        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'MODEL_PROVIDER_AUTHENTICATION', message: 'The model provider rejected the request configuration' }) })
-        return
-      }
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ models: state.customDiscover.models, manualModel: state.customDiscover.manualModel, endpointPreview: state.customDiscover.endpointPreview }) })
-    })
-    await page.route('**/api/v1/settings/custom/validate', async (route) => {
-      state.custom.validated = true
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(statusBody()) })
-    })
+/** 线级契约:ProviderView(见 backend ModelProviderViewService)。 */
+interface ProviderRow {
+  id: string
+  preset: 'OPENCODE_ZEN' | 'KILO' | 'CUSTOM'
+  displayName: string
+  apiFormat: string
+  baseUrl: string
+  endpointPreview: string | null
+  hasKey: boolean
+  maskedKey: string | null
+  selectedModel: string
+  manualModel: boolean
+  configured: boolean
+  configRevision: number
+  validated: boolean
+  active: boolean
+  capabilities: {
+    userNamed: boolean
+    selectableFormat: boolean
+    editableBaseUrl: boolean
+    requiresApiKey: boolean
+    builtInCatalog: boolean
+  }
+  verifiedCapabilities: Record<string, string>
+}
+
+const CUSTOM_CAPABILITIES = {
+  userNamed: true, selectableFormat: true, editableBaseUrl: true,
+  requiresApiKey: false, builtInCatalog: false,
+}
+
+function customRow(over: Partial<ProviderRow> & Pick<ProviderRow, 'id' | 'displayName'>): ProviderRow {
+  return {
+    preset: 'CUSTOM',
+    apiFormat: 'CHAT_COMPLETIONS',
+    baseUrl: 'https://api.example.com/v1',
+    endpointPreview: null,
+    hasKey: false,
+    maskedKey: null,
+    selectedModel: '',
+    manualModel: true,
+    configured: false,
+    configRevision: 0,
+    validated: false,
+    active: false,
+    capabilities: CUSTOM_CAPABILITIES,
+    verifiedCapabilities: {},
+    ...over,
+  }
+}
+
+/**
+ * 有状态的假 Provider 注册表:每次写入都反映到后续 GET,截图才代表真实流转。
+ * 返回 `reset()`,让每个视口从同一份干净状态开始——否则第二个视口会继承
+ * 上一个视口创建的连接,断言就不再是同一件事。
+ */
+async function mockProviderRegistry(page: Page) {
+  const custom: ProviderRow[] = []
+  let activeProvider: 'OPENCODE_ZEN' | 'KILO' | 'CUSTOM' = 'OPENCODE_ZEN'
+  let activeProviderId: string | null = null
+  let nextId = 1
+
+  const opencodeStatus = { configured: true, maskedKey: '••••zen1', selectedModel: 'zen-model-free' }
+  const kiloStatus = { configured: false, maskedKey: null as string | null, selectedModel: null as string | null }
+  const kiloModels = ['kilo-free-a', 'kilo-paid-b']
+
+  function reset() {
+    custom.length = 0
+    activeProvider = 'OPENCODE_ZEN'
+    activeProviderId = null
+    nextId = 1
+  }
+
+  // 每条处理器自己按路径分派:不依赖 Playwright 的路由注册顺序(后注册者先匹配),
+  // 也就不会因为某天调整了注册次序而悄悄把 /models 换成设置状态。
+  await page.route('**/api/v1/settings/opencode**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname
+    const body = pathname.endsWith('/models')
+      ? { allModels: ['zen-model-free'], freeModels: ['zen-model-free'] }
+      : opencodeStatus
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+  })
+  await page.route('**/api/v1/settings/kilo**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname
+    const body = pathname.endsWith('/models')
+      ? { allModels: kiloModels, freeModels: kiloModels.filter(m => m.includes('free')) }
+      : kiloStatus
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+  })
+
+  const listView = () => ({
+    // 预设行由后端合成;前端只用它取「当前使用」标签,真正的 Tab 来自静态预设表。
+    providers: [
+      {
+        id: 'OPENCODE_ZEN', preset: 'OPENCODE_ZEN', displayName: 'OpenCode Zen',
+        apiFormat: 'CHAT_COMPLETIONS', baseUrl: 'https://opencode.ai/inference/v1', endpointPreview: null,
+        hasKey: true, maskedKey: '••••zen1', selectedModel: 'zen-model-free', manualModel: false,
+        configured: true, configRevision: 0, validated: false,
+        active: activeProviderId === null && activeProvider === 'OPENCODE_ZEN',
+        capabilities: { userNamed: false, selectableFormat: false, editableBaseUrl: false, requiresApiKey: false, builtInCatalog: true },
+        verifiedCapabilities: {},
+      },
+      {
+        id: 'KILO', preset: 'KILO', displayName: 'Kilo Gateway',
+        apiFormat: 'CHAT_COMPLETIONS', baseUrl: 'https://ai-gateway.kilo.ai/api/v1', endpointPreview: null,
+        hasKey: false, maskedKey: null, selectedModel: null, manualModel: false,
+        configured: false, configRevision: 0, validated: false,
+        active: activeProviderId === null && activeProvider === 'KILO',
+        capabilities: { userNamed: false, selectableFormat: false, editableBaseUrl: false, requiresApiKey: false, builtInCatalog: true },
+        verifiedCapabilities: {},
+      },
+      ...custom.map(row => ({ ...row, active: activeProviderId === row.id })),
+    ],
+    activeProvider,
+    activeProviderId,
+  })
+  const json = (route: Route, status: number, body: unknown) =>
+    route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+
+  await page.route('**/api/v1/settings/providers**', async (route) => {
+    const request = route.request()
+    const method = request.method()
+    const url = new URL(request.url())
+    const rest = url.pathname.replace('/api/v1/settings/providers', '') || ''
+    const body = () => (request.postDataJSON() ?? {}) as Record<string, string | undefined>
+
+    if (method === 'GET' && rest === '') return json(route, 200, listView())
+    if (method === 'GET' && rest === '/active') {
+      return json(route, 200, { activeProvider, activeProviderId })
+    }
+    if (method === 'POST' && rest === '/discover') {
+      return json(route, 200, {
+        models: ['custom-model-a', 'openrouter/auto', 'custom-model-with-a-very-long-id-that-tests-ellipsis-behavior-in-dropdowns'],
+        freeModels: [], manualModel: false,
+        endpointPreview: `${body().baseUrl ?? ''}/chat/completions`,
+      })
+    }
+    if (method === 'POST' && rest === '/activate') {
+      // 预设激活端点(本用例只经由行激活,保留契约完整性)。
+      activeProvider = (body().provider as typeof activeProvider) ?? 'OPENCODE_ZEN'
+      activeProviderId = null
+      return json(route, 200, listView())
+    }
+    if (method === 'POST' && rest === '') {
+      const patch = body()
+      const row = customRow({
+        id: `custom-${nextId++}`,
+        displayName: patch.displayName ?? 'Custom',
+        apiFormat: patch.apiFormat ?? 'CHAT_COMPLETIONS',
+        baseUrl: patch.baseUrl ?? '',
+        endpointPreview: patch.baseUrl ? `${patch.baseUrl}/chat/completions` : null,
+        hasKey: Boolean(patch.apiKey), maskedKey: patch.apiKey ? '••••0000' : null,
+        selectedModel: patch.selectedModel ?? '',
+        configured: true, configRevision: 1,
+      })
+      custom.push(row)
+      return json(route, 200, row)
+    }
+
+    const match = rest.match(/^\/([^/]+)(\/.*)?$/)
+    if (!match) return route.fallback()
+    const row = custom.find(r => r.id === match[1])
+    if (!row) return json(route, 404, { code: 'MODEL_PROVIDER_NOT_FOUND', message: 'unknown provider' })
+    const tail = match[2] ?? ''
+
+    if (method === 'PUT' && tail === '') {
+      const patch = body()
+      row.displayName = patch.displayName ?? row.displayName
+      row.apiFormat = patch.apiFormat ?? row.apiFormat
+      row.baseUrl = patch.baseUrl ?? row.baseUrl
+      row.selectedModel = patch.selectedModel ?? row.selectedModel
+      if (patch.apiKey) { row.hasKey = true; row.maskedKey = '••••0000' }
+      row.configRevision += 1
+      // 改配置即失去当前验证:能力证明只对当前配置修订号有效。
+      row.validated = false
+      row.verifiedCapabilities = {}
+      return json(route, 200, row)
+    }
+    if (method === 'DELETE' && tail === '') {
+      custom.splice(custom.indexOf(row), 1)
+      if (activeProviderId === row.id) { activeProvider = 'OPENCODE_ZEN'; activeProviderId = null }
+      return route.fulfill({ status: 204, body: '' })
+    }
+    if (method === 'POST' && tail === '/validate') {
+      row.validated = true
+      row.verifiedCapabilities = { CHAT: 'VERIFIED', STRUCTURED: 'VERIFIED', NATIVE_TOOLS: 'VERIFIED' }
+      return json(route, 200, row)
+    }
+    if (method === 'POST' && tail === '/activate') {
+      activeProvider = 'CUSTOM'
+      activeProviderId = row.id
+      return json(route, 200, listView())
+    }
+    if (method === 'POST' && tail === '/probe') {
+      return json(route, 200, { models: ['custom-model-a'], freeModels: [], manualModel: false, endpointPreview: null })
+    }
+    if (method === 'GET' && tail === '/models') {
+      return json(route, 200, { models: [row.selectedModel], freeModels: [], manualModel: true, endpointPreview: null })
+    }
+    return route.fallback()
+  })
+
+  return { reset }
+}
+
+test.describe('provider settings screenshots and behaviour', () => {
+  test('capture all required states', async ({ page }) => {
+    const registry = await mockProviderRegistry(page)
 
     const viewports = [
       { width: 1440, height: 900 },
       { width: 1366, height: 768 },
     ]
     for (const vp of viewports) {
+      registry.reset()
       await page.setViewportSize(vp)
       const suffix = vp.width + 'x' + vp.height
 
-      state.active = 'OPENCODE_ZEN'
-      state.openrouter = { configured: false, maskedKey: null, selectedModel: null, configRevision: 0, validated: false }
-      state.openrouterModels = []
-      state.custom = { configured: false, apiFormat: 'CHAT_COMPLETIONS', baseUrl: '', endpointPreview: null, hasKey: false, maskedKey: null, selectedModel: '', configRevision: 0, validated: false, displayName: null }
-      state.customDiscover = { models: [], manualModel: false, endpointPreview: null, failAuth: false }
-      statusManual = false
+      // ── 两个内置提供商:没有 OpenRouter 内置入口 ──
       await page.goto('/settings')
       await expect(page.getByTestId('settings-page')).toBeVisible()
       await expect(page.getByTestId('active-provider-name')).toContainText('OpenCode Zen')
+      await expect(page.getByTestId('opencode-card')).toBeVisible()
+      await expect(page.getByTestId('provider-tab-openrouter')).toHaveCount(0)
+      await expect(page.getByTestId('openrouter-card')).toHaveCount(0)
       await page.screenshot({ path: SHOTS + '/settings-opencode-active-' + suffix + '.png', fullPage: true })
 
-      await page.getByTestId('provider-tab-openrouter').click()
-      await expect(page.getByTestId('openrouter-card')).toBeVisible()
-      await page.screenshot({ path: SHOTS + '/settings-openrouter-unconfigured-' + suffix + '.png', fullPage: true })
+      await page.getByTestId('provider-tab-kilo').click()
+      await expect(page.getByTestId('kilo-card')).toBeVisible()
+      await page.screenshot({ path: SHOTS + '/settings-kilo-' + suffix + '.png', fullPage: true })
 
-      state.openrouterModels = ['openrouter/free', 'meta-llama/llama-3:free', 'qwen/qwen3:free']
-      await page.getByTestId('openrouter-api-key').fill('sk-or-v1-mock')
-      await page.getByTestId('openrouter-probe').click()
-      await expect(page.getByTestId('openrouter-model')).toBeEnabled()
-      await page.screenshot({ path: SHOTS + '/settings-openrouter-models-' + suffix + '.png', fullPage: true })
-
-      state.openrouter = { configured: true, maskedKey: '••••5678', selectedModel: 'qwen/qwen3:free', configRevision: 1, validated: true }
-      statusManual = false
-      await page.goto('/settings')
-      await page.getByTestId('provider-tab-openrouter').click()
-      await expect(page.getByTestId('openrouter-model')).toHaveValue('qwen/qwen3:free')
-      await page.screenshot({ path: SHOTS + '/settings-openrouter-persisted-' + suffix + '.png', fullPage: true })
-
-      const formats = [
-        { v: 'CHAT_COMPLETIONS', shot: 'chat', base: 'http://localhost:11434/v1', preview: 'http://localhost:11434/v1/chat/completions' },
-        { v: 'RESPONSES', shot: 'responses', base: 'https://gateway.example/v1', preview: 'https://gateway.example/v1/responses' },
-      ] as const
-      for (const f of formats) {
-        state.customDiscover = { models: ['custom-model-a', 'custom-model-with-a-very-long-id-that-tests-ellipsis-behavior-in-dropdowns'], manualModel: false, endpointPreview: f.preview, failAuth: false }
-        // 未配置的 Custom 通过 "+" 弹窗进入；弹窗不再内嵌卡片，字段一路平铺。
-        await page.getByTestId('provider-add-custom').click()
-        await expect(page.getByTestId('custom-create-dialog')).toBeVisible()
-        await page.getByTestId('custom-display-name').fill('Local Gateway')
-        // 弹窗里不存在卡片页头/状态胶囊，即不再被 Custom 分隔块切开。
-        await expect(page.getByTestId('custom-title')).toHaveCount(0)
-        await page.getByTestId('custom-format').selectOption(f.v)
-        await page.getByTestId('custom-base-url').fill(f.base)
-        await page.getByTestId('custom-discover').click()
-        await expect(page.getByTestId('custom-model')).toBeVisible()
-        await page.screenshot({ path: SHOTS + '/settings-custom-' + f.shot + '-' + suffix + '.png', fullPage: true })
-        await page.getByTestId('ui-dialog-close').click()
-        await expect(page.getByTestId('custom-create-dialog')).toHaveCount(0)
-      }
-
-      state.customDiscover = { models: [], manualModel: true, endpointPreview: 'http://localhost:11434/v1/chat/completions', failAuth: false }
+      // ── 通过「＋」新建第一个 Custom ──
       await page.getByTestId('provider-add-custom').click()
-      await expect(page.getByTestId('custom-create-dialog')).toBeVisible()
-      await page.getByTestId('custom-display-name').fill('Local Gateway')
-      await page.getByTestId('custom-base-url').fill('http://localhost:11434/v1')
-      await page.getByTestId('custom-discover').click()
-      await expect(page.getByTestId('custom-model-id')).toBeVisible()
-      await page.screenshot({ path: SHOTS + '/settings-custom-manual-' + suffix + '.png', fullPage: true })
-      await page.getByTestId('ui-dialog-close').click()
-      await expect(page.getByTestId('custom-create-dialog')).toHaveCount(0)
-
-      // 已配置：卡片只展示当前配置摘要 + 设置/重新测试/设为当前 Provider。
-      state.custom = { configured: true, apiFormat: 'CHAT_COMPLETIONS', baseUrl: 'https://gateway.example/v1', endpointPreview: 'https://gateway.example/v1/chat/completions', hasKey: true, maskedKey: '••••9999', selectedModel: 'custom-model-a', configRevision: 3, validated: false, displayName: 'Local Gateway' }
-      state.customDiscover = { models: [], manualModel: false, endpointPreview: null, failAuth: true }
-      await page.goto('/settings')
-      await page.getByTestId('provider-tab-custom').click()
-      await expect(page.getByTestId('custom-card')).toBeVisible()
+      await expect(page.getByTestId('connection-dialog')).toBeVisible()
+      await page.getByTestId('connection-name').fill('Local Gateway')
+      await page.getByTestId('connection-url').fill('http://localhost:11434/v1')
+      await page.getByTestId('connection-discover').click()
+      await page.getByTestId('connection-model').fill('custom-model-a')
+      await page.screenshot({ path: SHOTS + '/settings-custom-create-' + suffix + '.png', fullPage: true })
+      await page.getByTestId('connection-save').click()
+      await expect(page.getByTestId('connection-dialog')).toHaveCount(0)
+      await expect(page.getByTestId('connection-panel')).toBeVisible()
       await expect(page.getByTestId('custom-current-model')).toContainText('custom-model-a')
-      await page.screenshot({ path: SHOTS + '/settings-custom-card-configured-' + suffix + '.png', fullPage: true })
+      // 刚保存但未验证:状态必须是「已配置但未验证」,且激活按钮不可用。
+      await expect(page.getByTestId('custom-state')).toContainText('已配置但未验证')
+      await expect(page.getByTestId('connection-activate')).toBeDisabled()
+      await page.screenshot({ path: SHOTS + '/settings-custom-configured-' + suffix + '.png', fullPage: true })
 
-      // 编辑已配置项：设置按钮打开同一个弹窗，全部字段可改（含显示名称）。
-      await page.getByTestId('custom-settings').click()
-      await expect(page.getByTestId('custom-provider-dialog')).toBeVisible()
-      await expect(page.getByTestId('custom-display-name')).toHaveValue('Local Gateway')
-      await page.getByTestId('custom-discover').click()
-      // 错误条在弹窗内（卡片区也有一处同名 custom-error，必须限定到弹窗）。
-      await expect(page.getByTestId('custom-provider-dialog').getByTestId('custom-error')).toBeVisible()
-      await page.screenshot({ path: SHOTS + '/settings-custom-error-' + suffix + '.png', fullPage: true })
-      await page.getByTestId('ui-dialog-close').click()
+      // ── 第二个 Custom(OpenRouter 只是普通自定义连接,不是内置入口)──
+      await page.getByTestId('provider-add-custom').click()
+      await expect(page.getByTestId('connection-dialog')).toBeVisible()
+      await page.getByTestId('connection-name').fill('OpenRouter')
+      await page.getByTestId('connection-url').fill('https://openrouter.ai/api/v1')
+      await page.getByTestId('connection-key').fill('sk-or-v1-mock')
+      await page.getByTestId('connection-discover').click()
+      await page.getByTestId('connection-model').fill('openrouter/auto')
+      await page.getByTestId('connection-save').click()
+      await expect(page.getByTestId('connection-dialog')).toHaveCount(0)
 
-      state.customDiscover.failAuth = false
-      state.custom = { configured: true, apiFormat: 'RESPONSES', baseUrl: 'https://gateway.example/v1', endpointPreview: 'https://gateway.example/v1/responses', hasKey: false, maskedKey: null, selectedModel: 'custom-model-a', configRevision: 4, validated: true, displayName: 'Local Gateway' }
-      await page.goto('/settings')
-      await page.getByTestId('provider-tab-custom').click()
+      // 多个自定义连接必须共存为独立的 Tab。
+      const tabs = page.getByTestId('provider-tabs')
+      await expect(tabs.getByRole('tab', { name: /Local Gateway/ })).toBeVisible()
+      await expect(tabs.getByRole('tab', { name: /OpenRouter/ })).toBeVisible()
+      await expect(page.getByTestId('custom-current-model')).toContainText('openrouter/auto')
+      await page.screenshot({ path: SHOTS + '/settings-custom-multiple-' + suffix + '.png', fullPage: true })
+
+      // ── 切换:点回第一个连接,内容跟着换 ──
+      await tabs.getByRole('tab', { name: /Local Gateway/ }).click()
+      await expect(page.getByTestId('custom-current-model')).toContainText('custom-model-a')
+
+      // ── 编辑:弹窗预填当前值,改完保存生效 ──
+      await page.getByTestId('custom-edit').click()
+      await expect(page.getByTestId('connection-dialog')).toBeVisible()
+      await expect(page.getByTestId('connection-name')).toHaveValue('Local Gateway')
+      await page.getByTestId('connection-name').fill('Local Gateway Renamed')
+      await page.getByTestId('connection-save').click()
+      await expect(page.getByTestId('connection-dialog')).toHaveCount(0)
+      await expect(tabs.getByRole('tab', { name: /Local Gateway Renamed/ })).toBeVisible()
+
+      // ── 验证 + 激活:只有拿到当前修订号的能力证明才允许激活 ──
+      await page.getByTestId('connection-validate').click()
       await expect(page.getByTestId('custom-state')).toContainText('配置有效')
-      await page.screenshot({ path: SHOTS + '/settings-custom-validated-inactive-' + suffix + '.png', fullPage: true })
-
-      state.custom = { configured: true, apiFormat: 'CHAT_COMPLETIONS', baseUrl: 'http://localhost:11434/v1', endpointPreview: 'http://localhost:11434/v1/chat/completions', hasKey: false, maskedKey: null, selectedModel: 'custom-model-a', configRevision: 2, validated: false, displayName: 'Local Gateway' }
-      statusManual = false
-      await page.goto('/settings')
-      await page.getByTestId('provider-tab-custom').click()
-      await expect(page.getByTestId('custom-current-model')).toContainText('custom-model-a')
-      await page.screenshot({ path: SHOTS + '/settings-custom-persisted-' + suffix + '.png', fullPage: true })
-
-      state.custom = { configured: true, apiFormat: 'CHAT_COMPLETIONS', baseUrl: 'http://localhost:11434/v1', endpointPreview: 'http://localhost:11434/v1/chat/completions', hasKey: false, maskedKey: null, selectedModel: 'typed-model', configRevision: 3, validated: true, displayName: 'Local Gateway' }
-      statusManual = true
-      await page.goto('/settings')
-      await page.getByTestId('provider-tab-custom').click()
-      await expect(page.getByTestId('custom-current-model')).toContainText('typed-model')
-      await page.screenshot({ path: SHOTS + '/settings-custom-manual-persisted-' + suffix + '.png', fullPage: true })
-
-      state.active = 'CUSTOM'
-      await page.goto('/settings')
-      await page.getByTestId('provider-tab-custom').click()
+      await page.getByTestId('connection-activate').click()
+      await expect(page.getByTestId('active-provider-name')).toContainText('Local Gateway Renamed')
       await expect(page.getByTestId('custom-state')).toContainText('当前使用')
       await page.screenshot({ path: SHOTS + '/settings-custom-active-' + suffix + '.png', fullPage: true })
+
+      // ── 删除:当前使用的连接不可删除,切走后才可删除 ──
+      await expect(page.getByTestId('custom-delete')).toBeDisabled()
+      await page.getByTestId('provider-tab-kilo').click()
+      await expect(page.getByTestId('kilo-card')).toBeVisible()
+      await tabs.getByRole('tab', { name: /OpenRouter/ }).click()
+      await page.getByTestId('custom-delete').click()
+      await expect(page.getByTestId('connection-delete-dialog')).toBeVisible()
+      await page.screenshot({ path: SHOTS + '/settings-custom-delete-confirm-' + suffix + '.png', fullPage: true })
+      await page.getByTestId('connection-delete-dialog').getByRole('button', { name: '确认删除' }).click()
+      await expect(page.getByTestId('connection-delete-dialog')).toHaveCount(0)
+      await expect(tabs.getByRole('tab', { name: /OpenRouter/ })).toHaveCount(0)
+      // 剩下的自定义连接不受影响。
+      await expect(tabs.getByRole('tab', { name: /Local Gateway Renamed/ })).toBeVisible()
     }
   })
 })

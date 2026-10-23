@@ -242,6 +242,18 @@ public class ModelProvidersService {
             throw ModelProviderException.notConfigured("custom",
                     record.effectiveDisplayName() + " is not validated for the current revision");
         }
+        // Defense in depth: the validated flag alone is a derived summary. The
+        // proof that V105/V108 actually trust is a STRUCTURED capability row at
+        // this exact (org, connection, config revision). Requiring it here means
+        // no path — legacy import, migration, or a stale flag — can make a
+        // connection activatable without a real current-revision probe. Every
+        // row legitimately marked validated went through validate(), which only
+        // calls markValidated when STRUCTURED is VERIFIED.
+        if (!"VERIFIED".equals(capabilities.status(record).get("STRUCTURED"))) {
+            throw ModelProviderException.notConfigured("custom",
+                    record.effectiveDisplayName() + " has no verified structured-output proof "
+                            + "for the current revision");
+        }
     }
 
     private int nextPosition() {

@@ -192,6 +192,11 @@ class C16ReadinessFailureAcceptanceTest {
             jdbc.update("DELETE FROM embedding_rebuilds WHERE corpus_id = ?", project);
             jdbc.update("DELETE FROM retrieval_index_jobs WHERE corpus_id = ?", project);
             jdbc.update("DELETE FROM retrieval_index_heads WHERE corpus_id = ?", project);
+            // retrieval_scope_grants.index_generation references the generation
+            // with no ON DELETE action (V49): the grant has to go first or the
+            // generation delete is rejected. Same ordering as the sibling
+            // C16CrossProcessWorkerAcceptanceTest.
+            jdbc.update("DELETE FROM retrieval_scope_grants WHERE corpus_id = ?", project);
             jdbc.update("DELETE FROM retrieval_index_generations WHERE corpus_id = ?", project);
             jdbc.update("DELETE FROM nodes WHERE project_id = ?", project);
             jdbc.update("UPDATE projects SET active_route_id = NULL WHERE id = ?", project);

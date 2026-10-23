@@ -1,0 +1,67 @@
+{
+  "round": "CI-R1",
+  "date": "2026-10-23",
+  "baselineHead": "f74592e9e42f65dc21b8307b2896962cc0a355bd",
+  "branch": "dev",
+  "failedCiRun": "https://github.com/BangShou1st/spec-agent/actions/runs/39951411922",
+  "previousCiCounts": {
+    "job": "backend",
+    "task": "test + testDatabaseIntegration",
+    "tests": 2582,
+    "failures": 197,
+    "skipped": 29,
+    "note": "171 of the 197 were cascading context-cache failures behind 20 genuine context loads"
+  },
+  "rootCauses": [
+    "e2e provider-screenshots asserted a removed built-in OpenRouter card",
+    "GA test fixtures rebound to the retired OPENROUTER provider code",
+    "C16 teardown FK violation left the database-wide execution-mode row in PER_TASK",
+    "C16 teardown omitted retrieval_scope_grants before retrieval_index_generations",
+    "synthetic migration reused version V104, colliding with the shipped chain",
+    "legacy OpenRouter import inherited validated state with no current capability proof"
+  ],
+  "fixes": {
+    "productionFiles": [
+      "backend/src/main/java/com/specagent/modelsettings/LegacyModelConnectionMigrator.java",
+      "backend/src/main/java/com/specagent/modelsettings/ModelProvidersService.java",
+      "backend/src/main/resources/db/migration/V109__require_current_capability_proof.sql"
+    ],
+    "frontendFiles": [
+      "frontend/e2e/provider-screenshots.spec.ts",
+      "frontend/src/features/model-settings/components/CustomProviderSettings.vue"
+    ],
+    "testFiles": [
+      "backend/src/test/java/com/specagent/assistant/GaExecutionCoordinatorIntegrationTest.java",
+      "backend/src/test/java/com/specagent/assistant/GaTakeoverEndToEndTest.java",
+      "backend/src/test/java/com/specagent/capability/C16CrossProcessWorkerAcceptanceTest.java",
+      "backend/src/test/java/com/specagent/capability/C16ReadinessFailureAcceptanceTest.java",
+      "backend/src/test/java/com/specagent/retrieval/workload/RebuildLeaseAcceptanceTest.java",
+      "backend/src/test/java/com/specagent/migration/IsolatedMigrationAcceptanceTest.java",
+      "backend/src/test/java/com/specagent/modelsettings/ModelConnectionsIntegrationTest.java"
+    ],
+    "docsFiles": ["docs/v2/MODEL_SERVICE_V2.md"]
+  },
+  "productionGuardsUnchanged": [
+    "ExecutionModeAdmission mixed-scheduler refusal",
+    "GaExecutionStore frozen binding immutability",
+    "C16 exactly-once delivery assertions",
+    "retrieval FK constraints",
+    "D3/D4 acceptance conclusions"
+  ],
+  "databaseIsolation": {
+    "database": "spec_agent_p3b_live_cir1_authoritative",
+    "container": "disposable pgvector/pgvector:pg17",
+    "guard": "EvalLiveIsolatedDatabase.verifyBeforeContext",
+    "devOrSharedDatabaseUsed": false
+  },
+  "results": {
+    "backendTest": { "suites": 398, "tests": 2585, "failures": 0, "skipped": 41 },
+    "backendTestDatabaseIntegration": { "suites": 151, "tests": 980, "failures": 0, "skipped": 41 },
+    "frontendUnit": { "tests": 988, "passed": 987, "skipped": 1 },
+    "frontendTypecheck": "PASS",
+    "frontendBuild": "PASS",
+    "playwrightE2E": { "tests": 96, "passed": 92, "skipped": 4, "failed": 0 }
+  },
+  "skipsAreExplicitOptIns": true,
+  "liveProviderCalls": 0
+}

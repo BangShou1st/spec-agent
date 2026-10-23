@@ -52,6 +52,8 @@ Zen 的可信元数据、Kilo 的原有工具资格配置仍是内置路径的�
 
 旧多行验证曾遗漏“模型 ID 变更作废”，V108 将没有新版本结构化证明的旧行标为需重新验证。保留配置、端点、Key 和历史，不能把旧资格当作当前模型证明。
 
+导入一律不继承验证状态。旧单例的 `validated_revision` 描述的是旧身份，无法表达 V105 之后的 `(org_id, provider_id, config_revision, capability)` 证明，因此 `LegacyModelConnectionMigrator` 只复制配置版本，`validated_revision` / `validated_at` 写空，由重新验证重新取得。V108 只在升级那一刻执行一次，而导入是每次启动都运行的 ApplicationRunner，因此升级后新导入的行不受 V108 覆盖；V109 对已导入且缺少当前修订结构化证明的行补做同一清理，凭据、端点、模型与版本不变。激活门禁同时要求 `validated` 标记与当前修订的 `STRUCTURED=VERIFIED` 能力记录，任一缺失即失败关闭：没有任何路径能在缺少当前证明时把连接变成可激活。
+
 D4-R3 的 Gemini `thought_signature` / `extra_content` 回传及 SafeCheckpointCodec 保持现有受约束实现。新通用工具验证复用相同协议适配器并保留续接材料。本轮没有替换历史 Checkpoint，也没有宣称完成 Java 托管 continuation reference 的持久化迁移；该迁移需要独立兼容评审与恢复验收。
 
 ## 测试复用
