@@ -29,8 +29,9 @@ public final class FakeModelProvider implements AutoCloseable {
                 String key=exchange.getRequestHeaders().getFirst("Authorization");keys.add(key==null?"":key);
                 Map<String,Object> message;
                 boolean tools="required".equals(request.path("tool_choice").asText());
+                String callId=requests.size()==1?"fixture-call":"fixture-call-"+requests.size();
                 if (tools) message=Map.of("role","assistant","tool_calls",List.of(Map.of(
-                        "id","fixture-call","type","function","function",Map.of("name",badCall?"wrong_tool":"probe_echo",
+                        "id",callId,"type","function","function",Map.of("name",badCall?"wrong_tool":"probe_echo",
                         "arguments","{\"text\":\"probe ok\"}"),
                         "extra_content",Map.of("google",Map.of("thought_signature","fixture-signature")))));
                 else message=Map.of("role","assistant","content",request.has("response_format")

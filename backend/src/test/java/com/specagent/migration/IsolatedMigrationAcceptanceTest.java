@@ -364,7 +364,9 @@ class IsolatedMigrationAcceptanceTest {
         // migration with version N", which proves nothing about rollback.
         Path extra = temp.resolve("extra");
         Files.createDirectories(extra);
-        Files.writeString(extra.resolve("V110__isolated_acceptance_failure.sql"),
+        int syntheticVersion = 111;
+        String syntheticId = String.valueOf(syntheticVersion);
+        Files.writeString(extra.resolve("V" + syntheticVersion + "__isolated_acceptance_failure.sql"),
                 "create table isolated_acceptance_probe(id integer primary key);\n"
                         + "insert into isolated_acceptance_probe(id) values (1);\n"
                         + "select 1/0;\n");
@@ -378,16 +380,16 @@ class IsolatedMigrationAcceptanceTest {
         // PostgreSQL DDL is transactional: the partially created table is gone and
         // the schema history is exactly where it was before the failed attempt.
         assertThat(tableExists(target, "isolated_acceptance_probe")).isFalse();
-        assertThat(scalar(target, "select count(*) from flyway_schema_history where version='110'"))
+        assertThat(scalar(target, "select count(*) from flyway_schema_history where version='" + syntheticId + "'"))
                 .isEqualTo("0");
         assertThat(scalar(target, "select coalesce(max(installed_rank),0) from flyway_schema_history"))
                 .isEqualTo(baselineRank);
 
         // Retry after the failure is removed succeeds.
-        Files.delete(extra.resolve("V110__isolated_acceptance_failure.sql"));
+        Files.delete(extra.resolve("V" + syntheticVersion + "__isolated_acceptance_failure.sql"));
         Path healthy = temp.resolve("healthy");
         Files.createDirectories(healthy);
-        Files.writeString(healthy.resolve("V110__isolated_acceptance_success.sql"),
+        Files.writeString(healthy.resolve("V" + syntheticVersion + "__isolated_acceptance_success.sql"),
                 "create table isolated_acceptance_probe(id integer primary key);\n");
         Flyway retry = Flyway.configure().dataSource(target, user, password)
                 .locations(MIGRATIONS, filesystemLocation(healthy))
@@ -395,7 +397,7 @@ class IsolatedMigrationAcceptanceTest {
                 .load();
         retry.migrate();
         assertThat(tableExists(target, "isolated_acceptance_probe")).isTrue();
-        assertThat(scalar(target, "select count(*) from flyway_schema_history where version='110'"))
+        assertThat(scalar(target, "select count(*) from flyway_schema_history where version='" + syntheticId + "'"))
                 .isEqualTo("1");
     }
 

@@ -26,11 +26,17 @@ class Message(WireModel):
     content: str = Field(max_length=131072)
     tool_calls: list[ToolCall] = Field(default_factory=list, alias="toolCalls", max_length=5)
     tool_call_id: str | None = Field(default=None, alias="toolCallId", max_length=128)
+    continuation_ref: str | None = Field(default=None, alias="continuationRef",
+                                         pattern=r"^gacr-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
     @model_validator(mode="after")
     def role_fields(self) -> Self:
         if self.tool_calls and self.role != "assistant":
             raise ValueError("only assistant messages may carry tool calls")
+        if self.continuation_ref and (self.role != "assistant" or not self.tool_calls):
+            raise ValueError("continuation requires assistant tool calls")
+        if any(call.extra_content for call in self.tool_calls):
+            raise ValueError("provider extra content is forbidden on GA wire messages")
         if (self.role == "tool") != bool(self.tool_call_id):
             raise ValueError("tool messages require toolCallId; other roles forbid it")
         if self.role != "assistant" and not self.content.strip():
@@ -59,7 +65,7 @@ class RunScope(WireModel):
 
 
 class ModelRequest(RunScope):
-    protocol_version: Literal["ga-model-inference.v1"] = Field(alias="protocolVersion")
+    protocol_version: Literal["ga-model-inference.v2"] = Field(alias="protocolVersion")
     call_id: UUID = Field(alias="callId")
     call_type: Literal["AGENT", "SUMMARY"] = Field(alias="callType")
     model_binding_id: UUID = Field(alias="modelBindingId")
@@ -106,11 +112,13 @@ class Usage(WireModel):
 
 
 class ModelResponse(WireModel):
-    protocol_version: Literal["ga-model-inference.v1"] = Field(alias="protocolVersion")
+    protocol_version: Literal["ga-model-inference.v2"] = Field(alias="protocolVersion")
     content: str = Field(max_length=131072)
     tool_calls: list[ToolCall] = Field(default_factory=list, alias="toolCalls", max_length=5)
     finish_reason: Literal["stop", "tool_calls"] = Field(alias="finishReason")
     usage: Usage
+    continuation_ref: str | None = Field(default=None, alias="continuationRef",
+                                         pattern=r"^gacr-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
     @model_validator(mode="after")
     def finish(self) -> Self:
@@ -118,8 +126,12 @@ class ModelResponse(WireModel):
             raise ValueError("finish reason disagrees with tool calls")
         if len({call.id for call in self.tool_calls}) != len(self.tool_calls):
             raise ValueError("duplicate tool call id")
+        if any(call.extra_content for call in self.tool_calls):
+            raise ValueError("provider extra content is forbidden in GA model responses")
         if not self.content.strip() and not self.tool_calls:
             raise ValueError("empty model response")
+        if self.continuation_ref and (self.finish_reason != "tool_calls" or not self.tool_calls):
+            raise ValueError("continuation requires tool calls")
         return self
 
 

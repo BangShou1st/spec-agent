@@ -1,0 +1,14 @@
+{
+  "protocolVersion": "ga-model-inference.v2",
+  "content": "",
+  "toolCalls": [
+    {
+      "id": "native-1",
+      "name": "project_search",
+      "arguments": {"query": "项目"},
+      "extraContent": {"google": {"thought_signature": "sig"}}
+    }
+  ],
+  "finishReason": "tool_calls",
+  "usage": {"promptTokens": 10, "completionTokens": 4}
+}

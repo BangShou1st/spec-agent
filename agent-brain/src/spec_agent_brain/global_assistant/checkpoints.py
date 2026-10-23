@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import math
+import re
 from threading import RLock
 from typing import Any, Callable
 
@@ -13,27 +14,47 @@ from langgraph.types import Send
 
 from .contracts import ExecutionRequest
 
-CODEC = "ga-json.v1"
+CODEC = "ga-json.v2"
 FRAMEWORK = "langgraph-1.2.12/checkpoint-4.2.0"
 STATE = "langchain-ga.v1"
 NAMESPACE = "ga:langchain-ga.v1"
 MAX_BYTES = 1048576
+REF_PATTERN = re.compile(r"gacr-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
 MESSAGE_TYPES = {"ai": AIMessage, "human": HumanMessage, "system": SystemMessage, "tool": ToolMessage, "remove": RemoveMessage}
 
 
 def _safe_message_metadata(data):
     metadata = data.get("response_metadata", {})
     extra_keys = set(data.get("additional_kwargs", {}))
+    continuation_ref = data.get("additional_kwargs", {}).get("model_continuation_ref")
+    ref_valid = continuation_ref is None or (
+        type(continuation_ref) is str
+        and bool(REF_PATTERN.fullmatch(continuation_ref)))
     return (type(data.get("content")) is str and not data.get("invalid_tool_calls")
-            and extra_keys <= {"tool_call_extra_content"} and type(metadata) is dict
+            and extra_keys <= {"model_continuation_ref"} and ref_valid and type(metadata) is dict
             and set(metadata) <= {"finish_reason"}
+            and (not metadata or metadata.get("finish_reason") in {"stop", "tool_calls"}))
+
+
+def _legacy_message_metadata(data):
+    metadata = data.get("response_metadata", {})
+    extra_keys = set(data.get("additional_kwargs", {}))
+    legacy = data.get("additional_kwargs", {}).get("tool_call_extra_content")
+    legacy_valid = legacy is None or (type(legacy) is dict and 0 < len(legacy) <= 5
+        and all(type(k) is str and type(v) is dict and set(v) == {"google"}
+        and type(v.get("google")) is dict and set(v["google"]) == {"thought_signature"}
+        and type(v["google"].get("thought_signature")) is str
+        and 0 < len(v["google"]["thought_signature"]) <= 1024 for k, v in legacy.items()))
+    return (type(data.get("content")) is str and not data.get("invalid_tool_calls")
+            and extra_keys <= {"tool_call_extra_content"} and legacy_valid
+            and type(metadata) is dict and set(metadata) <= {"finish_reason"}
             and (not metadata or metadata.get("finish_reason") in {"stop", "tool_calls"}))
 
 
 class SafeCheckpointCodec:
     """Tagged JSON with a fixed message allowlist; no pickle/import/constructor lookup."""
 
-    def _encode(self, value: Any, depth=0):
+    def _encode(self, value: Any, depth=0, *, legacy=False):
         if depth > 64:
             raise ValueError("checkpoint nesting limit")
         if value is None or type(value) in (str, bool, int, float):
@@ -41,21 +62,20 @@ class SafeCheckpointCodec:
                 raise ValueError("invalid checkpoint number")
             return value
         if type(value) in (list, tuple, set):
-            return {"tag": type(value).__name__, "value": [self._encode(v, depth + 1) for v in value]}
+            return {"tag": type(value).__name__, "value": [self._encode(v, depth + 1, legacy=legacy) for v in value]}
         if type(value) is dict:
             if any(type(k) is not str for k in value):
                 raise ValueError("checkpoint object keys must be strings")
-            return {"tag": "dict", "value": {k: self._encode(v, depth + 1) for k, v in value.items()}}
+            return {"tag": "dict", "value": {k: self._encode(v, depth + 1, legacy=legacy) for k, v in value.items()}}
         if type(value) in MESSAGE_TYPES.values():
-            # Provider payload/reasoning are never persisted. Their presence is
-            # rejected rather than silently changing recoverable state.
-            if not _safe_message_metadata(value.model_dump()):
+            data = value.model_dump()
+            if not (legacy and _legacy_message_metadata(data)) and not _safe_message_metadata(data):
                 raise ValueError("provider metadata is forbidden in checkpoints")
-            return {"tag": "message", "value": self._encode(value.model_dump(), depth + 1)}
+            return {"tag": "message", "value": self._encode(data, depth + 1, legacy=legacy)}
         if type(value) is Send:
             if type(value.node) is not str or not 1 <= len(value.node) <= 128:
                 raise ValueError("invalid checkpoint dispatch node")
-            return {"tag": "send", "value": {"node": value.node, "arg": self._encode(value.arg, depth + 1)}}
+            return {"tag": "send", "value": {"node": value.node, "arg": self._encode(value.arg, depth + 1, legacy=legacy)}}
         if isinstance(value, BaseException):
             # Phase 1 never resumes a failed execution. Keep a safe error marker,
             # never the exception text (which can contain prompts/credentials).
@@ -88,23 +108,31 @@ class SafeCheckpointCodec:
             if type(data) is not dict or data.get("type") not in MESSAGE_TYPES:
                 raise ValueError("unsupported checkpoint message")
             cls = MESSAGE_TYPES[data["type"]]
-            if set(data) - set(cls.model_fields) or not _safe_message_metadata(data):
+            if set(data) - set(cls.model_fields) or not (_safe_message_metadata(data) or _legacy_message_metadata(data)):
                 raise ValueError("invalid checkpoint message fields")
             return cls.model_validate(data)
         raise ValueError("unknown checkpoint tag")
 
-    def dumps(self, value: Any) -> dict:
-        payload = json.dumps(self._encode(value), ensure_ascii=False, sort_keys=True,
+    def dumps(self, value: Any, *, legacy=False) -> dict:
+        payload = json.dumps(self._encode(value, legacy=legacy), ensure_ascii=False, sort_keys=True,
                              separators=(",", ":"), allow_nan=False)
         if len(payload.encode()) > MAX_BYTES:
             raise ValueError("checkpoint size limit")
         return {"codecVersion": CODEC, "frameworkVersion": FRAMEWORK, "stateVersion": STATE,
                 "payload": payload, "payloadHash": hashlib.sha256(payload.encode()).hexdigest()}
 
+    def dumps_legacy_payload(self, extras: dict) -> str:
+        if not _legacy_message_metadata({"additional_kwargs": {"tool_call_extra_content": extras},
+                                         "content": "", "invalid_tool_calls": []}):
+            raise ValueError("invalid legacy continuation payload")
+        return json.dumps(extras, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+                          allow_nan=False)
+
     def loads(self, envelope: dict) -> Any:
         if set(envelope) != {"codecVersion", "frameworkVersion", "stateVersion", "payload", "payloadHash"}:
             raise ValueError("unknown checkpoint envelope fields")
-        if (envelope["codecVersion"], envelope["frameworkVersion"], envelope["stateVersion"]) != (CODEC, FRAMEWORK, STATE):
+        if (envelope["codecVersion"] not in {CODEC, "ga-json.v1"}
+                or envelope["frameworkVersion"] != FRAMEWORK or envelope["stateVersion"] != STATE):
             raise ValueError("checkpoint version incompatible")
         payload = envelope["payload"]
         if type(payload) is not str or len(payload.encode()) > MAX_BYTES:
@@ -140,6 +168,26 @@ class HostCheckpointSaver(BaseCheckpointSaver):
         self.lock = RLock()
         self.initial_checkpoint = initial_checkpoint
 
+    def _migrate_legacy_checkpoint(self, value):
+        """Ask Java to convert persisted v1 provider payloads into a real sidecar ref."""
+        if type(value) is list:
+            return [self._migrate_legacy_checkpoint(v) for v in value]
+        if type(value) is dict:
+            return {k: self._migrate_legacy_checkpoint(v) for k, v in value.items()}
+        if isinstance(value, AIMessage) and value.additional_kwargs.get("tool_call_extra_content"):
+            extras = value.additional_kwargs["tool_call_extra_content"]
+            tool_ids = [c["id"] for c in value.tool_calls]
+            if sorted(extras) != sorted(tool_ids):
+                raise ValueError("legacy continuation identity mismatch")
+            reply = self._call("MIGRATE_CONTINUATION", toolCallIds=tool_ids,
+                               continuationPayload=self.codec.dumps_legacy_payload(extras))
+            ref = reply.get("continuationRef")
+            if type(ref) is not str or not REF_PATTERN.fullmatch(ref):
+                raise ValueError("invalid legacy continuation migration")
+            return AIMessage(content=value.content, tool_calls=value.tool_calls,
+                             additional_kwargs={"model_continuation_ref": ref})
+        return value
+
     def _config(self, checkpoint_id=None):
         result = {"thread_id": str(self.execution.thread_id), "checkpoint_ns": ""}
         if checkpoint_id is not None:
@@ -171,14 +219,18 @@ class HostCheckpointSaver(BaseCheckpointSaver):
     def _tuple(self, value):
         if set(value) != {"checkpoint", "metadata", "parentCheckpointId", "pendingWrites"}:
             raise ValueError("invalid checkpoint record")
-        checkpoint = self.codec.loads(value["checkpoint"])
-        metadata = self.codec.loads(value["metadata"])
-        writes = self.codec.loads(value["pendingWrites"])
+        checkpoint = self._load_and_migrate(value["checkpoint"])
+        metadata = self._load_and_migrate(value["metadata"])
+        writes = self._load_and_migrate(value["pendingWrites"])
         if not isinstance(checkpoint, dict) or not isinstance(metadata, dict) or not isinstance(writes, list):
             raise ValueError("invalid checkpoint payload")
         return CheckpointTuple(config=self._config(checkpoint["id"]), checkpoint=checkpoint, metadata=metadata,
                                parent_config=self._config(value["parentCheckpointId"]) if value["parentCheckpointId"] else None,
                                pending_writes=writes)
+
+    def _load_and_migrate(self, envelope):
+        loaded = self.codec.loads(envelope)
+        return self._migrate_legacy_checkpoint(loaded) if envelope["codecVersion"] == "ga-json.v1" else loaded
 
     def get_tuple(self, config):
         with self.lock:

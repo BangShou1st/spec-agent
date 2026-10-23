@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.common.Hashes;
 import com.specagent.common.Maps;
+import com.specagent.model.contract.GaModelContract;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -20,18 +21,22 @@ public class GaCheckpointStore {
     private static final Map<String, Set<String>> FIELDS = Map.of(
             "GET", Set.of("checkpointId"), "LIST", Set.of("before", "limit", "filter"),
             "PUT", Set.of("checkpointId", "parentCheckpointId", "checkpoint", "metadata", "newVersions"),
-            "PUT_WRITES", Set.of("checkpointId", "taskId", "taskPath", "writes"), "DELETE_THREAD", Set.of());
+            "PUT_WRITES", Set.of("checkpointId", "taskId", "taskPath", "writes"), "DELETE_THREAD", Set.of(),
+            "MIGRATE_CONTINUATION", Set.of("toolCallIds", "continuationPayload"));
     private final ObjectMapper mapper = new ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private final NamedParameterJdbcTemplate jdbc;
     private final GaExecutionStore executions;
     private final com.specagent.assistant.conversation.GaRunActorRepository actors;
     private final com.specagent.assistant.conversation.GaSourceDependencyGuard sourceDependencies;
+    private final GaModelContinuationStore continuations;
     public GaCheckpointStore(NamedParameterJdbcTemplate jdbc, GaExecutionStore executions,
             com.specagent.assistant.conversation.GaRunActorRepository actors,
-            com.specagent.assistant.conversation.GaSourceDependencyGuard sourceDependencies) {
+            com.specagent.assistant.conversation.GaSourceDependencyGuard sourceDependencies,
+            GaModelContinuationStore continuations) {
         this.jdbc = jdbc; this.executions = executions; this.actors = actors;
         this.sourceDependencies = sourceDependencies;
+        this.continuations = continuations;
     }
 
     @Transactional
@@ -156,6 +161,39 @@ public class GaCheckpointStore {
                 changed = jdbc.update("DELETE FROM ga_checkpoints WHERE thread_id=:thread", params) > 0;
                 jdbc.update("UPDATE ga_checkpoint_heads SET completed_checkpoint_id=NULL,public_history_boundary=NULL WHERE thread_id=:thread",params);
             }
+            case "MIGRATE_CONTINUATION" -> {
+                JsonNode ids = request.get("toolCallIds");
+                require(ids.isArray() && !ids.isEmpty() && ids.size() <= 5);
+                List<String> toolIds = new ArrayList<>();
+                Set<String> unique = new HashSet<>();
+                for (JsonNode id : ids) {
+                    require(id.isTextual() && !id.isNull() && id.textValue().length() <= 128);
+                    require(unique.add(id.textValue()));
+                    toolIds.add(id.textValue());
+                }
+                String payloadJson = text(request, "continuationPayload", 4096);
+                Map<String, Object> state;
+                try {
+                    state = mapper.readValue(payloadJson, new com.fasterxml.jackson.core.type.TypeReference<>() {});
+                } catch (Exception ex) {
+                    throw new IllegalArgumentException("Invalid GA checkpoint payload");
+                }
+                // The source MODEL call must already be recorded as successful; a
+                // forged payload without matching ledger tool identity fails closed.
+                require(findRecordedContinuationSource(thread, toolIds, state));
+                UUID callId = requireNonNullCallId(thread, toolIds);
+                var actor = actors.require(scope.runId());
+                var existing = jdbc.queryForList("SELECT id FROM ga_model_continuations WHERE source_run_id=:run AND source_call_id=:call",
+                        Maps.of("run", scope.runId(), "call", callId), UUID.class);
+                String ref;
+                if (existing.isEmpty()) {
+                    ref = continuations.persist(new GaModelContinuationStore.Source(actor.orgId(), thread,
+                            scope.runId(), callId), binding, callId, toolIds, state);
+                } else {
+                    ref = "gacr-" + existing.getFirst();
+                }
+                result = Maps.of("continuationRef", ref);
+            }
             default -> throw new IllegalArgumentException("Unknown GA checkpoint operation");
         }
         if (changed) {
@@ -178,12 +216,41 @@ public class GaCheckpointStore {
         require(payload.getBytes(StandardCharsets.UTF_8).length <= 1048576);
         return Maps.of("checkpoint", read((String) row.get("checkpoint"), 1100000),
                 "metadata", read((String) row.get("metadata"), 1100000), "parentCheckpointId", row.get("parent_checkpoint_id"),
-                "pendingWrites", Maps.of("codecVersion", "ga-json.v1", "frameworkVersion", "langgraph-1.2.12/checkpoint-4.2.0",
+                "pendingWrites", Maps.of("codecVersion", "ga-json.v2", "frameworkVersion", "langgraph-1.2.12/checkpoint-4.2.0",
                         "stateVersion", "langchain-ga.v1", "payload", payload, "payloadHash", Hashes.sha256Hex(payload)));
+    }
+
+    private boolean findRecordedContinuationSource(UUID thread, List<String> toolIds, Map<String, Object> state) {
+        var params = Maps.of("thread", thread);
+        for (String json : jdbc.queryForList("""
+                SELECT c.result FROM ga_execution_calls c JOIN ga_executions e ON e.run_id=c.run_id
+                WHERE e.thread_id=:thread AND c.kind='MODEL' AND c.status='SUCCEEDED' ORDER BY c.call_sequence
+                """, params, String.class)) {
+            var response = GaModelContract.readResponse(json);
+            List<String> ids = response.toolCalls().stream().map(GaModelContract.ToolCall::id).toList();
+            if (!ids.equals(toolIds)) continue;
+            var extras = response.toolCalls().stream().map(GaModelContract.ToolCall::extraContent).toList();
+            return state.equals(continuations.extract(extras));
+        }
+        return false;
+    }
+
+    private UUID requireNonNullCallId(UUID thread, List<String> toolIds) {
+        var params = Maps.of("thread", thread);
+        var rows = jdbc.queryForList("""
+                SELECT c.call_id, c.result FROM ga_execution_calls c JOIN ga_executions e ON e.run_id=c.run_id
+                WHERE e.thread_id=:thread AND c.kind='MODEL' AND c.status='SUCCEEDED' ORDER BY c.call_sequence
+                """, params);
+        for (var row : rows) {
+            var response = GaModelContract.readResponse((String) row.get("result"));
+            List<String> ids = response.toolCalls().stream().map(GaModelContract.ToolCall::id).toList();
+            if (ids.equals(toolIds)) return (UUID) row.get("call_id");
+        }
+        throw new IllegalArgumentException("Invalid GA checkpoint payload");
     }
     private String envelope(JsonNode node) {
         fields(node, Set.of("codecVersion", "frameworkVersion", "stateVersion", "payload", "payloadHash"));
-        require("ga-json.v1".equals(text(node, "codecVersion", 40))
+        require(java.util.Set.of("ga-json.v1", "ga-json.v2").contains(text(node, "codecVersion", 40))
                 && "langgraph-1.2.12/checkpoint-4.2.0".equals(text(node, "frameworkVersion", 80))
                 && "langchain-ga.v1".equals(text(node, "stateVersion", 40)));
         String payload = textAllowEmpty(node, "payload", 1048576);

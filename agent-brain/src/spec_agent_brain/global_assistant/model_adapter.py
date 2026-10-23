@@ -160,19 +160,10 @@ class BrokerChatModel(BaseChatModel):
                         continue
                     wire.append(Message(role="assistant", content=message.content))
                     continue
-                extra_map = message.additional_kwargs.get("tool_call_extra_content", {})
-                if not extra_map and "tool_calls" in message.additional_kwargs:
-                    for raw_tc in message.additional_kwargs.get("tool_calls", []):
-                        if isinstance(raw_tc, dict) and "id" in raw_tc:
-                            ex = raw_tc.get("extra_content") or raw_tc.get("extraContent")
-                            if ex:
-                                extra_map[raw_tc["id"]] = ex
-                wire_calls = []
-                for c in message.tool_calls:
-                    extra = extra_map.get(c["id"]) or c.get("extra_content") or c.get("extraContent")
-                    wire_calls.append(ToolCall(id=c["id"], name=c["name"], arguments=c["args"], extraContent=extra))
                 wire.append(Message(role="assistant", content=message.content,
-                                    toolCalls=wire_calls))
+                                    toolCalls=[ToolCall(id=c["id"], name=c["name"], arguments=c["args"])
+                                               for c in message.tool_calls],
+                                    continuationRef=message.additional_kwargs.get("model_continuation_ref")))
             elif isinstance(message, (SystemMessage, HumanMessage)):
                 wire.append(Message(role="system" if isinstance(message, SystemMessage) else "user",
                                     content=message.content))
@@ -180,7 +171,7 @@ class BrokerChatModel(BaseChatModel):
                 raise ValueError("unsupported GA message role")
         if not wire:
             raise ValueError("empty GA message list")
-        request = ModelRequest(protocolVersion="ga-model-inference.v1", **self.scope.model_dump(by_alias=True),
+        request = ModelRequest(protocolVersion="ga-model-inference.v2", **self.scope.model_dump(by_alias=True),
                                callId=uuid4(), callType=self.call_type, modelBindingId=self.model_binding_id,
                                messages=wire, tools=tools, toolChoice=tool_choice,
                                maxOutputTokens=self.max_output_tokens,
@@ -196,13 +187,7 @@ class BrokerChatModel(BaseChatModel):
         # re-validates every call against the frozen catalog before any host dispatch and
         # returns a bounded CAPABILITY_UNAVAILABLE observation, so the model can explain
         # unavailability instead of the run dying with a generic failure.
-        extra_map = {}
-        for c in response.tool_calls:
-            if c.extra_content:
-                extra_map[c.id] = c.extra_content
-        add_kwargs = {}
-        if extra_map:
-            add_kwargs["tool_call_extra_content"] = extra_map
+        add_kwargs = {"model_continuation_ref": response.continuation_ref} if response.continuation_ref else {}
         ai = AIMessage(content=response.content,
                        tool_calls=[{"id": c.id, "name": c.name, "args": c.arguments, "type": "tool_call"}
                                    for c in response.tool_calls],

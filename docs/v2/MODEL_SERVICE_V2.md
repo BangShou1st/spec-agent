@@ -54,7 +54,16 @@ Zen 的可信元数据、Kilo 的原有工具资格配置仍是内置路径的�
 
 导入一律不继承验证状态。旧单例的 `validated_revision` 描述的是旧身份，无法表达 V105 之后的 `(org_id, provider_id, config_revision, capability)` 证明，因此 `LegacyModelConnectionMigrator` 只复制配置版本，`validated_revision` / `validated_at` 写空，由重新验证重新取得。V108 只在升级那一刻执行一次，而导入是每次启动都运行的 ApplicationRunner，因此升级后新导入的行不受 V108 覆盖；V109 对已导入且缺少当前修订结构化证明的行补做同一清理，凭据、端点、模型与版本不变。激活门禁同时要求 `validated` 标记与当前修订的 `STRUCTURED=VERIFIED` 能力记录，任一缺失即失败关闭：没有任何路径能在缺少当前证明时把连接变成可激活。
 
-D4-R3 的 Gemini `thought_signature` / `extra_content` 回传及 SafeCheckpointCodec 保持现有受约束实现。新通用工具验证复用相同协议适配器并保留续接材料。本轮没有替换历史 Checkpoint，也没有宣称完成 Java 托管 continuation reference 的持久化迁移；该迁移需要独立兼容评审与恢复验收。
+MS-C1（2026-10-24）已把供应商私有续接状态迁入 Java：协议行线升级为
+`ga-model-inference.v2`，Python/Checkpoint 只携带消息级不透明
+`continuationRef`（格式 `gacr-<uuid-v4>`）。Java 在模型调用账本同事务内提取、
+AES-GCM 加密并保存最小续接材料（当前仅 Gemini
+`google.thought_signature`，签名上限 1024 字符），随后返回通用引用；下一次调用
+按 Run/Thread/组织/提供商/模型/设置修订/ToolCall ID 校验后由协议适配器注回
+`extra_content`。旧 `ga-json.v1` Checkpoint 仍可读取：Python 在宿主读取边界通过
+`MIGRATE_CONTINUATION` RPC 换取真实 Java 引用，迁移幂等且不改写历史行；新写入
+为 `ga-json.v2`，不再包含 raw thought signature。历史 `ga_execution_calls.result`
+中的 D4-R3 v1 明文续接材料按历史证据受控保留，不因新写入脱敏而改写。
 
 ## 测试复用
 

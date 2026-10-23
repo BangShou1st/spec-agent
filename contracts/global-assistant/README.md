@@ -15,7 +15,7 @@ persisted GA run + executionEpoch + lease, never from caller claims.
 ## Messages and model inference
 
 `POST /internal/v1/global-assistant/model-inference` (mounted, authenticated):
-`ga-model-inference.v1` has runId, executionEpoch, leaseId, callId,
+`ga-model-inference.v2` has runId, executionEpoch, leaseId, callId,
 callType (`AGENT`/`SUMMARY`), modelBindingId, messages, tools, toolChoice
 (`auto`/`none`/`required`), maxOutputTokens, stream. SUMMARY has no tools,
 toolChoice=none and stream=false. This endpoint returns one validated response.
@@ -27,12 +27,15 @@ SSE, reasoning, usage or partial arguments enter the text channel. Model stream
 frames are limited to 262144 UTF-8 bytes, 2 MiB total and 8192 events.
 
 Messages are text system/user/assistant/tool. Only assistant may have
-toolCalls; only tool has toolCallId. Calls use stable id, supplier-safe name
-and an object arguments map. Each assistant call must be answered exactly
-once, before the next assistant/user message. Unknown, duplicate, orphan or
-unfinished tool calls are rejected. The response carries content, toolCalls,
-finishReason (`stop`/`tool_calls`), and nonnegative token usage; it cannot
-silently discard malformed/truncated tool arguments or reasoning fields.
+toolCalls and an optional opaque `continuationRef`; only tool has toolCallId.
+Calls use stable id, supplier-safe name and an object arguments map; provider
+`extraContent` is forbidden on the v2 wire. Each assistant call must be answered
+exactly once, before the next assistant/user message. Unknown, duplicate,
+orphan or unfinished tool calls are rejected. The response carries content,
+toolCalls, finishReason (`stop`/`tool_calls`), an optional continuationRef and
+nonnegative token usage; it cannot silently discard malformed/truncated tool
+arguments or reasoning fields. Continuation references are host-issued
+`gacr-<uuid>` strings and never authorization tokens.
 
 Budgets: maxModelCalls=6, maxToolCalls=5, maxOutputTokens=8192,
 maxDurationSeconds=180; 128 messages, 12 tools, 262144 UTF-8 wire bytes.

@@ -31,10 +31,11 @@ def execution(descriptors=None, budget=None):
                             capabilities=descriptors, budget=budget or Budget())
 
 
-def response(content="", calls=()):
-    return ModelResponse(protocolVersion="ga-model-inference.v1", content=content, toolCalls=list(calls),
+def response(content="", calls=(), continuation_ref=None):
+    return ModelResponse(protocolVersion="ga-model-inference.v2", content=content, toolCalls=list(calls),
                          finishReason="tool_calls" if calls else "stop",
-                         usage=Usage(promptTokens=12, completionTokens=4))
+                         usage=Usage(promptTokens=12, completionTokens=4),
+                         continuationRef=continuation_ref if continuation_ref else None)
 
 
 class ScriptBroker:
@@ -56,11 +57,11 @@ def setup_agent(e, broker, invoke, guard=lambda: None):
     return graph, config, saver
 
 
-def test_tool_call_extra_content_thought_signature_roundtrip():
+def test_model_continuation_ref_roundtrip_without_private_payloads():
     e = execution()
-    sig = {"google": {"thought_signature": "enc_sig_xyz123"}}
-    calls = [ToolCall(id="native-sig-1", name="project_search", arguments={"query": "项目"}, extraContent=sig)]
-    broker = ScriptBroker([response(calls=calls), response(content="找到一个项目")])
+    ref = "gacr-00000000-0000-4000-8000-000000000001"
+    calls = [ToolCall(id="native-sig-1", name="project_search", arguments={"query": "项目"})]
+    broker = ScriptBroker([response(calls=calls, continuation_ref=ref), response(content="找到一个项目")])
     invoked = []
 
     def invoke(request):
@@ -74,14 +75,13 @@ def test_tool_call_extra_content_thought_signature_roundtrip():
     assert output["messages"][-1].content == "找到一个项目"
     assert len(invoked) == 1 and invoked[0].tool_call_id == "native-sig-1"
     assert len(broker.requests) == 2
-    # Verify the assistant turn echoes the thought_signature in extraContent
+    # Python carries only the opaque ref; no provider payload exists in-process.
     assistant_msg = broker.requests[1].messages[2]
     assert assistant_msg.role == "assistant"
     assert assistant_msg.tool_calls[0].id == "native-sig-1"
-    assert assistant_msg.tool_calls[0].extra_content == sig
-    # Verify thought_signature NEVER leaks into visible agent content
-    assert "enc_sig_xyz123" not in assistant_msg.content
-    assert "enc_sig_xyz123" not in output["messages"][-1].content
+    assert assistant_msg.continuation_ref == ref
+    assert assistant_msg.tool_calls[0].extra_content is None
+    assert "thought_signature" not in broker.requests[1].model_dump_json(by_alias=True)
     # Verify tool message
     tool_msg = broker.requests[1].messages[3]
     assert tool_msg.role == "tool" and tool_msg.tool_call_id == "native-sig-1"

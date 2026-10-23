@@ -1,0 +1,8 @@
+{
+  "protocolVersion": "ga-model-inference.v2",
+  "content": "done",
+  "toolCalls": [],
+  "finishReason": "stop",
+  "continuationRef": "gacr-00000000-0000-4000-8000-000000000001",
+  "usage": {"promptTokens": 10, "completionTokens": 4}
+}
