@@ -102,3 +102,18 @@ Thread、跨组织、跨模型、跨连接失败关闭。
 5. `extract()` 曾把多工具签名合并后复制给所有工具；现按 ToolCall ID 保存
    独立签名，仅允许单一 `google.thought_signature` 命名空间，恢复时按
    `call.id` 精确注入。
+
+## R2 安全收口（2026-10-24）
+
+1. 历史 Checkpoint 迁移现在在同一次来源查询中校验来源执行行的
+   provider/model/settingsRevision 与当前消费者冻结绑定精确一致；
+   `custom-provider:<UUID>:<revision>` 的完整字符串比对天然包含 Custom
+   连接 UUID，跨连接/跨修订/跨 Provider/跨模型均失败关闭且不新增 sidecar。
+2. Python 可达的 HTTP 模型 RPC（同步与流式预检/入口）只接受
+   `ga-model-inference.v2`；v1 及 raw `extraContent` 在授权、预算、账本与
+   Provider 调用之前即以 `GA_MODEL_PROTOCOL_ERROR` 拒绝。v1 仍保留用于
+   Java 内部历史账本读取与协议适配器表示。
+3. 混合签名形态（同一响应中部分 ToolCall 带 `google.thought_signature`
+   而另一部分没有）在首轮返回可执行工具调用前即被 `extract()` 拒绝，
+   不会等到工具副作用之后第二轮恢复时失败；全签名与全无签名多工具批量
+   保持原有支持。

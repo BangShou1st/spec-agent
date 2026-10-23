@@ -129,6 +129,7 @@ public class GaNativeModelBroker {
         GaModelContract.Request request;
         try {
             request = GaModelContract.readRequest(body);
+            requireRpcWireV2(request);
             if (!request.stream() || !"AGENT".equals(request.callType())) return 400;
         } catch (IllegalArgumentException protocol) { return 400; }
         if (ownershipLost(new GaExecutionStore.Scope(
@@ -231,6 +232,7 @@ public class GaNativeModelBroker {
     /** Writes only typed host events, never provider JSON/SSE or partially parsed arguments. */
     public void stream(String body, java.io.OutputStream output) throws java.io.IOException {
         var request = GaModelContract.readRequest(body);
+        requireRpcWireV2(request);
         if (!request.stream() || !"AGENT".equals(request.callType())) throw new IllegalArgumentException("GA stream request");
         var sequence = new java.util.concurrent.atomic.AtomicInteger();
         java.util.function.BiConsumer<String,Object> emit = (type,payload) -> {
@@ -260,7 +262,9 @@ public class GaNativeModelBroker {
     }
     public Result invoke(String body) {
         try {
-            var response = complete(GaModelContract.readRequest(body));
+            var request = GaModelContract.readRequest(body);
+            requireRpcWireV2(request);
+            var response = complete(request);
             return new Result(200, mapper.convertValue(response, java.util.Map.class));
         } catch (com.specagent.model.contract.ModelGatewayException ex) {
             log.warn("GA native model invoke failed category={} httpStatus={}", ex.gatewayCategory(), ex.httpStatus());
@@ -278,6 +282,11 @@ public class GaNativeModelBroker {
         }
     }
     private Result failure(int status, String code) { return new Result(status, java.util.Map.of("errorCode", code)); }
+
+    /** The Python-facing HTTP RPC speaks only v2; v1 remains internal/history-only. */
+    private static void requireRpcWireV2(GaModelContract.Request request) {
+        if (!request.wireV2()) throw new IllegalArgumentException("GA model RPC requires ga-model-inference.v2");
+    }
 
     /**
      * 把一次原生模型失败的异常映射成<b>白名单内的类型化错误码</b>。与 {@link #invoke} 使用

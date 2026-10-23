@@ -59,6 +59,12 @@ public class GaModelContinuationStore {
             byToolCall.put(toolCallIds.get(index), extra);
             any = true;
         }
+        // Mixed signed/unsigned batches cannot be restored completely on the next
+        // turn; fail now, before Python can execute any tool from this response.
+        int unsigned = (int) perCallExtra.stream().filter(extra -> extra == null || extra.isEmpty()).count();
+        if (any && unsigned > 0) {
+            throw new IllegalArgumentException("unsupported mixed continuation material");
+        }
         return any ? byToolCall : null;
     }
 

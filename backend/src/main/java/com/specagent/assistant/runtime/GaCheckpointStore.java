@@ -180,7 +180,7 @@ public class GaCheckpointStore {
                 }
                 // The source MODEL call must already be recorded as successful; a
                 // forged payload without matching ledger tool identity fails closed.
-                var source = recordedContinuationSource(thread, toolIds, state);
+                var source = recordedContinuationSource(thread, toolIds, state, binding);
                 var actor = actors.require(scope.runId());
                 var existing = jdbc.queryForList("SELECT id FROM ga_model_continuations WHERE source_run_id=:run AND source_call_id=:call",
                         Maps.of("run", source.sourceRunId(), "call", source.sourceCallId()), UUID.class);
@@ -221,13 +221,20 @@ public class GaCheckpointStore {
 
     private record RecordedContinuationSource(UUID sourceRunId, UUID sourceCallId) {}
 
-    private RecordedContinuationSource recordedContinuationSource(UUID thread, List<String> toolIds, Map<String, Object> state) {
+    private RecordedContinuationSource recordedContinuationSource(UUID thread, List<String> toolIds,
+            Map<String, Object> state, GaExecutionStore.Binding consumer) {
         var params = Maps.of("thread", thread);
         List<RecordedContinuationSource> matches = new ArrayList<>();
         for (var row : jdbc.queryForList("""
-                SELECT c.run_id, c.call_id, c.result FROM ga_execution_calls c JOIN ga_executions e ON e.run_id=c.run_id
+                SELECT c.run_id, c.call_id, c.result, e.provider, e.model, e.settings_revision
+                FROM ga_execution_calls c JOIN ga_executions e ON e.run_id=c.run_id
                 WHERE e.thread_id=:thread AND c.kind='MODEL' AND c.status='SUCCEEDED' ORDER BY c.call_sequence
                 """, params)) {
+            if (!consumer.provider().equals(row.get("provider"))
+                    || !consumer.model().equals(row.get("model"))
+                    || !consumer.settingsRevision().equals(row.get("settings_revision"))) {
+                continue;
+            }
             var response = GaModelContract.readResponse((String) row.get("result"));
             List<String> ids = response.toolCalls().stream().map(GaModelContract.ToolCall::id).toList();
             if (!ids.equals(toolIds)) continue;

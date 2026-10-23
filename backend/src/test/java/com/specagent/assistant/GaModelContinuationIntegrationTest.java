@@ -81,6 +81,23 @@ class GaModelContinuationIntegrationTest {
                 () -> continuations.extract(List.of("call-1", "call-2"), List.<Map<String, Object>>of(alpha)));
     }
 
+    @Test void mixedPartiallySignedToolCallsFailBeforeAnyToolExecution() {
+        Map<String, Object> signed = Map.of("google", Map.of("thought_signature", "sig-alpha"));
+        // A provider returning some signed and some unsigned calls cannot be
+        // fully restored later; reject before executable calls reach Python.
+        assertThrows(RuntimeException.class,
+                () -> continuations.extract(List.of("call-1", "call-2"), java.util.Arrays.asList(signed, null)));
+        assertThrows(RuntimeException.class,
+                () -> continuations.extract(List.of("call-1", "call-2"), java.util.Arrays.asList(null, signed)));
+        assertThrows(RuntimeException.class,
+                () -> continuations.extract(List.of("call-1", "call-2"), java.util.Arrays.asList(signed, Map.of())));
+        // Uniform shapes remain valid.
+        assertNotNull(continuations.extract(List.of("call-1", "call-2"),
+                List.<Map<String, Object>>of(signed, Map.of("google", Map.of("thought_signature", "sig-beta")))));
+        assertNull(continuations.extract(List.of("call-1", "call-2"),
+                java.util.Arrays.asList(null, null)));
+    }
+
     @Test void sidecarIsEncryptedBoundToOwnerAndResolvable() throws Exception {
         Map<String, Object> state = Map.of("call-1", signature());
         executions.reserve(scope, callId, "MODEL", Hashes.sha256Hex("source"));
@@ -198,6 +215,47 @@ class GaModelContinuationIntegrationTest {
         } finally {
             jdbc.update("UPDATE global_assistant_runs SET status='FAILED' WHERE id=?", runB);
         }
+    }
+
+    @Test void migrationRejectsIncompatibleSourceModelIdentityWithoutSidecar() throws Exception {
+        var rawSignature = signature();
+        var call = new GaModelContract.ToolCall("native-1", "project_search", Map.of("query", "x"), rawSignature);
+        var legacy = new GaModelContract.Response(GaModelContract.VERSION, "", List.of(call),
+                "tool_calls", new GaModelContract.Usage(1, 1));
+        executions.reserve(scope, callId, "MODEL", Hashes.sha256Hex("legacy"));
+        executions.complete(scope, callId, mapper.writeValueAsString(legacy));
+        jdbc.update("UPDATE global_assistant_runs SET status='FAILED' WHERE id=?", run);
+
+        for (var incompatible : List.of(
+                new GaExecutionStore.Binding(thread, UUID.randomUUID(), "OPENCODE_ZEN", binding.model(),
+                        binding.settingsRevision(), Instant.now().plusSeconds(120), List.of()),
+                new GaExecutionStore.Binding(thread, UUID.randomUUID(), binding.provider(), "other-model",
+                        binding.settingsRevision(), Instant.now().plusSeconds(120), List.of()),
+                new GaExecutionStore.Binding(thread, UUID.randomUUID(), binding.provider(), binding.model(),
+                        binding.settingsRevision() + ":drift", Instant.now().plusSeconds(120), List.of()),
+                // Same model name but a different Custom connection UUID must not pass.
+                new GaExecutionStore.Binding(thread, UUID.randomUUID(), "CUSTOM", binding.model(),
+                        binding.settingsRevision().replaceAll("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                                UUID.randomUUID().toString()),
+                        Instant.now().plusSeconds(120), List.of()))) {
+            var runB = conversations.createRun(thread, "ga.v1", "ga.v1", "v1").id();
+            var leaseB = UUID.randomUUID();
+            var scopeB = new GaExecutionStore.Scope(runB, 1, leaseB);
+            executions.initialize(scopeB, incompatible);
+            jdbc.update("UPDATE global_assistant_runs SET status='RUNNING' WHERE id=?", runB);
+            try {
+                var request = Map.<String, Object>of("protocolVersion", "ga-checkpoint.v1", "runId", runB.toString(),
+                        "executionEpoch", 1, "leaseId", leaseB.toString(), "threadId", thread.toString(),
+                        "namespace", "ga:langchain-ga.v1", "expectedVersion", 0,
+                        "toolCallIds", List.of("native-1"), "continuationPayload", mapper.writeValueAsString(Map.of("native-1", rawSignature)));
+                assertThrows(RuntimeException.class,
+                        () -> checkpoints.apply("MIGRATE_CONTINUATION", mapper.writeValueAsString(request)),
+                        "incompatible binding must fail closed: " + incompatible);
+            } finally {
+                jdbc.update("UPDATE global_assistant_runs SET status='FAILED' WHERE id=?", runB);
+            }
+        }
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM ga_model_continuations", Integer.class));
     }
 
     @Test void threadDeletionRemovesContinuationSidecar() throws Exception {
