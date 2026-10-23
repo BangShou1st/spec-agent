@@ -16,7 +16,6 @@ import com.specagent.workspace.patch.Claim;
 import com.specagent.workspace.patch.ClaimKind;
 import com.specagent.workspace.patch.ClaimStatus;
 import com.specagent.workspace.project.Project;
-import com.specagent.workspace.project.ProjectService;
 import com.specagent.retrieval.RetrievalQuery;
 import com.specagent.retrieval.RetrievalScope;
 import com.specagent.retrieval.embedding.EmbeddingEnrichmentService;
@@ -33,7 +32,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -51,13 +49,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 的有界工作上下文与历史记忆召回、冻结快照不再重检索、ROUTE/PROJECT 检索
  * 作用域语义、向量通道状态流转、密钥形态内容不进入索引、派生索引可重建。
  */
-@SpringBootTest(properties = "spec.agent.retrieval.embedding.provider=fake")
+@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "spec.agent.retrieval.embedding.provider=fake")
 @ActiveProfiles("test")
-@Transactional
-class RetrievalV1HardeningIntegrationTest {
+class RetrievalV1HardeningIntegrationTest extends com.specagent.testing.SharedPythonRetrievalFixture {
 
-    @Autowired
-    private ProjectService projectService;
     @Autowired
     private NodeService nodeService;
     @Autowired
@@ -85,7 +80,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void ordinaryDecisionSnapshotExposesWorkspaceMemorySearch() {
-        Project project = projectService.createProject("memory search 可见性");
+        Project project = createProject("memory search 可见性");
         UUID routeId = project.activeRouteId();
         Node node = nodeService.createRootNode(project.id(), routeId,
                 "当前任务是什么？", null, List.of(), true);
@@ -103,7 +98,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void forkRefreshesSharedAncestorRouteProvenanceWithoutRebuild() {
-        Project project = projectService.createProject("fork route provenance refresh");
+        Project project = createProject("fork route provenance refresh");
         UUID routeA = project.activeRouteId();
         Node n1 = nodeService.createRootNode(project.id(), routeA,
                 "共享前缀一", null, List.of(), true);
@@ -150,7 +145,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void startRouteFromFloatingNodeRefreshesWorkspaceProvenance() {
-        Project project = projectService.createProject("floating route provenance refresh");
+        Project project = createProject("floating route provenance refresh");
         Node floating = nodeService.createFloatingWorkspaceNode(project.id(), NodeKind.KNOWLEDGE,
                 "NOTE", Map.of("text", "独立知识"), NodeAuthorKind.USER, KnowledgeStatus.PROPOSED);
         var before = entryRepository.findBySourceRef(project.id(), "node:" + floating.id()).orElseThrow();
@@ -167,7 +162,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void reanswerRefreshesInheritedPrefixButNotReplacedTarget() {
-        Project project = projectService.createProject("reanswer provenance refresh");
+        Project project = createProject("reanswer provenance refresh");
         UUID routeA = project.activeRouteId();
         Node n1 = nodeService.createRootNode(project.id(), routeA,
                 "前缀问题", null, List.of(), true);
@@ -187,7 +182,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void regenerateRefreshesInheritedPrefixButNotReplacedTarget() {
-        Project project = projectService.createProject("regenerate provenance refresh");
+        Project project = createProject("regenerate provenance refresh");
         UUID routeA = project.activeRouteId();
         Node n1 = nodeService.createRootNode(project.id(), routeA,
                 "重生成前缀", null, List.of(), true);
@@ -208,7 +203,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void longCanonicalRouteUsesBoundedWorkingLineageAndRecallsOldMemory() {
-        Project project = projectService.createProject("long route retrieval");
+        Project project = createProject("long route retrieval");
         UUID routeId = project.activeRouteId();
         Node first = nodeService.createRootNode(project.id(), routeId,
                 "早期项目启动记录。", null, List.of(), true);
@@ -242,7 +237,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void workingContextKeepsTipWhenManifestTailIsDerivedMaterial() {
-        Project project = projectService.createProject("derived material cannot evict tip");
+        Project project = createProject("derived material cannot evict tip");
         UUID routeId = project.activeRouteId();
         Node tip = nodeService.createRootNode(project.id(), routeId,
                 "根问题", null, List.of(), true);
@@ -270,7 +265,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void workingContextCountsLongAnswerAndPatchWireContent() {
-        Project project = projectService.createProject("working budget includes answers");
+        Project project = createProject("working budget includes answers");
         UUID routeId = project.activeRouteId();
         Node tip = nodeService.createRootNode(project.id(), routeId,
                 "历史问题 0", null, List.of(), true);
@@ -304,7 +299,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void frozenSnapshotDoesNotReRetrieveAfterNewProjectEvidenceAppears() {
-        Project project = projectService.createProject("frozen retrieval");
+        Project project = createProject("frozen retrieval");
         UUID routeId = project.activeRouteId();
         Node original = nodeService.createRootNode(project.id(), routeId,
                 "原始问题", null, List.of(), true);
@@ -324,7 +319,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void routeAndProjectRetrievalKeepTheirScopeMeaning() {
-        Project project = projectService.createProject("scope retrieval");
+        Project project = createProject("scope retrieval");
         UUID routeA = project.activeRouteId();
         Node a = nodeService.createRootNode(project.id(), routeA,
                 "内部系统不收费。", null, List.of(), true);
@@ -345,14 +340,18 @@ class RetrievalV1HardeningIntegrationTest {
                 project.id(), routeA, a.id(), "EXPLICIT_SEARCH", "按量收费",
                 List.of(RetrievalScope.PROJECT), 8, 8_000, Set.of(), Set.of()));
         assertThat(projectWide).anySatisfy(candidate -> {
+            // Shared RAG discovers a sibling node as PROJECT evidence with
+            // provenance; it must not promote it into current ROUTE history.
+            assertThat(candidate.entry().sourceRef()).isEqualTo("node:"+b.id());
             assertThat(candidate.entry().routeId()).isEqualTo(routeB.id());
-            assertThat(candidate.entry().scope()).isEqualTo(RetrievalScope.ROUTE);
+            assertThat(candidate.entry().scope()).isEqualTo(RetrievalScope.PROJECT);
         });
+        assertThat(projectWide).noneMatch(candidate -> candidate.entry().sourceKind()==RetrievalSourceKind.ANSWER);
     }
 
     @Test
     void vectorEntriesMoveFromPendingToReadyAndRejectOtherEmbeddingSpaces() {
-        Project project = projectService.createProject("vector lane");
+        Project project = createProject("vector lane");
         Node node = nodeService.createFloatingWorkspaceNode(project.id(), NodeKind.KNOWLEDGE,
                 "NOTE", Map.of("text", "向量检索的确定性测试内容"),
                 NodeAuthorKind.USER, KnowledgeStatus.PROPOSED);
@@ -385,7 +384,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void enrichmentWorkerMovesPendingRowsWithoutSnapshotSideEffects() {
-        Project project = projectService.createProject("vector worker trigger");
+        Project project = createProject("vector worker trigger");
         Node node = nodeService.createFloatingWorkspaceNode(project.id(), NodeKind.KNOWLEDGE,
                 "NOTE", Map.of("text", "worker tick enrichment"), NodeAuthorKind.USER,
                 KnowledgeStatus.PROPOSED);
@@ -405,7 +404,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void nodeOnlyProjectRetrievalDeclaresOriginRouteProvenance() {
-        Project project = projectService.createProject("node provenance");
+        Project project = createProject("node provenance");
         UUID routeA = project.activeRouteId();
         Node routeAAnchor = nodeService.createRootNode(project.id(), routeA,
                 "内部工具", null, List.of(), true);
@@ -427,7 +426,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void resourceMiddleChunkAndProvenanceRemainRetrievable() {
-        Project project = projectService.createProject("resource chunks");
+        Project project = createProject("resource chunks");
         UUID routeId = project.activeRouteId();
         Node anchor = nodeService.createRootNode(project.id(), routeId,
                 "查询外部资料", null, List.of(), true);
@@ -442,6 +441,7 @@ class RetrievalV1HardeningIntegrationTest {
         Node resource = nodeService.createWorkspaceNode(project.id(), routeId, anchor.id(),
                 NodeKind.RESOURCE, "TEXT", Map.of("text", text.toString()),
                 NodeAuthorKind.USER, KnowledgeStatus.PROPOSED);
+        projectResources(project.id());
 
         var entries = entryRepository.findByProject(project.id()).stream()
                 .filter(entry -> entry.sourceRef().startsWith("resource-chunk:" + resource.id()))
@@ -461,7 +461,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void secretShapedNodeAnswerClaimAndResourceTextNeverEntersIndex() {
-        Project project = projectService.createProject("secret exclusion");
+        Project project = createProject("secret exclusion");
         UUID routeId = project.activeRouteId();
         String secret = "RAG_TEST_SECRET_123456789";
         Node question = nodeService.createRootNode(project.id(), routeId,
@@ -487,7 +487,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void administrativeRebuildRestoresDerivedIndexWithoutChangingCanonicalNode() {
-        Project project = projectService.createProject("rebuild");
+        Project project = createProject("rebuild");
         Node node = nodeService.createFloatingWorkspaceNode(project.id(), NodeKind.KNOWLEDGE,
                 "NOTE", Map.of("text", "可恢复的 canonical 内容"), NodeAuthorKind.USER,
                 KnowledgeStatus.PROPOSED);
@@ -504,7 +504,7 @@ class RetrievalV1HardeningIntegrationTest {
 
     @Test
     void repeatedFreshSnapshotsDoNotEraseReadyEmbedding() {
-        Project project = projectService.createProject("snapshot incremental index");
+        Project project = createProject("snapshot incremental index");
         UUID routeId = project.activeRouteId();
         Node node = nodeService.createRootNode(project.id(), routeId,
                 "稳定的历史事实", null, List.of(), true);

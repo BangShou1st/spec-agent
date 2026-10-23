@@ -60,10 +60,15 @@ class RetrievalEvaluationSnapshotTest {
         for(String raw:java.util.List.of("{","{} {}","{\"x\":1,\"x\":2}","{\"x\":NaN}","[]"))
             assertThrows(RuntimeException.class,()->RetrievalEvaluationSnapshot.parse(raw));
     }
-    @Test void frozenPythonInventoryRemainsAnOfflineMetadataCheck() throws Exception {
+    @Test void frozenPythonInventoryIsHistoricalAndMissingRuntimeFailsClosed(@TempDir Path directory) throws Exception {
         var snapshot=historical();
         assertThrows(IllegalArgumentException.class,()->snapshot.requireRuntime(ROOT,null));
         var inventory=RetrievalEvaluationSnapshot.parse(Files.readString(ROOT.resolve("contracts/retrieval/evaluation/runtime-inventory.v1.json")));
-        assertDoesNotThrow(()->snapshot.requireRuntime(ROOT,inventory.path("pythonExecutable").asText()));
+        assertEquals("rag-runtime-inventory.v1",inventory.path("schemaVersion").asText());
+        assertEquals(snapshot.freeze().path("runtimeInventorySha256").asText(),
+            RetrievalEvaluationSnapshot.fileSha(ROOT.resolve("contracts/retrieval/evaluation/runtime-inventory.v1.json")));
+        // Offline CI must not require the archived machine's Windows interpreter.
+        // Execution qualification still runs requireRuntime and rejects missing/drifted runtimes.
+        assertThrows(RuntimeException.class,()->snapshot.requireRuntime(ROOT,directory.resolve("missing-python").toString()));
     }
 }

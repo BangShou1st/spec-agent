@@ -253,7 +253,7 @@ tasks.register<Test>("evalBFast") {
 tasks.register<Test>("evalRetrievalFast") {
     group = "verification"
     description = "Runs the deterministic offline Memory + RAG retrieval evaluation gate."
-    useJUnitPlatform()
+    useJUnitPlatform { excludeTags("external-service") }
     systemProperty("spec.agent.retrieval.embedding.provider", "fake")
     filter {
         includeTestsMatching("com.specagent.retrieval.eval.*")

@@ -89,6 +89,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *    - 首次冻结与回放是否逐字节一致。
  */
 @Tag("database-integration")
+@Tag("external-service")
+@org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "SPEC_AGENT_LIVE_GEMINI_TEST", matches = "true")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spec.agent.retrieval.engine=python-rag.v1",
         "spec.agent.retrieval.embedding.worker.enabled=false",
@@ -100,9 +102,11 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 public class GeminiRagControlledAbAcceptanceTest {
 
     static {
-        System.setProperty("https.proxyHost", "127.0.0.1");
-        System.setProperty("https.proxyPort", "7897");
-        System.setProperty("http.nonProxyHosts", "localhost|127.0.0.1");
+        if("true".equals(System.getenv("SPEC_AGENT_LIVE_GEMINI_TEST"))) {
+            System.setProperty("https.proxyHost", "127.0.0.1");
+            System.setProperty("https.proxyPort", "7897");
+            System.setProperty("http.nonProxyHosts", "localhost|127.0.0.1");
+        }
     }
 
     private static final String C03_DECISION_SYSTEM_PROMPT = """

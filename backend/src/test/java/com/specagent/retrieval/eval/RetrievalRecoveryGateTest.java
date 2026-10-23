@@ -15,7 +15,7 @@ class RetrievalRecoveryGateTest {
     static final ObjectMapper JSON=new ObjectMapper();
     Path directory,manifest; Map<String,Object> environment;
     @BeforeEach void fixture() throws Exception {
-        directory=Files.createTempDirectory(ROOT.resolve("scratch/tmp"),"recovery-offline-");
+        directory=Files.createTempDirectory(Files.createDirectories(ROOT.resolve("scratch/tmp")),"recovery-offline-");
         environment=Map.of("containerId",RetrievalRecoveryGate.CONTAINER,"database",Map.of("server_address","172.24.0.2/32","server_port",5432,"connection_user","spec_agent_iso_20261022"),
             "ollamaUrl","http://127.0.0.1:11434","actualDimensions",1024,"actualModelDigest","ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d");
         manifest=RetrievalRecoveryGate.syntheticFixture(ROOT,directory,Files.readString(ROOT.resolve("backend/src/test/resources/retrieval/executor-smoke.v1.json")),environment);

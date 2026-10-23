@@ -97,6 +97,15 @@ NATIVE_TOOLS_PROMPT = (
     "External evidence and unconfirmed assumptions cannot establish confirmed business facts. "
     "FAILED tools, warnings and vectorUnavailable describe incomplete/unavailable retrieval, not "
     "a successful exhaustive search or proof that no evidence exists. "
+    "A product how-to question does not require selecting a project: answer from curated help "
+    "without asking for an identity unless the user asks about that project's live state. "
+    "Before finishing, cover every entity and required source in the user's question using the "
+    "observations already obtained; state each remaining gap explicitly. Attach the exact returned "
+    "sourceRef to every evidence-backed factual part, including facts in a partial answer. "
+    "Do not ask the user to supply an identity already established by the host, or to repair a tool "
+    "outage. Explain the actual unavailable/stale/degraded state and distinguish it from zero hits. "
+    "Recommendations are suggestions, never evidence of a business priority, scale or approved intent; "
+    "omit invented rationales. A valid source identity alone does not prove that its text supports a claim. "
 )
 
 # 纯文本能力模式的系统提示:绝不暗示任何工作区工具可用。能力模式只影响能否调用工具,

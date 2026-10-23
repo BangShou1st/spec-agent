@@ -1,6 +1,7 @@
 """Guard mode boundaries and truthful summaries without executing production code."""
 import importlib.util
 import re
+import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -206,7 +207,8 @@ def job_body(workflow, job):
     return "\n".join(lines[start:])
 
 
-def test_the_backend_job_provides_the_python_runtime_its_acceptance_test_needs():
+@pytest.mark.parametrize("job", ["backend", "eval-baseline"])
+def test_the_backend_job_provides_the_python_runtime_its_acceptance_test_needs(job):
     """The database selection starts a real agent-brain process.
 
     Without a Python runtime carrying the brain package the C16 real-process
@@ -214,13 +216,13 @@ def test_the_backend_job_provides_the_python_runtime_its_acceptance_test_needs()
     that used to surface as a red backend job on every push.
     """
     workflow = workflow_text()
-    body = job_body(workflow, "backend")
+    body = job_body(workflow, job)
     assert "actions/setup-python@v7" in body, (
         "the backend job must provide a Python runtime for the real-process "
         "acceptance test")
-    assert "pip install -e ." in body, (
+    assert "pip install -r requirements.lock -e ." in body, (
         "the brain package must be installed into the interpreter the backend "
-        "job's acceptance test starts")
+        "job's acceptance test starts, with the reviewed dependency lock")
     # The interpreter is exported explicitly: the test must not resolve an
     # arbitrary "python3" from PATH that may lack the brain package.
     assert "command -v python3" in body
@@ -231,11 +233,21 @@ def test_the_backend_job_provides_the_python_runtime_its_acceptance_test_needs()
         "brain package into")
 
 
-def test_the_exported_brain_interpreter_is_the_one_the_test_starts():
+@pytest.mark.parametrize("job", ["backend", "eval-baseline"])
+def test_the_exported_brain_interpreter_is_the_one_the_test_starts(job):
     workflow = workflow_text()
-    body = job_body(workflow, "backend")
+    body = job_body(workflow, job)
     bound = re.search(r"SPEC_AGENT_GA_TEST_PYTHON:\s*\$\{\{\s*steps\.brain-python\.outputs\.interpreter\s*\}\}", body)
     assert bound, "the database selection must run with the exported brain interpreter"
+
+
+def test_deterministic_retrieval_gate_cannot_select_live_gemini_acceptance():
+    build = BUILD.read_text(encoding="utf-8")
+    gate = build.split('tasks.register<Test>("evalRetrievalFast")', 1)[1].split('tasks.register<Test>', 1)[0]
+    assert 'excludeTags("external-service")' in gate
+    live = (ROOT / "backend/src/test/java/com/specagent/retrieval/eval/GeminiRagControlledAbAcceptanceTest.java").read_text(encoding="utf-8")
+    assert '@Tag("external-service")' in live
+    assert 'EnabledIfEnvironmentVariable(named = "SPEC_AGENT_LIVE_GEMINI_TEST", matches = "true")' in live
 
 
 def test_disabled_bootstrap_guards_are_executed_in_the_offline_scope():

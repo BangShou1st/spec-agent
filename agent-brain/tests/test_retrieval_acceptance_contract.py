@@ -53,11 +53,14 @@ def assets():
         'acceptance-candidate.v2.3.json', 'acceptance-freeze.v2.3.json', 'ai-review-decisions.v1.json')]
 
 
-def test_final_ai_preflight_and_human_gate_remain_separate():
-    result = preflight(ROOT)
-    assert result['failures'] == []
-    assert result['queriesReviewed'] == 68 and result['sourcesReviewed'] == 28
+def test_archived_ai_review_and_human_gate_remain_separate():
+    # D3 is historical: its code/runtime identity is not a requirement that all
+    # later development stays byte-identical. Validate the immutable review,
+    # not readiness to execute D3 again from today's checkout.
     candidate, freeze, audit = assets()
+    assert len(candidate['queries']) == 68 and len(candidate['sources']) == 28
+    assert sha_file(DATA / 'acceptance-candidate.v2.3.json') == freeze['datasetSha256']
+    assert sha_file(DATA / 'ai-review-decisions.v1.json') == freeze['aiReviewSha256']
     import jsonschema
     jsonschema.Draft202012Validator(strict_json((DATA / 'ai-review-decisions.v1.schema.json').read_bytes()),
         format_checker=jsonschema.FormatChecker()).validate(audit)
@@ -66,6 +69,26 @@ def test_final_ai_preflight_and_human_gate_remain_separate():
     assert any('humanReviewStatus' in message for message in failures)
     assert candidate['reviewedBy'] is None and candidate['reviewedAt'] is None
     assert all(q['labelReview'] == 'PENDING_HUMAN_REVIEW' for q in candidate['queries'])
+
+
+def test_current_code_identity_really_fails_closed_on_illegal_drift(tmp_path):
+    # A fresh, temporary UNIT fixture, never an update of the archived freeze.
+    candidate, freeze, _ = assets()
+    candidate['sources'] = candidate['sources'][:2]
+    candidate['queries'] = candidate['queries'][:2]
+    for query, source in zip(candidate['queries'], candidate['sources']):
+        query.update(expectedAliases=[source['alias']], forbiddenAliases=[], backgroundAliases=[], category='PROJECT_EXPRESSION')
+    (tmp_path / 'agent-brain').mkdir()
+    (tmp_path / 'agent-brain/requirements.lock').write_bytes((ROOT / 'agent-brain/requirements.lock').read_bytes())
+    code = tmp_path / 'unit-source.txt'
+    code.write_text('reviewed-current-code', encoding='utf-8')
+    freeze['codeHashes'] = {'unit-source.txt': sha_file(code)}
+    raw = json.dumps(candidate).encode()
+    freeze['datasetSha256'] = sha_bytes(raw)
+    assert validate_contract(candidate, raw, freeze, tmp_path, ai=True, queries_count=2, sources_count=2) == []
+    code.write_text('unreviewed-drift', encoding='utf-8')
+    assert 'Code hash drift: unit-source.txt' in validate_contract(
+        candidate, raw, freeze, tmp_path, ai=True, queries_count=2, sources_count=2)
 
 
 @pytest.mark.parametrize('mutation', ['dataset_hash', 'unresolved', 'missing_query', 'duplicate_query', 'changed_label', 'source_evidence', 'missing_implementation', 'metric_drift'])
