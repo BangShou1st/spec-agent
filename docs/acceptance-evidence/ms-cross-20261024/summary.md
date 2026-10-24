@@ -54,7 +54,9 @@ authority: Historical Reference Only
 
 - 代码提交:`4a5876418b4ac3534d69d7ff92f9a12f43919f93`
 - 证据提交:本目录(见 manifest.json 文件哈希)
-- 推送:普通快进推送至 `origin/dev`(不 force、不动 `main`、不建 PR);CI 链接在推送后由最终报告记录。
+- 推送:普通快进推送 `5e49768..d85a440` 至 `origin/dev`(不 force、不动 `main`、不建 PR),推送后本地与远端 0/0 同步。
+- 远端 CI(推送后完整验证):Run https://github.com/BangShou1st/spec-agent/actions/runs/40109379689 — conclusion **success**,10/10 job 全绿(validation-mode、contracts-static、backend-independent、backend、eval-baseline、brain、cross-language、frontend、e2e、validation-summary)。
+- 最终裁决:**`MODEL_SERVICE_V2_CROSS_PROTOCOL_PASS`**(工程与离线验收全过、修复路径有真实供应商证据);Anthropic 官方端点与 Responses 官方端点维持 `LIVE_NOT_RUN`,Zen/Kilo live 复验 `NOT_RUN`,均已在矩阵中如实标注,不宣称真实兼容性已认证。
 
 ## 7. 范围外(本轮明确不做)
 

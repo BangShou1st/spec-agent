@@ -1,5 +1,6 @@
 {
-  "verdict": "MODEL_SERVICE_V2_CROSS_PROTOCOL_PASS_WITH_LIVE_GAPS",
+  "verdict": "MODEL_SERVICE_V2_CROSS_PROTOCOL_PASS",
+  "remote_ci": {"run": 40109379689, "url": "https://github.com/BangShou1st/spec-agent/actions/runs/40109379689", "conclusion": "success", "jobs_green": 10, "jobs_total": 10},
   "date": "2026-10-24",
   "baseline": {
     "branch": "dev",
