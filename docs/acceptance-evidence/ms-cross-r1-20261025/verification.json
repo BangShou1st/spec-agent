@@ -55,5 +55,6 @@
     "ModelProvidersService.update 冗余比较(无行为影响)",
     "Chat Completions extra_content 非官方字段(Gemini 签名承载,已验收设计)"
   ],
-  "blocking_p0_p1": 0
+  "blocking_p0_p1": 0,
+  "remote_ci": {"run": 40115618664, "url": "https://github.com/BangShou1st/spec-agent/actions/runs/40115618664", "headSha": "a8141b037b6f61d9be08f388643c3c8a829200a7", "conclusion": "success", "jobs_green": 10, "jobs_total": 10}
 }

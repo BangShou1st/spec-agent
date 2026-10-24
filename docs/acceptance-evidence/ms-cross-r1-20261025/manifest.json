@@ -19,8 +19,8 @@
     "anthropic-json-envelope.v1"
   ],
   "evidence_files_sha256": {
-    "summary.md": "1e39f56582b740a344892210dd8be92ca8662a502f8dd4929162d42a041068c8",
-    "verification.json": "54fe9e48426785c7608ca59315952826b03c799368e12ed11701a5c1fe0f20dc"
+    "summary.md": "68aa662ab8f9f1f71a131aa69a5bcc5d31f14544e823a1ca38ad8de3c109102f",
+    "verification.json": "9515efd9b98dcdba32df83e8e1a8c89ded380b767c0d9157d731e49fbd40ce2c"
   },
   "live_provider_requests_this_round": 0,
   "user_wip_preserved": [

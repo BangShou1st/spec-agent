@@ -9,7 +9,7 @@ authority: Historical Reference Only
 - 分支: `dev`(基线 `843936a7ea599663865307e01bd8d65b11cf2ab4`,MS-CROSS 最终提交;本地与 `origin/dev` 同步 0/0)
 - 独立复审输入:R1-A(P2)历史极短 Key 经 `maskedSuffix` 泄漏;R1-B(P2)F-1 回归断言 `stream:false` 无旁路区分力
 - 真实供应商请求:**0 次**(MS-CROSS 已有 Gemini 4 请求证据;本轮全部用确定性 Fake 与隔离数据库)
-- 结论:见 [verification.json](verification.json)
+- 结论:**`MODEL_SERVICE_V2_CROSS_PROTOCOL_PASS`**(R1 两项补正全部完成;推送后远端 CI Run [40115618664](https://github.com/BangShou1st/spec-agent/actions/runs/40115618664) 对应 `a8141b0` **success 10/10**;`ANTHROPIC_LIVE_NOT_RUN` / `RESPONSES_LIVE_NOT_RUN` 如实保留)
 
 ## 1. R1-A:历史极短 Key 不再泄漏
 
