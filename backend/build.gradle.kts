@@ -86,6 +86,9 @@ implementation("io.modelcontextprotocol.sdk:mcp:0.18.4")
 // extensions, static initialization and the entire invoked fixture/call chain.
 val auditedOfflineTests = setOf(
     "com.specagent.modelsettings.ModelConnectionsOfflineTest",
+    // MS-CROSS-R1: legacy short-key masking at the real status and save boundary;
+    // Mockito repository only, no Spring bootstrap or database.
+    "com.specagent.modelsettings.LegacyShortKeyMaskingTest",
     "com.specagent.model.provider.ModelPriceMetadataTest",
     "com.specagent.model.provider.ModelProtocolHarnessTest",
     "com.specagent.model.provider.ModelProviderTransportHarnessTest",

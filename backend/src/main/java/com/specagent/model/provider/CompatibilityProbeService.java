@@ -71,7 +71,9 @@ public class CompatibilityProbeService {
             throw ModelProviderException.invalidResponse("custom-native-probe", "Unsupported native tool protocol");
         }
         // 资格验证必须走各协议的生产原生传输(冻结绑定校验、请求形状与安全诊断
-        // 与 GA 执行完全相同),绝不使用旁路实现。
+        // 与 GA 执行完全相同),绝不使用旁路实现。传输创建集中在这三个包私有
+        // 工厂方法:生产实现实例化真实传输,测试以此作为观察点证明 probe 确实
+        // 经过生产传输类型(而不是仅凭 HTTP 形状推断)。
         new NativeToolRoundTripVerifier().verify(request -> {
             UUID providerId = UUID.randomUUID();
             var runtimeSettings = new com.specagent.model.contract.RuntimeCustomSettings(
@@ -80,14 +82,30 @@ public class CompatibilityProbeService {
                     "CUSTOM", model, runtimeSettings.bindingRevision(), apiKey);
             var budget = ProviderHttpSupport.SETTINGS_TIMEOUT;
             return switch (format) {
-                case RESPONSES -> new ResponsesGaNativeTransport(() -> runtimeSettings, mapper, client)
+                case RESPONSES -> newResponsesTransport(() -> runtimeSettings)
                         .complete(target, request, budget, () -> true);
-                case ANTHROPIC_MESSAGES -> new AnthropicGaNativeTransport(() -> runtimeSettings, mapper, client)
+                case ANTHROPIC_MESSAGES -> newAnthropicTransport(() -> runtimeSettings)
                         .complete(target, request, budget, () -> true);
-                case CHAT_COMPLETIONS -> new ChatCompletionsGaTextTransport(() -> runtimeSettings, mapper, client)
+                case CHAT_COMPLETIONS -> newChatCompletionsTransport(() -> runtimeSettings)
                         .complete(target, request, budget, () -> true);
             };
         });
+    }
+
+    /** Probe transport seam: the production native transports, nothing else. */
+    ResponsesGaNativeTransport newResponsesTransport(
+            com.specagent.model.contract.CustomRuntimeSettingsPort settings) {
+        return new ResponsesGaNativeTransport(settings, mapper, client);
+    }
+
+    AnthropicGaNativeTransport newAnthropicTransport(
+            com.specagent.model.contract.CustomRuntimeSettingsPort settings) {
+        return new AnthropicGaNativeTransport(settings, mapper, client);
+    }
+
+    ChatCompletionsGaTextTransport newChatCompletionsTransport(
+            com.specagent.model.contract.CustomRuntimeSettingsPort settings) {
+        return new ChatCompletionsGaTextTransport(settings, mapper, client);
     }
 
     private void runProbe(ProtocolAdapter adapter, String endpoint, String apiKey,

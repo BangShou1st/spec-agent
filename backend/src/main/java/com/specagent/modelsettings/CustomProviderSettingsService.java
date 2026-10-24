@@ -73,9 +73,12 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
                     }
                     boolean validated = s.validatedRevision() != null
                             && s.validatedRevision() == s.configRevision();
+                    // 掩码输出永远从实际密钥重新推导:历史行持久化的 masked_suffix
+                    // 可能来自旧的弱脱敏逻辑(极短密钥被原样存入),不得被状态边界
+                    // 信任。suffix(null/空/≤4)=null,仅长密钥显示末 4 位。
                     return new Status(true, s.apiFormat(), s.baseUrl(), preview,
                             s.apiKey() != null && !s.apiKey().isBlank(),
-                            mask(s.maskedSuffix()), s.selectedModel(), "MANUAL".equals(s.modelSource()),
+                            mask(suffix(s.apiKey())), s.selectedModel(), "MANUAL".equals(s.modelSource()),
                             normalizeDisplayName(s.displayName()), s.configRevision(), validated);
                 })
                 .orElseGet(() -> new Status(false, CustomApiFormat.CHAT_COMPLETIONS.name(),
@@ -161,12 +164,13 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
             String trimmed = displayNameInput.trim();
             displayName = trimmed.isEmpty() ? null : trimmed;
         }
-        // 密钥解析:null 沿用旧密钥与脱敏后缀,空串清空,非空取新密钥并重算后缀
+        // 密钥解析:null 沿用旧密钥并对后缀重新脱敏(历史弱脱敏值在此自然纠正),
+        // 空串清空,非空取新密钥并重算后缀
         String resolvedKey;
         String masked;
         if (apiKeyInput == null) {
             resolvedKey = existing == null ? null : existing.apiKey();
-            masked = existing == null ? null : existing.maskedSuffix();
+            masked = suffix(resolvedKey);
         } else if (apiKeyInput.isBlank()) {
             resolvedKey = null;
             masked = null;
