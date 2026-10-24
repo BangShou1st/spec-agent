@@ -54,8 +54,10 @@ MS-C2（2026-10-24）起，Custom RESPONSES 拥有独立 GA 传输
 结果为独立 `type=function_call_output` item，二者通过原始
 `function_call.call_id` 精确关联；assistant 消息绝不内嵌 `tool_calls`。
 参数经严格 JSON 解析、对象形状检查、重复 call_id/非法工具名/未完成状态
-检查后才成为 GA 通用 ToolCall。确定性 Fake Provider 对入站请求执行同一
-协议校验，错误历史形状直接 HTTP 400，无法取得资格。
+检查后才成为 GA 通用 ToolCall。MS-C2 不支持“可见正文 + function_call”
+的混合输出：该形态在解析阶段即失败关闭，不释放任何可执行 ToolCall、
+不产生 TOOL 账本或第二次模型请求。确定性 Fake Provider 对入站请求执行
+同一协议校验，错误历史形状直接 HTTP 400，无法取得资格。
 宿主采用无状态完整历史重放；本轮未引入 Responses 专用 provider 私有
 reasoning 续接状态——需要这类状态的模型形态会在资格验证中失败关闭，
 不会获得 NATIVE_TOOLS=VERIFIED。路由按冻结连接的 API Format 分发，

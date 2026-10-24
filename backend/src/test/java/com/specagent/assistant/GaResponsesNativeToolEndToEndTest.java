@@ -30,7 +30,9 @@ import org.springframework.test.context.ActiveProfiles;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -116,6 +118,27 @@ class GaResponsesNativeToolEndToEndTest {
         }
         jdbc.update("UPDATE global_assistant_runs SET status='FAILED' WHERE id=?", run);
         deletion.deleteThread(thread);
+    }
+
+    @Test
+    void mixedTextAndToolOutputIsRejectedBeforeAnyToolExecutionOrLedgerSuccess() throws Exception {
+        provider.mixedTextAndToolOutput = true;
+        var user = new GaModelContract.Message("user", "search projects", List.of(), null);
+        var firstRequest = new GaModelContract.Request(GaModelContract.VERSION_2, run, 1, lease,
+                UUID.randomUUID(), "AGENT", bindingId, List.of(user), binding.allowedTools(),
+                "required", 256, false);
+
+        assertThrows(IllegalArgumentException.class, () -> broker.complete(firstRequest));
+
+        // No executable call was released and no second provider round happened.
+        assertEquals(1, provider.requests.size());
+        var modelCalls = jdbc.queryForList(
+                "SELECT call_id,status FROM ga_execution_calls WHERE run_id=? AND kind='MODEL'", run);
+        assertEquals(1, modelCalls.size());
+        assertNotEquals("SUCCEEDED", modelCalls.getFirst().get("status"));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT count(*) FROM ga_execution_calls WHERE run_id=? AND kind='TOOL'",
+                Integer.class, run));
     }
 
     @Test

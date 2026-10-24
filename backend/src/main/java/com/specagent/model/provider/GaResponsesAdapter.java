@@ -108,6 +108,12 @@ public final class GaResponsesAdapter {
             JsonNode usage = root.get("usage");
             require(usage != null && usage.isObject(), "usage required");
             boolean hasCalls = !calls.isEmpty();
+            // MS-C2 does not support mixed visible text plus function calls:
+            // rejecting here keeps any executable ToolCall unreleased and the
+            // broker ledger follows its normal failure semantics.
+            if (hasCalls && content.length() > 0) {
+                throw new IllegalArgumentException("Unsupported mixed Responses text and function calls");
+            }
             require(hasCalls || !content.isEmpty(), "empty response");
             return new GaModelContract.Response(GaModelContract.VERSION,
                     content.toString(), calls, hasCalls ? "tool_calls" : "stop",

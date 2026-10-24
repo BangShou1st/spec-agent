@@ -32,6 +32,8 @@ public final class FakeResponsesProvider implements AutoCloseable {
     public volatile String toolName = "probe_echo";
     public volatile String arguments = "{\"text\":\"probe ok\"}";
     public volatile boolean multiTool;
+    public volatile boolean mixedTextAndToolOutput;
+    public volatile boolean mixedToolBeforeText;
     private final HttpServer server;
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -81,7 +83,13 @@ public final class FakeResponsesProvider implements AutoCloseable {
         ArrayNode output = root.putArray("output");
         boolean wantsTools = !request.path("tool_choice").asText("none").equals("none")
                 && request.has("tools") && !refuse;
-        if (wantsTools && !incomplete) {
+        if (wantsTools && mixedTextAndToolOutput) {
+            appendMixedMessage(output, "I will search the project.");
+            appendMixedCall(output);
+        } else if (wantsTools && mixedToolBeforeText) {
+            appendMixedCall(output);
+            appendMixedMessage(output, "I will search the project.");
+        } else if (wantsTools && !incomplete) {
             int count = multiTool && requests.size() == 1 ? 2 : 1;
             if (duplicateCallId) count = 2;
             for (int index = 0; index < count; index++) {
@@ -115,6 +123,27 @@ public final class FakeResponsesProvider implements AutoCloseable {
         usage.put("input_tokens", 11);
         usage.put("output_tokens", 7);
         return root;
+    }
+
+    private void appendMixedMessage(ArrayNode output, String text) {
+        ObjectNode message = output.addObject();
+        message.put("type", "message");
+        message.put("id", "msg_mixed");
+        message.put("role", "assistant");
+        message.put("status", "completed");
+        ArrayNode content = message.putArray("content");
+        ObjectNode part = content.addObject();
+        part.put("type", "output_text");
+        part.put("text", text);
+    }
+
+    private void appendMixedCall(ArrayNode output) {
+        ObjectNode call = output.addObject();
+        call.put("type", "function_call");
+        call.put("id", "item_mixed");
+        call.put("call_id", "call_mixed");
+        call.put("name", wrongToolName ? "not_in_catalog" : toolName);
+        call.put("arguments", arguments);
     }
 
     /**

@@ -321,6 +321,31 @@ class ResponsesGaNativeTransportTest {
     }
 
     @Test
+    void mixedTextAndFunctionCallOutputIsRejectedBeforeReleaseRegardlessOfOrder() throws Exception {
+        try (var fake = new FakeResponsesProvider()) {
+            UUID id = UUID.randomUUID();
+            var transport = new ResponsesGaNativeTransport(
+                    port(settings(fake.baseUrl(), 1, id, true)), mapper,
+                    java.net.http.HttpClient.newHttpClient());
+            var target = new GaModelTarget("CUSTOM", "responses-model",
+                    "custom-provider:" + id + ":1", "fixture-secret");
+
+            fake.mixedTextAndToolOutput = true;
+            assertThatThrownBy(() -> transport.complete(target, toolRequest("required"),
+                    Duration.ofSeconds(30), () -> true))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("mixed Responses text and function calls");
+
+            fake.mixedTextAndToolOutput = false;
+            fake.mixedToolBeforeText = true;
+            assertThatThrownBy(() -> transport.complete(target, toolRequest("required"),
+                    Duration.ofSeconds(30), () -> true))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("mixed Responses text and function calls");
+        }
+    }
+
+    @Test
     void revisionDriftFailsClosedWithoutProviderCall() throws Exception {
         try (var fake = new FakeResponsesProvider()) {
             UUID id = UUID.randomUUID();
