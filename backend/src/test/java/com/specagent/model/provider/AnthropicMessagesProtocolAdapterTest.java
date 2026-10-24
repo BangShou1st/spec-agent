@@ -45,6 +45,21 @@ class AnthropicMessagesProtocolAdapterTest {
         assertThat(body).doesNotContainKey("output_config");
     }
 
+    @Test void multipleSystemMessagesMergeIntoTopLevelSystem() {
+        var request = new ModelInferenceRequest(UUID.randomUUID(), "p",
+                List.of(new ModelInferenceMessage("system", "first"),
+                        new ModelInferenceMessage("system", "second"),
+                        new ModelInferenceMessage("user", "hi")), 256, ModelOutputContract.text());
+        var body = adapter.buildRequestBody(request, "m");
+        // 后续 system 绝不静默降级为 user 消息:全部并入顶层 system。
+        assertThat(body.get("system")).isEqualTo("first\n\nsecond");
+        @SuppressWarnings("unchecked")
+        List<Map<String, String>> messages = (List<Map<String, String>>) body.get("messages");
+        assertThat(messages).hasSize(1);
+        assertThat(messages.get(0).get("role")).isEqualTo("user");
+        assertThat(messages.get(0).get("content")).isEqualTo("hi");
+    }
+
     @Test void authUsesXApiKeyAndVersion() {
         var h = adapter.authHeaders("k");
         assertThat(h.get("x-api-key")).isEqualTo("k");

@@ -27,6 +27,8 @@ class ModelProtocolHarnessTest {
         try(var fake=new FakeModelProvider()) {
             probe().probeNativeTools(CustomApiFormat.CHAT_COMPLETIONS,fake.baseUrl(),"fixture-key","new-model");
             assertThat(fake.requests).hasSize(2);
+            // 资格验证走生产传输:非流式请求形状显式 stream:false,与 GA 执行一致。
+            assertThat(fake.requests).allSatisfy(r->assertThat(r.path("stream").asBoolean()).isFalse());
             var history=fake.requests.get(1).path("messages");
             assertThat(history.get(1).path("tool_calls").get(0).path("id").asText()).isEqualTo("fixture-call");
             assertThat(history.get(2).path("tool_call_id").asText()).isEqualTo("fixture-call");

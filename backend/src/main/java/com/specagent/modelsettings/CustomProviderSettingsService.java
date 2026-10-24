@@ -329,12 +329,12 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         return raw.trim();
     }
 
-    /** 取密钥末 4 位作为脱敏后缀;密钥过短时原样返回(本地服务多为无密钥场景)。 */
+    /** 取密钥末 4 位作为脱敏后缀;密钥过短时返回 null,短密钥本身绝不外泄。 */
     static String suffix(String key) {
-        if (key == null || key.isEmpty()) {
+        if (key == null || key.length() <= 4) {
             return null;
         }
-        return key.length() <= 4 ? key : key.substring(key.length() - 4);
+        return key.substring(key.length() - 4);
     }
 
     static String mask(String suffix) {

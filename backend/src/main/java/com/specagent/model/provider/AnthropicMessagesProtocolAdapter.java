@@ -71,12 +71,16 @@ public class AnthropicMessagesProtocolAdapter implements ProtocolAdapter {
                 ? Math.min(request.maxOutputTokens(), 4096) : DEFAULT_MAX_TOKENS;
         body.put("max_tokens", maxTokens);
         List<Map<String, String>> messages = new ArrayList<>();
-        String system = null;
+        // 多条 system 消息全部并入顶层 system(与 GA Anthropic 适配器的 systemParts
+        // 策略一致),绝不把后续 system 静默降级为 user 消息。
+        List<String> systemParts = new ArrayList<>();
         for (var m : request.messages()) {
             String role = m.role() == null ? "user" : m.role().trim().toLowerCase();
             String content = m.content() == null ? "" : m.content();
-            if ("system".equals(role) && system == null) {
-                system = content;
+            if ("system".equals(role)) {
+                if (!content.isBlank()) {
+                    systemParts.add(content);
+                }
                 continue;
             }
             Map<String, String> mm = new LinkedHashMap<>();
@@ -84,6 +88,7 @@ public class AnthropicMessagesProtocolAdapter implements ProtocolAdapter {
             mm.put("content", content);
             messages.add(mm);
         }
+        String system = systemParts.isEmpty() ? null : String.join("\n\n", systemParts);
         ModelOutputContract contract = request.outputContract();
         boolean jsonEnvelope = contract instanceof ModelOutputContract.JsonObject;
         if (jsonEnvelope && system != null && !system.isBlank()) {

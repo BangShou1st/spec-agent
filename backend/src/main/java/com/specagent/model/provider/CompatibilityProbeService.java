@@ -70,32 +70,23 @@ public class CompatibilityProbeService {
                 && format != CustomApiFormat.ANTHROPIC_MESSAGES) {
             throw ModelProviderException.invalidResponse("custom-native-probe", "Unsupported native tool protocol");
         }
+        // 资格验证必须走各协议的生产原生传输(冻结绑定校验、请求形状与安全诊断
+        // 与 GA 执行完全相同),绝不使用旁路实现。
         new NativeToolRoundTripVerifier().verify(request -> {
-            if (format == CustomApiFormat.RESPONSES) {
-                UUID providerId = UUID.randomUUID();
-                var runtimeSettings = new com.specagent.model.contract.RuntimeCustomSettings(
-                        format.name(), baseUrl, apiKey, model, 1, providerId, true);
-                var responsesTransport = new ResponsesGaNativeTransport(() -> runtimeSettings, mapper, client);
-                return responsesTransport.complete(new com.specagent.model.contract.GaModelTarget(
-                        "CUSTOM", model, runtimeSettings.bindingRevision(), apiKey), request,
-                        ProviderHttpSupport.SETTINGS_TIMEOUT, () -> true);
-            }
-            if (format == CustomApiFormat.ANTHROPIC_MESSAGES) {
-                // 双轮资格验证必须走生产 Anthropic 传输与适配器,绝不使用旁路实现。
-                UUID providerId = UUID.randomUUID();
-                var runtimeSettings = new com.specagent.model.contract.RuntimeCustomSettings(
-                        format.name(), baseUrl, apiKey, model, 1, providerId, true);
-                var anthropicTransport = new AnthropicGaNativeTransport(() -> runtimeSettings, mapper, client);
-                return anthropicTransport.complete(new com.specagent.model.contract.GaModelTarget(
-                        "CUSTOM", model, runtimeSettings.bindingRevision(), apiKey), request,
-                        ProviderHttpSupport.SETTINGS_TIMEOUT, () -> true);
-            }
-            var adapter = new GaChatCompletionsAdapter();
-            String endpoint = ProviderUrlSecurity.canonicalEndpoint(baseUrl, format);
-            var headers = registry.require(format).authHeaders(apiKey);
-            var result = ProviderHttpSupport.postJson(client, mapper, endpoint, headers,
-                    adapter.requestBody(request, model), ProviderHttpSupport.SETTINGS_TIMEOUT, "custom-native-probe");
-            return adapter.parse(result.json().toString());
+            UUID providerId = UUID.randomUUID();
+            var runtimeSettings = new com.specagent.model.contract.RuntimeCustomSettings(
+                    format.name(), baseUrl, apiKey, model, 1, providerId, true);
+            var target = new com.specagent.model.contract.GaModelTarget(
+                    "CUSTOM", model, runtimeSettings.bindingRevision(), apiKey);
+            var budget = ProviderHttpSupport.SETTINGS_TIMEOUT;
+            return switch (format) {
+                case RESPONSES -> new ResponsesGaNativeTransport(() -> runtimeSettings, mapper, client)
+                        .complete(target, request, budget, () -> true);
+                case ANTHROPIC_MESSAGES -> new AnthropicGaNativeTransport(() -> runtimeSettings, mapper, client)
+                        .complete(target, request, budget, () -> true);
+                case CHAT_COMPLETIONS -> new ChatCompletionsGaTextTransport(() -> runtimeSettings, mapper, client)
+                        .complete(target, request, budget, () -> true);
+            };
         });
     }
 
