@@ -50,9 +50,12 @@ MS-C2（2026-10-24）起，Custom RESPONSES 拥有独立 GA 传输
 （`ResponsesGaNativeTransport` + `GaResponsesAdapter`）：请求使用 Responses
 原生 `input` / `tools` / `tool_choice` / `max_output_tokens` 并显式
 `store:false`，不使用 `previous_response_id`，也不复用 Chat Completions
-消息形状。工具往返通过 `function_call.call_id` 与
-`function_call_output.call_id` 精确关联，参数经严格 JSON 解析、对象形状
-检查、重复 call_id/非法工具名/未完成状态检查后才成为 GA 通用 ToolCall。
+消息形状。历史工具调用展开为独立 `type=function_call` input item，工具
+结果为独立 `type=function_call_output` item，二者通过原始
+`function_call.call_id` 精确关联；assistant 消息绝不内嵌 `tool_calls`。
+参数经严格 JSON 解析、对象形状检查、重复 call_id/非法工具名/未完成状态
+检查后才成为 GA 通用 ToolCall。确定性 Fake Provider 对入站请求执行同一
+协议校验，错误历史形状直接 HTTP 400，无法取得资格。
 宿主采用无状态完整历史重放；本轮未引入 Responses 专用 provider 私有
 reasoning 续接状态——需要这类状态的模型形态会在资格验证中失败关闭，
 不会获得 NATIVE_TOOLS=VERIFIED。路由按冻结连接的 API Format 分发，

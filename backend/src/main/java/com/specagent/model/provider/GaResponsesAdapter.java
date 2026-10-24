@@ -31,7 +31,21 @@ public final class GaResponsesAdapter {
         for (GaModelContract.Message message : request.messages()) {
             switch (message.role()) {
                 case "system" -> input.add(instruction(message.content()));
-                case "user", "assistant" -> input.add(roleMessage(message));
+                case "user" -> input.add(roleMessage(message));
+                case "assistant" -> {
+                    if (!message.toolCalls().isEmpty()) {
+                        // Responses history carries each call as an independent
+                        // input item; an assistant message never embeds
+                        // chat-completions style tool_calls.
+                        if (message.content() != null && !message.content().isEmpty()) {
+                            throw new IllegalArgumentException(
+                                    "Assistant tool-call history cannot carry text content");
+                        }
+                        message.toolCalls().forEach(call -> input.add(functionCallItem(call)));
+                    } else {
+                        input.add(roleMessage(message));
+                    }
+                }
                 case "tool" -> input.add(functionCallOutput(message));
                 default -> throw new IllegalArgumentException("Unsupported GA message role");
             }
@@ -147,15 +161,15 @@ public final class GaResponsesAdapter {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("role", message.role());
         item.put("content", message.content() == null ? "" : message.content());
-        if (!message.toolCalls().isEmpty()) {
-            item.put("tool_calls", message.toolCalls().stream().map(call -> {
-                Map<String, Object> nativeCall = new LinkedHashMap<>();
-                nativeCall.put("call_id", call.id());
-                nativeCall.put("name", call.name());
-                nativeCall.put("arguments", argumentsJson(call.arguments()));
-                return nativeCall;
-            }).toList());
-        }
+        return item;
+    }
+
+    private static Map<String, Object> functionCallItem(GaModelContract.ToolCall call) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("type", "function_call");
+        item.put("call_id", call.id());
+        item.put("name", call.name());
+        item.put("arguments", argumentsJson(call.arguments()));
         return item;
     }
 

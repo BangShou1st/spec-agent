@@ -165,6 +165,12 @@ class GaResponsesNativeToolEndToEndTest {
         assertEquals("responses final answer", second.content());
         assertEquals(2, provider.requests.size());
         var followUp = provider.requests.get(1);
+        var historyCall = followUp.path("input").get(1);
+        assertEquals("function_call", historyCall.path("type").asText());
+        assertEquals(call.id(), historyCall.path("call_id").asText());
+        assertEquals(descriptor.name(), historyCall.path("name").asText());
+        assertFalse(historyCall.has("role"));
+        assertFalse(historyCall.has("tool_calls"));
         var outputItem = followUp.path("input").get(2);
         assertEquals("function_call_output", outputItem.path("type").asText());
         assertEquals(call.id(), outputItem.path("call_id").asText());

@@ -45,11 +45,12 @@ class ModelProtocolHarnessTest {
             assertThat(first.path("tools").get(0).path("name").asText()).isEqualTo("probe_echo");
             assertThat(first.path("tool_choice").asText()).isEqualTo("required");
             var second=fake.requests.get(1);
-            var assistant=second.path("input").get(1);
-            assertThat(assistant.path("tool_calls").get(0).path("call_id").asText()).isEqualTo("call_1");
+            var historyCall=second.path("input").get(1);
+            assertThat(historyCall.path("type").asText()).isEqualTo("function_call");
+            assertThat(historyCall.path("call_id").asText()).isEqualTo("call_1_0");
             var output=second.path("input").get(2);
             assertThat(output.path("type").asText()).isEqualTo("function_call_output");
-            assertThat(output.path("call_id").asText()).isEqualTo("call_1");
+            assertThat(output.path("call_id").asText()).isEqualTo("call_1_0");
         }
     }
     @Test void responsesWrongToolFailsBeforeFollowup() throws Exception {
