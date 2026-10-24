@@ -90,7 +90,7 @@ public class ModelProvidersService {
                 apiFormat,
                 baseUrl,
                 apiKey,
-                suffix(apiKey),
+                ApiKeyMasking.suffix(apiKey),
                 model,
                 "MANUAL".equals(patch.modelSource()) ? "MANUAL" : "DISCOVERED",
                 1L,
@@ -135,20 +135,21 @@ public class ModelProvidersService {
             maskedSuffix = current.maskedSuffix();
         } else {
             apiKey = blankToNull(patch.apiKey());
-            maskedSuffix = suffix(apiKey);
+            maskedSuffix = ApiKeyMasking.suffix(apiKey);
         }
         String modelSource = patch.modelSource() == null
                 ? current.modelSource()
                 : ("MANUAL".equals(patch.modelSource()) ? "MANUAL" : "DISCOVERED");
 
-        boolean identityChanged = !equalsNullable(current.apiFormat(), apiFormat)
-                || !equalsNullable(current.baseUrl(), baseUrl)
-                || !equalsNullable(current.apiKey(), apiKey)
-                || !equalsNullable(current.selectedModel(), model);
+        // identityChanged 已包含 selectedModel 的比较;changed 只需再叠加
+        // 不影响资格的展示字段(displayName/modelSource)。
+        boolean identityChanged = !ApiKeyMasking.equalsNullable(current.apiFormat(), apiFormat)
+                || !ApiKeyMasking.equalsNullable(current.baseUrl(), baseUrl)
+                || !ApiKeyMasking.equalsNullable(current.apiKey(), apiKey)
+                || !ApiKeyMasking.equalsNullable(current.selectedModel(), model);
         boolean changed = identityChanged
-                || !equalsNullable(current.selectedModel(), model)
-                || !equalsNullable(current.displayName(), displayName)
-                || !equalsNullable(current.modelSource(), modelSource);
+                || !ApiKeyMasking.equalsNullable(current.displayName(), displayName)
+                || !ApiKeyMasking.equalsNullable(current.modelSource(), modelSource);
         if (!changed) {
             return current;
         }
@@ -279,23 +280,5 @@ public class ModelProvidersService {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private static boolean equalsNullable(String a, String b) {
-        if (a == null && b == null) {
-            return true;
-        }
-        if (a == null || b == null) {
-            return false;
-        }
-        return a.equals(b);
-    }
-
-    static String suffix(String key) {
-        if (key == null || key.isEmpty()) {
-            return null;
-        }
-        // 取末 4 位作为脱敏后缀;密钥本身不外泄
-        return key.length() <= 4 ? null : key.substring(key.length() - 4);
     }
 }

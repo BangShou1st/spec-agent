@@ -300,6 +300,25 @@ class ArchitectureTests {
         rule.check(CLASSES);
     }
 
+    /**
+     * GA 编排入口(assistant.api)同样只能依赖 model 契约层,不得触碰
+     * provider 实现包:Broker 的权威响应校验属于 GA Contract 不变量,
+     * 由契约层的 {@code GaResponseContractValidator} 承载,协议专属的
+     * 解析/请求构建仍留在 provider 适配器内。assistant.runtime 的
+     * 冻结目标解析仍需协议枚举与目录,不在本规则范围内。
+     */
+    @Test
+    void assistantApiShouldNotDependOnProviderImplementationPackages() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.assistant.api..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.model.provider..")
+            .because("GA broker orchestration may depend on model contract types, "
+                    + "not provider implementation details");
+
+        rule.check(CLASSES);
+    }
+
     // ------------------------------------------------------- HTTP 边界规则
     // 控制器现已内聚在各业务模块中;规则改为按类型角色
     // (Controller / Request / Response / View / Dto 命名)判定,

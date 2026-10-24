@@ -197,7 +197,9 @@ public class GaNativeModelBroker {
                     ? nativeGateway.complete(target, binding.threadId(), internalRequest, remaining, active)
                     : nativeGateway.stream(target, binding.threadId(), internalRequest, remaining, active,
                         text -> active.getAsBoolean() && listener.onFragment(text));
-            new com.specagent.model.provider.GaChatCompletionsAdapter().validateResponse(request,response);
+            // Broker 权威复核:与各 provider adapter 的传输层校验共用同一份契约层
+            // 纯逻辑实现(两个信任边界各执行一次,语义完全一致)。
+            com.specagent.model.contract.GaResponseContractValidator.validate(request,response);
             if(response.toolCalls().size()>1) {
                 var approved=executions.catalog(scope).descriptors().stream()
                     .filter(d->d.readOnly() && d.sideEffectClass().equals("NONE") && !java.util.Set.of("ui.navigate","user-input.request").contains(d.capabilityId()))

@@ -168,25 +168,12 @@ public final class GaAnthropicMessagesAdapter {
     /**
      * 响应与请求的一致性校验:tool_choice 语义、工具名在冻结 Catalog 内、
      * 以及绝不重放历史已出现过的 tool_use id。必须在释放可执行 ToolCall 之前完成。
+     * 不变量与各协议一致,统一由契约层的
+     * {@link com.specagent.model.contract.GaResponseContractValidator} 承载。
      */
     public GaModelContract.Response validateResponse(GaModelContract.Request request,
             GaModelContract.Response response) {
-        if (("none".equals(request.toolChoice()) && !response.toolCalls().isEmpty())
-                || ("required".equals(request.toolChoice()) && response.toolCalls().isEmpty())) {
-            throw new IllegalArgumentException("GA native response violates tool choice");
-        }
-        Set<String> names = new HashSet<>();
-        request.tools().forEach(tool -> names.add(tool.name()));
-        Set<String> priorIds = new HashSet<>();
-        request.messages().stream()
-                .flatMap(message -> message.toolCalls().stream())
-                .forEach(call -> priorIds.add(call.id()));
-        for (GaModelContract.ToolCall call : response.toolCalls()) {
-            if (!names.contains(call.name()) || priorIds.contains(call.id())) {
-                throw new IllegalArgumentException("GA native tool identity not authorized");
-            }
-        }
-        return response;
+        return com.specagent.model.contract.GaResponseContractValidator.validate(request, response);
     }
 
     private static void flushResults(List<Object> messages, List<Map<String, Object>> pendingResults) {

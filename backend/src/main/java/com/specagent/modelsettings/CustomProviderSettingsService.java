@@ -182,10 +182,10 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         // 配置内容与已存完全一致时直接返回当前状态,不递增修订号(避免无谓地使验证失效)
         if (existing != null && existing.apiFormat().equals(format.name())
                 && existing.baseUrl().equals(normalized)
-                && equalsNullable(existing.apiKey(), resolvedKey)
+                && ApiKeyMasking.equalsNullable(existing.apiKey(), resolvedKey)
                 && existing.selectedModel().equals(model)
                 && modelSource.equals(existing.modelSource() == null ? "DISCOVERED" : existing.modelSource())
-                && equalsNullable(existing.displayName(), displayName)) {
+                && ApiKeyMasking.equalsNullable(existing.displayName(), displayName)) {
             return status();
         }
         long nextRevision = existing == null ? 1 : existing.configRevision() + 1;
@@ -315,16 +315,6 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         }
     }
 
-    private static boolean equalsNullable(String a, String b) {
-        if (a == null && b == null) {
-            return true;
-        }
-        if (a == null || b == null) {
-            return false;
-        }
-        return a.equals(b);
-    }
-
     /** 标签兜底:历史数据可能缺显示名称,这里保证 UI 契约始终有值。 */
     private static String normalizeDisplayName(String raw) {
         if (raw == null || raw.isBlank()) {
@@ -333,12 +323,9 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         return raw.trim();
     }
 
-    /** 取密钥末 4 位作为脱敏后缀;密钥过短时返回 null,短密钥本身绝不外泄。 */
+    /** 取密钥末 4 位作为脱敏后缀;统一语义见 {@link ApiKeyMasking}。 */
     static String suffix(String key) {
-        if (key == null || key.length() <= 4) {
-            return null;
-        }
-        return key.substring(key.length() - 4);
+        return ApiKeyMasking.suffix(key);
     }
 
     static String mask(String suffix) {

@@ -70,22 +70,7 @@ public final class GaResponsesAdapter {
 
     public GaModelContract.Response validateResponse(GaModelContract.Request request,
             GaModelContract.Response response) {
-        if (("none".equals(request.toolChoice()) && !response.toolCalls().isEmpty())
-                || ("required".equals(request.toolChoice()) && response.toolCalls().isEmpty())) {
-            throw new IllegalArgumentException("GA native response violates tool choice");
-        }
-        Set<String> names = new HashSet<>();
-        request.tools().forEach(tool -> names.add(tool.name()));
-        Set<String> priorIds = new HashSet<>();
-        request.messages().stream()
-                .flatMap(message -> message.toolCalls().stream())
-                .forEach(call -> priorIds.add(call.id()));
-        for (GaModelContract.ToolCall call : response.toolCalls()) {
-            if (!names.contains(call.name()) || priorIds.contains(call.id())) {
-                throw new IllegalArgumentException("GA native tool identity not authorized");
-            }
-        }
-        return response;
+        return com.specagent.model.contract.GaResponseContractValidator.validate(request, response);
     }
 
     /** Parses one non-stream Responses object into the provider-neutral GA contract. */

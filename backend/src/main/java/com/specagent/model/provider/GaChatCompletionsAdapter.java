@@ -69,17 +69,7 @@ public final class GaChatCompletionsAdapter {
     }
 
     public GaModelContract.Response validateResponse(GaModelContract.Request request, GaModelContract.Response response) {
-        if (("none".equals(request.toolChoice()) && !response.toolCalls().isEmpty())
-                || ("required".equals(request.toolChoice()) && response.toolCalls().isEmpty()))
-            throw new IllegalArgumentException("GA native response violates tool choice");
-        var names = request.tools().stream().map(GaModelContract.Tool::name).collect(java.util.stream.Collectors.toSet());
-        var priorIds = request.messages().stream().flatMap(message -> message.toolCalls().stream())
-                .map(GaModelContract.ToolCall::id).collect(java.util.stream.Collectors.toSet());
-        for (var call : response.toolCalls()) {
-            if (!names.contains(call.name()) || priorIds.contains(call.id()))
-                throw new IllegalArgumentException("GA native tool identity not authorized");
-        }
-        return response;
+        return com.specagent.model.contract.GaResponseContractValidator.validate(request, response);
     }
 
     public GaModelContract.Response parse(String json) {
