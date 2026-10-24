@@ -67,8 +67,23 @@ authority: Historical Reference Only
 
 ## 8. Git 与远端 CI
 
-- 提交:见 manifest(PENDING 最终 SHA)
-- Actions: PENDING
+- 代码提交:`00db6448208e21e24931e718c1a08e9b479d0525`
+- Commit URL: https://github.com/BangShou1st/spec-agent/commit/00db6448208e21e24931e718c1a08e9b479d0525
+- Actions Run: https://github.com/BangShou1st/spec-agent/actions/runs/40073292915 (conclusion: success)
+- Job 逐项状态(10/10 全绿):
+
+| Job | 状态 |
+| --- | --- |
+| validation-mode | success |
+| contracts-static | success |
+| backend-independent | success |
+| backend(testOffline + test + testDatabaseIntegration) | success |
+| eval-baseline(evalBFast + Memory/RAG gate) | success |
+| brain(pytest) | success |
+| cross-language(testCrossLanguage) | success |
+| frontend(typecheck + unit + build) | success |
+| e2e(标准 E2E) | success |
+| validation-summary | success |
 
 ## 9. 范围外(本轮明确不做)
 
