@@ -295,4 +295,39 @@ class ModelConnectionsIntegrationTest {
             Mockito.verifyNoInteractions(legacyCustom,customGateway);
         }
     }
+
+    @Test void anthropicConnectionQualifiesChatStructuredAndNativeToolsThroughTheEnvelope() throws Exception {
+        try(var fake=new com.specagent.support.FakeAnthropicMessagesProvider();
+                var actor=ActorContextHolder.bind(ActorContext.oidc(user,org))) {
+            fake.toolShape = com.specagent.support.FakeAnthropicMessagesProvider.ToolShape.SINGLE;
+            var record=connections.create(new ModelProvidersService.Patch(null,"Anthropic fixture",
+                    "ANTHROPIC_MESSAGES",fake.baseUrl(),"fixture-anthropic-key",
+                    "claude-fixture","MANUAL"));
+            record=connections.validate(record.id());
+            assertThat(record.validated()).isTrue();
+            // 三项能力都经真实生产适配器验证:CHAT 文本、STRUCTUREED Envelope 桥接、
+            // NATIVE_TOOLS 生产传输双轮(probe_echo,不触及业务工具)。
+            var status=qualifications.status(record);
+            assertThat(status).containsEntry("CHAT","VERIFIED")
+                    .containsEntry("STRUCTURED","VERIFIED")
+                    .containsEntry("NATIVE_TOOLS","VERIFIED");
+            // Envelope 桥接发出的是官方 output_config.format,而不是伪造的 response_format。
+            assertThat(fake.requests).isNotEmpty();
+            assertThat(fake.rejections).isEmpty();
+            // 激活门禁要求当前修订 STRUCTURED=VERIFIED;Anthropic 现在满足。
+            connections.activate(record);
+            var snapshot=(RuntimeCustomSettings)targets.activeTarget().orElseThrow().runtimeSettings();
+            assertThat(snapshot.providerId()).isEqualTo(record.id());
+            assertThat(snapshot.nativeToolsVerified()).isTrue();
+            // GA 目标解析:UUID 连接 + NATIVE_TOOLS VERIFIED 升级为原生模式。
+            var resolved=(GaExecutionModelTargetResolver.Ready)ga.resolveActive();
+            assertThat(resolved.mode()).isEqualTo(GaExecutionMode.NATIVE_TOOLS);
+            assertThat(resolved.target().settingsRevision()).isEqualTo(snapshot.bindingRevision());
+            // 原生传输对冻结目标可用,身份头是 Anthropic 原生形状。
+            new com.specagent.model.provider.AnthropicGaNativeTransport(custom, new ObjectMapper())
+                    .complete(resolved.target(), chat(), Duration.ofSeconds(30), () -> true);
+            assertThat(fake.apiKeys).containsOnly("fixture-anthropic-key");
+            assertThat(fake.versions).containsOnly("2023-06-01");
+        }
+    }
 }

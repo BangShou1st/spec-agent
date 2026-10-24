@@ -37,12 +37,11 @@ public class ModelConnectionCapabilities {
         params(row, true);
         CustomApiFormat format = CustomApiFormat.fromCode(row.apiFormat());
         check(row, "CHAT", () -> probe.probeChat(format, row.baseUrl(), row.apiKey(), row.selectedModel()));
-        if (format == CustomApiFormat.ANTHROPIC_MESSAGES) {
-            record(row, "STRUCTURED", "UNSUPPORTED");
-        } else {
-            check(row, "STRUCTURED", () -> probe.probeCustom(format, row.baseUrl(), row.apiKey(), row.selectedModel()));
-        }
-        if (format == CustomApiFormat.CHAT_COMPLETIONS || format == CustomApiFormat.RESPONSES) {
+        // MS-C3:Anthropic STRUCTURED 通过宿主 JSON Envelope 桥接验证,与 Chat/Responses
+        // 共用同一份权威 FINAL 决策语义;NATIVE_TOOLS 由生产 Anthropic 传输双轮验证。
+        check(row, "STRUCTURED", () -> probe.probeCustom(format, row.baseUrl(), row.apiKey(), row.selectedModel()));
+        if (format == CustomApiFormat.CHAT_COMPLETIONS || format == CustomApiFormat.RESPONSES
+                || format == CustomApiFormat.ANTHROPIC_MESSAGES) {
             check(row, "NATIVE_TOOLS", () -> probe.probeNativeTools(format,
                     row.baseUrl(), row.apiKey(), row.selectedModel()));
         } else record(row, "NATIVE_TOOLS", "UNSUPPORTED");

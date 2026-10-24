@@ -34,6 +34,16 @@ public interface ProtocolAdapter {
     ModelInferenceResponse parseNonStreamResponse(JsonNode root, String context);
 
     /**
+     * 契约感知的非流式响应提取。默认实现与 {@link #parseNonStreamResponse(JsonNode, String)}
+     * 等价(纯文本语义);需要按输出契约做宿主侧包装/解包的适配器(例如 Anthropic 的
+     * JSON Envelope 桥接)覆盖本方法。解析失败必须按失败关闭处理,绝不静默降级为文本。
+     */
+    default ModelInferenceResponse parseNonStreamResponse(JsonNode root, String context,
+            com.specagent.model.contract.ModelOutputContract contract) {
+        return parseNonStreamResponse(root, context);
+    }
+
+    /**
      * 把 SSE {@code data:} 载荷转换为可见文本。事件不携带助手展示文本时
      * (reasoning、usage、生命周期事件)返回 null。遇到协议错误事件时抛出
      * {@link ModelProviderException}。

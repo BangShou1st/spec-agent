@@ -41,6 +41,31 @@ buffered transport performs no retries or provider switches. Unsupported
 Responses shapes (non-completed status, duplicate or missing `call_id`,
 unauthorized tool names, malformed arguments, reasoning-only state that cannot
 be safely replayed) fail closed before Python can execute any tool.
+
+MS-C3 (2026-10-24): Custom ANTHROPIC_MESSAGES is the third complete custom
+protocol. Project structured output uses a versioned host-side JSON Envelope
+bridge (`anthropic-json-envelope.v1`): `ModelOutputContract.JsonObject` maps to
+the official GA field `output_config.format` (`type=json_schema`) with a fixed
+single-`json`-string envelope schema plus a system-level serialization
+instruction; responses are unwrapped under strict validation (completed stop
+reasons only, exactly one `json` string field, strict duplicate-key/trailing-
+token/Unicode/size checks, inner value must be a JSON object) and only the
+normalized inner object is returned as inference content — the envelope itself
+is never treated as a decision output, and malformed shapes fail closed without
+text/protocol/model fallback. GA uses `AnthropicGaNativeTransport` +
+`GaAnthropicMessagesAdapter` with native `tool_use`/`tool_result` (ids
+preserved verbatim, multiple results merged into one following user message,
+`tool_choice` mapped to `none`/`auto`/`any` with `disable_parallel_tool_use`).
+The supported mixed shape is text-then-tool_use only; text after tool_use,
+interleaved blocks and `thinking`/`redacted_thinking` accompanying executable
+tool calls are rejected at parse time, before any ToolCall is released.
+Thinking private material never reaches GA responses, ledgers, the Python wire
+or checkpoints, and no Anthropic continuation sidecar exists in this scope.
+STRUCTURED and NATIVE_TOOLS qualifications follow the same
+`model_connection_capabilities` system (UUID-scoped; the legacy single
+registration may TEXT_CHAT but never inherits native qualification). Streaming
+JSON bridging and extended-thinking continuation are explicitly out of scope.
+See [MS-C3 evidence](acceptance-evidence/ms-c3-anthropic-20261024/summary.md).
 ## 1. Purpose
 
 Model Gateway is the only boundary through which Spec Agent talks to external model providers.

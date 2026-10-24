@@ -218,9 +218,10 @@ public class GaExecutionModelTargetResolver {
     }
 
     /**
-     * Custom 支持 Chat Completions 与 Responses 两种已实现传输;Anthropic Messages 在
-     * 准备阶段以 {@code GA_MODEL_PROTOCOL_UNSUPPORTED} 明确失败。原生工具模式完全由
-     * 当前 UUID/修订号下的 NATIVE_TOOLS=VERIFIED 能力记录决定。
+     * Custom 支持 Chat Completions、Responses 与 Anthropic Messages 三种已实现传输。
+     * 任何已验证配置都允许 {@link GaExecutionMode#TEXT_CHAT};原生工具模式完全由
+     * 当前 UUID/修订号下的 NATIVE_TOOLS=VERIFIED 能力记录决定——legacy 单例绝不
+     * 继承 Anthropic 原生资格。
      */
     private Resolution resolveCustom(boolean applyPreparationGate) {
         return resolveCustom(applyPreparationGate,null);
@@ -231,10 +232,6 @@ public class GaExecutionModelTargetResolver {
             try {
                 var settings = customSettings.requireRuntimeSettings(selectedId);
                 CustomApiFormat format = CustomApiFormat.fromCode(settings.apiFormat());
-                if (format == CustomApiFormat.ANTHROPIC_MESSAGES) {
-                    return unavailable(GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED,
-                            "GA does not support the custom provider API format");
-                }
                 // Legacy URL/model registrations do not grant qualifications to
                 // another UUID connection, credential or configuration revision.
                 return new Ready(new GaModelTarget(ModelProvider.CUSTOM.name(), settings.selectedModel(),
@@ -259,18 +256,14 @@ public class GaExecutionModelTargetResolver {
                 return unavailable(GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED,
                         "The custom provider API format is not supported by GA");
             }
-            if (format == CustomApiFormat.ANTHROPIC_MESSAGES) {
-                return unavailable(GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED,
-                        "GA does not support the custom provider API format");
-            }
             if (!customSettings.activatable()) {
                 return unavailable(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED,
                         "Custom configuration is not validated for the current revision");
             }
         }
         // Legacy URL/model registrations qualified only the Chat Completions
-        // transport; a legacy RESPONSES connection can chat but never carries
-        // native tools (the Responses transport fails closed without UUID proof).
+        // transport; a legacy RESPONSES/ANTHROPIC connection can chat but never
+        // carries native tools (the native transports fail closed without UUID proof).
         boolean legacyNativeTools = CustomApiFormat.fromCode(stored.apiFormat()) == CustomApiFormat.CHAT_COMPLETIONS
                 && qualification.customQualified(stored.baseUrl(), stored.selectedModel());
         return new Ready(new GaModelTarget(ModelProvider.CUSTOM.name(), stored.selectedModel(),

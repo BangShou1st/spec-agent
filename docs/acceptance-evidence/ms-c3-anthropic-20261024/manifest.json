@@ -1,0 +1,108 @@
+{
+  "milestone": "MS-C3",
+  "title": "Custom Anthropic Messages structured output and native tool protocol",
+  "date": "2026-10-24",
+  "baseline": {
+    "commit": "e0185a9e57d669a091aea869db4c23d6b7dd1617",
+    "branch": "dev",
+    "priorVerdict": "MS_C2_CLOSED · CI_GREEN · LIVE_NOT_RUN"
+  },
+  "verdict": "MS_C3_PASS",
+  "liveNetwork": "LIVE_NOT_RUN",
+  "protocolBaseline": {
+    "structuredOutputs": "output_config.format = {type: json_schema, schema} (GA field; output_format deprecated; no beta header); model returns the JSON in the text content block; refusal via stop_reason=refusal; verified against platform.claude.com docs 2026-10-24",
+    "toolUse": "tools[{name,description,input_schema}]; tool_choice {type: none|auto|any|tool} (forced tool use not supported by every model); tool_use assistant content block with id; tool_result user content block with tool_use_id, must immediately follow the assistant tool_use message; multiple results in one user message, tool_result blocks first; stop_reason enum: end_turn, tool_use, max_tokens, stop_sequence, pause_turn, refusal"
+  },
+  "envelope": {
+    "version": "anthropic-json-envelope.v1",
+    "schema": {
+      "type": "object",
+      "properties": { "json": { "type": "string" } },
+      "required": ["json"],
+      "additionalProperties": false
+    },
+    "innerBoundChars": 131072,
+    "outerBoundChars": 262144,
+    "acceptedStopReasons": ["end_turn", "stop_sequence"]
+  },
+  "codeChanges": {
+    "newClasses": [
+      "com.specagent.model.provider.GaAnthropicMessagesAdapter",
+      "com.specagent.model.provider.AnthropicGaNativeTransport"
+    ],
+    "modifiedClasses": [
+      "com.specagent.model.provider.AnthropicMessagesProtocolAdapter (JSON envelope bridge, contract-aware parse, streaming fail-closed for JsonObject)",
+      "com.specagent.model.provider.ProtocolAdapter (contract-aware parseNonStreamResponse default method)",
+      "com.specagent.model.provider.CustomInferenceGateway (contract-aware parse)",
+      "com.specagent.model.provider.RoutingGaNativeInferenceGateway (ANTHROPIC_MESSAGES transport routing, 6-arg constructor)",
+      "com.specagent.model.provider.CompatibilityProbeService (probeCustom bridge, ANTHROPIC native probe via production transport)",
+      "com.specagent.modelsettings.ModelConnectionCapabilities (STRUCTURED/NATIVE_TOOLS now probe Anthropic)",
+      "com.specagent.modelsettings.CustomProviderSettingsService (legacy validate/activate gates opened)",
+      "com.specagent.modelsettings.ModelProvidersService (V2 activation gate opened; STRUCTURED=VERIFIED gate unchanged)",
+      "com.specagent.assistant.runtime.GaExecutionModelTargetResolver (Anthropic UUID NATIVE_TOOLS via settings; legacy TEXT_CHAT only)",
+      "com.specagent.agent.broker.InternalModelInferenceController (sanitized warn logs for 503 branches; no behavior change)"
+    ],
+    "testFixtures": [
+      "com.specagent.support.FakeAnthropicMessagesProvider (strict inbound protocol assertions + response modes)"
+    ],
+    "migrations": "none (no schema changes required)"
+  },
+  "testEvidence": {
+    "offline": "testOffline all green incl. 3 newly audited classes (AnthropicMessagesProtocolAdapterTest 14, AnthropicFailClosedTest 7, AnthropicGaNativeTransportTest 11)",
+    "focusedDb": {
+      "GaAnthropicNativeToolEndToEndTest": "5/5 passed (two-round closed loop, mixed text+tool, tool-then-text pre-release rejection, thinking+tool pre-release rejection, idempotent replay)",
+      "AnthropicProjectJsonBridgeEndToEndTest": "4/4 passed (DECISION + STATE_UPDATE bridge, envelope violations fail closed with typed event, mid-run config drift fails closed)",
+      "ModelConnectionsIntegrationTest": "13/13 passed (new: Anthropic CHAT+STRUCTURED+NATIVE_TOOLS VERIFIED, activation, GA NATIVE_TOOLS resolution, native identity headers)"
+    },
+    "python": { "agentBrainPytest": "344 passed", "toolsContractsPytest": "239 passed" },
+    "crossLanguage": "testCrossLanguage BUILD SUCCESSFUL against broker-mode agent-brain on 127.0.0.1:8100",
+    "frontend": { "typecheck": "pass", "unit": "987 passed / 1 skipped (pre-existing vitest skip)", "build": "pass" },
+    "fullRegression": {
+      "test": "2654 completed / 0 failed / 41 skipped (pre-existing environment gates)",
+      "testDatabaseIntegration": "1005 completed / 0 failed / 41 skipped (pre-existing environment gates)",
+      "thirdRun": true,
+      "note": "first run had 2 environment-interference failures in retrieval API tests caused by the broker-mode brain still listening on :8100 during the suite; both passed after the listener was stopped, plus 1 assertion fixed in RevisionValidationTest"
+    }
+  },
+  "isolatedDatabase": {
+    "container": "spec-agent-model-v2-acceptance",
+    "database": "spec_agent_p3b_live_ms_c3 (purpose-built for MS-C3, dropped and recreated)",
+    "serverReportedEndpoint": "172.17.0.2/32:5432 (guard-verified)"
+  },
+  "checksAgainstPrompt": {
+    "projectBridge": [
+      "STATE_UPDATE object via bridge",
+      "DECISION object via bridge",
+      "outer envelope field missing/extra rejected",
+      "inner not object / malformed / duplicate keys / invalid unicode / oversized rejected",
+      "refusal / max_tokens / pause_turn / null stop rejected",
+      "no regex JSON extraction; no envelope-as-decision; no text/protocol/model fallback",
+      "streaming JSON bridge fails closed (non-streaming only)"
+    ],
+    "gaNativeTools": [
+      "tool_use id preserved verbatim (toolu_*), no new ids",
+      "tool_result merged into one following user message; blocks precede text",
+      "multi-tool: two read-only catalog tools, distinct ids, exact pairing, order preserved",
+      "tool_choice mapping none/auto/any + disable_parallel_tool_use",
+      "strict tool omitted deliberately; CapabilityRuntime remains the argument authority"
+    ],
+    "mixedTextAndTools": "text-then-tool_use supported across both rounds; tool_use-then-text and thinking+tool_use rejected at parse time before any ToolCall release, MODEL ledger not SUCCEEDED, no TOOL ledger, exactly one provider request",
+    "thinkingBoundary": "thinking/redacted_thinking never surfaced, never checkpointed, no Anthropic sidecar; executable+thinking fails closed round one",
+    "qualification": "(org, UUID, configRevision, capability) records; NATIVE_TOOLS verified by production transport two-round probe (probe_echo only, exactly two provider HTTP requests, no business tools); CHAT success alone never grants STRUCTURED/NATIVE_TOOLS; legacy Anthropic single registration TEXT_CHAT only, never inherits native qualification",
+    "strictFake": "rejects chat-completions tool_calls shape, responses function_call_output, orphan/duplicate/misordered tool_result, split results, illegal tools.input_schema, string tool_choice, missing max_tokens, response_format, deprecated output_format, forged anthropic-beta, wrong identity headers; HTTP 400 with reason",
+    "notDone": [
+      "SSE incremental streaming",
+      "extended thinking continuation",
+      "server tools / computer use",
+      "prompt caching",
+      "new agent loop",
+      "new python SDK",
+      "provider registry",
+      "settings UI rework",
+      "responses/gemini rework",
+      "other provider protocol upgrades",
+      "new flyway migrations"
+    ]
+  },
+  "workPreserved": "User WIP files (ModelSettingsIsolationIntegrationTest.java modification, SHARED_RAG_ACCEPTANCE_PRECHECK.json modification and all untracked acceptance-evidence directories) untouched."
+}

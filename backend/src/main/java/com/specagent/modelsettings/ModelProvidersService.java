@@ -231,11 +231,9 @@ public class ModelProvidersService {
         }
         if (record.preset() == ModelProvider.CUSTOM) {
             ProviderUrlSecurity.validateAndNormalizeBaseUrl(record.baseUrl());
-            CustomApiFormat format = CustomApiFormat.fromCode(record.apiFormat());
-            if (format == CustomApiFormat.ANTHROPIC_MESSAGES) {
-                throw ModelProviderException.notConfigured("custom",
-                        "Anthropic Messages is not activatable in V1");
-            }
+            // MS-C3:Anthropic Messages 经宿主 JSON Envelope 桥接承载项目 JSON_OBJECT
+            // 契约;激活门禁继续要求当前修订 STRUCTURED=VERIFIED(见下),不再因协议拒绝。
+            CustomApiFormat.fromCode(record.apiFormat());
             ProviderUrlSecurity.normalizeModelId(record.selectedModel());
         }
         if (!record.validated()) {

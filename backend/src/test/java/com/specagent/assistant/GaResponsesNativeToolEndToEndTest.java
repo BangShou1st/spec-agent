@@ -86,7 +86,9 @@ class GaResponsesNativeToolEndToEndTest {
                 org.mockito.Mockito.mock(com.specagent.model.provider.OpenCodeZenTransport.class),
                 org.mockito.Mockito.mock(com.specagent.model.provider.KiloGaNativeTransport.class),
                 org.mockito.Mockito.mock(com.specagent.model.provider.ChatCompletionsGaTextTransport.class),
-                responses, port);
+                responses,
+                org.mockito.Mockito.mock(com.specagent.model.provider.AnthropicGaNativeTransport.class),
+                port);
         var resolver = org.mockito.Mockito.mock(GaExecutionModelTargetResolver.class);
         org.mockito.Mockito.when(resolver.requireFrozen("CUSTOM", "responses-model", settings.bindingRevision()))
                 .thenReturn(new GaModelTarget("CUSTOM", "responses-model",

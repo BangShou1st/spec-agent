@@ -204,12 +204,50 @@ class GaExecutionModelTargetResolverTest {
     }
 
     @Test
-    void customNonChatCompletionsFormatIsProtocolUnsupported() {
+    void customAnthropicLegacyChatsAsTextAndNeverCarriesNativeTools() {
         hostSecret("secret");
         when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
-        when(customSettings.requireStoredOrNull()).thenReturn(custom("ANTHROPIC_MESSAGES", "some-model", 1));
+        when(customSettings.requireStoredOrNull()).thenReturn(custom("ANTHROPIC_MESSAGES", "claude-fixture", 1));
+        when(customSettings.activatable()).thenReturn(true);
 
-        // Anthropic 绝不能被默认为受支持的协议。
+        // Legacy Anthropic 单例可以普通聊天,但绝不继承任何原生工具资格。
+        var resolution = ready(resolver().resolveActive());
+        assertThat(resolution.target().provider()).isEqualTo("CUSTOM");
+        assertThat(resolution.target().model()).isEqualTo("claude-fixture");
+        assertThat(resolution.mode()).isEqualTo(GaExecutionMode.TEXT_CHAT);
+    }
+
+    @Test
+    void customAnthropicUuidUpgradesToNativeToolsOnlyWithVerifiedQualification() {
+        hostSecret("secret");
+        when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
+        when(providers.activeProviderId()).thenReturn(java.util.UUID.randomUUID());
+        when(customSettings.requireRuntimeSettings(org.mockito.ArgumentMatchers.any(java.util.UUID.class)))
+                .thenReturn(new com.specagent.model.contract.RuntimeCustomSettings(
+                        "ANTHROPIC_MESSAGES", "https://custom.example/v1", "custom-key", "claude-fixture",
+                        3, java.util.UUID.randomUUID(), true));
+
+        var resolution = ready(resolver().resolveActive());
+
+        assertThat(resolution.target().model()).isEqualTo("claude-fixture");
+        assertThat(resolution.target().settingsRevision()).startsWith("custom-provider:");
+        assertThat(resolution.mode()).isEqualTo(GaExecutionMode.NATIVE_TOOLS);
+
+        org.mockito.Mockito.reset(customSettings);
+        when(customSettings.requireRuntimeSettings(org.mockito.ArgumentMatchers.any(java.util.UUID.class)))
+                .thenReturn(new com.specagent.model.contract.RuntimeCustomSettings(
+                        "ANTHROPIC_MESSAGES", "https://custom.example/v1", "custom-key", "claude-fixture",
+                        4, java.util.UUID.randomUUID(), false));
+        assertThat(ready(resolver().resolveActive()).mode()).isEqualTo(GaExecutionMode.TEXT_CHAT);
+    }
+
+    @Test
+    void customUnknownFormatIsProtocolUnsupported() {
+        hostSecret("secret");
+        when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
+        when(customSettings.requireStoredOrNull()).thenReturn(custom("TOTALLY_UNKNOWN_FORMAT", "some-model", 1));
+
+        // 未知格式绝不能被默认为受支持的协议。
         assertThat(unavailableCode(resolver().resolveActive()))
                 .isEqualTo(GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED);
     }

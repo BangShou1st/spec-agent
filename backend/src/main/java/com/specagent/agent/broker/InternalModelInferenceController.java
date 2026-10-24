@@ -97,12 +97,17 @@ public class InternalModelInferenceController {
         WorkspaceRpcGrants.Invocation invocation;
         try {invocation=grants.admit(executionGrant,request.runId(),request.callType(),sha256(AgentContracts.write(request)));}
         catch(com.specagent.access.AccessDeniedException denied) {return refused(HttpStatus.FORBIDDEN);}
-        catch(RuntimeException unavailable) {return refused(HttpStatus.SERVICE_UNAVAILABLE);}
+        catch(RuntimeException unavailable) {
+            // 只记录异常类别(不含请求/响应载荷),否则 503 无法与提供商失败区分诊断。
+            LOG.warn("Internal inference broker admit failed: {}", unavailable.getClass().getName());
+            return refused(HttpStatus.SERVICE_UNAVAILABLE);
+        }
         try(var actor=com.specagent.access.ActorContextHolder.bind(invocation.actor())) {
             return completeAuthorized(request,invocation);
         } catch(com.specagent.access.AccessDeniedException denied) {
             invocation.unknown();return refused(HttpStatus.FORBIDDEN);
         } catch(RuntimeException failure) {
+            LOG.warn("Internal inference broker execution failed: {}", failure.getClass().getName());
             invocation.unknown();return refused(HttpStatus.SERVICE_UNAVAILABLE);
         }
     }

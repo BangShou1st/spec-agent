@@ -41,7 +41,7 @@ Java 唯一持有供应商凭据。Python 只编排推理与工具，不持有 K
 | --- | --- | --- | --- | --- |
 | Custom Chat Completions | 单独验证 | 可用 | 完整闭环验证后可用 | 当前 GA 为 buffered，不能宣称 SSE |
 | Custom Responses | 单独验证 | 可用 | 完整两轮资格验证后可用 | GA 为 buffered，不支持 SSE 增量 |
-| Anthropic Messages | 无项目 JSON_OBJECT 契约，不能激活项目 | 当前明确拒绝 | UNSUPPORTED | 不因枚举存在而宣称实现 |
+| Anthropic Messages | JSON_OBJECT 经宿主 Envelope 桥接（`output_config.format`），单独验证 | 可用（含 legacy 单例，仅 TEXT_CHAT） | 完整两轮资格验证后可用（仅 UUID 连接） | GA 为 buffered；项目 JSON 桥接仅非流式 |
 | Zen / Kilo | 保留共享库及冻结传输 | 保留既有路径 | 保留当前资格规则及安全门禁 | 沿用严格 SSE |
 
 Zen 的可信元数据、Kilo 的原有工具资格配置仍是内置路径的准入规则；本轮没有把它们伪装为新 UUID 资格。通用传输测试同时覆盖两者。Custom 新 UUID 使用持久化能力资格，旧精确 URL/model 登记只用于兼容旧单例运行，不能跨连接授权。
@@ -62,6 +62,36 @@ MS-C2（2026-10-24）起，Custom RESPONSES 拥有独立 GA 传输
 reasoning 续接状态——需要这类状态的模型形态会在资格验证中失败关闭，
 不会获得 NATIVE_TOOLS=VERIFIED。路由按冻结连接的 API Format 分发，
 Responses 错误绝不回退到 Chat Completions 或其他 Provider。
+
+MS-C3（2026-10-24）起，Custom ANTHROPIC_MESSAGES 成为第三种完整 Custom
+协议。项目结构化输出通过版本化宿主 JSON Envelope 桥接
+（`anthropic-json-envelope.v1`）：请求侧把 `ModelOutputContract.JsonObject`
+映射为官方 GA 字段 `output_config.format`（`type=json_schema`），schema 固定
+为单一 `json` 字符串字段的宿主内部包装，并在顶层 system 附加序列化指令；
+响应侧在合法完成终态（`end_turn`/`stop_sequence`）下严格解包——外层必须
+恰为单一 `json` 字符串字段（重复键、尾随 token、额外字段、非法 Unicode、
+超长一律拒绝），内层必须为语法合法的 JSON 对象，仅将内层对象的规范化
+序列化作为推理内容返回，外层 Envelope 绝不作为决策输出。桥接仅保证外层
+类型；内层 JSON 的业务合法性仍由 Python 决策契约与 Java 权威校验负责。
+`refusal` / `max_tokens` / `pause_turn` / 截断或 null stop_reason 均按失败
+关闭处理，绝不静默降级为文本。GA 侧新增
+`AnthropicGaNativeTransport` + `GaAnthropicMessagesAdapter`：原生
+`tool_use` / `tool_result` 双轮协议，`tool_use.id` 原样保留，多个工具结果
+合并为紧随其后的同一条 user 消息的多个 `tool_result` block；支持的混合
+形状为 text* → tool_use+，`tool_use` 之后出现 text、`thinking` /
+`redacted_thinking` 与可执行工具并存等无法保真续接的形态在解析阶段
+（释放任何可执行 ToolCall 之前）失败关闭；thinking 私有内容绝不进入 GA
+响应、账本、Python 线协议或 Checkpoint。`tool_choice` 映射为
+`none`/`auto`/`any`（强制工具并非所有模型支持，不支持时按失败处理而非
+降级为 auto），并设置 `disable_parallel_tool_use:true` 与其他传输的
+`parallel_tool_calls:false` 对齐；工具定义不发送 `strict:true`（冻结
+Catalog schema 不保证满足 strict 模式限制），参数合法性仍由 Java
+CapabilityRuntime 权威校验。STRUCTURED 与 NATIVE_TOOLS 资格对 Anthropic
+UUID 连接按同一 `model_connection_capabilities` 体系验证（NATIVE_TOOLS 由
+生产传输双轮验证）；legacy Anthropic 单例可 TEXT_CHAT 但绝不继承原生资格，
+切换 UUID/模型/修订号后资格不继承。流式 JSON 桥接与 extended thinking
+续接不在本轮范围：JSON_OBJECT 契约在 Anthropic 上仅非流式，含可执行工具
+的 thinking 响应第一轮即拒绝，不新增 Anthropic Continuation Sidecar 类型。
 
 ## 历史迁移与续接边界
 

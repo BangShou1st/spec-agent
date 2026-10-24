@@ -42,10 +42,8 @@ public class CompatibilityProbeService {
 
     public void probeCustom(CustomApiFormat format, String normalizedBaseUrl, String apiKey, String model) {
         String context = "custom-" + format.name().toLowerCase();
-        if (format == CustomApiFormat.ANTHROPIC_MESSAGES) {
-            throw ModelProviderException.providerRequestError(context,
-                    "Anthropic Messages cannot serve the required JSON_OBJECT contract in V1", null);
-        }
+        // MS-C3:ANTHROPIC_MESSAGES 通过宿主 JSON Envelope 桥接承载同一份
+        // FINAL 决策探测——与 Chat/Responses 共用完全相同的权威决策语义。
         String m = ProviderUrlSecurity.normalizeModelId(model);
         ProtocolAdapter adapter = registry.require(format);
         String endpoint = ProviderUrlSecurity.canonicalEndpoint(normalizedBaseUrl, format);
@@ -68,7 +66,8 @@ public class CompatibilityProbeService {
 
     /** A harmless local tool fixture; never invokes the application's tools. */
     public void probeNativeTools(CustomApiFormat format, String baseUrl, String apiKey, String model) {
-        if (format != CustomApiFormat.CHAT_COMPLETIONS && format != CustomApiFormat.RESPONSES) {
+        if (format != CustomApiFormat.CHAT_COMPLETIONS && format != CustomApiFormat.RESPONSES
+                && format != CustomApiFormat.ANTHROPIC_MESSAGES) {
             throw ModelProviderException.invalidResponse("custom-native-probe", "Unsupported native tool protocol");
         }
         new NativeToolRoundTripVerifier().verify(request -> {
@@ -78,6 +77,16 @@ public class CompatibilityProbeService {
                         format.name(), baseUrl, apiKey, model, 1, providerId, true);
                 var responsesTransport = new ResponsesGaNativeTransport(() -> runtimeSettings, mapper, client);
                 return responsesTransport.complete(new com.specagent.model.contract.GaModelTarget(
+                        "CUSTOM", model, runtimeSettings.bindingRevision(), apiKey), request,
+                        ProviderHttpSupport.SETTINGS_TIMEOUT, () -> true);
+            }
+            if (format == CustomApiFormat.ANTHROPIC_MESSAGES) {
+                // 双轮资格验证必须走生产 Anthropic 传输与适配器,绝不使用旁路实现。
+                UUID providerId = UUID.randomUUID();
+                var runtimeSettings = new com.specagent.model.contract.RuntimeCustomSettings(
+                        format.name(), baseUrl, apiKey, model, 1, providerId, true);
+                var anthropicTransport = new AnthropicGaNativeTransport(() -> runtimeSettings, mapper, client);
+                return anthropicTransport.complete(new com.specagent.model.contract.GaModelTarget(
                         "CUSTOM", model, runtimeSettings.bindingRevision(), apiKey), request,
                         ProviderHttpSupport.SETTINGS_TIMEOUT, () -> true);
             }
@@ -104,7 +113,9 @@ public class CompatibilityProbeService {
         ProviderHttpSupport.HttpResult result = ProviderHttpSupport.postJson(
                 client, mapper, endpoint, adapter.authHeaders(apiKey), body,
                 ProviderHttpSupport.INFERENCE_TIMEOUT, context);
-        var response = adapter.parseNonStreamResponse(result.json(), context);
+        // 契约感知解析:Anthropic 在此解包宿主 JSON Envelope 后才交给决策语义校验。
+        var response = adapter.parseNonStreamResponse(result.json(), context,
+                ModelOutputContract.jsonObject());
         if (response.content() == null || response.content().isBlank()) {
             throw ModelProviderException.invalidResponse(context, "Compatibility probe returned empty content");
         }

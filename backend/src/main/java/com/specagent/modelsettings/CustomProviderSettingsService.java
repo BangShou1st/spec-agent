@@ -194,10 +194,8 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
     public Status validate() {
         CustomProviderSettings s = requireStored();
         CustomApiFormat format = CustomApiFormat.fromCode(s.apiFormat());
-        if (format == CustomApiFormat.ANTHROPIC_MESSAGES) {
-            throw ModelProviderException.providerRequestError("custom",
-                    "Anthropic Messages cannot serve the required JSON_OBJECT contract in V1", null);
-        }
+        // MS-C3:Anthropic Messages 通过宿主 JSON Envelope 桥接承载 JSON_OBJECT 契约,
+        // legacy 单例同样允许验证/激活;原生工具资格仍然只属于 UUID 连接的能力记录。
         String normalized = ProviderUrlSecurity.validateAndNormalizeBaseUrl(s.baseUrl());
         String model = ProviderUrlSecurity.normalizeModelId(s.selectedModel());
         probe.probeCustom(format, normalized, s.apiKey(), model);
@@ -213,10 +211,6 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         }
         ProviderUrlSecurity.validateAndNormalizeBaseUrl(s.baseUrl());
         CustomApiFormat format = CustomApiFormat.fromCode(s.apiFormat());
-        if (format == CustomApiFormat.ANTHROPIC_MESSAGES) {
-            throw ModelProviderException.notConfigured("custom",
-                    "Anthropic Messages is not activatable in V1");
-        }
         ProviderUrlSecurity.normalizeModelId(s.selectedModel());
         if (s.validatedRevision() == null || s.validatedRevision() != s.configRevision()) {
             throw ModelProviderException.notConfigured("custom",

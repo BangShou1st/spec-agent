@@ -20,10 +20,10 @@ import org.springframework.stereotype.Component;
  *
  * <p>OpenCode Zen 与 Kilo Gateway 使用各自已验证的原生传输(同时承载
  * {@code TEXT_CHAT} 与 {@code NATIVE_TOOLS});其他 Provider 默认为纯文本，Custom 仅在
- * 精确地址与模型取得显式资格后允许原生工具，由 {@link ChatCompletionsGaTextTransport}
- * 复用既有协议适配器与安全传输层实现。任何未注册原生传输的形态一律以
- * {@link UnsupportedOperationException} 失败关闭——绝不退回文本模拟工具调用,也绝不
- * 悄悄改用其他提供商。
+ * 精确地址与模型取得显式资格后允许原生工具，由各自的协议传输
+ * (Chat Completions / Responses / Anthropic Messages)复用既有安全传输层实现。
+ * 任何未注册原生传输的形态一律以 {@link UnsupportedOperationException}
+ * 失败关闭——绝不退回文本模拟工具调用,也绝不悄悄改用其他提供商。
  */
 @Component
 public class RoutingGaNativeInferenceGateway implements GaNativeInferenceGateway {
@@ -32,16 +32,19 @@ public class RoutingGaNativeInferenceGateway implements GaNativeInferenceGateway
     private final KiloGaNativeTransport kilo;
     private final ChatCompletionsGaTextTransport textChat;
     private final ResponsesGaNativeTransport responses;
+    private final AnthropicGaNativeTransport anthropic;
     private final CustomRuntimeSettingsPort customSettings;
 
     public RoutingGaNativeInferenceGateway(OpenCodeZenTransport openCodeZen, KiloGaNativeTransport kilo,
                                            ChatCompletionsGaTextTransport textChat,
                                            ResponsesGaNativeTransport responses,
+                                           AnthropicGaNativeTransport anthropic,
                                            CustomRuntimeSettingsPort customSettings) {
         this.openCodeZen = openCodeZen;
         this.kilo = kilo;
         this.textChat = textChat;
         this.responses = responses;
+        this.anthropic = anthropic;
         this.customSettings = customSettings;
     }
 
@@ -61,8 +64,8 @@ public class RoutingGaNativeInferenceGateway implements GaNativeInferenceGateway
 
     @Override
     public GaModelContract.Response stream(GaModelTarget target, UUID conversationId,
-                                           GaModelContract.Request request, Duration remainingBudget,
-                                           BooleanSupplier active, FragmentListener listener) {
+                                             GaModelContract.Request request, Duration remainingBudget,
+                                             BooleanSupplier active, FragmentListener listener) {
         return switch (providerOf(target)) {
             case OPENCODE_ZEN -> openCodeZen.streamNativeGa(target.credential(),
                     OpenCodeZenSessionIds.forConversation(conversationId), request, target.model(),
@@ -74,7 +77,8 @@ public class RoutingGaNativeInferenceGateway implements GaNativeInferenceGateway
 
     /**
      * Custom routing is decided by the frozen connection's API format, not by
-     * request sniffing: RESPONSES never falls back to Chat Completions.
+     * request sniffing: RESPONSES never falls back to Chat Completions and
+     * ANTHROPIC_MESSAGES never falls back to any other protocol.
      */
     private CustomGaTransport customTransport(GaModelTarget target) {
         RuntimeCustomSettings settings = customSettings.requireRuntimeSettings(target.settingsRevision());
@@ -82,7 +86,7 @@ public class RoutingGaNativeInferenceGateway implements GaNativeInferenceGateway
         return switch (format) {
             case CHAT_COMPLETIONS -> textChat;
             case RESPONSES -> responses;
-            case ANTHROPIC_MESSAGES -> throw new UnsupportedOperationException("UNSUPPORTED_AGENT_MODEL");
+            case ANTHROPIC_MESSAGES -> anthropic;
         };
     }
 

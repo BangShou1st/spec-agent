@@ -99,6 +99,11 @@ val auditedOfflineTests = setOf(
     "com.specagent.model.provider.GaGeminiProtocolOfflineTest",
     "com.specagent.model.provider.ChatCompletionsGaTextTransportTest",
     "com.specagent.model.provider.ResponsesGaNativeTransportTest",
+    // MS-C3 Anthropic Messages: adapter envelope bridge, fail-closed negatives and
+    // the GA native transport against a local strict fake; no bootstrap, no datasource.
+    "com.specagent.model.provider.AnthropicMessagesProtocolAdapterTest",
+    "com.specagent.model.provider.AnthropicFailClosedTest",
+    "com.specagent.model.provider.AnthropicGaNativeTransportTest",
     "com.specagent.model.provider.RoutingGaNativeInferenceGatewayTest",
     "com.specagent.assistant.GaExecutionModelTargetResolverTest",
     "com.specagent.model.provider.GaNativeModelContractTest",

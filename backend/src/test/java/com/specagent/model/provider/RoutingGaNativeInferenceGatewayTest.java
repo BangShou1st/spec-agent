@@ -33,15 +33,16 @@ class RoutingGaNativeInferenceGatewayTest {
     private final KiloGaNativeTransport kilo = mock(KiloGaNativeTransport.class);
     private final ChatCompletionsGaTextTransport textChat = mock(ChatCompletionsGaTextTransport.class);
     private final ResponsesGaNativeTransport responses = mock(ResponsesGaNativeTransport.class);
+    private final AnthropicGaNativeTransport anthropic = mock(AnthropicGaNativeTransport.class);
     private RuntimeCustomSettings customRuntime = customSettings("CHAT_COMPLETIONS", "chat-model");
     private CustomRuntimeSettingsPort customSettings = customSettings(customRuntime);
     private RoutingGaNativeInferenceGateway gateway =
-            new RoutingGaNativeInferenceGateway(zen, kilo, textChat, responses, customSettings);
+            new RoutingGaNativeInferenceGateway(zen, kilo, textChat, responses, anthropic, customSettings);
 
     private void customFormat(String format, String model) {
         customRuntime = customSettings(format, model);
         customSettings = customSettings(customRuntime);
-        gateway = new RoutingGaNativeInferenceGateway(zen, kilo, textChat, responses, customSettings);
+        gateway = new RoutingGaNativeInferenceGateway(zen, kilo, textChat, responses, anthropic, customSettings);
     }
 
     private static GaModelContract.Request request() {
@@ -158,14 +159,31 @@ class RoutingGaNativeInferenceGatewayTest {
     }
 
     @Test
-    void customAnthropicProtocolFailsClosedWithoutFallback() {
+    void customAnthropicUsesTheAnthropicTransportWithoutAnyFallback() {
         customFormat("ANTHROPIC_MESSAGES", "anthropic-model");
+        when(anthropic.complete(any(), any(), any(), any())).thenReturn(response());
+        when(anthropic.stream(any(), any(), any(), any(), any())).thenReturn(response());
+
+        gateway.complete(customTarget("anthropic-model"), UUID.randomUUID(), request(),
+                Duration.ofSeconds(30), () -> true);
+        gateway.stream(customTarget("anthropic-model"), UUID.randomUUID(), request(),
+                Duration.ofSeconds(30), () -> true, text -> true);
+
+        verify(anthropic).complete(any(), any(), any(), any());
+        verify(anthropic).stream(any(), any(), any(), any(), any());
+        verifyNoInteractions(zen, kilo, textChat, responses);
+    }
+
+    @Test
+    void customAnthropicErrorsNeverFallBackToAnotherTransport() {
+        customFormat("ANTHROPIC_MESSAGES", "anthropic-model");
+        when(anthropic.complete(any(), any(), any(), any())).thenThrow(
+                ModelProviderException.rateLimited("custom-anthropic_messages", "rate limited"));
 
         assertThatThrownBy(() -> gateway.complete(customTarget("anthropic-model"), UUID.randomUUID(),
                 request(), Duration.ofSeconds(30), () -> true))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessage("UNSUPPORTED_AGENT_MODEL");
-        verifyNoInteractions(zen, kilo, textChat, responses);
+                .isInstanceOf(ModelProviderException.class);
+        verifyNoInteractions(textChat, responses);
     }
 
     @Test
@@ -186,7 +204,7 @@ class RoutingGaNativeInferenceGatewayTest {
                 request(), Duration.ofSeconds(30), () -> true))
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessage("UNSUPPORTED_AGENT_MODEL");
-        verifyNoInteractions(zen, kilo, textChat, responses);
+        verifyNoInteractions(zen, kilo, textChat, responses, anthropic);
     }
 
     @Test

@@ -80,13 +80,16 @@ class RevisionValidationTest {
         svc.requireActivatable();
     }
 
-    @Test void anthropicNeitherValidatesNorActivates() {
+    @Test void anthropicLegacyValidatesAndActivatesButOnlyAfterValidation() {
         MemCustomRepo repo = new MemCustomRepo();
         Instant now = Instant.now();
         repo.stored = new CustomProviderSettings("ANTHROPIC_MESSAGES", "https://gateway.example/v1",
                 null, null, "m", "DISCOVERED", null, 1, null, now, now, null);
         CustomProviderSettingsService svc = new CustomProviderSettingsService(repo, new ObjectMapper(), registry(), noopProbe());
-        assertThatThrownBy(svc::validate).isInstanceOf(ModelProviderException.class);
+        // MS-C3:Anthropic legacy 单例通过宿主 JSON Envelope 桥接承载 JSON_OBJECT 契约,
+        // validate/activate 不再因协议整体拒绝;未验证修订号仍然失败关闭。
         assertThatThrownBy(svc::requireActivatable).isInstanceOf(ModelProviderException.class);
+        svc.validate();
+        svc.requireActivatable();
     }
 }
