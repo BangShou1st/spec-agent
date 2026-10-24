@@ -53,5 +53,11 @@
     "隔离库守卫要求 SPEC_AGENT_TEST_DB_SERVER_ADDRESS 与服务器自报 inet_server_addr 精确一致;本机 Docker bridge 端口映射下自报值为 172.17.0.4/32(带 /32 后缀)",
     "全量 test 期间须确保 8100 端口无 broker-mode brain:PythonRetrievalClient 会连上它并阻塞等待回调;本轮第3次全量因此卡住,停止 brain 后恢复"
   ],
-  "ci": "PENDING_AT_RECORD_TIME(推送后核对,见 summary.md 更新)"
+  "ci": {
+    "runId": 40125288536,
+    "headSha": "deeca2c703a6cdba9fd0cee93689de452d502b37",
+    "url": "https://github.com/BangShou1st/spec-agent/actions/runs/40125288536",
+    "conclusion": "SUCCESS",
+    "jobs": "10/10 success: contracts-static, backend-independent, brain, validation-mode, frontend, backend, e2e, eval-baseline, cross-language, validation-summary"
+  }
 }
