@@ -30,6 +30,17 @@ In D4-R3, the second-request failure was resolved by preserving `thought_signatu
 - Base URL: `https://generativelanguage.googleapis.com/v1beta/openai`
 - Model: `gemini-3.5-flash-lite`
 The qualification switch remains opt-in via `spec.global-assistant.ga-native.custom-qualified-targets` (default list remains empty, failing closed with `requireTextOnly`). See [R3 evidence](acceptance-evidence/rag-d4-r3-20261023/summary.md).
+
+MS-C2 (2026-10-24): Custom RESPONSES now has its own GA transport
+(`ResponsesGaNativeTransport`). Qualification is granted only by the current
+`model_connection_capabilities` record `(org, UUID, configRevision,
+NATIVE_TOOLS=VERIFIED)`; the legacy URL/model allow-list no longer applies to
+UUID connections of any protocol. Requests use host-controlled stateless
+full-history replay with `store:false`, never `previous_response_id`, and the
+buffered transport performs no retries or provider switches. Unsupported
+Responses shapes (non-completed status, duplicate or missing `call_id`,
+unauthorized tool names, malformed arguments, reasoning-only state that cannot
+be safely replayed) fail closed before Python can execute any tool.
 ## 1. Purpose
 
 Model Gateway is the only boundary through which Spec Agent talks to external model providers.

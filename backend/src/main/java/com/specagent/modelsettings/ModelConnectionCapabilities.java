@@ -42,8 +42,9 @@ public class ModelConnectionCapabilities {
         } else {
             check(row, "STRUCTURED", () -> probe.probeCustom(format, row.baseUrl(), row.apiKey(), row.selectedModel()));
         }
-        if (format == CustomApiFormat.CHAT_COMPLETIONS) {
-            check(row, "NATIVE_TOOLS", () -> probe.probeNativeTools(row.baseUrl(), row.apiKey(), row.selectedModel()));
+        if (format == CustomApiFormat.CHAT_COMPLETIONS || format == CustomApiFormat.RESPONSES) {
+            check(row, "NATIVE_TOOLS", () -> probe.probeNativeTools(format,
+                    row.baseUrl(), row.apiKey(), row.selectedModel()));
         } else record(row, "NATIVE_TOOLS", "UNSUPPORTED");
     }
 

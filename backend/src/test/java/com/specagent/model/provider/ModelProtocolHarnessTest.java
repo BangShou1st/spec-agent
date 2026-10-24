@@ -25,7 +25,7 @@ class ModelProtocolHarnessTest {
     }
     @Test void nativeRoundTripPreservesCallIdentityAndOpaqueSignature() throws Exception {
         try(var fake=new FakeModelProvider()) {
-            probe().probeNativeTools(fake.baseUrl(),"fixture-key","new-model");
+            probe().probeNativeTools(CustomApiFormat.CHAT_COMPLETIONS,fake.baseUrl(),"fixture-key","new-model");
             assertThat(fake.requests).hasSize(2);
             var history=fake.requests.get(1).path("messages");
             assertThat(history.get(1).path("tool_calls").get(0).path("id").asText()).isEqualTo("fixture-call");
@@ -34,10 +34,38 @@ class ModelProtocolHarnessTest {
                     .path("thought_signature").asText()).isEqualTo("fixture-signature");
         }
     }
+    @Test void responsesNativeRoundTripQualifiesOnlyAfterTwoProtocolRequests() throws Exception {
+        try(var fake=new com.specagent.support.FakeResponsesProvider()) {
+            probe().probeNativeTools(CustomApiFormat.RESPONSES,fake.baseUrl(),"fixture-key","responses-model");
+            assertThat(fake.requests).hasSize(2);
+            assertThat(fake.requests).allSatisfy(r->assertThat(r.path("model").asText()).isEqualTo("responses-model"));
+            assertThat(fake.requests).allSatisfy(r->assertThat(r.path("store").asBoolean()).isFalse());
+            var first=fake.requests.get(0);
+            assertThat(first.path("input").get(0).path("role").asText()).isEqualTo("user");
+            assertThat(first.path("tools").get(0).path("name").asText()).isEqualTo("probe_echo");
+            assertThat(first.path("tool_choice").asText()).isEqualTo("required");
+            var second=fake.requests.get(1);
+            var assistant=second.path("input").get(1);
+            assertThat(assistant.path("tool_calls").get(0).path("call_id").asText()).isEqualTo("call_1");
+            var output=second.path("input").get(2);
+            assertThat(output.path("type").asText()).isEqualTo("function_call_output");
+            assertThat(output.path("call_id").asText()).isEqualTo("call_1");
+        }
+    }
+    @Test void responsesWrongToolFailsBeforeFollowup() throws Exception {
+        try(var fake=new com.specagent.support.FakeResponsesProvider()) {
+            fake.wrongToolName=true;
+            assertThatThrownBy(()->probe().probeNativeTools(
+                    CustomApiFormat.RESPONSES,fake.baseUrl(),null,"model"))
+                    .isInstanceOf(RuntimeException.class);
+            assertThat(fake.requests).hasSize(1);
+        }
+    }
     @Test void wrongToolStopsBeforeFollowup() throws Exception {
         try(var fake=new FakeModelProvider()) {
             fake.badCall=true;
-            assertThatThrownBy(()->probe().probeNativeTools(fake.baseUrl(),null,"model"))
+            assertThatThrownBy(()->probe().probeNativeTools(
+                    CustomApiFormat.CHAT_COMPLETIONS,fake.baseUrl(),null,"model"))
                     .isInstanceOf(RuntimeException.class);
             assertThat(fake.requests).hasSize(1);
         }

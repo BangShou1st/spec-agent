@@ -207,11 +207,44 @@ class GaExecutionModelTargetResolverTest {
     void customNonChatCompletionsFormatIsProtocolUnsupported() {
         hostSecret("secret");
         when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
-        when(customSettings.requireStoredOrNull()).thenReturn(custom("RESPONSES", "some-model", 1));
+        when(customSettings.requireStoredOrNull()).thenReturn(custom("ANTHROPIC_MESSAGES", "some-model", 1));
 
-        // Responses / Anthropic 绝不能被默认为受支持的 Chat Completions。
+        // Anthropic 绝不能被默认为受支持的协议。
         assertThat(unavailableCode(resolver().resolveActive()))
                 .isEqualTo(GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED);
+    }
+
+    @Test
+    void customResponsesChatsByTextAndUpgradesOnlyWithVerifiedNativeTools() {
+        hostSecret("secret");
+        when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
+        when(providers.activeProviderId()).thenReturn(java.util.UUID.randomUUID());
+        when(customSettings.requireRuntimeSettings(org.mockito.ArgumentMatchers.any(java.util.UUID.class)))
+                .thenReturn(new com.specagent.model.contract.RuntimeCustomSettings(
+                        "RESPONSES", "https://custom.example/v1", "custom-key", "responses-model",
+                        3, java.util.UUID.randomUUID(), true));
+
+        var resolution = ready(resolver().resolveActive());
+
+        assertThat(resolution.target().provider()).isEqualTo("CUSTOM");
+        assertThat(resolution.target().model()).isEqualTo("responses-model");
+        assertThat(resolution.target().settingsRevision()).startsWith("custom-provider:");
+        assertThat(resolution.mode()).isEqualTo(GaExecutionMode.NATIVE_TOOLS);
+    }
+
+    @Test
+    void customResponsesWithoutNativeQualificationStaysTextChat() {
+        hostSecret("secret");
+        when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
+        when(providers.activeProviderId()).thenReturn(java.util.UUID.randomUUID());
+        when(customSettings.requireRuntimeSettings(org.mockito.ArgumentMatchers.any(java.util.UUID.class)))
+                .thenReturn(new com.specagent.model.contract.RuntimeCustomSettings(
+                        "RESPONSES", "https://custom.example/v1", "custom-key", "responses-model",
+                        3, java.util.UUID.randomUUID(), false));
+
+        var resolution = ready(resolver().resolveActive());
+
+        assertThat(resolution.mode()).isEqualTo(GaExecutionMode.TEXT_CHAT);
     }
 
     @Test

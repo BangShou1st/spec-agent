@@ -67,11 +67,23 @@ public class CompatibilityProbeService {
     }
 
     /** A harmless local tool fixture; never invokes the application's tools. */
-    public void probeNativeTools(String baseUrl, String apiKey, String model) {
-        var adapter = new GaChatCompletionsAdapter();
-        String endpoint = ProviderUrlSecurity.canonicalEndpoint(baseUrl, CustomApiFormat.CHAT_COMPLETIONS);
-        var headers = registry.require(CustomApiFormat.CHAT_COMPLETIONS).authHeaders(apiKey);
+    public void probeNativeTools(CustomApiFormat format, String baseUrl, String apiKey, String model) {
+        if (format != CustomApiFormat.CHAT_COMPLETIONS && format != CustomApiFormat.RESPONSES) {
+            throw ModelProviderException.invalidResponse("custom-native-probe", "Unsupported native tool protocol");
+        }
         new NativeToolRoundTripVerifier().verify(request -> {
+            if (format == CustomApiFormat.RESPONSES) {
+                UUID providerId = UUID.randomUUID();
+                var runtimeSettings = new com.specagent.model.contract.RuntimeCustomSettings(
+                        format.name(), baseUrl, apiKey, model, 1, providerId, true);
+                var responsesTransport = new ResponsesGaNativeTransport(() -> runtimeSettings, mapper, client);
+                return responsesTransport.complete(new com.specagent.model.contract.GaModelTarget(
+                        "CUSTOM", model, runtimeSettings.bindingRevision(), apiKey), request,
+                        ProviderHttpSupport.SETTINGS_TIMEOUT, () -> true);
+            }
+            var adapter = new GaChatCompletionsAdapter();
+            String endpoint = ProviderUrlSecurity.canonicalEndpoint(baseUrl, format);
+            var headers = registry.require(format).authHeaders(apiKey);
             var result = ProviderHttpSupport.postJson(client, mapper, endpoint, headers,
                     adapter.requestBody(request, model), ProviderHttpSupport.SETTINGS_TIMEOUT, "custom-native-probe");
             return adapter.parse(result.json().toString());

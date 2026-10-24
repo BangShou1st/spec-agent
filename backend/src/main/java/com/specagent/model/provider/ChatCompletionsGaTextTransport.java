@@ -34,7 +34,7 @@ import org.springframework.stereotype.Component;
  * 头出现,绝不进入异常消息或日志。
  */
 @Component
-public class ChatCompletionsGaTextTransport {
+public class ChatCompletionsGaTextTransport implements CustomGaTransport {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ChatCompletionsGaTextTransport.class);
     private final java.util.concurrent.atomic.AtomicReference<GaHttpSafetyDiagnostic> lastDiagnostic =

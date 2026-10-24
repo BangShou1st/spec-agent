@@ -218,9 +218,9 @@ public class GaExecutionModelTargetResolver {
     }
 
     /**
-     * Custom 只支持已明确选择 Chat Completions 且协议配置正确的选中模型。Responses /
-     * Anthropic 等非 Chat Completions 格式在准备阶段以 {@code GA_MODEL_PROTOCOL_UNSUPPORTED}
-     * 明确失败,绝不被默认为受支持;这些格式的模型也绝不因此获得普通聊天准入。
+     * Custom 支持 Chat Completions 与 Responses 两种已实现传输;Anthropic Messages 在
+     * 准备阶段以 {@code GA_MODEL_PROTOCOL_UNSUPPORTED} 明确失败。原生工具模式完全由
+     * 当前 UUID/修订号下的 NATIVE_TOOLS=VERIFIED 能力记录决定。
      */
     private Resolution resolveCustom(boolean applyPreparationGate) {
         return resolveCustom(applyPreparationGate,null);
@@ -230,9 +230,10 @@ public class GaExecutionModelTargetResolver {
         if (applyPreparationGate && selectedId != null) {
             try {
                 var settings = customSettings.requireRuntimeSettings(selectedId);
-                if (CustomApiFormat.fromCode(settings.apiFormat()) != CustomApiFormat.CHAT_COMPLETIONS) {
+                CustomApiFormat format = CustomApiFormat.fromCode(settings.apiFormat());
+                if (format == CustomApiFormat.ANTHROPIC_MESSAGES) {
                     return unavailable(GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED,
-                            "GA requires the custom provider to speak Chat Completions");
+                            "GA does not support the custom provider API format");
                 }
                 // Legacy URL/model registrations do not grant qualifications to
                 // another UUID connection, credential or configuration revision.
@@ -258,19 +259,23 @@ public class GaExecutionModelTargetResolver {
                 return unavailable(GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED,
                         "The custom provider API format is not supported by GA");
             }
-            if (format != CustomApiFormat.CHAT_COMPLETIONS) {
+            if (format == CustomApiFormat.ANTHROPIC_MESSAGES) {
                 return unavailable(GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED,
-                        "GA requires the custom provider to speak Chat Completions");
+                        "GA does not support the custom provider API format");
             }
             if (!customSettings.activatable()) {
                 return unavailable(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED,
                         "Custom configuration is not validated for the current revision");
             }
         }
+        // Legacy URL/model registrations qualified only the Chat Completions
+        // transport; a legacy RESPONSES connection can chat but never carries
+        // native tools (the Responses transport fails closed without UUID proof).
+        boolean legacyNativeTools = CustomApiFormat.fromCode(stored.apiFormat()) == CustomApiFormat.CHAT_COMPLETIONS
+                && qualification.customQualified(stored.baseUrl(), stored.selectedModel());
         return new Ready(new GaModelTarget(ModelProvider.CUSTOM.name(), stored.selectedModel(),
                 "custom-settings:" + stored.configRevision(), stored.apiKey()),
-                qualification.customQualified(stored.baseUrl(),stored.selectedModel())
-                    ? GaExecutionMode.NATIVE_TOOLS : GaExecutionMode.TEXT_CHAT);
+                legacyNativeTools ? GaExecutionMode.NATIVE_TOOLS : GaExecutionMode.TEXT_CHAT);
     }
 
     private static Unavailable unavailable(String errorCode, String reason) {

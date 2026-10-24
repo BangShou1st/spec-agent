@@ -3,6 +3,8 @@ package com.specagent.model.provider;
 import com.specagent.model.contract.FragmentListener;
 import com.specagent.model.contract.GaModelContract;
 import com.specagent.model.contract.GaModelTarget;
+import com.specagent.model.contract.CustomRuntimeSettingsPort;
+import com.specagent.model.contract.RuntimeCustomSettings;
 import com.specagent.model.contract.GaNativeInferenceGateway;
 import com.specagent.model.contract.ModelProvider;
 import java.time.Duration;
@@ -29,12 +31,18 @@ public class RoutingGaNativeInferenceGateway implements GaNativeInferenceGateway
     private final OpenCodeZenTransport openCodeZen;
     private final KiloGaNativeTransport kilo;
     private final ChatCompletionsGaTextTransport textChat;
+    private final ResponsesGaNativeTransport responses;
+    private final CustomRuntimeSettingsPort customSettings;
 
     public RoutingGaNativeInferenceGateway(OpenCodeZenTransport openCodeZen, KiloGaNativeTransport kilo,
-                                           ChatCompletionsGaTextTransport textChat) {
+                                           ChatCompletionsGaTextTransport textChat,
+                                           ResponsesGaNativeTransport responses,
+                                           CustomRuntimeSettingsPort customSettings) {
         this.openCodeZen = openCodeZen;
         this.kilo = kilo;
         this.textChat = textChat;
+        this.responses = responses;
+        this.customSettings = customSettings;
     }
 
     @Override
@@ -47,7 +55,7 @@ public class RoutingGaNativeInferenceGateway implements GaNativeInferenceGateway
                     OpenCodeZenSessionIds.forConversation(conversationId), request, target.model(),
                     remainingBudget, active);
             case KILO -> kilo.complete(target, request, remainingBudget, active);
-            case CUSTOM -> textChat.complete(target, request, remainingBudget, active);
+            case CUSTOM -> customTransport(target).complete(target, request, remainingBudget, active);
         };
     }
 
@@ -60,7 +68,21 @@ public class RoutingGaNativeInferenceGateway implements GaNativeInferenceGateway
                     OpenCodeZenSessionIds.forConversation(conversationId), request, target.model(),
                     remainingBudget, active, listener);
             case KILO -> kilo.stream(target, request, remainingBudget, active, listener);
-            case CUSTOM -> textChat.stream(target, request, remainingBudget, active, listener);
+            case CUSTOM -> customTransport(target).stream(target, request, remainingBudget, active, listener);
+        };
+    }
+
+    /**
+     * Custom routing is decided by the frozen connection's API format, not by
+     * request sniffing: RESPONSES never falls back to Chat Completions.
+     */
+    private CustomGaTransport customTransport(GaModelTarget target) {
+        RuntimeCustomSettings settings = customSettings.requireRuntimeSettings(target.settingsRevision());
+        CustomApiFormat format = CustomApiFormat.fromCode(settings.apiFormat());
+        return switch (format) {
+            case CHAT_COMPLETIONS -> textChat;
+            case RESPONSES -> responses;
+            case ANTHROPIC_MESSAGES -> throw new UnsupportedOperationException("UNSUPPORTED_AGENT_MODEL");
         };
     }
 

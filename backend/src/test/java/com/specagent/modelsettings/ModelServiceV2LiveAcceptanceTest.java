@@ -186,7 +186,8 @@ class ModelServiceV2LiveAcceptanceTest {
 
         doAnswer(call -> dispatch("CHAT", call)).when(probes).probeChat(any(), any(), any(), any());
         doAnswer(call -> dispatch("STRUCTURED", call)).when(probes).probeCustom(any(), any(), any(), any());
-        doAnswer(call -> dispatch("NATIVE_ROUND_TRIP", call)).when(probes).probeNativeTools(any(), any(), any());
+        doAnswer(call -> dispatch("NATIVE_ROUND_TRIP", call)).when(probes)
+                .probeNativeTools(any(), any(), any(), any());
         doAnswer(call -> dispatch("PROJECT_AGENT", call))
                 .when(customGateway).complete(any(com.specagent.model.contract.ModelInferenceRequest.class),
                         any(com.specagent.model.contract.RuntimeCustomSettings.class));

@@ -40,11 +40,23 @@ Java 唯一持有供应商凭据。Python 只编排推理与工具，不持有 K
 | 协议/路径 | 项目文本与结构化输出 | GA 文本 | GA 原生工具 | 流式 |
 | --- | --- | --- | --- | --- |
 | Custom Chat Completions | 单独验证 | 可用 | 完整闭环验证后可用 | 当前 GA 为 buffered，不能宣称 SSE |
-| Custom Responses | 单独验证 | 当前明确拒绝 | UNSUPPORTED | 项目侧沿用适配器契约 |
+| Custom Responses | 单独验证 | 可用 | 完整两轮资格验证后可用 | GA 为 buffered，不支持 SSE 增量 |
 | Anthropic Messages | 无项目 JSON_OBJECT 契约，不能激活项目 | 当前明确拒绝 | UNSUPPORTED | 不因枚举存在而宣称实现 |
 | Zen / Kilo | 保留共享库及冻结传输 | 保留既有路径 | 保留当前资格规则及安全门禁 | 沿用严格 SSE |
 
 Zen 的可信元数据、Kilo 的原有工具资格配置仍是内置路径的准入规则；本轮没有把它们伪装为新 UUID 资格。通用传输测试同时覆盖两者。Custom 新 UUID 使用持久化能力资格，旧精确 URL/model 登记只用于兼容旧单例运行，不能跨连接授权。
+
+MS-C2（2026-10-24）起，Custom RESPONSES 拥有独立 GA 传输
+（`ResponsesGaNativeTransport` + `GaResponsesAdapter`）：请求使用 Responses
+原生 `input` / `tools` / `tool_choice` / `max_output_tokens` 并显式
+`store:false`，不使用 `previous_response_id`，也不复用 Chat Completions
+消息形状。工具往返通过 `function_call.call_id` 与
+`function_call_output.call_id` 精确关联，参数经严格 JSON 解析、对象形状
+检查、重复 call_id/非法工具名/未完成状态检查后才成为 GA 通用 ToolCall。
+宿主采用无状态完整历史重放；本轮未引入 Responses 专用 provider 私有
+reasoning 续接状态——需要这类状态的模型形态会在资格验证中失败关闭，
+不会获得 NATIVE_TOOLS=VERIFIED。路由按冻结连接的 API Format 分发，
+Responses 错误绝不回退到 Chat Completions 或其他 Provider。
 
 ## 历史迁移与续接边界
 
