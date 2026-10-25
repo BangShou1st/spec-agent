@@ -1,0 +1,39 @@
+{
+  "round": "ARCH-QUALITY-02",
+  "recordedAt": "2026-10-25",
+  "baseline": "8f231e8401f012370d611b1dc12761e4232cff93(ARCH-QUALITY-01 证据提交,与 origin/dev 同步 0/0)",
+  "codeCommit": "8f6520c90b4caf05f3c411b13786e9febb98e4b2",
+  "productionFiles": {
+    "agent-brain/src/spec_agent_brain/contracts/diagnostics.py": "eb6b97309056477e2d0b8081a1ef3c267855ec95d1e709c95059ec2101c53d67(新增:ContractDiagnostic 契约 + 安全提取原语)",
+    "agent-brain/src/spec_agent_brain/state_update/engine.py": "modified: 失败路径挂诊断,异常文本去 {exc} 嵌入",
+    "agent-brain/src/spec_agent_brain/artifact/engine.py": "modified: 失败路径挂诊断,异常文本去 title/ref 嵌入",
+    "agent-brain/src/spec_agent_brain/decision/engine.py": "modified: 本地诊断定义改指 contracts/diagnostics,WAIT 判定改调共享原语",
+    "agent-brain/src/spec_agent_brain/contracts/decisions.py": "modified: 新增 wait_payload_matches_contract 纯谓词",
+    "agent-brain/src/spec_agent_brain/contracts/protocol.py": "modified: 新增 WORKSPACE_RPC_GRANT_VERSION",
+    "agent-brain/src/spec_agent_brain/global_assistant/contracts.py": "modified: GA 版本 Final 常量唯一来源 + Literal 引用常量",
+    "agent-brain/src/spec_agent_brain/global_assistant/execution.py": "modified: 事件发送引用 GA_EXECUTION_EVENT_PROTOCOL_VERSION",
+    "agent-brain/src/spec_agent_brain/global_assistant/model_adapter.py": "modified: ModelRequest 构造引用 GA_MODEL_INFERENCE_PROTOCOL_VERSION",
+    "agent-brain/src/spec_agent_brain/model_client/broker_client.py": "modified: payload 引用 INFERENCE_PROTOCOL_VERSION,删除未使用本地常量",
+    "agent-brain/src/spec_agent_brain/app.py": "modified: /health 公告引用契约常量"
+  },
+  "testFiles": {
+    "agent-brain/tests/test_engine_contract_diagnostics.py": "86d8362e38574d9f316dd98335537a728234d7e6fbfabd6825c062426ddd55f2(新增 11 例)",
+    "agent-brain/tests/test_protocol_announcement.py": "e9601bc2549ddd376cfc39b639cb134c8d593c4562dcd9a2c7add159dfc67231(新增 4 例)",
+    "agent-brain/tests/test_c16_wait_v4.py": "febf75cb20a87110518e78a64d5c680c3f0542c19920c1ef47c62278a88bed1b(modified: 双路径一致性矩阵 +8 例)"
+  },
+  "evidenceFiles": {
+    "docs/acceptance-evidence/arch-quality-02-20261025/audit.md": "e8b24c9956c6b3ce134f63ecd14f3858d400f84dbf32c85778438c13e5dac438",
+    "docs/acceptance-evidence/arch-quality-02-20261025/refactor-plan.md": "653502d6430a3795aa6b237b29f97491b252741cb6cc452132cc57ddd0e96591",
+    "docs/acceptance-evidence/arch-quality-02-20261025/summary.md": "见同目录(CI 段于推送后补记,以 git 历史为准)",
+    "docs/acceptance-evidence/arch-quality-02-20261025/verification.json": "见同目录(同上)",
+    "docs/acceptance-evidence/arch-quality-02-20261025/manifest.json": "本文件;文件级 SHA-256 为内容绑定,提交 SHA 补记于 codeCommit 字段"
+  },
+  "untouchedUserWip": [
+    "backend/src/test/java/com/specagent/access/ModelSettingsIsolationIntegrationTest.java(用户未提交修改,保留)",
+    "docs/v2/evidence/SHARED_RAG_ACCEPTANCE_PRECHECK.json(用户未提交修改,保留)",
+    "agent-brain/scripts/verify_ga_r3_delivery.py(用户 untracked,保留)",
+    "backend/src/test/java/com/specagent/retrieval/eval/RagD4R3LiveDeliveryTest.java(用户 untracked,保留)",
+    "contracts/retrieval/evaluation/rag-d4-r3-delivery.v1.json(用户 untracked,保留)",
+    "全部历史 untracked 证据目录(保留)"
+  ]
+}

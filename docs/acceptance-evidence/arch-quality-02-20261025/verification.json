@@ -1,0 +1,47 @@
+{
+  "round": "ARCH-QUALITY-02",
+  "recordedAt": "2026-10-25",
+  "baseline": "8f231e8401f012370d611b1dc12761e4232cff93",
+  "codeCommit": "8f6520c90b4caf05f3c411b13786e9febb98e4b2",
+  "liveMode": "LIVE_NOT_RUN",
+  "liveNotRunScope": "无真实付费模型调用、无真实 API Key 读取、无业务数据库连接;全部验证使用 FakeModelClient、ScriptedClient、httpx.MockTransport 与 contracts/fixtures 离线夹具。",
+  "targeted": {
+    "clusterA_diagnostics": {
+      "test_engine_contract_diagnostics.py": "11/0/0(新增:三引擎诊断形状一致性、机器码/字段路径、消息与响应体无模型输出泄漏、HTTP 502+contractDiagnostic、传输失败保留 UNKNOWN)",
+      "回归锁定": "test_engines.py + test_app.py + test_artifact_source_ref_errors.py 全过(decision 诊断行为与 test_app.py:90-138 的 UNKNOWN 兼容路径不变)"
+    },
+    "clusterB_wait": {
+      "test_c16_wait_v4.py": "新增双路径一致性矩阵 8/0/0(7 非法形态:缺失/None/整数/数组/未知 ref/空串/额外字段,生产路径 ActionIneligibleBrainError 与信封自检 ValueError 一致拒绝;合法 payload 双路一致放行)",
+      "回归锁定": "test_c16_wait_contract.py + test_contracts.py 全过",
+      "javaAuthoritative": "Java 代码零改动;权威拒绝路径由 testOffline 中的 ActionEligibilityWaitV4Test 与 C16WaitContractTest 锁定(487/0/0/0 含二者)"
+    },
+    "clusterC_versions": {
+      "test_protocol_announcement.py": "4/0/0(新增:/health 公告==常量、公告版本被 DTO 实际接受、未公告版本被拒、broker 请求 protocolVersion==INFERENCE_PROTOCOL_VERSION)",
+      "回归锁定": "test_app.py /health 断言与 test_workspace_rpc_grants.py 公告断言不变且全过"
+    }
+  },
+  "fullLocal": {
+    "python_pytest": "367 passed / 0 failed / 0 skipped(agent-brain/.venv, tests/ 全量;基线 344,新增 23)",
+    "java_testOffline": "487 total / 0 failures / 0 errors / 0 skipped(XML 聚合复核,与 ARCH-QUALITY-01 基线一致)",
+    "import_graph": "全模块导入无循环依赖(app/global_assistant/model_client/artifact/state_update/decision/contracts)"
+  },
+  "skippedInventory": "本轮所有本地套件 0 skip;无环境门控跳过",
+  "notRun": {
+    "java_testDatabaseIntegration/testNonLive/evalBFast": "本轮仅改 Python brain 且 wire 格式与异常类名不变;由推送后 CI 的 backend/e2e/cross-language/eval-baseline 覆盖",
+    "evalLive*": "LIVE_NOT_RUN 原则"
+  },
+  "behaviorDeltas": [
+    "state_update/artifact 契约失败:HTTP 502 body 由 diagnosticStatus=UNKNOWN 变为携带 contractDiagnostic(纯增量字段);Java 分类按异常类名不变",
+    "state_update/artifact 异常消息不再嵌入 pydantic 原文/section 标题/ref 值(安全增强,无消费方依赖旧文案)",
+    "artifact UngroundedReferenceError 携带 (UngroundedReferenceError, MODEL_OUTPUT_UNGROUNDED_REFERENCE) 诊断,恰好落入 Java compatibleModelDiagnostic 白名单对,run 失败 payload 增量获得 contractDiagnostic(设计内增强)",
+    "共享 safe_field_path 对 索引后接字段名 的路径渲染加 '.'(claims[0].kind);decision 输出模型形状不可能产生该形态,行为可证明不变",
+    "/health 输出值与 wire 格式零变化,仅来源改为契约常量"
+  ],
+  "ci": {
+    "runId": 40151616342,
+    "headSha": "8f6520c90b4caf05f3c411b13786e9febb98e4b2",
+    "url": "https://github.com/BangShou1st/spec-agent/actions/runs/40151616342",
+    "conclusion": "SUCCESS",
+    "jobs": "10/10 success: contracts-static, backend-independent, brain, validation-mode, frontend, backend, e2e, eval-baseline, cross-language, validation-summary"
+  }
+}
