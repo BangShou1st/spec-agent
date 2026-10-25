@@ -330,4 +330,112 @@ class ModelConnectionsIntegrationTest {
             assertThat(fake.versions).containsOnly("2023-06-01");
         }
     }
+
+    /**
+     * PR-22 Review P1 回归:同一修订号下复验失败把 STRUCTURED 降级为
+     * TEMPORARILY_UNAVAILABLE 后,过期的 validated_revision 不得继续为
+     * "新 GA Run / 新 Project Agent Run / 直接运行时读取"开门。已冻结的
+     * Run 按设计契约不重复施加能力门禁(GaExecutionModelTargetResolver.
+     * requireFrozen 的既定语义),只做绑定一致性校验。
+     */
+    @Test void structuredDowngradeClosesNewRunAdmissionButKeepsFrozenBindings() throws Exception {
+        try(var fake=new FakeModelProvider(); var actor=ActorContextHolder.bind(ActorContext.oidc(user,org))) {
+            var a=connections.validate(create(fake,"Downgraded","fixture-downgrade").id());
+            assertThat(a.validated()).isTrue();
+            assertThat(qualifications.status(a)).containsEntry("STRUCTURED","VERIFIED");
+            connections.activate(a);
+            var project=new CustomInferenceGateway(custom,protocols,new ObjectMapper());
+            var workspace=projects.createProject("Downgrade fixture");
+            var boundRun=runs.create(workspace.id(),workspace.activeRouteId(),
+                    com.specagent.agent.runtime.AgentRunTriggerType.DECISION_CYCLE,null,null);
+            var gateway=new RoutingModelInferenceGateway(active,targets,mock(OpenCodeModelInferenceGateway.class),
+                    mock(KiloInferenceGateway.class),project,bindings);
+            gateway.complete(new ModelInferenceRequest(boundRun.id(),"DECISION",
+                    List.of(new ModelInferenceMessage("user","hi")),64));
+            var frozen=((GaExecutionModelTargetResolver.Ready)ga.resolveActive());
+
+            // 配置修订号不变,供应商复验失败:能力降级,历史 validated_revision 保留。
+            fake.status=429;
+            var downgraded=connections.validate(a.id());
+            assertThat(qualifications.status(downgraded)).containsEntry("STRUCTURED","TEMPORARILY_UNAVAILABLE");
+            assertThat(downgraded.validated()).isTrue();
+            int requests=fake.requests.size();
+
+            // 新 GA Run 准入失败关闭,而不是靠过期 validated 标志放行。
+            assertThat(ga.resolveActive())
+                    .isInstanceOf(GaExecutionModelTargetResolver.Unavailable.class);
+            // 新 Project Agent Run 无法取得运行时配置,也不产生任何供应商请求。
+            assertThatThrownBy(()->targets.activeTarget())
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("GA_MODEL_BINDING_MISMATCH")
+                    .hasMessageNotContaining("fixture-downgrade");
+            var fresh=new RoutingModelInferenceGateway(active,targets,mock(OpenCodeModelInferenceGateway.class),
+                    mock(KiloInferenceGateway.class),project,bindings);
+            var refusedRun=runs.create(workspace.id(),workspace.activeRouteId(),
+                    com.specagent.agent.runtime.AgentRunTriggerType.DECISION_CYCLE,null,null);
+            assertThatThrownBy(()->fresh.complete(new ModelInferenceRequest(refusedRun.id(),"DECISION",
+                    List.of(new ModelInferenceMessage("user","hi")),64)))
+                    .hasMessageContaining("MODEL_BINDING_MISMATCH")
+                    .hasMessageNotContaining("fixture-downgrade");
+            // 直接运行时配置读取同样不得绕过权威能力门禁。
+            assertThatThrownBy(()->custom.requireRuntimeSettings()).hasMessage("GA_MODEL_BINDING_MISMATCH");
+            assertThatThrownBy(()->custom.requireRuntimeSettings(downgraded.id())).hasMessage("GA_MODEL_BINDING_MISMATCH");
+            // 激活门禁与运行时门禁现在得出同一结论。
+            assertThatThrownBy(()->connections.requireActivatable(downgraded)).isInstanceOf(ModelProviderException.class);
+            assertThat(fake.requests).hasSize(requests);
+
+            // 已冻结 Run 只校验绑定一致性,不重复施加能力门禁,继续解析同一目标。
+            var frozenSettings=custom.requireRuntimeSettings(frozen.target().settingsRevision());
+            assertThat(frozenSettings.providerId()).isEqualTo(a.id());
+            assertThat(ga.requireFrozen("CUSTOM",frozen.target().model(),
+                    frozen.target().settingsRevision()).model()).isEqualTo(frozen.target().model());
+
+            // 重新取得当前修订号的 STRUCTURED 证明后,新 Run 恢复合法准入。
+            fake.status=200;
+            var recoveredRow=connections.validate(a.id());
+            assertThat(qualifications.status(recoveredRow)).containsEntry("STRUCTURED","VERIFIED");
+            var recovered=((GaExecutionModelTargetResolver.Ready)ga.resolveActive());
+            assertThat(recovered.target().model()).isEqualTo("manual-unlisted");
+            assertThat(((RuntimeCustomSettings)targets.activeTarget().orElseThrow().runtimeSettings())
+                    .providerId()).isEqualTo(a.id());
+            var reopenedRun=runs.create(workspace.id(),workspace.activeRouteId(),
+                    com.specagent.agent.runtime.AgentRunTriggerType.DECISION_CYCLE,null,null);
+            fresh.complete(new ModelInferenceRequest(reopenedRun.id(),"DECISION",
+                    List.of(new ModelInferenceMessage("user","hi")),64));
+        }
+    }
+
+    /**
+     * PR-22 Review P1 回归(资格身份不继承):能力证明属于
+     * (org_id, provider UUID, config_revision) 三元组。同 URL/模型/修订号的
+     * 另一条连接、别的组织、或漂移后的修订号,都不能让降级连接恢复准入。
+     */
+    @Test void downgradedConnectionInheritsNoProofFromAnotherIdentity() throws Exception {
+        try(var fake=new FakeModelProvider(); var actor=ActorContextHolder.bind(ActorContext.oidc(user,org))) {
+            var a=create(fake,"Identity A","fixture-identity");
+            var b=create(fake,"Identity B","fixture-identity");
+            connections.validate(a.id());
+            connections.activate(a);
+            fake.status=429;
+            connections.validate(a.id());
+            // B 在自己的 UUID 下拿到当前证明;A 的降级不污染 B,B 的证明也不救 A。
+            fake.status=200;
+            var verifiedB=connections.validate(b.id());
+            assertThat(qualifications.status(verifiedB)).containsEntry("STRUCTURED","VERIFIED");
+            assertThatThrownBy(()->custom.requireRuntimeSettings(a.id())).hasMessage("GA_MODEL_BINDING_MISMATCH");
+            assertThat(custom.requireRuntimeSettings(b.id()).providerId()).isEqualTo(b.id());
+            // 其他组织不能解析本组织的连接,能力行同样按 org 隔离。
+            try(var otherOrg=ActorContextHolder.bind(ActorContext.oidc(user,other))) {
+                assertThatThrownBy(()->custom.requireRuntimeSettings(a.id())).hasMessage("GA_MODEL_BINDING_MISMATCH");
+                assertThatThrownBy(()->custom.requireRuntimeSettings(b.id())).hasMessage("GA_MODEL_BINDING_MISMATCH");
+            }
+            // 修订号漂移后,旧修订号的冻结引用按绑定不一致失败关闭,新修订号未证明不得准入。
+            var drifted=connections.update(a.id(),new ModelProvidersService.Patch(null,null,null,null,null,
+                    "another-model",null));
+            assertThat(drifted.configRevision()).isEqualTo(2);
+            assertThatThrownBy(()->custom.requireRuntimeSettings("custom-provider:"+a.id()+":1"))
+                    .hasMessage("GA_MODEL_BINDING_MISMATCH");
+            assertThatThrownBy(()->custom.requireRuntimeSettings(a.id())).hasMessage("GA_MODEL_BINDING_MISMATCH");
+        }
+    }
 }

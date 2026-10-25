@@ -35,9 +35,12 @@ authority: Historical Reference Only
 `test`/`testDatabaseIntegration` 各 41 个 skipped 为同一批 live/external 门控用例,源码显式
 `@EnabledIfEnvironmentVariable` / `assumeTrue` 门控,属环境/夹具要求而非缺陷:
 
-- `GaExecutionCoordinatorIntegrationTest`(25):live-configured-model、浏览器 UI、SSE 断连等
+- `GaExecutionCoordinatorIntegrationTest`(23):live-configured-model、浏览器 UI、SSE 断连等
   真实模型/浏览器场景(RUNBOOK 声明的独立证据体系,见其「真实模型、HTTPS 和浏览器 gate 的
   独立证据」说明);
+  *(勘误 2026-10-25,pr-22-review-fix-01:原文写 25,与总数 41 矛盾;重跑全量后 XML 逐类
+  核实为 23——23+11+1+5+1=41,总数始终正确,错在分类分项。见
+  `docs/acceptance-evidence/pr-22-review-fix-01-20261025/pr-review.md`。)*
 - `SharedRetrievalIntegrationTest`(11)+ `RebuildLeaseIntegrationTest`(1):`SPEC_AGENT_RAG_EVALUATION`/
   `SPEC_AGENT_RAG_LIVE_TEST`/`SPEC_AGENT_RUNTIME_QUALIFICATION` 门控的 RAG live/评测/运行时资格;
 - `GaHostRpcIntegrationTest`(5)live 框架/Git HTTPS、`GitHttpsFaultAcceptanceTest`(1)。

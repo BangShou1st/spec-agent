@@ -291,6 +291,17 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
                 || (revision != null && row.configRevision() != revision)) {
             throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
         }
+        // 新 Run 准入(revision == null:按 selectedId 或当前激活解析)必须持有当前
+        // (org, UUID, config_revision) 的 STRUCTURED=VERIFIED 证明——与激活门禁
+        // ModelProvidersService.requireActivatable 同一权威来源。过期的
+        // validated_revision 只描述"曾在该修订号下验证过",复验失败降级后不得继续
+        // 放行。冻结绑定(revision != null)刻意不重复施加能力门禁:能力模式已随
+        // 绑定冻结,这里只校验绑定一致性(GaExecutionModelTargetResolver.requireFrozen
+        // 的设计契约),降级不得把一个已合法接受的 Run 判死。
+        if (revision == null && capabilities != null
+                && !"VERIFIED".equals(capabilities.status(row).get("STRUCTURED"))) {
+            throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+        }
         ProviderUrlSecurity.validateAndNormalizeBaseUrl(row.baseUrl());
         return new RuntimeCustomSettings(row.apiFormat(), row.baseUrl(), row.apiKey(),
                 row.selectedModel(), row.configRevision(), row.id(), capabilities != null

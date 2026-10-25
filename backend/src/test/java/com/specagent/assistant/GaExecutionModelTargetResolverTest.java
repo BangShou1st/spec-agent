@@ -370,4 +370,18 @@ class GaExecutionModelTargetResolverTest {
 
         assertThat(target.model()).isEqualTo("test-model");
     }
+
+    @Test
+    void downgradedCustomUuidConnectionFailsClosedAtPreparation() {
+        hostSecret("secret");
+        when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
+        when(providers.activeProviderId()).thenReturn(java.util.UUID.randomUUID());
+        // PR-22 Review P1:STRUCTURED 复验降级后,运行时边界拒绝 UUID 连接,
+        // 准备阶段必须把它终态化为"未配置",绝不能以过期 validated 标志放行。
+        when(customSettings.requireRuntimeSettings(org.mockito.ArgumentMatchers.any(java.util.UUID.class)))
+                .thenThrow(new IllegalStateException("GA_MODEL_BINDING_MISMATCH"));
+
+        assertThat(unavailableCode(resolver().resolveActive()))
+                .isEqualTo(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED);
+    }
 }

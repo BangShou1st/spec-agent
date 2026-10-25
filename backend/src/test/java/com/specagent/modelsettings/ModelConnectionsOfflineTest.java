@@ -109,4 +109,32 @@ class ModelConnectionsOfflineTest {
         assertThat(((RuntimeCustomSettings)target.runtimeSettings()).providerId()).isEqualTo(a.id());
         verify(active,never()).activeProviderId();
     }
+
+    /**
+     * PR-22 Review P1 回归(单元级):同一修订号复验失败后 STRUCTURED 降级,
+     * 过期 validated 标志不得让 UUID 连接的新 Run 准入(按 selectedId 解析、
+     * 按当前激活解析、直接读取)继续放行;冻结引用不重复施加能力门禁;
+     * 重新 VERIFIED 后恢复准入。
+     */
+    @Test void structuredDowngradeFailsNewRunAdmissionButNotFrozenReferences() {
+        var a=validated();
+        when(active.activeProviderId()).thenReturn(a.id());
+        var custom=new CustomProviderSettingsService(mock(CustomProviderSettingsRepository.class),
+                new ObjectMapper(),mock(ProtocolAdapterRegistry.class),probe);
+        custom.setConnections(repository,active);
+        custom.setCapabilities(capabilities);
+        when(capabilities.status(any())).thenReturn(Map.of("CHAT","VERIFIED",
+                "STRUCTURED","TEMPORARILY_UNAVAILABLE","NATIVE_TOOLS","VERIFIED"));
+        assertThatThrownBy(()->custom.requireRuntimeSettings(a.id())).hasMessage("GA_MODEL_BINDING_MISMATCH");
+        assertThatThrownBy(()->custom.requireRuntimeSettings()).hasMessage("GA_MODEL_BINDING_MISMATCH");
+        assertThat(custom.requireRuntimeSettings("custom-provider:"+a.id()+":1").apiKey()).isEqualTo("fixture-a");
+        when(capabilities.status(any())).thenReturn(Map.of("CHAT","VERIFIED",
+                "STRUCTURED","VERIFIED","NATIVE_TOOLS","VERIFIED"));
+        assertThat(custom.requireRuntimeSettings(a.id()).providerId()).isEqualTo(a.id());
+        assertThat(custom.requireRuntimeSettings().providerId()).isEqualTo(a.id());
+        // NATIVE_TOOLS 证明永远不能替代 STRUCTURED 证明。
+        when(capabilities.status(any())).thenReturn(Map.of("CHAT","VERIFIED",
+                "STRUCTURED","TEMPORARILY_UNAVAILABLE","NATIVE_TOOLS","VERIFIED"));
+        assertThatThrownBy(()->custom.requireRuntimeSettings(a.id())).hasMessage("GA_MODEL_BINDING_MISMATCH");
+    }
 }
