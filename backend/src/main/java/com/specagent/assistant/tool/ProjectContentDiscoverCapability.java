@@ -73,18 +73,22 @@ public class ProjectContentDiscoverCapability implements PreparedCapabilityAdapt
                 return GlobalAssistantToolFailures.failed(invocation,descriptor().capabilityId(),"PROJECT_INDEX_NOT_READY","Project content index is not prepared; no search was performed");
             List<Map<String,Object>> candidates=new ArrayList<>(); List<String> refs=new ArrayList<>(); Set<String> warnings=new LinkedHashSet<>(preparationWarnings);
             for(var result:results) {
+                warnings.addAll(result.warnings());
                 var validated=store.validateSources(new Validation(result.protocolVersion(),result.requestId(),result.workload(),result.scopeGrant(),
                     result.profileId(),result.indexGeneration(),result.deadline(),result.items().stream().map(Ranked::source).toList()));
+                if(!validated.rejectedEntryIds().isEmpty())
+                    return GlobalAssistantToolFailures.failed(invocation,descriptor().capabilityId(),"SOURCE_VERSION_MISMATCH","Retrieved evidence is no longer current or available");
                 var allowed=new HashSet<>(validated.allowedEntryIds());
                 var items=result.items().stream().filter(item->allowed.contains(item.source().entryId())).toList();
                 if(items.isEmpty()) continue;
                 UUID project=items.getFirst().source().projectId();
                 candidates.add(Map.of("projectId",project.toString(),"title",titles.get(project),"sources",items,
                     "profileId",result.profileId(),"indexGeneration",result.indexGeneration().toString(),"vectorUnavailable",result.vectorUnavailable()));
-                items.forEach(item->refs.add(item.source().sourceRef())); warnings.addAll(result.warnings());
+                items.forEach(item->refs.add(item.source().sourceRef()));
             }
             return new CapabilityResult(invocation.invocationId(),invocation.invocationKey(),descriptor().capabilityId(),CapabilityResult.Status.SUCCEEDED,
-                Map.of("candidates",List.copyOf(candidates),"searchedProjects",results.size(),"retrievalEngineVersion","python-rag.v1"),List.copyOf(refs),
+                Map.of("candidates",List.copyOf(candidates),"searchedProjects",results.size(),"retrievalEngineVersion","python-rag.v1",
+                    "vectorUnavailable",results.stream().anyMatch(SearchResult::vectorUnavailable)),List.copyOf(refs),
                 Map.of("kind","PROJECT_CONTENT_CANDIDATES","profileId",PROFILE),List.copyOf(warnings));
         };
         });

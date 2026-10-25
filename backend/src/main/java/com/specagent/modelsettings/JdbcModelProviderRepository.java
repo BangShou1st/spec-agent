@@ -33,9 +33,9 @@ public class JdbcModelProviderRepository implements ModelProviderRepository {
             created_at, updated_at, validated_at
             """;
 
-    /** 排序:预设在前(OpenCode Zen、OpenRouter),用户自建的按创建顺序排在后面。 */
+    /** 排序:预设在前(OpenCode Zen、其他 Provider),用户自建的按创建顺序排在后面。 */
     private static final String ORDER = """
-            ORDER BY CASE preset WHEN 'OPENCODE_ZEN' THEN 0 WHEN 'OPENROUTER' THEN 1 ELSE 2 END,
+            ORDER BY CASE preset WHEN 'OPENCODE_ZEN' THEN 0 WHEN 'KILO' THEN 1 ELSE 2 END,
                      position, created_at
             """;
 
@@ -94,6 +94,12 @@ public class JdbcModelProviderRepository implements ModelProviderRepository {
         return jdbc.query("SELECT " + COLUMNS + " FROM model_providers WHERE org_id=:orgId AND preset = :preset "
                         + ORDER + " LIMIT 1",
                 Maps.of("preset", preset,"orgId",orgScope.readOrg()), rowMapper).stream().findFirst();
+    }
+
+    @Override
+    public Optional<ModelProviderRecord> findByIdForUpdate(UUID id) {
+        return jdbc.query("SELECT " + COLUMNS + " FROM model_providers WHERE id=:id AND org_id=:orgId FOR UPDATE",
+                Maps.of("id",id,"orgId",orgScope.writeOrg()),rowMapper).stream().findFirst();
     }
 
     @Override

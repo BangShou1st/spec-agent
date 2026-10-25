@@ -10,7 +10,24 @@ public record RuntimeCustomSettings(String apiFormat,
                                      String baseUrl,
                                      String apiKey,
                                      String selectedModel,
-                                     long configRevision) {
+                                     long configRevision,
+                                     java.util.UUID providerId,
+                                     boolean nativeToolsVerified) {
+
+    public RuntimeCustomSettings(String apiFormat, String baseUrl, String apiKey,
+                                 String selectedModel, long configRevision, java.util.UUID providerId) {
+        this(apiFormat, baseUrl, apiKey, selectedModel, configRevision, providerId, false);
+    }
+
+    public RuntimeCustomSettings(String apiFormat, String baseUrl, String apiKey,
+                                 String selectedModel, long configRevision) {
+        this(apiFormat, baseUrl, apiKey, selectedModel, configRevision, null);
+    }
+
+    public String bindingRevision() {
+        return providerId == null ? "custom-settings:" + configRevision
+                : "custom-provider:" + providerId + ":" + configRevision;
+    }
 
     public RuntimeCustomSettings(String apiFormat, String baseUrl, String apiKey, String selectedModel) {
         this(apiFormat, baseUrl, apiKey, selectedModel, 0);

@@ -11,7 +11,16 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import Field
 
-from .contracts import Message, ModelRequest, ModelResponse, ModelStreamEvent, RunScope, ToolCall, ToolDefinition
+from .contracts import (
+    GA_MODEL_INFERENCE_PROTOCOL_VERSION,
+    Message,
+    ModelRequest,
+    ModelResponse,
+    ModelStreamEvent,
+    RunScope,
+    ToolCall,
+    ToolDefinition,
+)
 from .schema import normalize_schema
 
 
@@ -162,7 +171,8 @@ class BrokerChatModel(BaseChatModel):
                     continue
                 wire.append(Message(role="assistant", content=message.content,
                                     toolCalls=[ToolCall(id=c["id"], name=c["name"], arguments=c["args"])
-                                               for c in message.tool_calls]))
+                                               for c in message.tool_calls],
+                                    continuationRef=message.additional_kwargs.get("model_continuation_ref")))
             elif isinstance(message, (SystemMessage, HumanMessage)):
                 wire.append(Message(role="system" if isinstance(message, SystemMessage) else "user",
                                     content=message.content))
@@ -170,7 +180,7 @@ class BrokerChatModel(BaseChatModel):
                 raise ValueError("unsupported GA message role")
         if not wire:
             raise ValueError("empty GA message list")
-        request = ModelRequest(protocolVersion="ga-model-inference.v1", **self.scope.model_dump(by_alias=True),
+        request = ModelRequest(protocolVersion=GA_MODEL_INFERENCE_PROTOCOL_VERSION, **self.scope.model_dump(by_alias=True),
                                callId=uuid4(), callType=self.call_type, modelBindingId=self.model_binding_id,
                                messages=wire, tools=tools, toolChoice=tool_choice,
                                maxOutputTokens=self.max_output_tokens,
@@ -186,9 +196,11 @@ class BrokerChatModel(BaseChatModel):
         # re-validates every call against the frozen catalog before any host dispatch and
         # returns a bounded CAPABILITY_UNAVAILABLE observation, so the model can explain
         # unavailability instead of the run dying with a generic failure.
+        add_kwargs = {"model_continuation_ref": response.continuation_ref} if response.continuation_ref else {}
         ai = AIMessage(content=response.content,
                        tool_calls=[{"id": c.id, "name": c.name, "args": c.arguments, "type": "tool_call"}
                                    for c in response.tool_calls],
+                       additional_kwargs=add_kwargs,
                        usage_metadata={"input_tokens": response.usage.prompt_tokens,
                                        "output_tokens": response.usage.completion_tokens,
                                        "total_tokens": response.usage.prompt_tokens + response.usage.completion_tokens})

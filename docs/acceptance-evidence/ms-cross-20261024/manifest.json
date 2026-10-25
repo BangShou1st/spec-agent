@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-24",
+  "branch": "dev",
+  "baseline_before_round": "5e4976883097687080eb14b81feed49ca6d79236",
+  "code_commit": "4a5876418b4ac3534d69d7ff92f9a12f43919f93",
+  "code_commit_files": [
+    "backend/src/main/java/com/specagent/model/provider/CompatibilityProbeService.java",
+    "backend/src/main/java/com/specagent/modelsettings/CustomProviderSettingsService.java",
+    "backend/src/main/java/com/specagent/model/provider/AnthropicMessagesProtocolAdapter.java",
+    "backend/src/test/java/com/specagent/model/provider/ModelProtocolHarnessTest.java",
+    "backend/src/test/java/com/specagent/model/provider/AnthropicMessagesProtocolAdapterTest.java",
+    "backend/src/test/java/com/specagent/modelsettings/MsCrossChatCompletionsProbeLiveTest.java"
+  ],
+  "contract_identities_unchanged": [
+    "ga-model-inference.v2",
+    "ga-capability-invocation.v1",
+    "ga-capability-result.v1",
+    "ga-model-stream.v1",
+    "anthropic-json-envelope.v1"
+  ],
+  "evidence_files_sha256": {
+    "compatibility-matrix.md": "d002bbe4b6d554a4d83e8a08fdc8cdd14b622d888de225bcb3e45ce865d7f6e7",
+    "findings.md": "f1e84fad77ee3d680e7a71416be5c0d0f11bb06a69152d579e8dc6209ffc4c28",
+    "summary.md": "8169b533968e54423aae49058ca35136f2fdb22a9e1eaa3990e7970c3bc7c07e",
+    "verification.json": "6baf1e39b9770dc8124ccc9162e4df80ec36874ddc2c73f0002fbbe1e1199c07"
+  },
+  "user_wip_preserved": [
+    "backend/src/test/java/com/specagent/access/ModelSettingsIsolationIntegrationTest.java",
+    "docs/v2/evidence/SHARED_RAG_ACCEPTANCE_PRECHECK.json",
+    "all untracked acceptance-evidence and RAG working files"
+  ]
+}

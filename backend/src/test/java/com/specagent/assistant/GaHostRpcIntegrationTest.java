@@ -56,6 +56,9 @@ class GaHostRpcIntegrationTest {
         thread=conversations.createThread().id(); lease=UUID.randomUUID(); binding=UUID.randomUUID();
         run=conversations.createRun(thread,"ga.v1","ga.v1","v1").id();
         var template = GaModelContract.readRequest(Files.readString(Path.of("../contracts/global-assistant/fixtures/ga-model-request-valid.json")));
+        var templateMessages = template.messages().stream()
+                .map(message -> new GaModelContract.Message(message.role(), message.content(),
+                        message.toolCalls(), message.toolCallId())).toList();
         businessCatalog=info.getTestMethod().orElseThrow().getName().startsWith("capability") ? catalogs.current() : null;
         if (info.getTestMethod().orElseThrow().getName().equals("capabilityLiveFrameworkBusinessRpcAgainstConfiguredModel")) {
             var readOnly=businessCatalog.descriptors().stream().filter(d -> d.capabilityId().equals("project.list_recent")).toList();
@@ -63,8 +66,8 @@ class GaHostRpcIntegrationTest {
             businessCatalog=new com.specagent.assistant.tool.GaCatalogProjection.Snapshot(
                     Hashes.sha256Hex(catalogs.canonical(readOnly)),readOnly,tools);
         }
-        request = new GaModelContract.Request(GaModelContract.VERSION,run,1,lease,UUID.randomUUID(),"AGENT",binding,
-                template.messages(),businessCatalog==null ? template.tools() : businessCatalog.tools(),"auto",1024,false);
+        request = new GaModelContract.Request(GaModelContract.VERSION_2,run,1,lease,UUID.randomUUID(),"AGENT",binding,
+                templateMessages,businessCatalog==null ? template.tools() : businessCatalog.tools(),"auto",1024,false);
         revision=Instant.now();
         when(settings.find()).thenReturn(Optional.of(new OpenCodeSettings("test-key-no-network", "work", "test-model", revision, revision)));
         when(transport.completeNativeGa(any(),any(),any(),any(),any(),any())).thenReturn(
@@ -87,13 +90,46 @@ class GaHostRpcIntegrationTest {
         assertEquals(200, post("/model-inference",mapper.writeValueAsString(request),properties.getInternalSecret()).getStatusCode().value());
         verify(transport,times(1)).completeNativeGa(any(),any(),any(),any(),any(),any());
         assertEquals(1,jdbc.queryForObject("SELECT model_calls FROM ga_executions WHERE run_id=?",Integer.class,run));
-        var changed = new GaModelContract.Request(GaModelContract.VERSION,run,1,lease,UUID.randomUUID(),"AGENT",binding,
+        var changed = new GaModelContract.Request(GaModelContract.VERSION_2,run,1,lease,UUID.randomUUID(),"AGENT",binding,
                 request.messages(),List.of(),"none",1024,false);
         assertEquals(409,post("/model-inference",mapper.writeValueAsString(changed),properties.getInternalSecret()).getStatusCode().value());
         when(settings.find()).thenReturn(Optional.of(new OpenCodeSettings("changed-key", "work", "test-model",revision,revision.plusSeconds(1))));
         assertEquals(409,post("/model-inference",mapper.writeValueAsString(request),properties.getInternalSecret()).getStatusCode().value());
         jdbc.update("UPDATE global_assistant_runs SET cancel_requested_at=now() WHERE id=?",run);
         assertEquals(409,post("/model-inference",mapper.writeValueAsString(request),properties.getInternalSecret()).getStatusCode().value());
+    }
+
+    @org.junit.jupiter.api.Test
+    void v1ModelWireIsRejectedAtHttpRpcBeforeBudgetProviderOrLedger() throws Exception {
+        var v1 = new GaModelContract.Request(GaModelContract.VERSION,run,1,lease,UUID.randomUUID(),"AGENT",binding,
+                request.messages(),request.tools(),"auto",1024,false);
+        var response=post("/model-inference",mapper.writeValueAsString(v1),properties.getInternalSecret());
+        assertEquals(400,response.getStatusCode().value(),response.getBody());
+        assertEquals("GA_MODEL_PROTOCOL_ERROR",mapper.readTree(response.getBody()).path("errorCode").asText());
+        org.mockito.Mockito.verify(transport,org.mockito.Mockito.never())
+                .completeNativeGa(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any());
+        assertEquals(0,jdbc.queryForObject("SELECT model_calls FROM ga_executions WHERE run_id=?",Integer.class,run));
+        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM ga_execution_calls WHERE run_id=?",Integer.class,run));
+
+        // v1 carrying raw provider private material is rejected the same way.
+        var rawExtra = new GaModelContract.Message("assistant","",List.of(new GaModelContract.ToolCall(
+                "native-1","project_search",Map.of("query","x"),
+                Map.of("google",Map.of("thought_signature","raw-signature")))),null);
+        var v1Raw = new GaModelContract.Request(GaModelContract.VERSION,run,1,lease,UUID.randomUUID(),"AGENT",binding,
+                List.of(new GaModelContract.Message("user","查找项目",List.of(),null),rawExtra,
+                        new GaModelContract.Message("tool","{}",List.of(),"native-1")),
+                request.tools(),"auto",1024,false);
+        assertEquals(400,post("/model-inference",mapper.writeValueAsString(v1Raw),properties.getInternalSecret())
+                .getStatusCode().value());
+
+        // The same boundary applies to the streaming admission precheck.
+        var stream = new GaModelContract.Request(GaModelContract.VERSION,run,1,lease,UUID.randomUUID(),"AGENT",binding,
+                request.messages(),request.tools(),"auto",1024,true);
+        assertEquals(400,post("/model-inference/stream",mapper.writeValueAsString(stream),properties.getInternalSecret())
+                .getStatusCode().value());
+        assertEquals(0,jdbc.queryForObject("SELECT model_calls FROM ga_executions WHERE run_id=?",Integer.class,run));
     }
     @Test void checkpointsRejectUnauthenticatedMalformedAndWrongScopeRequests() throws Exception {
         String get=mapper.writeValueAsString(Maps.of("protocolVersion","ga-checkpoint.v1","runId",run.toString(),
@@ -128,7 +164,7 @@ class GaHostRpcIntegrationTest {
         assertEquals(200,post("/model-inference",mapper.writeValueAsString(request),properties.getInternalSecret()).getStatusCode().value());
         for(var disallowed:List.of(new GaModelContract.ToolCall("batch-write","project_create",Map.of("title","must-not-execute")),
             new GaModelContract.ToolCall("batch-nav","ui_navigate",Map.of("destination","PROJECTS")))) {
-            var model=new GaModelContract.Request(GaModelContract.VERSION,run,1,lease,UUID.randomUUID(),"AGENT",binding,request.messages(),request.tools(),"auto",1024,false);
+            var model=new GaModelContract.Request(GaModelContract.VERSION_2,run,1,lease,UUID.randomUUID(),"AGENT",binding,request.messages(),request.tools(),"auto",1024,false);
             when(transport.completeNativeGa(any(),any(),any(),any(),any(),any())).thenReturn(new GaModelContract.Response(GaModelContract.VERSION,"",List.of(readonly.getFirst(),disallowed),"tool_calls",new GaModelContract.Usage(3,2)));
             assertNotEquals(200,post("/model-inference",mapper.writeValueAsString(model),properties.getInternalSecret()).getStatusCode().value());
         }
@@ -386,7 +422,7 @@ class GaHostRpcIntegrationTest {
         when(transport.completeNativeGa(any(),any(),any(),any(),any(),any())).thenReturn(
                 new GaModelContract.Response(GaModelContract.VERSION,"",List.of(new GaModelContract.ToolCall(id,
                         capability.replace('.','_'),arguments)),"tool_calls",new GaModelContract.Usage(3,2)));
-        var model=new GaModelContract.Request(GaModelContract.VERSION,run,1,lease,UUID.randomUUID(),"AGENT",binding,
+        var model=new GaModelContract.Request(GaModelContract.VERSION_2,run,1,lease,UUID.randomUUID(),"AGENT",binding,
                 request.messages(),request.tools(),"auto",1024,false);
         var response=post("/model-inference",mapper.writeValueAsString(model),properties.getInternalSecret());
         assertEquals(200,response.getStatusCode().value(),response.getBody());

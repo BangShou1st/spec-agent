@@ -23,7 +23,6 @@ import com.specagent.modelsettings.KiloSettingsService;
 import com.specagent.modelsettings.ModelProviderSettingsService;
 import com.specagent.modelsettings.OpenCodeSettingsRepository;
 import com.specagent.modelsettings.OpenCodeSettingsService;
-import com.specagent.modelsettings.OpenRouterSettingsService;
 import com.sharedlibs.kilogateway.KiloGatewayClient;
 import com.sharedlibs.kilogateway.autoconfigure.KiloGatewayProperties;
 import com.sun.net.httpserver.HttpServer;
@@ -126,14 +125,14 @@ class KiloCredentialBoundaryTest {
     private static GaExecutionModelTargetResolver resolver(KiloSettingsService kiloSettings) {
         ModelProviderSettingsService providers = mock(ModelProviderSettingsService.class);
         when(providers.activeProvider()).thenReturn(ModelProvider.KILO);
+        when(providers.selection()).thenAnswer(i -> new ModelProviderSettingsService.Selection(providers.activeProvider(),null));
         GaBrainSettings host = mock(GaBrainSettings.class);
         when(host.getInternalSecret()).thenReturn("secret");
         GaNativeModelQualification qualification = mock(GaNativeModelQualification.class);
         when(qualification.kiloQualified(anyString())).thenReturn(false);
         return new GaExecutionModelTargetResolver(providers,
                 mock(OpenCodeSettingsRepository.class), mock(OpenCodeSettingsService.class),
-                mock(OpenCodeModelCatalog.class), kiloSettings, mock(OpenRouterSettingsService.class),
-                mock(CustomProviderSettingsService.class), qualification, host);
+                mock(OpenCodeModelCatalog.class), kiloSettings, mock(CustomProviderSettingsService.class), qualification, host);
     }
 
     private static GaExecutionModelTargetResolver.Ready ready(

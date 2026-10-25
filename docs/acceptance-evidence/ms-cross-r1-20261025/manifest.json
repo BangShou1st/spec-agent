@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-25",
+  "branch": "dev",
+  "round": "MS-CROSS-R1",
+  "baseline_before_round": "843936a7ea599663865307e01bd8d65b11cf2ab4",
+  "code_commit": "aadcd00f27981b63998eae08d6857ec4365bc2a9",
+  "code_commit_files": [
+    "backend/src/main/java/com/specagent/modelsettings/CustomProviderSettingsService.java",
+    "backend/src/main/java/com/specagent/model/provider/CompatibilityProbeService.java",
+    "backend/src/test/java/com/specagent/modelsettings/LegacyShortKeyMaskingTest.java",
+    "backend/src/test/java/com/specagent/model/provider/ModelProtocolHarnessTest.java",
+    "backend/build.gradle.kts"
+  ],
+  "contract_identities_unchanged": [
+    "ga-model-inference.v2",
+    "ga-capability-invocation.v1",
+    "ga-capability-result.v1",
+    "ga-model-stream.v1",
+    "anthropic-json-envelope.v1"
+  ],
+  "evidence_files_sha256": {
+    "summary.md": "68aa662ab8f9f1f71a131aa69a5bcc5d31f14544e823a1ca38ad8de3c109102f",
+    "verification.json": "9515efd9b98dcdba32df83e8e1a8c89ded380b767c0d9157d731e49fbd40ce2c"
+  },
+  "live_provider_requests_this_round": 0,
+  "user_wip_preserved": [
+    "backend/src/test/java/com/specagent/access/ModelSettingsIsolationIntegrationTest.java",
+    "docs/v2/evidence/SHARED_RAG_ACCEPTANCE_PRECHECK.json",
+    "all untracked acceptance-evidence and RAG working files"
+  ]
+}

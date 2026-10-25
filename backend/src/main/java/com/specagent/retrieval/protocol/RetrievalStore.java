@@ -295,6 +295,25 @@ public class RetrievalStore {
         return Boolean.TRUE.equals(jdbc.queryForObject("SELECT to_regclass('retrieval_entries') IS NOT NULL AND to_regclass('retrieval_scope_grants') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_extension WHERE extname='vector')",Map.of(),Boolean.class));
     }
     public boolean canonicalCurrent(Map<String,Object> row) { return verifier.current(row); }
+
+    /** Current display authority for a frozen project citation, without running retrieval again. */
+    @Transactional(noRollbackFor=IllegalStateException.class)
+    public Map<String,Object> currentCitation(UUID project, com.specagent.retrieval.RetrievedContextItem frozen) {
+        authorization.issue(project);
+        var rows=jdbc.queryForList("""
+            SELECT * FROM retrieval_entries WHERE project_id=:project AND corpus_id=:project
+              AND source_ref=:ref AND retracted_at IS NULL
+              AND (route_id IS NULL OR EXISTS(SELECT 1 FROM routes r WHERE r.id=retrieval_entries.route_id AND r.lifecycle_status='open'))
+            """,Map.of("project",project,"ref",frozen.sourceRef()));
+        if(rows.size()!=1) throw new IllegalStateException("SOURCE_UNAVAILABLE");
+        var row=rows.getFirst();
+        if(!Objects.equals(row.get("content_hash"),frozen.provenance().get("contentHash"))
+                || !Objects.equals(row.get("source_version"),frozen.provenance().get("sourceVersion"))
+                || !Objects.equals(row.get("source_kind"),frozen.sourceKind().name()) || !verifier.current(row))
+            throw new IllegalStateException("SOURCE_VERSION_MISMATCH");
+        authorization.issue(project);
+        return row;
+    }
     public Source source(Map<String,Object> row,Scope scope) {
         UUID route=(UUID)row.get("route_id"); String ref=(String)row.get("source_ref"),kind=(String)row.get("source_kind");
         var metadata=read(row.get("metadata").toString(),Map.class);

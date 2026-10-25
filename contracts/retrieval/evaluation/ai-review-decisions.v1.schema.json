@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ai-review-decisions.v1.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "evaluationMode", "reviewStatus", "reviewerType", "reviewModel", "recordedAt", "datasetSha256", "parentDatasetSha256", "humanApproval", "executedQueries", "tuningUse", "metricContract", "sourceDecisions", "queryDecisions"],
+  "properties": {
+    "schemaVersion": {"const": "ai-review-decisions.v1"},
+    "evaluationMode": {"const": "AI_AUDITED_SYNTHETIC_EVALUATION"},
+    "reviewStatus": {"const": "AI_AUDITED"},
+    "reviewerType": {"const": "AI"},
+    "reviewModel": {"const": "GPT-6.1 Sol"},
+    "recordedAt": {"type": "string", "format": "date-time"},
+    "datasetSha256": {"$ref": "#/$defs/hash"},
+    "parentDatasetSha256": {"$ref": "#/$defs/hash"},
+    "humanApproval": {"const": false},
+    "executedQueries": {"const": 0},
+    "tuningUse": {"const": "NEVER_USED"},
+    "metricContract": {"type": "object", "required": ["version", "hardThresholds", "noAnswerPolicy", "denominators", "diagnostics", "limitations"]},
+    "sourceDecisions": {"type": "array", "minItems": 28, "maxItems": 28, "items": {"$ref": "#/$defs/decision"}},
+    "queryDecisions": {"type": "array", "minItems": 68, "maxItems": 68, "items": {"$ref": "#/$defs/decision"}}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "decision": {
+      "type": "object",
+      "required": ["reviewerType", "reviewModel", "conclusion", "rationale", "riskLevel", "actuallyModified", "before", "after", "changes", "evidence", "datasetSha256"],
+      "oneOf": [{"required": ["queryId"]}, {"required": ["sourceAlias"]}],
+      "properties": {
+        "queryId": {"type": "string", "pattern": "^B0[0-6][0-9]$"},
+        "sourceAlias": {"type": "string", "pattern": "^[NRSP][0-9]{2}$"},
+        "reviewerType": {"const": "AI"},
+        "reviewModel": {"const": "GPT-6.1 Sol"},
+        "conclusion": {"enum": ["AI_ACCEPTED", "AI_CORRECTED", "AI_UNRESOLVED"]},
+        "rationale": {"type": "string", "minLength": 8},
+        "riskLevel": {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]},
+        "actuallyModified": {"type": "boolean"},
+        "before": {"type": "object"},
+        "after": {"type": "object"},
+        "changes": {"type": "array", "items": {"type": "object", "required": ["field", "before", "after"]}},
+        "datasetSha256": {"$ref": "#/$defs/hash"},
+        "evidence": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["file", "line", "sha256", "supports"], "properties": {"file": {"type": "string", "minLength": 1}, "line": {"type": "integer", "minimum": 1}, "sha256": {"$ref": "#/$defs/hash"}, "supports": {"type": "string", "minLength": 1}}}}
+      }
+    }
+  }
+}

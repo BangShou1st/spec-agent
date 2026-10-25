@@ -117,7 +117,11 @@ public class GaCapabilityBroker {
         var sourceRefs=new LinkedHashSet<>(result.sourceRefs());
         if(success) for(var resource:GlobalAssistantToolPresentation.projectResources(request.capabilityId(),result.content()))
             sourceRefs.add("project:"+resource.get("id")); // Host projection, never model-supplied references.
-        return result(request,success ? "SUCCEEDED" : "FAILED",result.content(),List.copyOf(sourceRefs),success ? null : failure);
+        // Keep retrieval availability/partial-coverage warnings visible even with zero candidates.
+        // Use the existing content envelope; no parallel citation or wire protocol is introduced.
+        var content=new LinkedHashMap<String,Object>(result.content());
+        if(!result.warnings().isEmpty()) content.put("warnings",result.warnings());
+        return result(request,success ? "SUCCEEDED" : "FAILED",content,List.copyOf(sourceRefs),success ? null : failure);
     }
     private String navigate(Request request) {
         var args=request.arguments(); Object destination=args.get("destination"), resource=args.get("resourceId");

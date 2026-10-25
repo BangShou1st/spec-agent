@@ -120,6 +120,17 @@ def test_codec_preserves_messages_and_rejects_objects_hashes_versions_and_metada
         codec.dumps(object())
     with pytest.raises(ValueError, match="metadata"):
         codec.dumps(AIMessage(content="public", additional_kwargs={"reasoning_content": "private"}))
+    with pytest.raises(ValueError, match="metadata"):
+        codec.dumps(AIMessage(content="public", additional_kwargs={"unknown_field": "disallowed"}))
+    # New writes allow only the opaque host ref; raw provider state is rejected.
+    ref = "gacr-00000000-0000-4000-8000-000000000001"
+    ref_msg = AIMessage(content="", tool_calls=[{"id": "c1", "name": "search", "args": {}, "type": "tool_call"}],
+                        additional_kwargs={"model_continuation_ref": ref})
+    assert codec.loads(codec.dumps(ref_msg)) == ref_msg
+    legacy_msg = AIMessage(content="", tool_calls=[{"id": "c1", "name": "search", "args": {}, "type": "tool_call"}],
+                           additional_kwargs={"tool_call_extra_content": {"c1": {"google": {"thought_signature": "sig123"}}}})
+    with pytest.raises(ValueError, match="metadata"):
+        codec.dumps(legacy_msg)
     envelope = codec.dumps(value)
     envelope["payloadHash"] = "0" * 64
     with pytest.raises(ValueError, match="hash"):
@@ -135,6 +146,70 @@ def test_codec_preserves_messages_and_rejects_objects_hashes_versions_and_metada
     envelope["payloadHash"] = hashlib.sha256(envelope["payload"].encode()).hexdigest()
     with pytest.raises(ValueError, match="unknown"):
         codec.loads(envelope)
+
+
+def test_v1_checkpoint_is_readable_and_migrates_via_host():
+    e = execution()
+    host = TestHostStorage()
+    def rpc(operation, request):
+        if operation == "GET":
+            return {"protocolVersion": "ga-checkpoint.v1", "version": 0,
+                    "result": copy.deepcopy(host.rows[request["checkpointId"]])}
+        if operation == "MIGRATE_CONTINUATION":
+            assert request["toolCallIds"] == ["c1"]
+            assert "sig123" in request["continuationPayload"]
+            return {"protocolVersion": "ga-checkpoint.v1", "version": 0,
+                    "result": {"continuationRef": "gacr-00000000-0000-4000-8000-000000000001"}}
+        pytest.fail(f"unexpected operation {operation}")
+
+    host.rpc = rpc
+    legacy = AIMessage(content="", tool_calls=[{"id": "c1", "name": "search", "args": {}, "type": "tool_call"}],
+                       additional_kwargs={"tool_call_extra_content": {"c1": {"google": {"thought_signature": "sig123"}}}})
+    value = {"messages": [legacy], "id": "cp-legacy"}
+    payload = host.codec._encode(value, legacy=True)
+    envelope = {"codecVersion": "ga-json.v1", "frameworkVersion": "langgraph-1.2.12/checkpoint-4.2.0",
+                "stateVersion": "langchain-ga.v1", "payload": json.dumps(payload, sort_keys=True,
+                separators=(",", ":"), ensure_ascii=False),
+                "payloadHash": __import__("hashlib").sha256(json.dumps(payload, sort_keys=True,
+                separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()}
+    host.rows["cp-legacy"] = {"checkpoint": envelope, "metadata": host.codec.dumps({}),
+                              "parentCheckpointId": None, "pendingWrites": host.codec.dumps([])}
+    saver = HostCheckpointSaver(e, host.rpc, initial_checkpoint="cp-legacy")
+    restored = saver.get_tuple({"configurable": {"thread_id": str(e.thread_id), "checkpoint_id": "cp-legacy"}})
+    restored_message = next(m for value in restored.checkpoint.values()
+                            if isinstance(value, list) for m in value if isinstance(m, AIMessage))
+    assert restored_message.additional_kwargs == {"model_continuation_ref": "gacr-00000000-0000-4000-8000-000000000001"}
+
+
+def test_v1_pending_write_rewrapped_as_v2_still_migrates():
+    e = execution()
+
+    def rpc(operation, request):
+        if operation == "MIGRATE_CONTINUATION":
+            return {"protocolVersion": "ga-checkpoint.v1", "version": 0,
+                    "result": {"continuationRef": "gacr-00000000-0000-4000-8000-000000000001"}}
+        pytest.fail(f"unexpected operation {operation}")
+
+    codec = SafeCheckpointCodec()
+    legacy = AIMessage(content="", tool_calls=[{"id": "c1", "name": "search", "args": {}, "type": "tool_call"}],
+                       additional_kwargs={"tool_call_extra_content": {"c1": {"google": {"thought_signature": "sig123"}}}})
+    inner_payload = codec._encode(legacy, legacy=True)
+    inner = {"codecVersion": "ga-json.v1", "frameworkVersion": "langgraph-1.2.12/checkpoint-4.2.0",
+             "stateVersion": "langchain-ga.v1", "payload": json.dumps(inner_payload, sort_keys=True,
+             separators=(",", ":"), ensure_ascii=False)}
+    inner["payloadHash"] = __import__("hashlib").sha256(inner["payload"].encode()).hexdigest()
+    # Java tuple() rewraps each stored write value under the current envelope.
+    write_tuple = {"tag": "tuple", "value": ["task-1", "messages", json.loads(inner["payload"])]}
+    outer_payload = json.dumps({"tag": "list", "value": [write_tuple]}, sort_keys=True,
+                                separators=(",", ":"), ensure_ascii=False)
+    rewrapped = {"codecVersion": "ga-json.v2", "frameworkVersion": "langgraph-1.2.12/checkpoint-4.2.0",
+                 "stateVersion": "langchain-ga.v1", "payload": outer_payload,
+                 "payloadHash": __import__("hashlib").sha256(outer_payload.encode()).hexdigest()}
+    saver = HostCheckpointSaver(e, rpc)
+    restored = saver.codec.loads(rewrapped)
+    migrated = saver._migrate_legacy_checkpoint(restored)
+    message = migrated[0][2]
+    assert message.additional_kwargs == {"model_continuation_ref": "gacr-00000000-0000-4000-8000-000000000001"}
 
 
 def test_saver_refuses_other_threads_and_regressing_host_version():

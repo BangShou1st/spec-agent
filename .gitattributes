@@ -1,0 +1,6 @@
+# This historical candidate was frozen from CRLF bytes. Preserve its identity
+# on every OS without rewriting the archived hash or candidate.
+/contracts/retrieval/evaluation/acceptance-candidate.v1.json text eol=crlf
+# New behavior data was frozen from UTF-8/LF bytes.
+/contracts/retrieval/evaluation/rag-d4-r1-behavior.v1.json text eol=lf
+/contracts/retrieval/evaluation/rag-d4-r2-delivery.v1.json text eol=lf

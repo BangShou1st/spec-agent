@@ -1,8 +1,71 @@
+---
+status: Canonical
+authority: Current Authority
+---
+
 # Model Gateway
+
+> 2026-10-23 Model Service V2：连接身份、内置入口、能力资格与历史迁移以
+> [MODEL_SERVICE_V2.md](v2/MODEL_SERVICE_V2.md) 为最新权威。OpenRouter 专用业务代码已退役，
+> 仅按普通 Custom 使用；下文早期阶段的 OpenRouter 内置描述与静态 Custom 资格仅供理解迁移前基线，
+> 不能作为当前新增连接的规则。Zen/Kilo 的冻结传输、Java 凭据边界与 Runtime 门禁继续有效。
 
 Status: first-version design freeze  
 Date: 2026-08-17
 
+Current adapter clarification (2026-10-23, D4-R2): Custom Chat Completions
+uses the existing provider-neutral GA tool contract and adapter only when the
+exact base URL and model are explicitly registered in
+`spec.global-assistant.ga-native.custom-qualified-targets`. The default list is
+empty. Configuration must first pass the existing compatibility probe; every
+native request must match its frozen model and settings revision. Unqualified
+Custom targets and OpenRouter retain `requireTextOnly` rejection of tools and
+tool history. Registration requires independent real tool-round-trip evidence;
+text compatibility alone is insufficient. Java continues to validate model tool
+identity, catalog, scope, arguments, permissions, budgets and side effects.
+Credentials remain in the secure Java host, never Python or checkpoints.
+The existing Custom transport is buffered (one provider request per call), with
+no automatic retry, provider switch, or prompt-simulated tool calls.
+In D4-R3, the second-request failure was resolved by preserving `thought_signature` / `extra_content` across the protocol adapter, model broker and checkpoint layers. Complete closed-loop native tool continuation has now been verified for the exact target:
+- Base URL: `https://generativelanguage.googleapis.com/v1beta/openai`
+- Model: `gemini-3.5-flash-lite`
+The qualification switch remains opt-in via `spec.global-assistant.ga-native.custom-qualified-targets` (default list remains empty, failing closed with `requireTextOnly`). See [R3 evidence](acceptance-evidence/rag-d4-r3-20261023/summary.md).
+
+MS-C2 (2026-10-24): Custom RESPONSES now has its own GA transport
+(`ResponsesGaNativeTransport`). Qualification is granted only by the current
+`model_connection_capabilities` record `(org, UUID, configRevision,
+NATIVE_TOOLS=VERIFIED)`; the legacy URL/model allow-list no longer applies to
+UUID connections of any protocol. Requests use host-controlled stateless
+full-history replay with `store:false`, never `previous_response_id`, and the
+buffered transport performs no retries or provider switches. Unsupported
+Responses shapes (non-completed status, duplicate or missing `call_id`,
+unauthorized tool names, malformed arguments, reasoning-only state that cannot
+be safely replayed) fail closed before Python can execute any tool.
+
+MS-C3 (2026-10-24): Custom ANTHROPIC_MESSAGES is the third complete custom
+protocol. Project structured output uses a versioned host-side JSON Envelope
+bridge (`anthropic-json-envelope.v1`): `ModelOutputContract.JsonObject` maps to
+the official GA field `output_config.format` (`type=json_schema`) with a fixed
+single-`json`-string envelope schema plus a system-level serialization
+instruction; responses are unwrapped under strict validation (completed stop
+reasons only, exactly one `json` string field, strict duplicate-key/trailing-
+token/Unicode/size checks, inner value must be a JSON object) and only the
+normalized inner object is returned as inference content — the envelope itself
+is never treated as a decision output, and malformed shapes fail closed without
+text/protocol/model fallback. GA uses `AnthropicGaNativeTransport` +
+`GaAnthropicMessagesAdapter` with native `tool_use`/`tool_result` (ids
+preserved verbatim, multiple results merged into one following user message,
+`tool_choice` mapped to `none`/`auto`/`any` with `disable_parallel_tool_use`).
+The supported mixed shape is text-then-tool_use only; text after tool_use,
+interleaved blocks and `thinking`/`redacted_thinking` accompanying executable
+tool calls are rejected at parse time, before any ToolCall is released.
+Thinking private material never reaches GA responses, ledgers, the Python wire
+or checkpoints, and no Anthropic continuation sidecar exists in this scope.
+STRUCTURED and NATIVE_TOOLS qualifications follow the same
+`model_connection_capabilities` system (UUID-scoped; the legacy single
+registration may TEXT_CHAT but never inherits native qualification). Streaming
+JSON bridging and extended-thinking continuation are explicitly out of scope.
+See [MS-C3 evidence](acceptance-evidence/ms-c3-anthropic-20261024/summary.md).
 ## 1. Purpose
 
 Model Gateway is the only boundary through which Spec Agent talks to external model providers.

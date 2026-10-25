@@ -13,7 +13,6 @@ import com.specagent.modelsettings.ModelProviderSettingsService;
 import com.specagent.modelsettings.OpenCodeSettings;
 import com.specagent.modelsettings.OpenCodeSettingsRepository;
 import com.specagent.modelsettings.OpenCodeSettingsService;
-import com.specagent.modelsettings.OpenRouterSettingsService;
 import org.springframework.stereotype.Service;
 
 /**
@@ -59,7 +58,6 @@ public class GaExecutionModelTargetResolver {
     private final OpenCodeSettingsService openCodeSettings;
     private final OpenCodeModelCatalog openCodeModelProtocols;
     private final KiloSettingsService kiloSettings;
-    private final OpenRouterSettingsService openRouterSettings;
     private final CustomProviderSettingsService customSettings;
     private final GaNativeModelQualification qualification;
     private final GaBrainSettings hostSettings;
@@ -69,7 +67,7 @@ public class GaExecutionModelTargetResolver {
                                           OpenCodeSettingsService openCodeSettings,
                                           OpenCodeModelCatalog openCodeModelProtocols,
                                           KiloSettingsService kiloSettings,
-                                          OpenRouterSettingsService openRouterSettings,
+
                                           CustomProviderSettingsService customSettings,
                                           GaNativeModelQualification qualification,
                                           GaBrainSettings hostSettings) {
@@ -78,7 +76,6 @@ public class GaExecutionModelTargetResolver {
         this.openCodeSettings = openCodeSettings;
         this.openCodeModelProtocols = openCodeModelProtocols;
         this.kiloSettings = kiloSettings;
-        this.openRouterSettings = openRouterSettings;
         this.customSettings = customSettings;
         this.qualification = qualification;
         this.hostSettings = hostSettings;
@@ -91,13 +88,16 @@ public class GaExecutionModelTargetResolver {
                     "GA host internal secret is not configured");
         }
         ModelProvider active;
+        java.util.UUID selectedId;
         try {
-            active = providers.activeProvider();
+            var selected = providers.selection();
+            active = selected.provider();
+            selectedId = selected.providerId();
         } catch (RuntimeException ex) {
             return unavailable(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED,
                     "The active model provider could not be resolved");
         }
-        return resolveProvider(active, true);
+        return active == ModelProvider.CUSTOM ? resolveCustom(true,selectedId) : resolveProvider(active, true);
     }
 
     /**
@@ -110,6 +110,14 @@ public class GaExecutionModelTargetResolver {
      * 设置仍与冻结的模型/修订号一致"并解析凭据。
      */
     public GaModelTarget requireFrozen(String providerCode, String frozenModel, String frozenRevision) {
+        if ("CUSTOM".equals(providerCode) && frozenRevision != null
+                && frozenRevision.startsWith("custom-provider:")) {
+            var settings = customSettings.requireRuntimeSettings(frozenRevision);
+            if (!settings.selectedModel().equals(frozenModel)) {
+                throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+            }
+            return new GaModelTarget(providerCode, frozenModel, settings.bindingRevision(), settings.apiKey());
+        }
         ModelProvider provider;
         try {
             provider = ModelProvider.fromCode(providerCode);
@@ -145,7 +153,7 @@ public class GaExecutionModelTargetResolver {
         return switch (provider) {
             case OPENCODE_ZEN -> resolveOpenCode(applyPreparationGate);
             case KILO -> resolveKilo(applyPreparationGate);
-            case OPENROUTER -> resolveOpenRouter(applyPreparationGate);
+
             case CUSTOM -> resolveCustom(applyPreparationGate);
         };
     }
@@ -210,31 +218,30 @@ public class GaExecutionModelTargetResolver {
     }
 
     /**
-     * OpenRouter 固定使用 Chat Completions,因此已配置并验证的选中模型支持 GA
-     * {@link GaExecutionMode#TEXT_CHAT}。原生工具传输尚未验证,保持不可用——绝不因为
-     * 原生工具未实现而拒绝普通聊天,也绝不切换到 Kilo / Zen。
-     */
-    private Resolution resolveOpenRouter(boolean applyPreparationGate) {
-        var stored = openRouterSettings.requireStoredOrNull();
-        if (stored == null || stored.selectedModel() == null || stored.selectedModel().isBlank()) {
-            return unavailable(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED,
-                    "OpenRouter settings are not configured");
-        }
-        if (applyPreparationGate && !openRouterSettings.activatable()) {
-            return unavailable(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED,
-                    "OpenRouter configuration is not validated for the current revision");
-        }
-        return new Ready(new GaModelTarget(ModelProvider.OPENROUTER.name(), stored.selectedModel(),
-                "openrouter-settings:" + stored.configRevision(), stored.apiKey()),
-                GaExecutionMode.TEXT_CHAT);
-    }
-
-    /**
-     * Custom 只支持已明确选择 Chat Completions 且协议配置正确的选中模型。Responses /
-     * Anthropic 等非 Chat Completions 格式在准备阶段以 {@code GA_MODEL_PROTOCOL_UNSUPPORTED}
-     * 明确失败,绝不被默认为受支持;这些格式的模型也绝不因此获得普通聊天准入。
+     * Custom 支持 Chat Completions、Responses 与 Anthropic Messages 三种已实现传输。
+     * 任何已验证配置都允许 {@link GaExecutionMode#TEXT_CHAT};原生工具模式完全由
+     * 当前 UUID/修订号下的 NATIVE_TOOLS=VERIFIED 能力记录决定——legacy 单例绝不
+     * 继承 Anthropic 原生资格。
      */
     private Resolution resolveCustom(boolean applyPreparationGate) {
+        return resolveCustom(applyPreparationGate,null);
+    }
+
+    private Resolution resolveCustom(boolean applyPreparationGate, java.util.UUID selectedId) {
+        if (applyPreparationGate && selectedId != null) {
+            try {
+                var settings = customSettings.requireRuntimeSettings(selectedId);
+                CustomApiFormat format = CustomApiFormat.fromCode(settings.apiFormat());
+                // Legacy URL/model registrations do not grant qualifications to
+                // another UUID connection, credential or configuration revision.
+                return new Ready(new GaModelTarget(ModelProvider.CUSTOM.name(), settings.selectedModel(),
+                        settings.bindingRevision(), settings.apiKey()), settings.nativeToolsVerified()
+                        ? GaExecutionMode.NATIVE_TOOLS : GaExecutionMode.TEXT_CHAT);
+            } catch (RuntimeException ex) {
+                return unavailable(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED,
+                        "Custom connection is not validated for the current revision");
+            }
+        }
         var stored = customSettings.requireStoredOrNull();
         if (stored == null || stored.selectedModel() == null || stored.selectedModel().isBlank()
                 || stored.baseUrl() == null || stored.baseUrl().isBlank()) {
@@ -249,18 +256,19 @@ public class GaExecutionModelTargetResolver {
                 return unavailable(GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED,
                         "The custom provider API format is not supported by GA");
             }
-            if (format != CustomApiFormat.CHAT_COMPLETIONS) {
-                return unavailable(GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED,
-                        "GA requires the custom provider to speak Chat Completions");
-            }
             if (!customSettings.activatable()) {
                 return unavailable(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED,
                         "Custom configuration is not validated for the current revision");
             }
         }
+        // Legacy URL/model registrations qualified only the Chat Completions
+        // transport; a legacy RESPONSES/ANTHROPIC connection can chat but never
+        // carries native tools (the native transports fail closed without UUID proof).
+        boolean legacyNativeTools = CustomApiFormat.fromCode(stored.apiFormat()) == CustomApiFormat.CHAT_COMPLETIONS
+                && qualification.customQualified(stored.baseUrl(), stored.selectedModel());
         return new Ready(new GaModelTarget(ModelProvider.CUSTOM.name(), stored.selectedModel(),
                 "custom-settings:" + stored.configRevision(), stored.apiKey()),
-                GaExecutionMode.TEXT_CHAT);
+                legacyNativeTools ? GaExecutionMode.NATIVE_TOOLS : GaExecutionMode.TEXT_CHAT);
     }
 
     private static Unavailable unavailable(String errorCode, String reason) {

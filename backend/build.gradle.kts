@@ -85,7 +85,31 @@ implementation("io.modelcontextprotocol.sdk:mcp:0.18.4")
 // Deliberately small, reviewed offline set. Expand only after reviewing inheritance,
 // extensions, static initialization and the entire invoked fixture/call chain.
 val auditedOfflineTests = setOf(
+    "com.specagent.modelsettings.ModelConnectionsOfflineTest",
+    // MS-CROSS-R1: legacy short-key masking at the real status and save boundary;
+    // Mockito repository only, no Spring bootstrap or database.
+    "com.specagent.modelsettings.LegacyShortKeyMaskingTest",
+    "com.specagent.model.provider.ModelPriceMetadataTest",
+    "com.specagent.model.provider.ModelProtocolHarnessTest",
+    "com.specagent.model.provider.ModelProviderTransportHarnessTest",
+    // D4 adapter boundary: Mockito store/JDBC/host only; no Spring bootstrap or external calls.
+    "com.specagent.assistant.tool.RagD4EvidenceBoundaryTest",
+    "com.specagent.assistant.api.RagD4BrokerObservationTest",
+    "com.specagent.retrieval.context.RagD4MemoryEvidenceTest",
+    "com.specagent.retrieval.RagD4SharedSourceValidationTest",
+    "com.specagent.agent.decision.RagD4ClaimAuthorityTest",
     "com.specagent.model.provider.PublishedZenStarterCompatibilityTest",
+    "com.specagent.model.provider.GaGeminiProtocolOfflineTest",
+    "com.specagent.model.provider.ChatCompletionsGaTextTransportTest",
+    "com.specagent.model.provider.ResponsesGaNativeTransportTest",
+    // MS-C3 Anthropic Messages: adapter envelope bridge, fail-closed negatives and
+    // the GA native transport against a local strict fake; no bootstrap, no datasource.
+    "com.specagent.model.provider.AnthropicMessagesProtocolAdapterTest",
+    "com.specagent.model.provider.AnthropicFailClosedTest",
+    "com.specagent.model.provider.AnthropicGaNativeTransportTest",
+    "com.specagent.model.provider.RoutingGaNativeInferenceGatewayTest",
+    "com.specagent.assistant.GaExecutionModelTargetResolverTest",
+    "com.specagent.model.provider.GaNativeModelContractTest",
     "com.specagent.eval.P3BLiveDatabaseGuardTest",
     "com.specagent.eval.P3BC03NaturalLanguageScenarioTest",
     "com.specagent.eval.P3BGateMeasurementTest",
@@ -112,6 +136,14 @@ val auditedOfflineTests = setOf(
     "com.specagent.capability.RebuildWaitCompletionRecoveryOfflineTest",
     "com.specagent.retrieval.workload.RebuildReadinessOfflineTest",
     "com.specagent.capability.RebuildWaitRepositoryOfflineTest",
+    "com.specagent.retrieval.context.RetrievalContextServiceErrorClassificationTest",
+    "com.specagent.retrieval.eval.RetrievalQualityScorerTest",
+    "com.specagent.retrieval.eval.RetrievalAcceptanceGateValidatorTest",
+    "com.specagent.retrieval.eval.RetrievalExecutionClaimManagerTest",
+    "com.specagent.retrieval.eval.RetrievalEvaluationJournalTest",
+    "com.specagent.retrieval.eval.RetrievalRecoveryGateTest",
+    // Snapshot/audit/hash rules and temporary filesystem ledgers only; no application bootstrap.
+    "com.specagent.retrieval.eval.RetrievalEvaluationSnapshotTest",
     // ArchUnit reads class files only, without initializing application classes.
     "com.specagent.architecture.AgentBoundaryArchitectureTests",
     "com.specagent.architecture.CapabilitySkillsMcpBoundaryTests"
@@ -239,7 +271,7 @@ tasks.register<Test>("evalBFast") {
 tasks.register<Test>("evalRetrievalFast") {
     group = "verification"
     description = "Runs the deterministic offline Memory + RAG retrieval evaluation gate."
-    useJUnitPlatform()
+    useJUnitPlatform { excludeTags("external-service") }
     systemProperty("spec.agent.retrieval.embedding.provider", "fake")
     filter {
         includeTestsMatching("com.specagent.retrieval.eval.*")

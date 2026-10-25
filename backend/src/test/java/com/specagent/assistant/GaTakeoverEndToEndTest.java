@@ -219,10 +219,14 @@ class GaTakeoverEndToEndTest {
                 "SELECT model_binding_id FROM ga_executions WHERE run_id = :run",
                 Map.of("run", fixture.runId()), UUID.class);
         // 接管绑定<b>故意</b>使用不同的提供商与模型:冻结快照绝不能被"再绑定"改写。
+        // 这里必须用当前契约里合法、但与原冻结目标不同的提供商。已退役的编码(例如
+        // OPENROUTER)会在 GaExecutionStore 的 registeredProvider 校验处先失败,接管
+        // 分支根本不会执行,下面的预算与账本断言也就失去了意义。原冻结目标是
+        // OPENCODE_ZEN,所以换成同样合法、却确实不同的 KILO。
         executions.initialize(new GaExecutionStore.Scope(fixture.runId(), claimB.token().epoch(),
                         claimB.token().leaseId()),
                 new GaExecutionStore.Binding(fixture.threadId(), UUID.randomUUID(),
-                        "OPENROUTER", "rebind-attempt", "test-revision",
+                        "KILO", "rebind-attempt", "test-revision",
                         Instant.now().plusSeconds(120), List.of()));
 
         // ── 核心断言:预算与账本一致(design §7)──

@@ -1,37 +1,23 @@
 import { accessSession } from '@/features/access/accessSession'
-// 文件名:customOriginGuard.spec.ts
-// 用途:自定义 Provider 凭据复用来源守卫(R1)的前端回归:
-//       sameOrigin 与后端语义一致;Base URL 改到不同来源时表单要求
-//       显式决定密钥,同来源编辑不触发。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
-import { createPinia, setActivePinia } from 'pinia'
-import CustomProviderForm from '@/features/model-settings/components/CustomProviderForm.vue'
+import { mount, flushPromises } from '@vue/test-utils'
+import ProviderConnectionEditor from '../ProviderConnectionEditor.vue'
 import { sameOrigin } from '@/shared/net/origin'
-import {
-  getCustomStatus,
-} from '@/features/model-settings/api/modelProviders'
-
-vi.mock('@/features/model-settings/api/modelProviders', () => ({
-  getCustomStatus: vi.fn(),
-  discoverCustom: vi.fn(),
-  saveCustom: vi.fn(),
-  saveCustomWithSource: vi.fn(),
-  validateCustom: vi.fn(),
-  getActiveProvider: vi.fn(),
-  activateProvider: vi.fn(),
-}))
-
-const mockedGet = vi.mocked(getCustomStatus)
-
-async function mountForm(): Promise<ReturnType<typeof mount>> {
-  const wrapper = mount(CustomProviderForm, {
-    props: { mode: 'edit', idPrefix: 'custom' },
-  })
-  await flushPromises()
-  return wrapper
-}
-
+import * as api from '../../api/modelProviders'
+vi.mock('../../api/modelProviders', () => ({ discoverConnection: vi.fn(), saveConnection: vi.fn() }))
+const connection = (): api.ProviderConnection => ({
+  id: 'uuid-a', preset: 'CUSTOM', configured: true, active: false, displayName: 'Existing',
+  apiFormat: 'CHAT_COMPLETIONS', baseUrl: 'http://localhost:11434/v1', endpointPreview: null,
+  hasKey: true, maskedKey: '••••test', selectedModel: 'saved-unlisted-model', manualModel: true,
+  configRevision: 1, validated: true,
+  verifiedCapabilities: { CHAT: 'VERIFIED', STRUCTURED: 'VERIFIED', NATIVE_TOOLS: 'UNTESTED' },
+  capabilities: { userNamed: true, selectableFormat: true, editableBaseUrl: true, requiresApiKey: false, builtInCatalog: false },
+})
+beforeEach(() => {
+  vi.resetAllMocks()
+  accessSession.identity = { mode: 'LOCAL', authenticated: true, userId: 'owner', orgId: 'org', displayName: 'Owner',
+    orgName: 'Org', orgRole: 'OWNER', orgCapabilities: ['CREDENTIAL_MANAGE'], memberships: [] }
+})
 describe('sameOrigin semantics match the backend guard', () => {
   it('treats default ports as equal origins', () => {
     expect(sameOrigin('http://localhost:80/v1', 'http://localhost/v1')).toBe(true)
@@ -50,65 +36,46 @@ describe('sameOrigin semantics match the backend guard', () => {
   })
 })
 
-describe('CustomProviderForm origin-change credential guard', () => {
-  beforeEach(() => {
-    accessSession.identity = { mode: 'OIDC', authenticated: true, userId: 'editor', orgId: 'org', displayName: 'Editor', orgName: 'Org', orgRole: 'ADMIN', orgCapabilities: ['CREDENTIAL_MANAGE'], memberships: [] }
-    setActivePinia(createPinia())
-    vi.clearAllMocks()
+describe('UUID connection editor', () => {
+  it('blocks discover and save on origin change until a credential decision', async () => {
+    const w = mount(ProviderConnectionEditor, { props: { connection: connection() } })
+    await w.get('[data-test="connection-url"]').setValue('http://localhost:19099/v1')
+    expect(w.find('[data-test="connection-origin-warning"]').exists()).toBe(true)
+    expect(w.get('[data-test="connection-discover"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-test="connection-save"]').attributes('disabled')).toBeDefined()
+    await w.get('[data-test="connection-key"]').setValue('fixture-new-key')
+    expect(w.find('[data-test="connection-origin-warning"]').exists()).toBe(false)
   })
-
-  it('blocks discover and save until the key is explicitly decided on origin change', async () => {
-    mockedGet.mockResolvedValue({
-      configured: true,
-      apiFormat: 'CHAT_COMPLETIONS',
-      baseUrl: 'http://localhost:11434/v1',
-      endpointPreview: null,
-      hasKey: true,
-      maskedKey: '••••K3Y9',
-      selectedModel: 'm1',
-      manualModel: false,
-      displayName: 'Local',
-      configRevision: 1,
-      validated: true,
-    })
-    const wrapper = await mountForm()
-
-    // 把地址改到不同来源
-    await wrapper.get('[data-test="custom-base-url"]').setValue('http://localhost:19099/v1')
-
-    // 明确提示,且获取模型/保存按钮被禁用
-    expect(wrapper.find('[data-test="custom-origin-warning"]').exists()).toBe(true)
-    expect(wrapper.get('[data-test="custom-discover"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('[data-test="custom-save-test"]').attributes('disabled')).toBeDefined()
-
-    // 输入新密钥后解除
-    await wrapper.get('[data-test="custom-api-key"]').setValue('brand-new-key')
-    expect(wrapper.find('[data-test="custom-origin-warning"]').exists()).toBe(false)
-    expect(wrapper.get('[data-test="custom-discover"]').attributes('disabled')).toBeUndefined()
+  it('allows same-origin path changes and keyless connections', async () => {
+    const row = connection(); row.hasKey = false
+    const w = mount(ProviderConnectionEditor, { props: { connection: row } })
+    await w.get('[data-test="connection-url"]').setValue('http://other-host:9999/v1')
+    expect(w.find('[data-test="connection-origin-warning"]').exists()).toBe(false)
   })
-
-  it('does not trigger for same-origin edits or keyless configs', async () => {
-    mockedGet.mockResolvedValue({
-      configured: true,
-      apiFormat: 'CHAT_COMPLETIONS',
-      baseUrl: 'http://localhost:11434/v1',
-      endpointPreview: null,
-      hasKey: false,
-      maskedKey: null,
-      selectedModel: 'm1',
-      manualModel: false,
-      displayName: 'Local',
-      configRevision: 1,
-      validated: true,
-    })
-    const wrapper = await mountForm()
-
-    // 同来源的路径编辑不触发守卫
-    await wrapper.get('[data-test="custom-base-url"]').setValue('http://localhost:11434/v2')
-    expect(wrapper.find('[data-test="custom-origin-warning"]').exists()).toBe(false)
-
-    // 无密钥配置改地址也不触发(没有可泄漏的凭据)
-    await wrapper.get('[data-test="custom-base-url"]').setValue('http://other-host:9999/v1')
-    expect(wrapper.find('[data-test="custom-origin-warning"]').exists()).toBe(false)
+  it('keeps an unlisted model editable and saves only the chosen UUID', async () => {
+    const row = connection(); vi.mocked(api.saveConnection).mockResolvedValue(row)
+    const w = mount(ProviderConnectionEditor, { props: { connection: row } })
+    await w.get('form').trigger('submit'); await flushPromises()
+    expect(api.saveConnection).toHaveBeenCalledExactlyOnceWith('uuid-a', expect.objectContaining({
+      apiKey: undefined, selectedModel: 'saved-unlisted-model', modelSource: 'MANUAL',
+    }))
+  })
+  it('displays a free filter only with explicit zero-price metadata', async () => {
+    vi.mocked(api.discoverConnection).mockResolvedValue({ models: ['free', 'unknown'], freeModels: ['free'], manualModel: false, endpointPreview: null })
+    const w = mount(ProviderConnectionEditor, { props: { connection: connection() } })
+    await w.get('[data-test="connection-discover"]').trigger('click'); await flushPromises()
+    await w.get('[data-test="connection-free-only"] input').setValue(true)
+    expect(w.findAll('datalist option').map(o => o.attributes('value'))).toEqual(['free'])
+  })
+  it('does not call discovery or save without management permissions', async () => {
+    accessSession.identity!.orgCapabilities = []
+    const w = mount(ProviderConnectionEditor, { props: { connection: connection() } })
+    await w.get('form').trigger('submit'); expect(api.saveConnection).not.toHaveBeenCalled()
+  })
+  it('uses the same field and button styles as builtin providers', () => {
+    const w = mount(ProviderConnectionEditor, { props: { connection: connection() } })
+    expect(w.get('[data-test="connection-save"]').classes()).toEqual(expect.arrayContaining(['btn', 'btn-primary', 'settings-action']))
+    expect(w.get('[data-test="connection-model"]').classes()).toContain('settings-control')
+    expect(w.findAll('.settings-field__label')).toHaveLength(5)
   })
 })

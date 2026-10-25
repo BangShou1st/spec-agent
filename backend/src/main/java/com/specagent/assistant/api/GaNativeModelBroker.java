@@ -10,6 +10,7 @@ import com.specagent.model.contract.GaModelTarget;
 import com.specagent.model.contract.GaNativeInferenceGateway;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /** Run-bound native broker orchestration; no Agent loop, credential forwarding or retries. */
@@ -20,11 +21,14 @@ public class GaNativeModelBroker {
     private final GaExecutionStore executions;
     private final GaExecutionModelTargetResolver modelTargets;
     private final GaNativeInferenceGateway nativeGateway;
+    private final com.specagent.assistant.runtime.GaModelContinuationStore continuations;
     private final ObjectMapper mapper = new ObjectMapper()
             .enable(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
     public GaNativeModelBroker(GaExecutionStore executions, GaExecutionModelTargetResolver modelTargets,
-            GaNativeInferenceGateway nativeGateway) {
+            GaNativeInferenceGateway nativeGateway,
+            com.specagent.assistant.runtime.GaModelContinuationStore continuations) {
         this.executions = executions; this.modelTargets = modelTargets; this.nativeGateway = nativeGateway;
+        this.continuations = continuations;
     }
 
     private com.specagent.runtime.execution.ExecutionHeartbeatRegistry heartbeatRegistry;
@@ -125,6 +129,7 @@ public class GaNativeModelBroker {
         GaModelContract.Request request;
         try {
             request = GaModelContract.readRequest(body);
+            requireRpcWireV2(request);
             if (!request.stream() || !"AGENT".equals(request.callType())) return 400;
         } catch (IllegalArgumentException protocol) { return 400; }
         if (ownershipLost(new GaExecutionStore.Scope(
@@ -149,6 +154,7 @@ public class GaNativeModelBroker {
     }
     private GaModelContract.Response inferForActor(GaModelContract.Request request,
             FragmentListener listener, GaExecutionStore.Scope scope) {
+        var sourceActor = executions.requireActor(scope);
         var binding = executions.authorize(scope);
         if (!binding.modelBindingId().equals(request.modelBindingId())) throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
         if ((!"SUMMARY".equals(request.callType()) && !binding.allowedTools().equals(request.tools()))
@@ -160,7 +166,18 @@ public class GaNativeModelBroker {
         // 绝不替换成另一个提供商。
         GaModelTarget target = modelTargets.requireFrozen(binding.provider(), binding.model(),
                 binding.settingsRevision());
-        String requestHash = Hashes.sha256Hex(json(request));
+        // v2 references are resolved and injected before reservation: the resolved
+        // request (not the opaque string alone) defines replay identity.
+        GaModelContract.Request internalRequest = request;
+        if (request.wireV2()) {
+            internalRequest = new GaModelContract.Request(GaModelContract.VERSION, request.runId(),
+                    request.executionEpoch(), request.leaseId(), request.callId(), request.callType(),
+                    request.modelBindingId(), request.messages().stream()
+                            .map(message -> message.continuationRef() == null ? message
+                                    : withResolved(message, continuations.resolve(message.continuationRef(), scope, binding)))
+                            .toList(), request.tools(), request.toolChoice(), request.maxOutputTokens(), request.stream());
+        }
+        String requestHash = Hashes.sha256Hex(json(internalRequest));
         var reservation = executions.reserve(scope, request.callId(), "MODEL", requestHash);
         if (!reservation.fresh()) {
             if ("SUCCEEDED".equals(reservation.status())) return GaModelContract.readResponse(reservation.result());
@@ -177,18 +194,38 @@ public class GaNativeModelBroker {
             // 提供商无关的原生执行入口:由冻结目标里的提供商路由到对应原生传输。会话亲和性
             // 以 thread 绑定(传输层按提供商自行映射);失权时片段直接被拒,绝不放行。
             var response = listener == null
-                    ? nativeGateway.complete(target, binding.threadId(), request, remaining, active)
-                    : nativeGateway.stream(target, binding.threadId(), request, remaining, active,
+                    ? nativeGateway.complete(target, binding.threadId(), internalRequest, remaining, active)
+                    : nativeGateway.stream(target, binding.threadId(), internalRequest, remaining, active,
                         text -> active.getAsBoolean() && listener.onFragment(text));
-            new com.specagent.model.provider.GaChatCompletionsAdapter().validateResponse(request,response);
+            // Broker 权威复核:与各 provider adapter 的传输层校验共用同一份契约层
+            // 纯逻辑实现(两个信任边界各执行一次,语义完全一致)。
+            com.specagent.model.contract.GaResponseContractValidator.validate(request,response);
             if(response.toolCalls().size()>1) {
                 var approved=executions.catalog(scope).descriptors().stream()
                     .filter(d->d.readOnly() && d.sideEffectClass().equals("NONE") && !java.util.Set.of("ui.navigate","user-input.request").contains(d.capabilityId()))
                     .map(com.specagent.assistant.tool.GaCatalogProjection.Descriptor::name).collect(java.util.stream.Collectors.toSet());
                 if(response.toolCalls().stream().anyMatch(call->!approved.contains(call.name()))) throw new IllegalArgumentException("GA batch must contain only admitted read-only business tools");
             }
-            executions.complete(scope, request.callId(), json(response));
-            return response;
+            var state = continuations.extract(response.toolCalls().stream()
+                            .map(GaModelContract.ToolCall::id).toList(),
+                    response.toolCalls().stream().map(GaModelContract.ToolCall::extraContent).toList());
+            UUID continuationId = state == null ? null : UUID.randomUUID();
+            String ref = continuationId == null ? null : "gacr-" + continuationId;
+            var wire = response.sanitizeForWire(request.protocolVersion(), ref);
+            final var sidecarRef = ref;
+            final var internalResponse = response;
+            final var sidecarState = state;
+            final var wireBinding = binding;
+            // Sidecar and MODEL ledger commit atomically. If encryption/storage
+            // fails, the call never becomes SUCCEEDED and no executable calls leak.
+            executions.completeModelWithContinuation(scope, request.callId(), json(wire), () -> {
+                if (sidecarRef == null) return;
+                continuations.persist(new com.specagent.assistant.runtime.GaModelContinuationStore.Source(
+                        sourceActor.orgId(), wireBinding.threadId(), scope.runId(), request.callId()), wireBinding,
+                        request.callId(), internalResponse.toolCalls().stream()
+                                .map(GaModelContract.ToolCall::id).toList(), sidecarState, continuationId);
+            });
+            return wire;
         } catch (RuntimeException ex) {
             executions.unknown(scope, request.callId());
             throw ex;
@@ -197,6 +234,7 @@ public class GaNativeModelBroker {
     /** Writes only typed host events, never provider JSON/SSE or partially parsed arguments. */
     public void stream(String body, java.io.OutputStream output) throws java.io.IOException {
         var request = GaModelContract.readRequest(body);
+        requireRpcWireV2(request);
         if (!request.stream() || !"AGENT".equals(request.callType())) throw new IllegalArgumentException("GA stream request");
         var sequence = new java.util.concurrent.atomic.AtomicInteger();
         java.util.function.BiConsumer<String,Object> emit = (type,payload) -> {
@@ -226,9 +264,12 @@ public class GaNativeModelBroker {
     }
     public Result invoke(String body) {
         try {
-            var response = complete(GaModelContract.readRequest(body));
+            var request = GaModelContract.readRequest(body);
+            requireRpcWireV2(request);
+            var response = complete(request);
             return new Result(200, mapper.convertValue(response, java.util.Map.class));
         } catch (com.specagent.model.contract.ModelGatewayException ex) {
+            log.warn("GA native model invoke failed category={} httpStatus={}", ex.gatewayCategory(), ex.httpStatus());
             return failure(502, "GA_MODEL_" + ex.gatewayCategory().name());
         } catch (com.specagent.model.contract.StreamCancelledException ex) {
             return failure(409, "GA_EXECUTION_FENCE");
@@ -243,6 +284,11 @@ public class GaNativeModelBroker {
         }
     }
     private Result failure(int status, String code) { return new Result(status, java.util.Map.of("errorCode", code)); }
+
+    /** The Python-facing HTTP RPC speaks only v2; v1 remains internal/history-only. */
+    private static void requireRpcWireV2(GaModelContract.Request request) {
+        if (!request.wireV2()) throw new IllegalArgumentException("GA model RPC requires ga-model-inference.v2");
+    }
 
     /**
      * 把一次原生模型失败的异常映射成<b>白名单内的类型化错误码</b>。与 {@link #invoke} 使用
@@ -277,5 +323,27 @@ public class GaNativeModelBroker {
     private String json(Object value) {
         try { return mapper.writeValueAsString(value); }
         catch (Exception ex) { throw new IllegalArgumentException("Invalid GA model payload"); }
+    }
+
+    private static GaModelContract.Message withResolved(GaModelContract.Message message,
+            com.specagent.assistant.runtime.GaModelContinuationStore.Resolved resolved) {
+        var expectedIds = message.toolCalls().stream().map(GaModelContract.ToolCall::id).toList();
+        if (!resolved.toolCallIds().equals(expectedIds)) {
+            throw new IllegalStateException("GA_CONTINUATION_BINDING_MISMATCH");
+        }
+        var calls = message.toolCalls().stream()
+                .map(call -> new GaModelContract.ToolCall(call.id(), call.name(), call.arguments(),
+                        perToolExtra(resolved.state(), call.id()))).toList();
+        return new GaModelContract.Message(message.role(), message.content(), calls,
+                message.toolCallId(), message.continuationRef(), null);
+    }
+
+    private static java.util.Map<String, Object> perToolExtra(java.util.Map<String, Object> state, String toolCallId) {
+        if (!(state.get(toolCallId) instanceof java.util.Map<?, ?> extra)) {
+            throw new IllegalStateException("GA_CONTINUATION_BINDING_MISMATCH");
+        }
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> typed = (java.util.Map<String, Object>) extra;
+        return typed;
     }
 }

@@ -30,12 +30,14 @@ withDefaults(defineProps<{
   /** 由调用方持有"仅免费"过滤状态时,渲染该复选框。 */
   freeOnly?: boolean
   freeToggleId?: string
+  allowManual?: boolean
 }>(), {
   warningText: null,
   placeholder: '请选择模型',
   loading: false,
   freeOnly: undefined,
   freeToggleId: undefined,
+  allowManual: false,
 })
 
 const emit = defineEmits<{
@@ -66,7 +68,24 @@ function onSelect(event: Event): void {
       </label>
     </span>
     <span class="settings-field__hint">{{ hint }}</span>
+    <input
+      v-if="allowManual"
+      :id="testId"
+      class="settings-control settings-model-select"
+      :data-test="testId"
+      :disabled="disabled"
+      :value="modelValue ?? ''"
+      :list="`${testId}-options`"
+      :placeholder="placeholder"
+      autocomplete="off"
+      spellcheck="false"
+      @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
+    />
+    <datalist v-if="allowManual" :id="`${testId}-options`">
+      <option v-for="model in models" :key="model" :value="model" />
+    </datalist>
     <select
+      v-else
       :id="testId"
       class="settings-control settings-model-select"
       :data-test="testId"

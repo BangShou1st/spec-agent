@@ -11,12 +11,18 @@ Brain 使用自己收到的可信请求来填写 base context 标识(绝不采�
 import json
 import logging
 import uuid
-from dataclasses import dataclass
 from typing import Any
 
 from pydantic import ValidationError
 
 from ..diagnostics import semantic_diagnostics
+from ..contracts.diagnostics import (
+    ContractDiagnostic,
+    actual_type,
+    contract_diagnostic,
+    expected_type,
+    safe_field_path,
+)
 from ..contracts.decisions import (
     ActionProposal,
     AgentV2ResponseEnvelope,
@@ -25,6 +31,7 @@ from ..contracts.decisions import (
     ModelDecisionOutput,
     ObservationView,
     UsageView,
+    wait_payload_matches_contract,
 )
 from ..contracts.inputs import AgentV2RequestEnvelope, AgentV3RequestEnvelope, AgentV4RequestEnvelope
 from ..contracts.protocol import DECISION_PROTOCOL_VERSION, DECISION_PROTOCOL_VERSION_V3, DECISION_PROTOCOL_VERSION_V4
@@ -38,20 +45,13 @@ logger = logging.getLogger("spec_agent_brain")
 # ``action`` 内部提升到自己 JSON 对象的顶层,而契约里顶层并没有这个字段。
 TOP_LEVEL_SOURCE_REFS = "sourceRefs"
 
-
-@dataclass(frozen=True)
-class ContractDiagnostic:
-    diagnostic_id: str
-    stage: str
-    validator_id: str
-    machine_code: str
-    field_path: str | None
-    expected_type: str | None
-    actual_type: str | None
-    boundary: str = "PYTHON_BRAIN"
-    java_wire_validator_entered: bool = False
-    executor_reached: bool = False
-    source_exception_type: str | None = None
+# DECISION 输出诊断允许出现在 fieldPath 里的字段名(模型自选的未知键
+# 可能携带任意内容,一律不回显)。
+_OUTPUT_FIELD_WHITELIST = frozenset({
+    "observation", "known", "unknowns", "conflicts", "risks", "action",
+    "actionFamily", "action_family", "payload", "sourceRefs", "source_refs",
+    "anchorRefs", "anchor_refs",
+})
 
 
 class BrainContractError(RuntimeError):
@@ -221,7 +221,7 @@ def _parse_model_output(content: str) -> ModelDecisionOutput:
     except json.JSONDecodeError as exc:
         raise ModelOutputContractError(
             "model output is not valid JSON",
-            _contract_diagnostic(
+            contract_diagnostic(
                 stage="brain.model_output_parse",
                 validator_id="json.loads",
                 machine_code="MODEL_OUTPUT_INVALID_JSON",
@@ -237,14 +237,14 @@ def _parse_model_output(content: str) -> ModelDecisionOutput:
     except ValidationError as exc:
         error = (exc.errors(include_input=True, include_context=False, include_url=False) or [{}])[0]
         error_type = error.get("type") if isinstance(error, dict) else None
-        field_path = _safe_field_path(error.get("loc")) if isinstance(error, dict) else None
-        diagnostic = _contract_diagnostic(
+        field_path = safe_field_path(error.get("loc"), _OUTPUT_FIELD_WHITELIST) if isinstance(error, dict) else None
+        diagnostic = contract_diagnostic(
             stage="brain.model_output_validation",
             validator_id="ModelDecisionOutput",
             machine_code="MODEL_OUTPUT_SCHEMA_INVALID",
             field_path=field_path,
-            expected_type=_expected_type(error_type),
-            actual_type=_actual_type(error.get("input")) if isinstance(error, dict) else None,
+            expected_type=expected_type(error_type),
+            actual_type=actual_type(error.get("input")) if isinstance(error, dict) else None,
             source_exception_type=type(exc).__name__,
         )
         safe_path = f" fieldPath={field_path}" if field_path else ""
@@ -253,74 +253,6 @@ def _parse_model_output(content: str) -> ModelDecisionOutput:
             f"[{_output_layout(content)}{safe_path}]",
             diagnostic,
         ) from None
-
-
-def _safe_field_path(location: Any) -> str | None:
-    if not isinstance(location, (tuple, list)):
-        return None
-    known_fields = {
-        "observation", "known", "unknowns", "conflicts", "risks", "action",
-        "actionFamily", "action_family", "payload", "sourceRefs", "source_refs",
-        "anchorRefs", "anchor_refs",
-    }
-    parts: list[str] = []
-    for item in location[:8]:
-        if isinstance(item, int) and item >= 0:
-            parts.append(f"[{item}]")
-        elif isinstance(item, str) and item in known_fields:
-            if parts and not parts[-1].endswith("]"):
-                parts.append(".")
-            parts.append(item)
-        else:
-            # Unknown model-selected keys can contain user content; don't echo them.
-            return None
-    path = "".join(parts)
-    return path[:160] if path else None
-
-
-def _actual_type(value: Any) -> str:
-    if value is None:
-        return "null"
-    if isinstance(value, bool):
-        return "boolean"
-    if isinstance(value, str):
-        return "string"
-    if isinstance(value, int):
-        return "integer"
-    if isinstance(value, float):
-        return "number"
-    if isinstance(value, list):
-        return "array"
-    if isinstance(value, dict):
-        return "object"
-    return "unknown"
-
-
-def _expected_type(error_type: Any) -> str | None:
-    return {
-        "string_type": "string",
-        "int_type": "integer",
-        "float_type": "number",
-        "bool_type": "boolean",
-        "list_type": "array",
-        "dict_type": "object",
-    }.get(error_type)
-
-
-def _contract_diagnostic(*, stage: str, validator_id: str, machine_code: str,
-                         field_path: str | None, expected_type: str | None,
-                         actual_type: str | None,
-                         source_exception_type: str | None) -> ContractDiagnostic:
-    return ContractDiagnostic(
-        diagnostic_id=str(uuid.uuid4()),
-        stage=stage,
-        validator_id=validator_id,
-        machine_code=machine_code,
-        field_path=field_path,
-        expected_type=expected_type,
-        actual_type=actual_type,
-        source_exception_type=source_exception_type,
-    )
 
 
 def _normalize_stray_source_refs(raw: Any) -> Any:
@@ -369,7 +301,7 @@ def _normalize_stray_source_refs(raw: Any) -> Any:
             raise AmbiguousSourceRefsError(
                 "model output carries two different sourceRefs lists: "
                 f"action_count={len(action_refs)} top_level_count={len(stray)}",
-                _contract_diagnostic(
+                contract_diagnostic(
                     stage="brain.output_normalization",
                     validator_id="sourceRefsNormalizer",
                     machine_code="MODEL_OUTPUT_AMBIGUOUS_SOURCE_REFS",
@@ -429,7 +361,7 @@ def _check_source_refs(output: ModelDecisionOutput, request: AgentV2RequestEnvel
         if ref not in allowed:
             raise UngroundedReferenceError(
                 "model referenced a source outside the allowed snapshot refs",
-                _contract_diagnostic(
+                contract_diagnostic(
                     stage="brain.output_grounding",
                     validator_id="sourceRefAllowlist",
                     machine_code="MODEL_OUTPUT_UNGROUNDED_REFERENCE",
@@ -453,7 +385,7 @@ def _check_source_refs(output: ModelDecisionOutput, request: AgentV2RequestEnvel
                   and value not in allowed):
                 raise UngroundedReferenceError(
                     "capability argument ref outside the allowed snapshot refs",
-                    _contract_diagnostic(
+                    contract_diagnostic(
                         stage="brain.output_grounding",
                         validator_id="capabilityArgumentRefAllowlist",
                         machine_code="MODEL_OUTPUT_UNGROUNDED_REFERENCE",
@@ -468,10 +400,8 @@ def _check_source_refs(output: ModelDecisionOutput, request: AgentV2RequestEnvel
 def _check_eligibility_action(output: ModelDecisionOutput,
                               request: AgentV3RequestEnvelope) -> None:
     if isinstance(request, AgentV4RequestEnvelope) and output.action.action_family == "WAIT":
-        payload = output.action.payload
         allowed = {str(d.invocation_id) for d in request.pending_dependencies.dependencies}
-        if (set(payload) != {"dependencyRef"} or not isinstance(payload.get("dependencyRef"), str)
-                or payload["dependencyRef"] not in allowed):
+        if not wait_payload_matches_contract(output.action.payload, allowed):
             raise ActionIneligibleBrainError("WAIT requires a projected dependencyRef")
     if output.action.action_family not in request.action_eligibility.eligible_families:
         raise ActionIneligibleBrainError(
@@ -501,7 +431,7 @@ def _check_conflict_action(output: ModelDecisionOutput,
     if not output.observation.conflicts:
         raise ConflictSurfacingError(
             "unresolved conflict requires a non-empty observation.conflicts",
-            _contract_diagnostic(
+            contract_diagnostic(
                 stage="brain.output_semantic_validation",
                 validator_id="unresolvedConflictSurface",
                 machine_code="MODEL_OUTPUT_CONFLICT_NOT_SURFACED",

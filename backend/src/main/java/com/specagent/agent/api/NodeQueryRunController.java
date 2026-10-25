@@ -42,15 +42,18 @@ public class NodeQueryRunController {
     private final AgentRunService agentRunService;
     private final AgentRunEventService eventService;
     private final AgentProposalService proposalService;
+    private final com.specagent.agent.query.NodeQuerySourcePresentation sources;
 
     public NodeQueryRunController(RunService runService,
                                   AgentRunService agentRunService,
                                   AgentRunEventService eventService,
-                                  AgentProposalService proposalService) {
+                                  AgentProposalService proposalService,
+                                  com.specagent.agent.query.NodeQuerySourcePresentation sources) {
         this.runService = runService;
         this.agentRunService = agentRunService;
         this.eventService = eventService;
         this.proposalService = proposalService;
+        this.sources=sources;
     }
 
     @PostMapping
@@ -87,7 +90,15 @@ public class NodeQueryRunController {
         view.put("runId", run.id().toString());
         view.put("producedNodeId", run.producedNodeId() == null
                 ? null : run.producedNodeId().toString());
-        view.put("message", respondMessage(run.id()));
+        Map<String,Object> response=eventService.findByRunId(run.id()).stream()
+            .filter(e->AgentRunEventTypes.RESPOND_MESSAGE_EVENT.equals(e.eventType()))
+            .map(AgentRunEvent::payload).reduce((first,last)->last).orElse(Map.of());
+        var presentation=sources.project(run,response);
+        view.put("message",presentation.unavailable()?null:response.get("message"));
+        view.put("sourceStatus",presentation.sourceStatus());
+        view.put("resourceRefs",presentation.resourceRefs());
+        view.put("sourceRefs",presentation.resourceRefs().stream()
+            .map(r->((Map<?,?>)r.get("metadata")).get("sourceRef")).toList());
 
         // 如果查询被降级为等待批准的动作,则把本 run 产出的 advisory 提案
         // 暴露出来。只读 run 没有提案。语义化状态反映提案生命周期,
@@ -130,17 +141,6 @@ public class NodeQueryRunController {
             view.put("status", run.status().code().toUpperCase());
         }
         return view;
-    }
-
-    private String respondMessage(UUID runId) {
-        List<AgentRunEvent> events = eventService.findByRunId(runId);
-        return events.stream()
-                .filter(e -> AgentRunEventTypes.RESPOND_MESSAGE_EVENT.equals(e.eventType()))
-                .map(e -> e.payload().get("message"))
-                .filter(value -> value instanceof String)
-                .map(String.class::cast)
-                .reduce((first, second) -> second)
-                .orElse(null);
     }
 
     public record NodeQueryRequest(UUID routeId, String question) {

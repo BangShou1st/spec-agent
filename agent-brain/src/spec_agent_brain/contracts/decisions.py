@@ -144,6 +144,21 @@ class AgentV4ResponseEnvelope(AgentV3ResponseEnvelope):
     protocol_version: Literal[protocol.DECISION_PROTOCOL_VERSION_V4]
 
 
+def wait_payload_matches_contract(payload: Dict[str, Any],
+                                  allowed_dependency_refs: frozenset[str] | set[str]) -> bool:
+    """WAIT 载荷的唯一合法形态:恰好一个字符串 ``dependencyRef``,且来自
+    当前请求投影的依赖集合。
+
+    这是低层、无副作用的契约校验原语,供两侧消费:Decision 引擎的模型
+    输出前置拒绝与 ``validate_v3_response_for_request`` 的响应信封自检。
+    Java ``ActionEligibilityValidator`` 的权威复核独立实现同一条规则,
+    三处语义必须保持一致;各调用方保留自己的异常类型与错误语义。
+    """
+    if set(payload) != {"dependencyRef"} or not isinstance(payload.get("dependencyRef"), str):
+        return False
+    return payload["dependencyRef"] in allowed_dependency_refs
+
+
 def validate_v3_response_for_request(
         request: "AgentV3RequestEnvelope",
         response: AgentV3ResponseEnvelope) -> None:
@@ -164,10 +179,8 @@ def validate_v3_response_for_request(
         raise ValueError("selected action family is not eligible")
     if (request.protocol_version == protocol.INPUT_PROTOCOL_VERSION_V4
             and response.action_proposal.action_family == "WAIT"):
-        payload = response.action_proposal.payload
         allowed = {str(d.invocation_id) for d in request.pending_dependencies.dependencies}
-        if (set(payload) != {"dependencyRef"} or not isinstance(payload.get("dependencyRef"), str)
-                or payload["dependencyRef"] not in allowed):
+        if not wait_payload_matches_contract(response.action_proposal.payload, allowed):
             raise ValueError("WAIT requires a projected dependencyRef")
     allowed = set(request.snapshot.allowed_source_refs)
     if any(ref not in allowed for ref in response.eligibility_evidence_refs):

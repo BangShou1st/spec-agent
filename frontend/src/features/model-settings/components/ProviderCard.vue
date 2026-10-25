@@ -1,6 +1,6 @@
 <!--
   文件名:ProviderCard.vue
-  用途:Provider 卡片的通用外壳,由 OpenCode Zen、OpenRouter 与自定义网关共用:
+  用途:所有内置与自定义 Provider 共用的卡片外壳:
        提供头部(标题/描述)、状态胶囊、错误横幅与纵向节奏,
        卡片自身内容通过插槽注入。
 -->
@@ -13,7 +13,7 @@ import { productErrorMessage } from '@/shared/http/errorCopy'
 import type { ProviderState } from '@/features/model-settings/presentation/providerPresentation'
 
 /**
- * Provider 卡片范式,从 OpenRouter 卡片抽出,由 OpenCode Zen、OpenRouter
+ * Provider 卡片范式,从 其他 Provider 卡片抽出,由 OpenCode Zen、其他 Provider
  * 和用户的自定义网关共用。
  *
  * 每张卡片只通过插槽贡献自己的内容 —— `summary` 放当前配置项、

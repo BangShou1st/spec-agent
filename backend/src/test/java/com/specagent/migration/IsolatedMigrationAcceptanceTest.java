@@ -350,12 +350,23 @@ class IsolatedMigrationAcceptanceTest {
         createDatabase(db);
         String target = urlOf(db);
 
-        migrate(target, LATEST);
+        // Apply the WHOLE shipped chain first. The scenario is about a synthetic
+        // migration failing, so no real migration may still be pending: otherwise
+        // the failure would be preceded by real DDL and the assertion below would
+        // be measuring the chain's length instead of the rollback.
+        migrateAll(target);
+        String baselineRank = scalar(target,
+                "select coalesce(max(installed_rank),0) from flyway_schema_history");
 
         // A synthetic, forward-only migration that fails inside its transaction.
+        // It must sort AFTER the whole shipped chain: reusing a version that the
+        // real chain already owns makes Flyway reject the run with "more than one
+        // migration with version N", which proves nothing about rollback.
         Path extra = temp.resolve("extra");
         Files.createDirectories(extra);
-        Files.writeString(extra.resolve("V104__isolated_acceptance_failure.sql"),
+        int syntheticVersion = 111;
+        String syntheticId = String.valueOf(syntheticVersion);
+        Files.writeString(extra.resolve("V" + syntheticVersion + "__isolated_acceptance_failure.sql"),
                 "create table isolated_acceptance_probe(id integer primary key);\n"
                         + "insert into isolated_acceptance_probe(id) values (1);\n"
                         + "select 1/0;\n");
@@ -367,18 +378,18 @@ class IsolatedMigrationAcceptanceTest {
         assertThatThrownBy(failing::migrate).isInstanceOf(FlywayException.class);
 
         // PostgreSQL DDL is transactional: the partially created table is gone and
-        // the schema history still stops at 103.
+        // the schema history is exactly where it was before the failed attempt.
         assertThat(tableExists(target, "isolated_acceptance_probe")).isFalse();
-        assertThat(scalar(target, "select count(*) from flyway_schema_history where version='104'"))
+        assertThat(scalar(target, "select count(*) from flyway_schema_history where version='" + syntheticId + "'"))
                 .isEqualTo("0");
         assertThat(scalar(target, "select coalesce(max(installed_rank),0) from flyway_schema_history"))
-                .isEqualTo("102");
+                .isEqualTo(baselineRank);
 
         // Retry after the failure is removed succeeds.
-        Files.delete(extra.resolve("V104__isolated_acceptance_failure.sql"));
+        Files.delete(extra.resolve("V" + syntheticVersion + "__isolated_acceptance_failure.sql"));
         Path healthy = temp.resolve("healthy");
         Files.createDirectories(healthy);
-        Files.writeString(healthy.resolve("V104__isolated_acceptance_success.sql"),
+        Files.writeString(healthy.resolve("V" + syntheticVersion + "__isolated_acceptance_success.sql"),
                 "create table isolated_acceptance_probe(id integer primary key);\n");
         Flyway retry = Flyway.configure().dataSource(target, user, password)
                 .locations(MIGRATIONS, filesystemLocation(healthy))
@@ -386,7 +397,7 @@ class IsolatedMigrationAcceptanceTest {
                 .load();
         retry.migrate();
         assertThat(tableExists(target, "isolated_acceptance_probe")).isTrue();
-        assertThat(scalar(target, "select count(*) from flyway_schema_history where version='104'"))
+        assertThat(scalar(target, "select count(*) from flyway_schema_history where version='" + syntheticId + "'"))
                 .isEqualTo("1");
     }
 
@@ -534,6 +545,15 @@ class IsolatedMigrationAcceptanceTest {
     }
 
     private record MigrateResult(int migrationsExecuted) {}
+
+    /** Applies every shipped migration, whatever the chain's current length is. */
+    private static void migrateAll(String target) {
+        Flyway.configure().dataSource(target, user, password)
+                .locations(MIGRATIONS)
+                .callbacks(new LegacyBindingMigrationGuard())
+                .load()
+                .migrate();
+    }
 
     private static void createDatabase(String database) throws SQLException {
         try (Connection connection = DriverManager.getConnection(adminUrl, user, password);

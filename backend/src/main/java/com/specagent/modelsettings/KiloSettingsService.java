@@ -87,7 +87,7 @@ public class KiloSettingsService implements KiloRuntimeSettingsPort {
         validateCredential(credentialForModel(model, key), model);
 
         Instant now = Instant.now();
-        repository.upsert(new KiloSettings(key, suffix(key), model,
+        repository.upsert(new KiloSettings(key, ApiKeyMasking.suffix(key), model,
                 existing == null ? now : existing.createdAt(), now));
         return status();
     }
@@ -246,14 +246,7 @@ public class KiloSettingsService implements KiloRuntimeSettingsPort {
     }
 
     private static boolean hasKey(String apiKey) {
-        return apiKey != null && !apiKey.isBlank();
-    }
-
-    private static String suffix(String apiKey) {
-        if (!hasKey(apiKey)) {
-            return null;
-        }
-        return apiKey.length() <= 4 ? "" : apiKey.substring(apiKey.length() - 4);
+        return ApiKeyMasking.hasKey(apiKey);
     }
 
     private static String mask(String suffix) {

@@ -62,7 +62,7 @@ export const useCustomProviderStore = defineStore('customProvider', {
       this.privateIdentity = identity
     },
     ensurePersistedVisible(): void {
-      // 与 OpenRouter 相同的规则:(重新)拉取之前已持久化的选中项保持可见;
+      // 与 其他 Provider 相同的规则:(重新)拉取之前已持久化的选中项保持可见;
       // 手动模式由持久化的 modelSource 驱动。
       if (!this.manualModel && this.selectedModel
         && !this.discoveredModels.includes(this.selectedModel)) {

@@ -1,0 +1,35 @@
+{
+  "round": "ARCH-QUALITY-01",
+  "recordedAt": "2026-10-26T03:10:00+08:00",
+  "baseline": "a30de0cc85caf46f7bca42742e76b3ee20e103f2",
+  "commitBinding": "本轮交付提交 SHA 于推送后在 summary.md「CI 核对更新」补记;本 manifest 固定文件级 SHA-256 作为内容绑定,避免无限补录提交循环。",
+  "productionFiles": {
+    "backend/src/main/java/com/specagent/model/contract/GaResponseContractValidator.java": "c3c59f4442741d5be4bbc959b8a347a039c21f9da9c63e147c703681e3f3a545",
+    "backend/src/main/java/com/specagent/modelsettings/ApiKeyMasking.java": "92a14c4d3b04227843aa075a738866c900f43d4bbfd92ef4ea7a9d10af0577f6",
+    "backend/src/main/java/com/specagent/assistant/api/GaNativeModelBroker.java": "modified: validateResponse 调用改指契约层",
+    "backend/src/main/java/com/specagent/model/provider/GaChatCompletionsAdapter.java": "modified: validateResponse 委托",
+    "backend/src/main/java/com/specagent/model/provider/GaAnthropicMessagesAdapter.java": "modified: validateResponse 委托",
+    "backend/src/main/java/com/specagent/model/provider/GaResponsesAdapter.java": "modified: validateResponse 委托",
+    "backend/src/main/java/com/specagent/modelsettings/ModelProvidersService.java": "modified: 冗余布尔项删除 + ApiKeyMasking 委托",
+    "backend/src/main/java/com/specagent/modelsettings/CustomProviderSettingsService.java": "modified: equalsNullable 删除 + suffix 委托",
+    "backend/src/main/java/com/specagent/modelsettings/KiloSettingsService.java": "modified: suffix/hasKey 委托",
+    "backend/src/main/java/com/specagent/modelsettings/OpenCodeSettingsService.java": "modified: suffix/hasKey 委托"
+  },
+  "testFiles": {
+    "backend/src/test/java/com/specagent/model/contract/GaResponseContractValidatorTest.java": "2bb0c6061a2b1069a295bd90fa29a7332d8f9972d2d3fe91845473ccf35aad3d",
+    "backend/src/test/java/com/specagent/modelsettings/ApiKeyMaskingTest.java": "bbb388547f24184044780b7c2850e16f849605c42fc572e57a998803f34107fd",
+    "backend/src/test/java/com/specagent/architecture/ArchitectureTests.java": "modified: 新增 assistantApiShouldNotDependOnProviderImplementationPackages"
+  },
+  "evidenceFiles": {
+    "docs/acceptance-evidence/arch-quality-01-20261025/audit.md": "254d0ca0757cc70e4f62dd0e2e59dd60b223e57921e6abcbc55cc0cb182c8ad6",
+    "docs/acceptance-evidence/arch-quality-01-20261025/refactor-plan.md": "00a718a3b0df93e1efd4ce4c5a8ce49239424b0babe8cbae3b4caa846ecf82f5",
+    "docs/acceptance-evidence/arch-quality-01-20261025/before-after.md": "aafab3605aeb961954024c30ba1a515eaa279f5fd1a89544b8f9341dd57f7daf",
+    "docs/acceptance-evidence/arch-quality-01-20261025/verification.json": "4c89bcfa7c9a118113081914ea7a767805e8c2ef9a840aa68cf6cd000663f73e",
+    "docs/acceptance-evidence/arch-quality-01-20261025/summary.md": "27837810dee24ba89bd1fbb0f9b18999e625a8001664f747ec1602b84019fb78(推送后补 CI 段,内容变更以 git 历史为准)"
+  },
+  "untouchedUserWip": [
+    "backend/src/test/java/com/specagent/access/ModelSettingsIsolationIntegrationTest.java(工作区行尾态,无内容差异)",
+    "docs/v2/evidence/SHARED_RAG_ACCEPTANCE_PRECHECK.json(recordedAt 时间戳)",
+    "全部历史 untracked 证据目录与脚本"
+  ]
+}

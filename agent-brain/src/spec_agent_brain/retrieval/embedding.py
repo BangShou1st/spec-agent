@@ -6,6 +6,7 @@ from threading import BoundedSemaphore
 from urllib.parse import urlparse
 
 import httpx
+
 from langchain_ollama import OllamaEmbeddings
 from ollama import ResponseError
 

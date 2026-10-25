@@ -44,20 +44,20 @@ describe('provider settings orchestration', () => {
   })
 
   it('provider configs stay independent across tabs', async () => {
-    vi.mocked(api.getActiveProvider).mockResolvedValue({ activeProvider: 'OPENROUTER' })
+    vi.mocked(api.getActiveProvider).mockResolvedValue({ activeProvider: 'KILO' })
     const store = useProviderSettingsStore()
     await store.loadActive()
     store.view('OPENCODE_ZEN')
-    expect(store.activeProvider).toBe('OPENROUTER')
-    store.view('OPENROUTER')
-    expect(store.activeProvider).toBe('OPENROUTER')
+    expect(store.activeProvider).toBe('KILO')
+    store.view('KILO')
+    expect(store.activeProvider).toBe('KILO')
   })
 
   it('entering the page shows the currently active provider, not always OpenCode', async () => {
-    vi.mocked(api.getActiveProvider).mockResolvedValue({ activeProvider: 'OPENROUTER' })
+    vi.mocked(api.getActiveProvider).mockResolvedValue({ activeProvider: 'KILO' })
     const store = useProviderSettingsStore()
     await store.loadActive()
-    expect(store.viewing).toBe('OPENROUTER')
+    expect(store.viewing).toBe('KILO')
   })
 
   it('stops auto-focusing the active provider once the user picked a tab manually', async () => {

@@ -48,7 +48,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 测试目标:面向阻塞式 RAG 关卡的确定性离线检索评估语料。以下每个指标
  * 都由真实的混合检索器或有界的检索上下文选择器产出的有序检索结果计算而来。
  */
-@SpringBootTest(properties = "spec.agent.retrieval.embedding.provider=fake")
+@SpringBootTest(properties = {"spec.agent.retrieval.embedding.provider=fake", "spec.agent.retrieval.engine=java-hybrid.v1"})
 @ActiveProfiles("test")
 @Transactional
 class RetrievalFastEvaluationTest {

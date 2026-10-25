@@ -22,10 +22,22 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConfigurationProperties(prefix = "spec.global-assistant.ga-native")
-public class GaNativeModelQualification {
+public class GaNativeModelQualification implements com.specagent.model.contract.CustomNativeToolQualification {
 
     /** 已通过原生工具调用资格验证的 Kilo 模型 id;空表示尚未登记任何 Kilo 模型。 */
     private List<String> kiloQualifiedModels = new ArrayList<>();
+    public record CustomTarget(String baseUrl,String model) {}
+    private List<CustomTarget> customQualifiedTargets=new ArrayList<>();
+    public List<CustomTarget> getCustomQualifiedTargets() {return List.copyOf(customQualifiedTargets);}
+    public boolean hasCustomTargets() {return !customQualifiedTargets.isEmpty();}
+    public void setCustomQualifiedTargets(List<CustomTarget> targets) {
+        customQualifiedTargets=targets==null?new ArrayList<>():new ArrayList<>(targets);
+    }
+    /** Explicit endpoint AND model qualification; never infer support from a model name alone. */
+    public boolean customQualified(String baseUrl,String model) {
+        return baseUrl!=null && model!=null && customQualifiedTargets.stream()
+            .anyMatch(t->baseUrl.equals(t.baseUrl()) && model.equals(t.model()));
+    }
 
     public List<String> getKiloQualifiedModels() {
         return List.copyOf(kiloQualifiedModels);

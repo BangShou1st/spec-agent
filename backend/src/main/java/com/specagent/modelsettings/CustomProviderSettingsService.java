@@ -31,6 +31,18 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
     private final ProtocolAdapterRegistry registry;
     private final CompatibilityProbeService probe;
     private final HttpClient client;
+    private ModelProviderRepository connections;
+    private ModelProviderSettingsService active;
+    private ModelConnectionCapabilities capabilities;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setCapabilities(ModelConnectionCapabilities capabilities) { this.capabilities = capabilities; }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setConnections(ModelProviderRepository connections, ModelProviderSettingsService active) {
+        this.connections = connections;
+        this.active = active;
+    }
 
     public CustomProviderSettingsService(CustomProviderSettingsRepository repository, ObjectMapper mapper,
                                          ProtocolAdapterRegistry registry, CompatibilityProbeService probe) {
@@ -61,9 +73,12 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
                     }
                     boolean validated = s.validatedRevision() != null
                             && s.validatedRevision() == s.configRevision();
+                    // 掩码输出永远从实际密钥重新推导:历史行持久化的 masked_suffix
+                    // 可能来自旧的弱脱敏逻辑(极短密钥被原样存入),不得被状态边界
+                    // 信任。suffix(null/空/≤4)=null,仅长密钥显示末 4 位。
                     return new Status(true, s.apiFormat(), s.baseUrl(), preview,
                             s.apiKey() != null && !s.apiKey().isBlank(),
-                            mask(s.maskedSuffix()), s.selectedModel(), "MANUAL".equals(s.modelSource()),
+                            mask(suffix(s.apiKey())), s.selectedModel(), "MANUAL".equals(s.modelSource()),
                             normalizeDisplayName(s.displayName()), s.configRevision(), validated);
                 })
                 .orElseGet(() -> new Status(false, CustomApiFormat.CHAT_COMPLETIONS.name(),
@@ -149,12 +164,13 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
             String trimmed = displayNameInput.trim();
             displayName = trimmed.isEmpty() ? null : trimmed;
         }
-        // 密钥解析:null 沿用旧密钥与脱敏后缀,空串清空,非空取新密钥并重算后缀
+        // 密钥解析:null 沿用旧密钥并对后缀重新脱敏(历史弱脱敏值在此自然纠正),
+        // 空串清空,非空取新密钥并重算后缀
         String resolvedKey;
         String masked;
         if (apiKeyInput == null) {
             resolvedKey = existing == null ? null : existing.apiKey();
-            masked = existing == null ? null : existing.maskedSuffix();
+            masked = suffix(resolvedKey);
         } else if (apiKeyInput.isBlank()) {
             resolvedKey = null;
             masked = null;
@@ -166,10 +182,10 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         // 配置内容与已存完全一致时直接返回当前状态,不递增修订号(避免无谓地使验证失效)
         if (existing != null && existing.apiFormat().equals(format.name())
                 && existing.baseUrl().equals(normalized)
-                && equalsNullable(existing.apiKey(), resolvedKey)
+                && ApiKeyMasking.equalsNullable(existing.apiKey(), resolvedKey)
                 && existing.selectedModel().equals(model)
                 && modelSource.equals(existing.modelSource() == null ? "DISCOVERED" : existing.modelSource())
-                && equalsNullable(existing.displayName(), displayName)) {
+                && ApiKeyMasking.equalsNullable(existing.displayName(), displayName)) {
             return status();
         }
         long nextRevision = existing == null ? 1 : existing.configRevision() + 1;
@@ -182,10 +198,8 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
     public Status validate() {
         CustomProviderSettings s = requireStored();
         CustomApiFormat format = CustomApiFormat.fromCode(s.apiFormat());
-        if (format == CustomApiFormat.ANTHROPIC_MESSAGES) {
-            throw ModelProviderException.providerRequestError("custom",
-                    "Anthropic Messages cannot serve the required JSON_OBJECT contract in V1", null);
-        }
+        // MS-C3:Anthropic Messages 通过宿主 JSON Envelope 桥接承载 JSON_OBJECT 契约,
+        // legacy 单例同样允许验证/激活;原生工具资格仍然只属于 UUID 连接的能力记录。
         String normalized = ProviderUrlSecurity.validateAndNormalizeBaseUrl(s.baseUrl());
         String model = ProviderUrlSecurity.normalizeModelId(s.selectedModel());
         probe.probeCustom(format, normalized, s.apiKey(), model);
@@ -201,10 +215,6 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         }
         ProviderUrlSecurity.validateAndNormalizeBaseUrl(s.baseUrl());
         CustomApiFormat format = CustomApiFormat.fromCode(s.apiFormat());
-        if (format == CustomApiFormat.ANTHROPIC_MESSAGES) {
-            throw ModelProviderException.notConfigured("custom",
-                    "Anthropic Messages is not activatable in V1");
-        }
         ProviderUrlSecurity.normalizeModelId(s.selectedModel());
         if (s.validatedRevision() == null || s.validatedRevision() != s.configRevision()) {
             throw ModelProviderException.notConfigured("custom",
@@ -241,6 +251,64 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
      */
     @Override
     public RuntimeCustomSettings requireRuntimeSettings() {
+        if (active != null && active.activeProviderId() != null) {
+            return connectionSettings(active.activeProviderId(), null);
+        }
+        return legacyRuntimeSettings();
+    }
+
+    @Override
+    public RuntimeCustomSettings requireRuntimeSettings(String frozenRevision) {
+        if (frozenRevision != null && frozenRevision.startsWith("custom-provider:")) {
+            String[] parts = frozenRevision.split(":", -1);
+            try {
+                if (parts.length != 3) throw new IllegalArgumentException();
+                return connectionSettings(java.util.UUID.fromString(parts[1]), Long.parseLong(parts[2]));
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+            }
+        }
+        // Legacy runs keep the original singleton identity after a new
+        // connection is selected; they must never resolve the new active row.
+        RuntimeCustomSettings settings = legacyRuntimeSettings();
+        if (!settings.bindingRevision().equals(frozenRevision)) {
+            throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+        }
+        return settings;
+    }
+
+    @Override
+    public RuntimeCustomSettings requireRuntimeSettings(java.util.UUID selectedId) {
+        return selectedId == null ? legacyRuntimeSettings() : connectionSettings(selectedId,null);
+    }
+
+    private RuntimeCustomSettings connectionSettings(java.util.UUID id, Long revision) {
+        if (connections == null) throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+        ModelProviderRecord row = connections.findById(id)
+                .orElseThrow(() -> new IllegalStateException("GA_MODEL_BINDING_MISMATCH"));
+        if (row.preset() != com.specagent.model.contract.ModelProvider.CUSTOM
+                || !row.configured() || !row.validated()
+                || (revision != null && row.configRevision() != revision)) {
+            throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+        }
+        // 新 Run 准入(revision == null:按 selectedId 或当前激活解析)必须持有当前
+        // (org, UUID, config_revision) 的 STRUCTURED=VERIFIED 证明——与激活门禁
+        // ModelProvidersService.requireActivatable 同一权威来源。过期的
+        // validated_revision 只描述"曾在该修订号下验证过",复验失败降级后不得继续
+        // 放行。冻结绑定(revision != null)刻意不重复施加能力门禁:能力模式已随
+        // 绑定冻结,这里只校验绑定一致性(GaExecutionModelTargetResolver.requireFrozen
+        // 的设计契约),降级不得把一个已合法接受的 Run 判死。
+        if (revision == null && capabilities != null
+                && !"VERIFIED".equals(capabilities.status(row).get("STRUCTURED"))) {
+            throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+        }
+        ProviderUrlSecurity.validateAndNormalizeBaseUrl(row.baseUrl());
+        return new RuntimeCustomSettings(row.apiFormat(), row.baseUrl(), row.apiKey(),
+                row.selectedModel(), row.configRevision(), row.id(), capabilities != null
+                && "VERIFIED".equals(capabilities.status(row).get("NATIVE_TOOLS")));
+    }
+
+    private RuntimeCustomSettings legacyRuntimeSettings() {
         CustomProviderSettings s = requireStored();
         requireActivatable();
         return new RuntimeCustomSettings(s.apiFormat(), s.baseUrl(), s.apiKey(), s.selectedModel(),
@@ -258,16 +326,6 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         }
     }
 
-    private static boolean equalsNullable(String a, String b) {
-        if (a == null && b == null) {
-            return true;
-        }
-        if (a == null || b == null) {
-            return false;
-        }
-        return a.equals(b);
-    }
-
     /** 标签兜底:历史数据可能缺显示名称,这里保证 UI 契约始终有值。 */
     private static String normalizeDisplayName(String raw) {
         if (raw == null || raw.isBlank()) {
@@ -276,12 +334,9 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         return raw.trim();
     }
 
-    /** 取密钥末 4 位作为脱敏后缀;密钥过短时原样返回(本地服务多为无密钥场景)。 */
+    /** 取密钥末 4 位作为脱敏后缀;统一语义见 {@link ApiKeyMasking}。 */
     static String suffix(String key) {
-        if (key == null || key.isEmpty()) {
-            return null;
-        }
-        return key.length() <= 4 ? key : key.substring(key.length() - 4);
+        return ApiKeyMasking.suffix(key);
     }
 
     static String mask(String suffix) {

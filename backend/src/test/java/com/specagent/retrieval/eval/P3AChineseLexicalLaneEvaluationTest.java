@@ -52,7 +52,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 统计单位是 source(一个 source_ref 一条),按 sourceRef 去重,避免同一来源的
  * 多个 chunk 抬高指标。
  */
-@SpringBootTest(properties = "spec.agent.retrieval.embedding.provider=fake")
+@SpringBootTest(properties = {"spec.agent.retrieval.embedding.provider=fake", "spec.agent.retrieval.engine=java-hybrid.v1"})
 @ActiveProfiles("test")
 @Transactional
 class P3AChineseLexicalLaneEvaluationTest {

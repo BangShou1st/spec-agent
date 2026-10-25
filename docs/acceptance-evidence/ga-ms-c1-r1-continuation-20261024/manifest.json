@@ -1,0 +1,13 @@
+{
+  "milestone": "MS-C1-R1",
+  "date": "2026-10-24",
+  "database": "spec_agent_p3b_live_ms_c1_r1_20261024",
+  "tests": {
+    "backendOffline": {"completed": 403, "failed": 0, "skipped": 0},
+    "backendDatabaseIntegration": {"completed": 989, "failed": 0, "skipped": 41},
+    "python": {"completed": 343, "failed": 0, "skipped": 0}
+  },
+  "liveGemini": "NOT_RUN_BY_POLICY",
+  "protocol": "ga-model-inference.v2",
+  "fixtures": "contracts/global-assistant/fixtures/ms-c1-r1"
+}

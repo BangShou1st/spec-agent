@@ -23,6 +23,8 @@ public interface ActiveModelTargetPort {
      */
     Optional<Target> activeTarget();
 
+    default Optional<Target> targetForConnectionReference(String reference) { return Optional.empty(); }
+
     /**
      * 一次解析出的不可变请求配置。{@code runtimeSettings} 只在本次请求内存中携带
      * 凭据,而 {@code bindingFingerprint} 是不含明文凭据的 SHA-256 配置指纹,可用于
@@ -68,11 +70,6 @@ public interface ActiveModelTargetPort {
                 fields.add(value.selectedModel());
                 fields.add(value.apiKey());
                 fields.add(value.credentialSource());
-            } else if (settings instanceof RuntimeOpenRouterSettings value) {
-                fields.add("OPENROUTER");
-                fields.add(value.selectedModel());
-                fields.add(value.apiKey());
-                fields.add(Long.toString(value.configRevision()));
             } else if (settings instanceof RuntimeCustomSettings value) {
                 fields.add("CUSTOM");
                 fields.add(value.selectedModel());
@@ -80,6 +77,8 @@ public interface ActiveModelTargetPort {
                 fields.add(value.apiFormat());
                 fields.add(value.baseUrl());
                 fields.add(Long.toString(value.configRevision()));
+                // Preserve the exact historical singleton digest format.
+                if (value.providerId() != null) fields.add(value.providerId().toString());
             } else if (settings != null) {
                 throw new IllegalArgumentException("Unsupported runtime model target settings");
             }

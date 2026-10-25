@@ -12,8 +12,7 @@ from typing import Optional, Sequence
 import httpx
 import re
 
-WORKSPACE_RPC_GRANT_VERSION = "workspace-rpc-grant.v1"
-
+from ..contracts.protocol import INFERENCE_PROTOCOL_VERSION
 from .base import BrokerTimeoutError, ChatMessage, Completion, ModelClientError, require_call_type, require_roles
 
 
@@ -30,7 +29,7 @@ class BrokerModelClient:
         self._internal_secret = internal_secret
         self._execution_grant = execution_grant
         self._owns_client = http_client is None
-        self._client = http_client or httpx.Client(timeout=timeout_seconds)
+        self._client = http_client or httpx.Client(timeout=timeout_seconds, trust_env=False, follow_redirects=False)
 
     def close(self) -> None:
         if self._owns_client:
@@ -48,7 +47,7 @@ class BrokerModelClient:
         if self._execution_grant is None or re.fullmatch(r"[A-Za-z0-9_-]{43}", self._execution_grant) is None:
             raise ModelClientError("workspace execution grant is required")
         payload = {
-            "protocolVersion": "model-inference.v1",
+            "protocolVersion": INFERENCE_PROTOCOL_VERSION,
             "runId": run_id,
             "callType": call_type,
             "messages": [{"role": m.role, "content": m.content} for m in messages],

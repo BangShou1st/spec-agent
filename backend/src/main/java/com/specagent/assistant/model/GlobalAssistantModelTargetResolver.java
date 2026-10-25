@@ -1,7 +1,6 @@
 package com.specagent.assistant.model;
 
 import com.specagent.model.contract.ModelProvider;
-import com.specagent.modelsettings.OpenRouterSettingsService;
 import com.specagent.modelsettings.OpenCodeSettingsService;
 import com.specagent.modelsettings.KiloSettingsService;
 import com.specagent.modelsettings.ModelProviderRecord;
@@ -18,8 +17,8 @@ import org.springframework.stereotype.Component;
  * 装饰性的,绝不能因此打断一次运行。
  *
  * 各预设并不是 {@code model_providers} 表里的一行(V37 中 OpenCode Zen
- * 与 OpenRouter 走各自专用的设置表),所以每种供应商都从路由网关实际读取的
- * 存储里取模型:OpenCode 运行时设置、OpenRouter 状态,只有 CUSTOM
+ * 与 其他 Provider 走各自专用的设置表),所以每种供应商都从路由网关实际读取的
+ * 存储里取模型:OpenCode 运行时设置、其他 Provider 状态,只有 CUSTOM
  * 才查供应商注册表。
  */
 @Component
@@ -32,18 +31,16 @@ public class GlobalAssistantModelTargetResolver {
     private final ModelProviderSettingsService providerSettings;
     private final ModelProvidersService providers;
     private final OpenCodeSettingsService openCodeSettings;
-    private final OpenRouterSettingsService openRouterSettings;
     private final KiloSettingsService kiloSettings;
 
     public GlobalAssistantModelTargetResolver(ModelProviderSettingsService providerSettings,
             ModelProvidersService providers,
             OpenCodeSettingsService openCodeSettings,
-            OpenRouterSettingsService openRouterSettings,
+
             KiloSettingsService kiloSettings) {
         this.providerSettings = providerSettings;
         this.providers = providers;
         this.openCodeSettings = openCodeSettings;
-        this.openRouterSettings = openRouterSettings;
         this.kiloSettings = kiloSettings;
     }
 
@@ -54,8 +51,7 @@ public class GlobalAssistantModelTargetResolver {
             return switch (active) {
                 case OPENCODE_ZEN -> new ModelTarget(active.defaultDisplayName(),
                         trimToNull(openCodeSettings.requireRuntimeSettings().selectedModel()));
-                case OPENROUTER -> new ModelTarget(active.defaultDisplayName(),
-                        trimToNull(openRouterSettings.status(true).selectedModel()));
+
                 case KILO -> new ModelTarget(active.defaultDisplayName(),
                         trimToNull(kiloSettings.status().selectedModel()));
                 case CUSTOM -> customTarget(active);
@@ -76,19 +72,9 @@ public class GlobalAssistantModelTargetResolver {
     private ModelProviderRecord findActiveCustomRow() {
         java.util.UUID activeId = providerSettings.activeProviderId();
         if (activeId != null) {
-            for (ModelProviderRecord row : providers.list()) {
-                if (activeId.equals(row.id())) {
-                    return row;
-                }
-            }
+            return providers.require(activeId);
         }
-        // 预设式的仅代码激活:第一个 CUSTOM 行就是路由网关实际委托的对象。
-        // 未配置时返回 null,而不是抛异常。
-        try {
-            return providers.findFirstByPreset(ModelProvider.CUSTOM);
-        } catch (RuntimeException ex) {
-            return null;
-        }
+        return null;
     }
 
     private String trimToNull(String value) {

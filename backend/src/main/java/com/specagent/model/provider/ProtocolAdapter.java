@@ -10,7 +10,7 @@ import java.util.Map;
  * 文件名:ProtocolAdapter.java
  *
  * 用途:单一 API 格式的高内聚线上格式翻译接口。输入输出都是提供商无关的。
- * 绝不执行 Agent 工具、绝不访问数据库、也绝不感知 OPENROUTER / CUSTOM 路由。
+ * 绝不执行 Agent 工具、绝不访问数据库、也绝不感知 提供商 路由。
  */
 public interface ProtocolAdapter {
 
@@ -32,6 +32,16 @@ public interface ProtocolAdapter {
 
     /** 非流式响应提取。白名单:只放行最终文本。 */
     ModelInferenceResponse parseNonStreamResponse(JsonNode root, String context);
+
+    /**
+     * 契约感知的非流式响应提取。默认实现与 {@link #parseNonStreamResponse(JsonNode, String)}
+     * 等价(纯文本语义);需要按输出契约做宿主侧包装/解包的适配器(例如 Anthropic 的
+     * JSON Envelope 桥接)覆盖本方法。解析失败必须按失败关闭处理,绝不静默降级为文本。
+     */
+    default ModelInferenceResponse parseNonStreamResponse(JsonNode root, String context,
+            com.specagent.model.contract.ModelOutputContract contract) {
+        return parseNonStreamResponse(root, context);
+    }
 
     /**
      * 把 SSE {@code data:} 载荷转换为可见文本。事件不携带助手展示文本时

@@ -132,50 +132,68 @@ class C16CrossProcessWorkerAcceptanceTest {
         // the DELETE. Stopping the workers first removes the writer, so the
         // cleanup below is deterministic.
         stopWorkers();
-        for (UUID project : TOUCHED) {
-            jdbc.update("UPDATE agent_runs SET produced_answer_id = NULL, produced_patch_id = NULL,"
-                    + " produced_spec_snapshot_id = NULL, produced_node_id = NULL,"
-                    + " input_node_id = NULL, route_id = NULL, context_snapshot_id = NULL"
-                    + " WHERE project_id = ?", project);
-            jdbc.update("DELETE FROM agent_run_continuation_checks WHERE run_id IN"
-                    + " (SELECT id FROM agent_runs WHERE project_id = ?)", project);
-            jdbc.update("DELETE FROM agent_run_wait_subscriptions WHERE project_id = ?", project);
-            jdbc.update("DELETE FROM agent_run_dependency_projections WHERE run_id IN"
-                    + " (SELECT id FROM agent_runs WHERE project_id = ?)", project);
-            jdbc.update("DELETE FROM capability_rebuild_waits WHERE invocation_id IN"
-                    + " (SELECT id FROM capability_invocations WHERE project_id = ?)", project);
-            jdbc.update("DELETE FROM capability_invocations WHERE project_id = ?", project);
-            jdbc.update("DELETE FROM workspace_run_authorizations WHERE run_id IN"
-                    + " (SELECT id FROM agent_runs WHERE project_id = ?)", project);
-            jdbc.update("DELETE FROM agent_run_events WHERE run_id IN"
-                    + " (SELECT id FROM agent_runs WHERE project_id = ?)", project);
-            // agent_runs references itself through parent_run_id. Clear the
-            // link first: a single DELETE over parent and child rows in one
-            // statement does not guarantee that the parent row is gone before
-            // the child row is checked, and the foreign key then rejects it.
-            jdbc.update("UPDATE agent_runs SET parent_run_id = NULL WHERE project_id = ?", project);
-            jdbc.update("DELETE FROM agent_runs WHERE project_id = ?", project);
-            jdbc.update("DELETE FROM spec_snapshots WHERE project_id = ?", project);
-            jdbc.update("DELETE FROM context_snapshots WHERE project_id = ?", project);
-            jdbc.update("DELETE FROM retrieval_source_projections WHERE project_id = ?", project);
-            jdbc.update("DELETE FROM node_relations WHERE project_id = ?", project);
-            jdbc.update("UPDATE answer_patches SET source_answer_id = NULL WHERE project_id = ?", project);
-            jdbc.update("DELETE FROM answer_patches WHERE project_id = ?", project);
-            jdbc.update("DELETE FROM answers WHERE project_id = ?", project);
-            jdbc.update("DELETE FROM retrieval_entries WHERE project_id = ?", project);
-            jdbc.update("DELETE FROM embedding_rebuild_outcomes WHERE project_id = ?", project);
-            jdbc.update("DELETE FROM embedding_rebuilds WHERE corpus_id = ?", project);
-            jdbc.update("DELETE FROM retrieval_index_jobs WHERE corpus_id = ?", project);
-            jdbc.update("DELETE FROM retrieval_index_heads WHERE corpus_id = ?", project);
-            jdbc.update("DELETE FROM retrieval_index_generations WHERE corpus_id = ?", project);
-            jdbc.update("DELETE FROM nodes WHERE project_id = ?", project);
-            jdbc.update("UPDATE projects SET active_route_id = NULL WHERE id = ?", project);
-            jdbc.update("DELETE FROM routes WHERE project_id = ?", project);
-            jdbc.update("DELETE FROM projects WHERE id = ?", project);
+        // Snapshot and clear BEFORE deleting anything. This class runs real
+        // worker processes against a database-wide execution-mode row, so a
+        // failed teardown must never leave that row in PER_TASK: every later
+        // Spring context in this JVM then refuses to start and one defect
+        // cascades into hundreds of unrelated failures. The mode is restored in
+        // finally, whether or not any row cleanup succeeded.
+        var pending = List.copyOf(TOUCHED);
+        TOUCHED.clear();
+        try {
+            for (UUID project : pending) {
+                jdbc.update("UPDATE agent_runs SET produced_answer_id = NULL, produced_patch_id = NULL,"
+                        + " produced_spec_snapshot_id = NULL, produced_node_id = NULL,"
+                        + " input_node_id = NULL, route_id = NULL, context_snapshot_id = NULL"
+                        + " WHERE project_id = ?", project);
+                jdbc.update("DELETE FROM agent_run_continuation_checks WHERE run_id IN"
+                        + " (SELECT id FROM agent_runs WHERE project_id = ?)", project);
+                jdbc.update("DELETE FROM agent_run_wait_subscriptions WHERE project_id = ?", project);
+                jdbc.update("DELETE FROM agent_run_dependency_projections WHERE run_id IN"
+                        + " (SELECT id FROM agent_runs WHERE project_id = ?)", project);
+                jdbc.update("DELETE FROM capability_rebuild_waits WHERE invocation_id IN"
+                        + " (SELECT id FROM capability_invocations WHERE project_id = ?)", project);
+                jdbc.update("DELETE FROM capability_invocations WHERE project_id = ?", project);
+                jdbc.update("DELETE FROM workspace_run_authorizations WHERE run_id IN"
+                        + " (SELECT id FROM agent_runs WHERE project_id = ?)", project);
+                jdbc.update("DELETE FROM agent_run_events WHERE run_id IN"
+                        + " (SELECT id FROM agent_runs WHERE project_id = ?)", project);
+                // agent_runs references itself through parent_run_id. Clear the
+                // link first: a single DELETE over parent and child rows in one
+                // statement does not guarantee that the parent row is gone before
+                // the child row is checked, and the foreign key then rejects it.
+                jdbc.update("UPDATE agent_runs SET parent_run_id = NULL WHERE project_id = ?", project);
+                jdbc.update("DELETE FROM agent_runs WHERE project_id = ?", project);
+                jdbc.update("DELETE FROM spec_snapshots WHERE project_id = ?", project);
+                jdbc.update("DELETE FROM context_snapshots WHERE project_id = ?", project);
+                jdbc.update("DELETE FROM retrieval_source_projections WHERE project_id = ?", project);
+                jdbc.update("DELETE FROM node_relations WHERE project_id = ?", project);
+                jdbc.update("UPDATE answer_patches SET source_answer_id = NULL WHERE project_id = ?", project);
+                jdbc.update("DELETE FROM answer_patches WHERE project_id = ?", project);
+                jdbc.update("DELETE FROM answers WHERE project_id = ?", project);
+                jdbc.update("DELETE FROM retrieval_entries WHERE project_id = ?", project);
+                jdbc.update("DELETE FROM embedding_rebuild_outcomes WHERE project_id = ?", project);
+                jdbc.update("DELETE FROM embedding_rebuilds WHERE corpus_id = ?", project);
+                jdbc.update("DELETE FROM retrieval_index_jobs WHERE corpus_id = ?", project);
+                jdbc.update("DELETE FROM retrieval_index_heads WHERE corpus_id = ?", project);
+                // retrieval_scope_grants.index_generation references the generation
+                // with no ON DELETE action (V49), so the generation cannot be removed
+                // while a grant still points at it. The shared-Python indexing path
+                // writes one grant per workload; it must be deleted first. The same
+                // ordering is already proven in C16RetrievalAwaitGenerationEndToEndTest.
+                jdbc.update("DELETE FROM retrieval_scope_grants WHERE corpus_id = ?", project);
+                jdbc.update("DELETE FROM retrieval_index_generations WHERE corpus_id = ?", project);
+                jdbc.update("DELETE FROM nodes WHERE project_id = ?", project);
+                jdbc.update("UPDATE projects SET active_route_id = NULL WHERE id = ?", project);
+                jdbc.update("DELETE FROM routes WHERE project_id = ?", project);
+                jdbc.update("DELETE FROM projects WHERE id = ?", project);
+            }
+        } finally {
+            // Unconditional: the database-wide admission row must never be left
+            // in the task-level mode this class switched to.
             jdbc.update("UPDATE runtime_execution_mode SET mode='SINGLE_EXECUTOR',"
                     + " updated_by='c16 acceptance rollback' WHERE id=1");
         }
-        TOUCHED.clear();
     }
 
     // ---------------------------------------------------------------- workers

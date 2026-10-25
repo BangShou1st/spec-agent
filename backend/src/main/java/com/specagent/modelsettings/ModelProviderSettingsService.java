@@ -21,6 +21,16 @@ public class ModelProviderSettingsService implements ActiveProviderPort {
         this.repository = repository;
     }
 
+    public record Selection(ModelProvider provider, UUID providerId) {
+        public String providerCode() { return provider.name(); }
+    }
+
+    /** Read provider code and UUID from the same database snapshot. */
+    public Selection selection() {
+        return repository.find().map(s -> new Selection(ModelProvider.fromCode(s.activeProvider()),s.activeProviderId()))
+                .orElseGet(() -> new Selection(ModelProvider.OPENCODE_ZEN,null));
+    }
+
     @Override
     public ModelProvider activeProvider() {
         return repository.find()

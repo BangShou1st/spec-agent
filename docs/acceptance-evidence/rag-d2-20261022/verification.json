@@ -1,0 +1,90 @@
+{
+  "taskId": "RAG-D2_CLOSED",
+  "recordedAt": "2026-10-22T21:25:00+08:00",
+  "branch": "dev",
+  "baselineCommit": "8570721a71e27cdf522eb0fadd718c4f827d64dd",
+  "targetScopes": {
+    "focusA": "Retrieval error classification and fail-closed matrix in RetrievalContextService",
+    "focusB": "New project empty index, generation lifecycle, pending vector and C16 wait",
+    "focusC": "Python proxy isolation: socksio dependency resolution, complete elimination of scoped_import and environ mutation, internal clients explicit trust_env=False",
+    "focusD": "Desktop key2.txt restricted strictly to explicit live test gates; master-key fallback isolated from host business files",
+    "focusE": "Frozen input replay verification, cosine score snapshot clarification",
+    "ragD21Closure": "Real isolated container database end-to-end integration with local Ollama qwen3-embedding:0.6b and pgvector"
+  },
+  "testExecutionSummary": {
+    "backendTestOffline": {
+      "status": "PASSED",
+      "testsTotal": 225,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "newFocusATests": 17,
+      "task": ":backend:testOffline"
+    },
+    "pythonPytestSuite": {
+      "status": "PASSED",
+      "testsTotal": 295,
+      "failures": 0,
+      "skipped": 0,
+      "newFocusCTests": 3,
+      "command": "pytest agent-brain"
+    },
+    "isolatedDatabaseIntegration": {
+      "databaseIdentity": "spec_agent_p3b_live_iso20261022 (172.24.0.2/32:5432, container port 55432)",
+      "ollamaEndpoint": "http://127.0.0.1:11434 (qwen3-embedding:0.6b)",
+      "realPythonOllamaIndexAndChineseParaphrase": {
+        "status": "PASSED",
+        "duration": "51s",
+        "evidence": "docs/v2/evidence/SHARED_RAG_U1_REAL_INTEGRATION.json",
+        "verified": [
+          "Java -> Python -> local Ollama embedding (1024 dims)",
+          "Authenticated Java host RPC -> pgvector cosine search",
+          "Reciprocal Rank Fusion with lexical lane",
+          "Supplemental retrieval degraded upon python failure",
+          "Frozen input replayed directly without re-retrieval"
+        ]
+      },
+      "scopedCandidatesSourceVersionRevocationAndFailClosed": {
+        "status": "PASSED",
+        "duration": "45s",
+        "verified": [
+          "Source version mismatch fails closed",
+          "Revoked source fails closed",
+          "Unknown identity fails closed"
+        ]
+      }
+    }
+  },
+  "errorClassificationMatrix": {
+    "degradable": [
+      { "code": "RETRIEVAL_UNAVAILABLE", "classification": "Degradable (Supplemental Unavailable)", "verified": true },
+      { "code": "OLLAMA_UNAVAILABLE", "classification": "Degradable (Supplemental Unavailable)", "verified": true },
+      { "code": "DEADLINE_EXCEEDED", "classification": "Degradable (Supplemental Unavailable)", "verified": true },
+      { "code": "EMBEDDING_CONNECTION_FAILED", "classification": "Degradable (Supplemental Unavailable)", "verified": true },
+      { "code": "EMBEDDING_TIMEOUT", "classification": "Degradable (Supplemental Unavailable)", "verified": true },
+      { "code": "EMBEDDING_BUSY", "classification": "Degradable (Supplemental Unavailable)", "verified": true },
+      { "code": "EMBEDDING_INTERRUPTED", "classification": "Degradable (Supplemental Unavailable)", "verified": true },
+      { "code": "EMBEDDING_NOT_CONFIGURED", "classification": "Degradable (Supplemental Unavailable)", "verified": true },
+      { "code": "EMBEDDING_PROVIDER_FAILED", "classification": "Degradable (Supplemental Unavailable)", "verified": true }
+    ],
+    "failClosed": [
+      { "code": "STALE_SCOPE_GRANT", "classification": "Fail-Closed (Throw Exception)", "verified": true },
+      { "code": "STALE_WORKLOAD", "classification": "Fail-Closed (Throw Exception)", "verified": true },
+      { "code": "SOURCE_VERSION_MISMATCH", "classification": "Fail-Closed (Throw Exception)", "verified": true },
+      { "code": "INDEX_GENERATION_MISMATCH", "classification": "Fail-Closed (Throw Exception)", "verified": true },
+      { "code": "UNSUPPORTED_PROFILE", "classification": "Fail-Closed (Throw Exception)", "verified": true },
+      { "code": "INVALID_VECTOR", "classification": "Fail-Closed (Throw Exception)", "verified": true },
+      { "code": "RETRIEVAL_PROTOCOL_ERROR", "classification": "Fail-Closed (Throw Exception)", "verified": true }
+    ],
+    "zeroHitDistinction": {
+      "verified": true,
+      "note": "Successful empty candidate list preserves supplementalRetrievalUnavailable=false"
+    }
+  },
+  "acceptanceDimensions": {
+    "CODE_COMPLETE": true,
+    "INTEGRATION_VERIFIED": true,
+    "QUALITY_VERIFIED": false,
+    "qualityLimitation": "52 queries are DEVELOPMENT_CALIBRATION only; 68 independent candidates remain PENDING_HUMAN_REVIEW without human sign-off"
+  }
+}

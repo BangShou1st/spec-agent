@@ -71,7 +71,9 @@ public class CustomInferenceGateway implements ModelInferenceGateway {
         ProviderHttpSupport.HttpResult result = ProviderHttpSupport.postJson(
                 client, mapper, resolved.endpoint(), resolved.adapter().authHeaders(resolved.apiKey()),
                 body, ProviderHttpSupport.INFERENCE_TIMEOUT, resolved.context());
-        return resolved.adapter().parseNonStreamResponse(result.json(), resolved.context());
+        // 契约感知解析:Anthropic 在此解包宿主 JSON Envelope 后才返回内容。
+        return resolved.adapter().parseNonStreamResponse(result.json(), resolved.context(),
+                request.outputContract());
     }
 
     @Override

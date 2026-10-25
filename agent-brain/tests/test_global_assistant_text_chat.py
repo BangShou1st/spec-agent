@@ -25,7 +25,7 @@ def text_execution(budget=None):
 
 
 def response(content="", calls=()):
-    return ModelResponse(protocolVersion="ga-model-inference.v1", content=content, toolCalls=list(calls),
+    return ModelResponse(protocolVersion="ga-model-inference.v2", content=content, toolCalls=list(calls),
                          finishReason="tool_calls" if calls else "stop",
                          usage=Usage(promptTokens=7, completionTokens=3))
 

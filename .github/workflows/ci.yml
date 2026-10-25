@@ -91,7 +91,7 @@ jobs:
           python-version: '3.11'
       # Replay imports the real Python contracts/decision engine. Install its
       # declared dependencies rather than relying on the separate brain job.
-      - run: pip install -e './agent-brain[dev]'
+      - run: pip install -r agent-brain/requirements.lock -e './agent-brain[dev]'
       - name: Deterministic corpus, replay, configuration and tool contracts (no JVM or database)
         run: python -m pytest tools/tests -q
 
@@ -134,7 +134,7 @@ jobs:
           cache-dependency-path: agent-brain/pyproject.toml
       - name: Install the brain package for the real-process acceptance test
         working-directory: agent-brain
-        run: pip install -e .
+        run: pip install -r requirements.lock -e .
       - name: Export the Python interpreter for the real-process acceptance test
         id: brain-python
         run: |
@@ -232,6 +232,17 @@ jobs:
       # Blocking: scenario schema/corpus validation, Layer A, B-fast,
       # production call-budget checks. No live provider, no judge model,
       # no token/cost/latency thresholds.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Install the shared Python retrieval fixture runtime
+        working-directory: agent-brain
+        run: pip install -r requirements.lock -e .
+      - name: Export the retrieval fixture interpreter
+        id: brain-python
+        run: |
+          python -c "import uvicorn, spec_agent_brain"
+          echo "interpreter=$(command -v python3)" >> "$GITHUB_OUTPUT"
       - name: Prepare the isolated acceptance database
         id: isolated-db
         env:
@@ -268,6 +279,7 @@ jobs:
       - name: Run deterministic Memory + RAG retrieval gate
         working-directory: backend
         env:
+          SPEC_AGENT_GA_TEST_PYTHON: ${{ steps.brain-python.outputs.interpreter }}
           SPRING_PROFILES_ACTIVE: test
           SPEC_AGENT_MODEL_GATEWAY: fake
           SPEC_AGENT_MODEL_INFERENCE: fake
@@ -313,7 +325,7 @@ jobs:
           cache-dependency-path: agent-brain/pyproject.toml
       - name: Install the brain package with dev dependencies
         working-directory: agent-brain
-        run: pip install -e '.[dev]'
+        run: pip install -r requirements.lock -e '.[dev]'
       - name: Run Python brain unit tests (deterministic, no paid model)
         working-directory: agent-brain
         run: pytest -q
@@ -353,7 +365,7 @@ jobs:
           cache-dependency-path: agent-brain/pyproject.toml
       - name: Install the brain package
         working-directory: agent-brain
-        run: pip install -e .
+        run: pip install -r requirements.lock -e .
       - name: Start the broker-mode brain (callbacks hit the fake gateway)
         working-directory: agent-brain
         env:

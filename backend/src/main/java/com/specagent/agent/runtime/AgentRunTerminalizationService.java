@@ -84,6 +84,14 @@ public class AgentRunTerminalizationService {
                                      UUID producedNodeId,
                                      String message,
                                      Map<String, Object> completedPayload) {
+        completeWithCitedResponse(runId,status,trace,producedNodeId,message,completedPayload,null);
+    }
+
+    /** The existing response event is also the immutable citation audit record. */
+    @Transactional
+    public void completeWithCitedResponse(UUID runId, AgentRunStatus status, String trace,
+            UUID producedNodeId, String message, Map<String,Object> completedPayload,
+            java.util.List<String> sourceRefs) {
         if (producedNodeId != null) {
             agentRunService.markPersistedNode(runId, producedNodeId, trace);
         }
@@ -91,7 +99,8 @@ public class AgentRunTerminalizationService {
         if (message != null) {
             eventService.append(runId, AgentRunPhase.COMPLETED,
                     com.specagent.agent.runevent.AgentRunEventTypes.RESPOND_MESSAGE_EVENT,
-                    Map.of("message", message));
+                    sourceRefs==null ? Map.of("message",message)
+                        : Map.of("message",message,"sourceRefs",java.util.List.copyOf(sourceRefs)));
         }
         eventService.append(runId, AgentRunPhase.COMPLETED, "RUN_COMPLETED",
                 completedPayload);

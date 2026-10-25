@@ -19,14 +19,12 @@ import com.specagent.workspace.patch.Claim;
 import com.specagent.workspace.patch.ClaimKind;
 import com.specagent.workspace.patch.ClaimStatus;
 import com.specagent.workspace.project.Project;
-import com.specagent.workspace.project.ProjectService;
 import com.specagent.retrieval.RetrievalScope;
 import com.specagent.retrieval.RetrievalSourceKind;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
@@ -41,13 +39,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 权威来源,投影只携带通用 Graph 语言与运行时持有的 id,项目标题仅作为低权威元数据;
  * 并覆盖资源检索分块的来源引用与冻结重放稳定性。
  */
-@SpringBootTest
+@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-@Transactional
-class AgentInputSnapshotBuilderIntegrationTest {
+class AgentInputSnapshotBuilderIntegrationTest extends com.specagent.testing.SharedPythonRetrievalFixture {
 
-    @Autowired
-    private ProjectService projectService;
     @Autowired
     private NodeService nodeService;
     @Autowired
@@ -63,7 +58,7 @@ class AgentInputSnapshotBuilderIntegrationTest {
 
     @Test
     void projectsLineageAnswersAndPatchesFromTheFrozenManifest() {
-        Project project = projectService.createProject("快照投影项目");
+        Project project = createProject("快照投影项目");
         UUID routeId = project.activeRouteId();
         Node root = nodeService.createRootNode(project.id(), routeId,
                 "最重要的目标是什么？", null, List.of(), true);
@@ -107,7 +102,7 @@ class AgentInputSnapshotBuilderIntegrationTest {
 
     @Test
     void wireSerializationUsesGenericGraphLanguageOnly() {
-        Project project = projectService.createProject("通用语言检查");
+        Project project = createProject("通用语言检查");
         UUID routeId = project.activeRouteId();
         nodeService.createRootNode(project.id(), routeId, "问题文本", null, List.of(), true);
 
@@ -132,13 +127,14 @@ class AgentInputSnapshotBuilderIntegrationTest {
 
     @Test
     void resourceRetrievalCarriesChunkProvenanceAndAllowedSourceRef() {
-        Project project = projectService.createProject("资源检索投影");
+        Project project = createProject("资源检索投影");
         UUID routeId = project.activeRouteId();
         Node anchor = graphCommandService.createRootDraftNode(
                 project.id(), routeId, "NOTE", Map.of("text", "数据留存要求是什么？"));
         Node resource = graphCommandService.attachResource(
                 project.id(), routeId, anchor.id(), "TEXT",
                 Map.of("text", "系统数据留存要求为180天，随后按策略安全删除。"));
+        projectResources(project.id());
 
         ContextSnapshot snapshot = contextBuilder.buildForNodeQuery(
                 project.id(), routeId, anchor.id(), "数据留存要求");

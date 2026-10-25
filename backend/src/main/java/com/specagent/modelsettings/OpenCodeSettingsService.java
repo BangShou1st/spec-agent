@@ -105,7 +105,9 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
         transport.validateCredential(credentialFor(model, candidate, models.freeModels()), model);
 
         Instant now = Instant.now();
-        repository.upsert(new OpenCodeSettings(candidate, suffix(candidate), model, now, now));
+        // 脱敏后缀统一走 ApiKeyMasking(短密钥返回 null;空串与 null 在
+        // OpenCodeSettingsStatusMask 的归一分支下外部表现一致)。
+        repository.upsert(new OpenCodeSettings(candidate, ApiKeyMasking.suffix(candidate), model, now, now));
         return status();
     }
 
@@ -130,7 +132,7 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
     }
 
     /**
-     * 重新验证已持久化的配置,但不写任何东西。与 OpenRouter 的契约一致:
+     * 重新验证已持久化的配置,但不写任何东西。与 其他 Provider 的契约一致:
      * 可达性检查针对实际存储的那个模型执行,让设置卡片能提供显式的
      * "再次测试"操作,且永远不会改动已保存的配置对。
      */
@@ -264,16 +266,7 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
     }
 
     private static boolean hasKey(String apiKey) {
-        return apiKey != null && !apiKey.isBlank();
-    }
-
-    private static String suffix(String apiKey) {
-        if (!hasKey(apiKey)) {
-            return null;
-        }
-        // 过短的候选密钥绝不能把自己的原文当作脱敏后缀返回。正常 OpenCode
-        // 密钥更长,但这里宁可 fail closed(直接不给后缀)。
-        return apiKey.length() <= 4 ? "" : apiKey.substring(apiKey.length() - 4);
+        return ApiKeyMasking.hasKey(apiKey);
     }
 
     private static final class OpenCodeSettingsStatusMask {

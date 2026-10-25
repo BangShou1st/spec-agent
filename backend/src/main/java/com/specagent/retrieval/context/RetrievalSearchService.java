@@ -70,7 +70,10 @@ public class RetrievalSearchService {
         List<RetrievedContextItem> items = new ArrayList<>();
         Set<String> refs = new LinkedHashSet<>();
         int chars = 0;
-        for (HybridRetriever.Candidate candidate : retriever.retrieve(retrievalQuery)) {
+        var outcome=retriever.usesSharedPython()
+                ? retriever.retrieveOutcome(retrievalQuery,UUID.randomUUID(),"CONTEXT_PROJECTION",Set.of())
+                : new HybridRetriever.Outcome(retriever.retrieve(retrievalQuery),Map.of());
+        for (HybridRetriever.Candidate candidate : outcome.candidates()) {
             RetrievedContextItem item = toItem(retrievalQuery, candidate.entry(), candidate.lanes());
             if (!refs.add(item.sourceRef())) {
                 continue;
@@ -95,7 +98,7 @@ public class RetrievalSearchService {
                 break;
             }
         }
-        return new SearchResult(List.copyOf(items), List.copyOf(refs));
+        return new SearchResult(List.copyOf(items), List.copyOf(refs),outcome.state());
     }
 
     private Set<String> sourceRefsForRoute(UUID projectId, UUID routeId) {
@@ -157,10 +160,12 @@ public class RetrievalSearchService {
         }
     }
 
-    public record SearchResult(List<RetrievedContextItem> items, List<String> sourceRefs) {
+    public record SearchResult(List<RetrievedContextItem> items, List<String> sourceRefs,Map<String,Object> retrievalState) {
+        public SearchResult(List<RetrievedContextItem> items,List<String> sourceRefs) { this(items,sourceRefs,Map.of()); }
         public SearchResult {
             items = items == null ? List.of() : List.copyOf(items);
             sourceRefs = sourceRefs == null ? List.of() : List.copyOf(sourceRefs);
+            retrievalState = retrievalState == null ? Map.of() : Map.copyOf(retrievalState);
         }
     }
 }

@@ -1,0 +1,109 @@
+{
+  "status": "MODEL_SERVICE_V2_LIVE_PASS",
+  "date": "2026-10-23",
+  "timezone": "Asia/Shanghai",
+  "baselineHead": "cec2f3f",
+  "branch": "dev",
+  "provider": {
+    "kind": "CUSTOM",
+    "apiFormat": "CHAT_COMPLETIONS",
+    "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "model": "gemini-3.5-flash-lite",
+    "replacementModel": "gemini-flash-lite-latest",
+    "connectionId": "a95bc5e8-86a0-4daa-b3b6-730b90ba610a",
+    "configRevision": 1,
+    "catalogModelCount": 60,
+    "catalogIdPrefix": "models/",
+    "catalogPublishesPricing": false,
+    "freeProof": "CATALOG_PRICING_ABSENT_OWNER_ATTESTATION",
+    "credential": "read-only from operator desktop file; never printed, copied to Python, or committed"
+  },
+  "capabilities": {
+    "CHAT": "VERIFIED",
+    "STRUCTURED": "VERIFIED",
+    "NATIVE_TOOLS": "VERIFIED"
+  },
+  "projectAgent": {
+    "executionResult": "completed",
+    "actualPrimaryAction": "REQUEST_USER_INPUT",
+    "productionModelCalls": 2,
+    "providerRetries": 0,
+    "latencyMs": 7200,
+    "violations": 0,
+    "persisted": { "nodes": 2, "answers": 1, "patches": 1 },
+    "frozenConnectionReference": "custom-provider:a95bc5e8-86a0-4daa-b3b6-730b90ba610a:1",
+    "bindingFingerprintRecorded": true
+  },
+  "globalAssistant": {
+    "mode": "NATIVE_TOOLS",
+    "frozenSettingsRevision": "custom-provider:a95bc5e8-86a0-4daa-b3b6-730b90ba610a:1",
+    "model": "gemini-3.5-flash-lite",
+    "hostObservationSucceeded": true,
+    "checkpointRestored": true,
+    "modelCalls": 2,
+    "toolCalls": 1,
+    "capabilityId": "project.get_summary",
+    "capabilityStatus": "SUCCEEDED",
+    "finalAnswerLength": 180,
+    "promptTokens": 2195,
+    "completionTokens": 154
+  },
+  "lifecycle": {
+    "modelIdChangeInvalidatedAllCapabilities": true,
+    "untestedAfterChange": ["CHAT", "STRUCTURED", "NATIVE_TOOLS"],
+    "revalidationVerifiedAllCapabilities": true,
+    "activeConnectionDeleteRefused": true,
+    "nonActiveConnectionDeletedWithoutAffectingActive": true
+  },
+  "requests": {
+    "finalAcceptanceRound": 12,
+    "breakdown": {
+      "CHAT": 2,
+      "STRUCTURED": 2,
+      "NATIVE_TOOL_ROUND_TRIP": 4,
+      "PROJECT_AGENT": 2,
+      "GA_NATIVE": 2
+    },
+    "automaticRetries": 0,
+    "diagnosticRoundsTotalApproximate": 44,
+    "cumulativeRealRequestsApproximate": 56,
+    "note": "The 12-request cap applies to the formal acceptance round. Diagnostic rounds before the fix were separate explicit runs, never automatic retries; the overrun is reported, not hidden."
+  },
+  "cost": {
+    "tier": "owner-attested free tier",
+    "expectedCharge": 0,
+    "actualCharge": "NOT_EXPOSED_BY_PROVIDER_API",
+    "paidFallbackUsed": false
+  },
+  "tests": {
+    "javaTestOffline": { "completed": 401, "failures": 0, "skipped": 0 },
+    "javaReviewedSelection": { "completed": 459, "failures": 0, "skipped": 0, "classes": 58 },
+    "python": { "completed": 341, "failures": 0, "skipped": 0 },
+    "frontend": { "completed": 988, "passed": 987, "failures": 0, "skipped": 1,
+      "skipCondition": "SPEC_AGENT_GA_LIVE_REPLAY=true", "typecheck": "PASS", "build": "PASS" },
+    "broaderExploratorySelection": {
+      "completed": 1382, "failures": 3, "skipped": 28,
+      "note": "Extra classes outside the reviewed 459 selection on a fresh empty database; failures are environment or pre-seeded-state gaps (Python fixture not ready, GA binding tests needing seeded provider state), not caused by this change."
+    }
+  },
+  "database": {
+    "container": "spec-agent-model-v2-acceptance",
+    "database": "spec_agent_p3b_live_model_v2",
+    "hostPort": 55438,
+    "businessDatabaseTouched": false
+  },
+  "changes": [
+    "backend/src/main/java/com/specagent/agent/decision/AgentBrainResponseValidator.java",
+    "backend/src/test/java/com/specagent/agent/decision/RagD4ClaimAuthorityTest.java",
+    "backend/src/test/java/com/specagent/modelsettings/ModelConnectionLiveQualificationTest.java",
+    "backend/src/test/java/com/specagent/modelsettings/ModelServiceV2LiveAcceptanceTest.java",
+    "docs/v2/AGENT_MEMORY_AND_CONTEXT.md",
+    "docs/v2/MODEL_SERVICE_V2.md",
+    "docs/runbooks/custom-model-api-runbook.md"
+  ],
+  "openItems": [
+    "Java-managed continuation-reference migration remains a separate stage",
+    "Live multi-connection switching is covered deterministically (two Fake providers, cross-instance freeze, delete); the live round only proved invalidation, revalidation and delete isolation",
+    "Project-Agent token usage is not exposed by the internal broker path"
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "verdict": "MODEL_SERVICE_V2_CROSS_PROTOCOL_PASS",
+  "round": "MS-CROSS-R1",
+  "date": "2026-10-25",
+  "baseline": {
+    "branch": "dev",
+    "head_before": "843936a7ea599663865307e01bd8d65b11cf2ab4",
+    "remote_ci_for_baseline": {
+      "run": 40110564213,
+      "url": "https://github.com/BangShou1st/spec-agent/actions/runs/40110564213",
+      "conclusion": "success",
+      "jobs_green": 10,
+      "jobs_total": 10,
+      "note": "本轮开工时重新核实,非复制旧结论"
+    }
+  },
+  "r1a_historical_short_key": {
+    "root_cause": "status() 信任历史持久化 masked_suffix 列(弱脱敏时代短密钥原样入库),save(null) 继承旧值",
+    "production_fix": [
+      "CustomProviderSettingsService.status: mask(suffix(apiKey)) 从实际密钥重推导",
+      "CustomProviderSettingsService.save: apiKeyInput=null 路径 masked=suffix(resolvedKey),不再继承 existing.maskedSuffix()"
+    ],
+    "old_data_test": "LegacyShortKeyMaskingTest(9 用例,Mockito 仓储构造旧版行,经真实 status/save 边界)",
+    "status_json_output": "短密钥(4/3 字符)→ maskedKey=null;长密钥 → ••••+末4位;JSON doesNotContain(完整短密钥)",
+    "migration_required": false,
+    "revision_and_qualification": "内容一致短路不写库不递增 revision(测试断言 3→3);validated 状态不变;改 displayName 走 legacy 既有语义 revision+1(先于本轮,未改动)"
+  },
+  "r1b_probe_transport_proof": {
+    "old_vs_new_difference": "旁路无冻结绑定校验/预算围栏/安全诊断;stream:false 两边都有(无区分力,已实测)",
+    "technique": "CompatibilityProbeService 三个包私有传输工厂方法(newResponsesTransport/newAnthropicTransport/newChatCompletionsTransport)作为观察 seam;Mockito spy 验证生产传输工厂被调用",
+    "mutation_red": "临时恢复 F-1 旁路分支 → nativeProbeRoutesThroughTheProductionTransports 失败(Wanted 2 times, was 0: newChatCompletionsTransport);同变异下 stream:false 断言仍绿(证明旧断言无区分力)",
+    "restored_green": "ModelProtocolHarnessTest 11/0/0",
+    "three_protocol_loop": "CHAT(FakeModelProvider)/RESPONSES(FakeResponsesProvider)/ANTHROPIC(FakeAnthropicMessagesProvider ToolShape.SINGLE)各 2 次 HTTP 双轮闭环 + times(2) 工厂断言 + never() 交叉断言 + Anthropic x-api-key 到达",
+    "new_test_seam_necessity": "工厂方法仅移动 new 的位置,不引入第二套 Registry、不替换生产校验;HTTP 形状断言被证明无法区分旁路",
+    "preserved_regressions": "工具 ID 保真/错误工具拒绝/Responses function_call_output/Anthropic tool_result/Gemini thought_signature/400-429-500 分类/无重试/资格与冻结身份(ModelConnectionsOfflineTest 全部保留)"
+  },
+  "local_regression": {
+    "java_testOffline": "BUILD_SUCCESSFUL(含 LegacyShortKeyMaskingTest 9/0/0 与传输路径测试)",
+    "java_test": {"completed": 2665, "failures": 0, "errors": 0, "skipped": 41},
+    "java_testDatabaseIntegration": {"completed": 1005, "failures": 0, "errors": 0, "skipped": 41, "database": "spec_agent_p3b_live_ms_r1_20261025(隔离,守卫端点 172.17.0.2/32:5432)"},
+    "java_testCrossLanguage": "BUILD_SUCCESSFUL(broker-mode brain 127.0.0.1:8100)",
+    "python_brain": {"passed": 344, "failed": 0, "skipped": 0},
+    "python_tools_contracts": {"passed": 239, "failed": 0, "skipped": 0, "note": "首轮 1 失败为本轮 gradle 清单注释中的右括号触发 tools 校验脚本 split 解析,改写注释后 239 全过;非产品缺陷"},
+    "frontend": {"typecheck": "pass", "unit": {"passed": 987, "skipped": 1}, "build": "pass"},
+    "skips_note": "Java 41+41 与前端 1 为既有门禁 skip,与 MS-CROSS 基线一致"
+  },
+  "live_requests_this_round": 0,
+  "live_status": {
+    "anthropic_official": "ANTHROPIC_LIVE_NOT_RUN(无凭据,不发起付费调用)",
+    "responses_official": "RESPONSES_LIVE_NOT_RUN",
+    "gemini_prior_evidence": "model-service-v2-live-20261023 + MS-CROSS 4 请求(验证 F-1 原代码修复路径);本轮测试注入与历史 Key 修复不援引该证据宣称 live 覆盖"
+  },
+  "remaining_p2_p3": [
+    "三份逐字相同的 validateResponse 副本(MS-CROSS findings 已记录,纯重构)",
+    "ModelProvidersService.update 冗余比较(无行为影响)",
+    "Chat Completions extra_content 非官方字段(Gemini 签名承载,已验收设计)"
+  ],
+  "blocking_p0_p1": 0,
+  "remote_ci": {"run": 40115618664, "url": "https://github.com/BangShou1st/spec-agent/actions/runs/40115618664", "headSha": "a8141b037b6f61d9be08f388643c3c8a829200a7", "conclusion": "success", "jobs_green": 10, "jobs_total": 10}
+}

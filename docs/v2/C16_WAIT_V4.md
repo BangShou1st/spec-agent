@@ -52,8 +52,15 @@ call is introduced merely to obtain a WAIT proposal.
 
 V102 supplies projections and subscriptions. V98–V101 remain untouched. Mixed
 version operation, database migration, real transaction races, process recovery
-and E2E require isolated PostgreSQL acceptance and remain NOT RUN in this change.
-The first production adapter is now implemented in code; see
+and E2E were NOT RUN in the original V4 change. They were later accepted on an
+isolated PostgreSQL target with a real Python retrieval process and local
+Ollama: see [c16-real-integration-20261021]
+(../acceptance-evidence/c16-real-integration-20261021/delivery.md) — V98–V103
+migration chain (including the V99 guard block-and-drain path), cross-process
+races and crash recovery, and the full WAIT E2E loop, which also uncovered and
+fixed two P0 production defects. That evidence is isolated-environment
+acceptance, not a claim of production deployment.
+The first production adapter is implemented in code; see
 [retrieval readiness adapter](C16_RETRIEVAL_READINESS_ADAPTER.md). It uses the real
-rebuild worker, not a simulated timer. Database and process acceptance remain
-NOT RUN; implementation is not a claim of production acceptance.
+rebuild worker, not a simulated timer. Its database and process acceptance were
+completed by the same c16-real-integration-20261021 evidence.

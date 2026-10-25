@@ -9,7 +9,6 @@ import com.specagent.model.provider.CustomInferenceGateway;
 import com.specagent.model.provider.KiloInferenceGateway;
 import com.specagent.model.provider.ModelProviderException;
 import com.specagent.model.provider.OpenCodeModelInferenceGateway;
-import com.specagent.model.provider.OpenRouterInferenceGateway;
 import com.specagent.model.provider.RoutingModelInferenceGateway;
 
 import com.specagent.model.contract.FragmentListener;
@@ -17,7 +16,6 @@ import com.specagent.model.contract.ModelProvider;
 import com.specagent.model.contract.RuntimeCustomSettings;
 import com.specagent.model.contract.RuntimeKiloSettings;
 import com.specagent.model.contract.RuntimeOpenCodeSettings;
-import com.specagent.model.contract.RuntimeOpenRouterSettings;
 import com.specagent.common.InMemoryRunModelBindingPort;
 import com.specagent.common.RunModelBindingPort;
 import com.specagent.model.provider.OpenCodeModelErrorCategory;
@@ -75,8 +73,6 @@ class RoutingModelInferenceGatewayTest {
     @Mock
     private OpenCodeModelInferenceGateway openCode;
     @Mock
-    private OpenRouterInferenceGateway openRouter;
-    @Mock
     private KiloInferenceGateway kilo;
     @Mock
     private CustomInferenceGateway custom;
@@ -86,7 +82,7 @@ class RoutingModelInferenceGatewayTest {
     @BeforeEach
     void setUp() {
         gateway = new RoutingModelInferenceGateway(activeProvider, activeModelTarget,
-                openCode, openRouter, kilo, custom);
+                openCode, kilo, custom);
     }
 
     private static ModelInferenceRequest request() {
@@ -102,7 +98,7 @@ class RoutingModelInferenceGatewayTest {
     private static ActiveModelTargetPort.Target frozenTarget(String provider, String model) {
         Object runtime = switch (ModelProvider.fromCode(provider)) {
             case OPENCODE_ZEN -> new RuntimeOpenCodeSettings("key-" + model, model);
-            case OPENROUTER -> new RuntimeOpenRouterSettings("key-" + model, model);
+
             case KILO -> new RuntimeKiloSettings("key-" + model, model);
             case CUSTOM -> new RuntimeCustomSettings("CHAT_COMPLETIONS", "http://127.0.0.1/v1",
                     "key-" + model, model);
@@ -120,19 +116,10 @@ class RoutingModelInferenceGatewayTest {
         gateway.complete(request);
 
         verify(openCode).complete(request);
-        verifyNoInteractions(openRouter, kilo, custom);
+        verifyNoInteractions(kilo, custom);
     }
 
-    @Test
-    void openRouterRoutesOnlyToTheOpenRouterDelegate() {
-        when(activeProvider.activeProvider()).thenReturn(ModelProvider.OPENROUTER);
-        ModelInferenceRequest request = request();
 
-        gateway.complete(request);
-
-        verify(openRouter).complete(request);
-        verifyNoInteractions(openCode, kilo, custom);
-    }
 
     @Test
     void kiloRoutesOnlyToTheKiloDelegate() {
@@ -142,7 +129,7 @@ class RoutingModelInferenceGatewayTest {
         gateway.complete(request);
 
         verify(kilo).complete(request);
-        verifyNoInteractions(openCode, openRouter, custom);
+        verifyNoInteractions(openCode, custom);
     }
 
     @Test
@@ -153,19 +140,19 @@ class RoutingModelInferenceGatewayTest {
         gateway.complete(request);
 
         verify(custom).complete(request);
-        verifyNoInteractions(openCode, openRouter, kilo);
+        verifyNoInteractions(openCode, kilo);
     }
 
     @Test
     void streamingFollowsTheSameActiveProviderRouting() {
-        when(activeProvider.activeProvider()).thenReturn(ModelProvider.OPENROUTER);
+        when(activeProvider.activeProvider()).thenReturn(ModelProvider.CUSTOM);
         ModelInferenceRequest request = request();
         FragmentListener listener = mock(FragmentListener.class);
 
         gateway.completeStreaming(request, listener);
 
-        verify(openRouter).completeStreaming(request, listener);
-        verifyNoInteractions(openCode, kilo, custom);
+        verify(custom).completeStreaming(request, listener);
+        verifyNoInteractions(openCode, kilo);
     }
 
     @Test
@@ -180,7 +167,7 @@ class RoutingModelInferenceGatewayTest {
 
         verify(activeProvider, times(1)).activeProvider();
         verify(openCode, times(1)).complete(request);
-        verifyNoInteractions(openRouter, kilo, custom);
+        verifyNoInteractions(kilo, custom);
     }
 
     /**
@@ -202,7 +189,7 @@ class RoutingModelInferenceGatewayTest {
         verify(kilo).complete(stateUpdate, runtime);
         verify(kilo).complete(decision, runtime);
         // 冻结目标已经携带提供商,因此不再读取激活提供商端口。
-        verifyNoInteractions(activeProvider, openCode, openRouter, custom);
+        verifyNoInteractions(activeProvider, openCode, custom);
     }
 
     /**
@@ -231,7 +218,7 @@ class RoutingModelInferenceGatewayTest {
 
         verify(openCode).complete(stateUpdate, frozenSettings);
         verifyNoMoreInteractions(openCode);
-        verifyNoInteractions(kilo, openRouter, custom);
+        verifyNoInteractions(kilo, custom);
     }
 
     /**
@@ -276,7 +263,7 @@ class RoutingModelInferenceGatewayTest {
                 .hasMessageContaining("MODEL_BINDING_MISMATCH");
 
         verify(kilo).complete(any(ModelInferenceRequest.class), eq(frozenSettings));
-        verifyNoInteractions(activeProvider, openCode, openRouter, custom);
+        verifyNoInteractions(activeProvider, openCode, custom);
     }
 
     /** 冻结按 Run 隔离:不同 Run 各自独立,互不影响。 */
@@ -285,7 +272,7 @@ class RoutingModelInferenceGatewayTest {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
         ActiveModelTargetPort.Target firstTarget = frozenTarget("OPENCODE_ZEN", "model-a");
-        ActiveModelTargetPort.Target secondTarget = frozenTarget("OPENROUTER", "model-c");
+        ActiveModelTargetPort.Target secondTarget = frozenTarget("CUSTOM", "model-c");
         when(activeModelTarget.activeTarget())
                 .thenReturn(Optional.of(firstTarget))
                 .thenReturn(Optional.of(secondTarget));
@@ -295,25 +282,25 @@ class RoutingModelInferenceGatewayTest {
 
         verify(openCode).complete(any(ModelInferenceRequest.class),
                 eq((RuntimeOpenCodeSettings) firstTarget.runtimeSettings()));
-        verify(openRouter).complete(any(ModelInferenceRequest.class),
-                eq((RuntimeOpenRouterSettings) secondTarget.runtimeSettings()));
-        verifyNoInteractions(activeProvider, kilo, custom);
+        verify(custom).complete(any(ModelInferenceRequest.class),
+                eq((RuntimeCustomSettings) secondTarget.runtimeSettings()));
+        verifyNoInteractions(activeProvider, kilo);
     }
 
     /** 流式调用遵循同一冻结目标,并且同样把冻结模型下传给具体网关。 */
     @Test
     void streamingUsesTheFrozenTargetModel() {
         UUID runId = UUID.randomUUID();
-        ActiveModelTargetPort.Target frozen = frozenTarget("OPENROUTER", "model-a");
-        RuntimeOpenRouterSettings runtime = (RuntimeOpenRouterSettings) frozen.runtimeSettings();
+        ActiveModelTargetPort.Target frozen = frozenTarget("CUSTOM", "model-a");
+        RuntimeCustomSettings runtime = (RuntimeCustomSettings) frozen.runtimeSettings();
         when(activeModelTarget.activeTarget()).thenReturn(Optional.of(frozen));
         FragmentListener listener = mock(FragmentListener.class);
         ModelInferenceRequest request = request(runId, "DECISION");
 
         gateway.completeStreaming(request, listener);
 
-        verify(openRouter).completeStreaming(request, listener, runtime);
-        verifyNoInteractions(openCode, kilo, custom);
+        verify(custom).completeStreaming(request, listener, runtime);
+        verifyNoInteractions(openCode, kilo);
     }
 
     /** 新 Run 可以使用用户新选择的模型:冻结只约束同一个 Run。 */
@@ -349,7 +336,7 @@ class RoutingModelInferenceGatewayTest {
                     : frozenTarget("KILO", "model-b"));
         });
         RoutingModelInferenceGateway concurrentGateway = new RoutingModelInferenceGateway(
-                activeProvider, activeModelTarget, openCode, openRouter, kilo, custom,
+                activeProvider, activeModelTarget, openCode, kilo, custom,
                 new InMemoryRunModelBindingPort());
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
@@ -358,7 +345,6 @@ class RoutingModelInferenceGatewayTest {
 
             assertThat(first.get(10, TimeUnit.SECONDS)).isNotEqualTo(second.get(10, TimeUnit.SECONDS));
             int delegateCalls = mockingDetails(openCode).getInvocations().size()
-                    + mockingDetails(openRouter).getInvocations().size()
                     + mockingDetails(kilo).getInvocations().size()
                     + mockingDetails(custom).getInvocations().size();
             assertThat(delegateCalls).isEqualTo(1);
@@ -375,7 +361,7 @@ class RoutingModelInferenceGatewayTest {
         when(activeModelTarget.activeTarget()).thenAnswer(invocation -> Optional.of(target.get()));
         RunModelBindingPort durableBindings = new InMemoryRunModelBindingPort();
         RoutingModelInferenceGateway firstProcess = new RoutingModelInferenceGateway(
-                activeProvider, activeModelTarget, openCode, openRouter, kilo, custom, durableBindings);
+                activeProvider, activeModelTarget, openCode, kilo, custom, durableBindings);
 
         firstProcess.complete(request(pausedRun, "STATE_UPDATE"));
         // With the current 4096-entry LRU, insert enough other active Runs to evict the paused one.
@@ -389,7 +375,7 @@ class RoutingModelInferenceGatewayTest {
                 .hasMessageContaining("MODEL_BINDING_MISMATCH");
 
         RoutingModelInferenceGateway restartedProcess = new RoutingModelInferenceGateway(
-                activeProvider, activeModelTarget, openCode, openRouter, kilo, custom, durableBindings);
+                activeProvider, activeModelTarget, openCode, kilo, custom, durableBindings);
         assertThatThrownBy(() -> restartedProcess.complete(request(pausedRun, "DECISION")))
                 .isInstanceOf(ModelProviderException.class)
                 .hasMessageContaining("MODEL_BINDING_MISMATCH");
@@ -407,7 +393,7 @@ class RoutingModelInferenceGatewayTest {
                 .isInstanceOf(ModelProviderException.class)
                 .hasMessageContaining("MODEL_BINDING_MISMATCH");
 
-        verifyNoInteractions(openCode, openRouter, kilo, custom);
+        verifyNoInteractions(openCode, kilo, custom);
     }
 
     private static boolean succeeds(RoutingModelInferenceGateway gateway, ModelInferenceRequest request) {
@@ -424,13 +410,14 @@ class RoutingModelInferenceGatewayTest {
         when(activeModelTarget.activeTarget()).thenReturn(Optional.of(target));
         var bindings = mock(RunModelBindingPort.class);
         var routed = new RoutingModelInferenceGateway(activeProvider, activeModelTarget,
-                openCode, openRouter, kilo, custom, bindings);
+                openCode, kilo, custom, bindings);
         UUID run = UUID.randomUUID();
         assertThatThrownBy(() -> routed.complete(request(run, "DECISION")))
                 .isInstanceOf(ModelProviderException.class).hasMessageContaining("MODEL_BINDING_MISMATCH");
-        verify(bindings).bindOrVerify(run, target.bindingFingerprint());
+        verify(bindings).connectionReference(run);
+        verify(bindings).bindOrVerify(run, target.bindingFingerprint(), "builtin:KILO");
         verifyNoMoreInteractions(bindings);
-        verifyNoInteractions(activeProvider, openCode, openRouter, kilo, custom);
+        verifyNoInteractions(activeProvider, openCode, kilo, custom);
     }
 
     @Test void failedDurableBindingDoesNotFallBackToMemoryOrRetry() {
@@ -439,12 +426,13 @@ class RoutingModelInferenceGatewayTest {
         var bindings = mock(RunModelBindingPort.class);
         UUID run = UUID.randomUUID();
         var failure = new IllegalStateException("offline binding failure fixture");
-        when(bindings.bindOrVerify(run, target.bindingFingerprint())).thenThrow(failure);
+        when(bindings.bindOrVerify(run, target.bindingFingerprint(), "builtin:KILO")).thenThrow(failure);
         var routed = new RoutingModelInferenceGateway(activeProvider, activeModelTarget,
-                openCode, openRouter, kilo, custom, bindings);
+                openCode, kilo, custom, bindings);
         assertThatThrownBy(() -> routed.complete(request(run, "DECISION"))).isSameAs(failure);
-        verify(bindings).bindOrVerify(run, target.bindingFingerprint());
+        verify(bindings).connectionReference(run);
+        verify(bindings).bindOrVerify(run, target.bindingFingerprint(), "builtin:KILO");
         verifyNoMoreInteractions(bindings);
-        verifyNoInteractions(activeProvider, openCode, openRouter, kilo, custom);
+        verifyNoInteractions(activeProvider, openCode, kilo, custom);
     }
 }

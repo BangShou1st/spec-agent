@@ -1,0 +1,88 @@
+{
+  "verdict": "MODEL_SERVICE_V2_CROSS_PROTOCOL_PASS",
+  "remote_ci": {"run": 40109379689, "url": "https://github.com/BangShou1st/spec-agent/actions/runs/40109379689", "conclusion": "success", "jobs_green": 10, "jobs_total": 10},
+  "date": "2026-10-24",
+  "baseline": {
+    "branch": "dev",
+    "head_before": "5e4976883097687080eb14b81feed49ca6d79236",
+    "ms_c1": ["dc36d40", "10416a6", "9e31553"],
+    "ms_c2": ["efba1cb", "34ebe31", "e0185a9"],
+    "ms_c3": ["00db644", "5e49768"],
+    "sync_with_origin_dev": "0 ahead / 0 behind"
+  },
+  "review": {
+    "scope": ["A 连接与配置", "B 路由与协议适配", "C MS-C1 continuation", "D 能力资格与执行安全", "E 数据库迁移", "F 测试架构"],
+    "cross_stage_p0_p1_after_fixes": 0,
+    "defects_fixed": [
+      {
+        "id": "F-1",
+        "severity": "P1",
+        "title": "Chat Completions native probe 旁路实现,未走生产传输",
+        "file": "backend/src/main/java/com/specagent/model/provider/CompatibilityProbeService.java",
+        "repro_before": "ModelProtocolHarnessTest.nativeRoundTripPreservesCallIdentityAndOpaqueSignature(修复前 probe 请求无 stream:false)",
+        "regression_after": "同测试新增 stream:false 断言 + testOffline 全绿 + 真实 4 请求 live 验证"
+      },
+      {
+        "id": "F-2",
+        "severity": "P2",
+        "title": "极短密钥(≤4 字符)在 legacy Custom maskedKey 中原样暴露",
+        "file": "backend/src/main/java/com/specagent/modelsettings/CustomProviderSettingsService.java",
+        "regression_after": "testOffline 全绿(含 ModelConnectionsOfflineTest)"
+      },
+      {
+        "id": "F-4",
+        "severity": "P2",
+        "title": "Anthropic 适配器把第 2+ 条 system 消息降级为 user 消息",
+        "file": "backend/src/main/java/com/specagent/model/provider/AnthropicMessagesProtocolAdapter.java",
+        "repro_before": "buildRequestBody 旧逻辑 if(system==null) 只取第一条",
+        "regression_after": "新增 multipleSystemMessagesMergeIntoTopLevelSystem 测试 + testOffline 全绿"
+      }
+    ],
+    "recorded_not_fixed": [
+      "三份逐字相同的 validateResponse 副本(纯重构收益,后续处理)",
+      "Chat Completions extra_content 非官方字段(Gemini 签名承载,MS-C1 已验收设计)",
+      "ModelProvidersService.update 冗余比较(无行为影响)"
+    ]
+  },
+  "local_regression": {
+    "java_test": {"completed": 2655, "failures": 0, "errors": 0, "skipped": 41},
+    "java_testDatabaseIntegration": {"completed": 1005, "failures": 0, "errors": 0, "skipped": 41},
+    "java_testOffline": {"result": "BUILD_SUCCESSFUL", "note": "包含本轮 3 项修复的定向回归"},
+    "python_brain": {"passed": 344, "failed": 0, "skipped": 0},
+    "python_tools_contracts": {"passed": 239, "failed": 0, "skipped": 0},
+    "frontend": {"typecheck": "pass", "unit": {"passed": 987, "skipped": 1}, "build": "pass"},
+    "skips_note": "Java 41+41 为既有 live-provider/环境门禁用例(@EnabledIfEnvironmentVariable/Assumptions);前端 1 个既有 vitest skip"
+  },
+  "live_verification": {
+    "budget_total_allowed": 12,
+    "requests_this_run": 4,
+    "retries": 0,
+    "gemini_chat_completions_probe": {
+      "status": "LIVE_VERIFIED",
+      "model": "gemini-3.5-flash-lite",
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "free_tier": true,
+      "requests": {"probeChat": 1, "probeCustom": 1, "probeNativeTools": 2},
+      "verified_path": "ModelProvidersService.validate -> ModelConnectionCapabilities.verify -> probeNativeTools via ChatCompletionsGaTextTransport(F-1 修复后的生产传输)",
+      "result": "CHAT=VERIFIED, STRUCTURED=VERIFIED, NATIVE_TOOLS=VERIFIED; validated 落库 revision=1; 删除连接后能力记录级联清理",
+      "evidence": "TEST-com.specagent.modelsettings.MsCrossChatCompletionsProbeLiveTest.xml tests=1 skipped=0 failures=0; 凭据零泄漏(结果文件 grep 计数 0)"
+    },
+    "anthropic_official": {"status": "LIVE_NOT_RUN", "reason": "无可用 Anthropic 凭据(桌面 key2.txt 经核实为 Gemini key);按任务书不发起未授权付费请求"},
+    "responses_official": {"status": "LIVE_NOT_RUN", "reason": "无凭据,离线 OFFLINE_VERIFIED"},
+    "prior_live_evidence": "model-service-v2-live-20261023(Gemini 12 请求,三能力+双 Agent 链路)继续有效,本轮不重复调用"
+  },
+  "capability_states_summary": {
+    "custom_chat_completions": {"CHAT": "OFFLINE_VERIFIED", "STRUCTURED": "OFFLINE_VERIFIED", "NATIVE_TOOLS": "LIVE_VERIFIED(本轮,Gemini 兼容端点)"},
+    "custom_responses": {"CHAT": "OFFLINE_VERIFIED", "STRUCTURED": "OFFLINE_VERIFIED", "NATIVE_TOOLS": "OFFLINE_VERIFIED"},
+    "custom_anthropic_messages": {"CHAT": "OFFLINE_VERIFIED", "STRUCTURED": "OFFLINE_VERIFIED", "NATIVE_TOOLS": "OFFLINE_VERIFIED", "live": "LIVE_NOT_RUN"},
+    "gemini_via_chat_completions": {"CHAT": "LIVE_VERIFIED(2026-10-23)", "STRUCTURED": "LIVE_VERIFIED(2026-10-23)", "NATIVE_TOOLS": "LIVE_VERIFIED(2026-10-23 + 本轮 probe 路径复验)"},
+    "opencode_zen": {"mode": "内置", "live": "NOT_RUN(V2 架构下无专门复验)"},
+    "kilo": {"mode": "内置", "live": "NOT_RUN"}
+  },
+  "completion_answers": {
+    "cross_stage_p0_p1": "修复 F-1 后无跨阶段 P0/P1",
+    "protocols_share_infrastructure": "是:连接管理/冻结绑定/资格校验/工具授权/执行账本三协议同一套",
+    "new_custom_connection_needs_code": "否:填 API Format/Base URL/Key/Model ID + validate 即可",
+    "model_service_v2_can_close": "可以,唯余事项为 Anthropic/Responses 官方端点 live 证据(无凭据,NOT_RUN)与 Zen/Kilo live 复验(可选)"
+  }
+}

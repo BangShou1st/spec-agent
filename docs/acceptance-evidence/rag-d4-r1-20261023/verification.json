@@ -1,0 +1,417 @@
+{
+  "schemaVersion": "rag-d4-r1-evidence.v1",
+  "status": "D4_R1_PARTIAL",
+  "date": "2026-10-23",
+  "branch": "dev",
+  "startingHead": "efd500d5ab2df1d070039306be79fc7531c44965",
+  "remoteBase": "4a914283195bb0690f42f13718e2272a5b26c105",
+  "review": "AI_AUDITED_SYNTHETIC_BEHAVIOR_EVALUATION",
+  "statisticallyIndependent": false,
+  "humanReviewed": false,
+  "formalD3QueriesExecuted": 0,
+  "pushed": false,
+  "deployed": false,
+  "businessDatabaseConnected": false,
+  "tests": {
+    "defaultPythonRagRegression": {
+      "tests": 97,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "testOffline": {
+      "tests": 348,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "evalRetrievalFast": {
+      "tests": 122,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "python": {
+      "tests": 340,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "staticContracts": {
+      "tests": 239,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "queryAndGaCrossLanguageFakeModel": {
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "authenticatedCatalog": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "ci": {
+    "inspectedRun": 39883551872,
+    "failedJobs": [
+      "brain",
+      "backend",
+      "eval-baseline"
+    ],
+    "remoteRerun": "NOT_RUN_NO_PUSH",
+    "fixes": [
+      "historical CRLF candidate checkout identity",
+      "archived interpreter dependency removed from offline metadata test; execution guard retained",
+      "scratch parent directory creation",
+      "real shared Python fixtures plus committed resource projection",
+      "eval-baseline Python installation and interpreter binding",
+      "locked Python dependencies",
+      "live Gemini excluded from deterministic gate"
+    ]
+  },
+  "gemini": {
+    "credentialAvailable": true,
+    "requestedModel": "gemini-3.5-flash-lite",
+    "catalogIdentity": "models/gemini-3.5-flash-lite",
+    "actualModelVersion": "NOT_EXPOSED_BY_GATEWAY",
+    "credentialBoundary": "existing Java CustomProviderSettingsService, isolated encrypted settings; no key in Python",
+    "billingPrecheck": {
+      "freeTierVisible": true,
+      "projectVisible": true,
+      "credentialMatchesDisplayedMaskedMetadata": true,
+      "rawCredentialLogged": false
+    },
+    "observedRateLimits": {
+      "requestsPerMinute": 15,
+      "requestsPerDay": 500
+    },
+    "estimatedAdditionalFee": {
+      "amount": 0,
+      "currency": "USD",
+      "basis": "verified free-tier project",
+      "invoiceVerified": false
+    },
+    "requests": 12,
+    "compatibilityProbes": 2,
+    "newScenarioRequests": 10,
+    "failedRequests": 0,
+    "retries": 0,
+    "agentCapabilityInvocations": 0,
+    "automaticRetrievalAttempts": 10,
+    "realPythonLexicalDegradationScenarios": 9,
+    "retrievalOutageInjectedScenarios": 1,
+    "behaviorPromptTokens": 45193,
+    "behaviorCompletionTokens": 2209,
+    "probeTokens": "NOT_EXPOSED",
+    "p50CompletionMs": 4065,
+    "p95CompletionMs": 5523,
+    "latencyDenominator": 10,
+    "quantile": "nearest-rank",
+    "firstVisibleBody": "NOT_MEASURED_NONSTREAMING",
+    "observationPromptSha256": "41b62f5302705e83e6c37414d85739ca1d212354d689d951023f80dc2194503b",
+    "finalPromptSha256": "ffc0752a553bb6a0d77cd2971683e5b76a56d94e8d6e6e63648d88d010b4b467"
+  },
+  "firstObservation": {
+    "scenarios": 10,
+    "passed": 9,
+    "failed": [
+      "R102"
+    ],
+    "facts": {
+      "covered": 6,
+      "required": 6,
+      "scenariosRequired": 3
+    },
+    "requiredReferences": {
+      "covered": 5,
+      "required": 5,
+      "scenariosRequired": 3
+    },
+    "unknown": {
+      "correct": 8,
+      "required": 8,
+      "review": "AI qualitative"
+    },
+    "structuredReferences": {
+      "total": 13,
+      "invalid": 0
+    },
+    "inlineCitationDefects": 2,
+    "unsupportedAssertionScenariosAiReviewed": 0,
+    "measuredSentinelLeaks": 0,
+    "graphUnchanged": 10,
+    "replayIdentical": 10,
+    "frozenMachineInvariantScenariosPassed": 10,
+    "overallScoreIncludesAiBodyReview": true
+  },
+  "continuation": {
+    "reason": "fixture attempted attaching second resource at historical anchor; Runtime refused before R102 inference",
+    "firstAttemptScenarios": [
+      "R101"
+    ],
+    "continuedNeverObservedScenarios": [
+      "R102",
+      "R103",
+      "R104",
+      "R105",
+      "R106",
+      "R107",
+      "R108",
+      "R109",
+      "R110"
+    ],
+    "existingOutputsOverwritten": false,
+    "modelPromptsChangedAfterFirstObservation": true,
+    "modelRequestsRetried": 0,
+    "allFirstObservationsCompletedBeforePromptUpdate": true,
+    "behaviorRetestedAfterPromptUpdate": false,
+    "postObservationFix": "Generic exact sourceRef copying, including inline refs; no model retest or score replacement"
+  },
+  "boundary": {
+    "realModel": true,
+    "realJavaBroker": true,
+    "realPythonBrain": true,
+    "realPythonRetrieval": true,
+    "realJavaScopeAndSourceAuthority": true,
+    "realFrozenInput": true,
+    "realRuntimePolicyAndQueryPersistence": true,
+    "syntheticToolMessages": false,
+    "syntheticAllowlist": false,
+    "syntheticResources": true,
+    "helpSearchLive": "NOT_RUN_SYNTHETIC_HELP_RESOURCE_ONLY",
+    "globalAssistantGeminiNativeTools": "UNSUPPORTED_CURRENT_CUSTOM_TEXT_CHAT_PATH",
+    "graphMode": "READ_ONLY_NODE_QUERY",
+    "stateUpdateAndConfirmedMutation": "NOT_RUN_LIVE",
+    "productBrowserAcceptance": "NOT_RUN",
+    "billingBrowserInspection": true,
+    "liveGraphIdentityTables": [
+      "nodes",
+      "answers",
+      "answer_patches",
+      "routes"
+    ],
+    "liveGraphIdentityExcludes": [
+      "node_relations",
+      "projects"
+    ]
+  },
+  "unresolved": [
+    "R102 two noncanonical inline citation strings despite correct structured refs",
+    "NodeQuery result persistence/API does not deliver structured sourceRefs to UI",
+    "Gemini Custom path does not allow GA native tool calling",
+    "valid citation does not prove semantic entailment; legacy implicit and canonical Answer grounding gaps remain",
+    "full Private/Route/external-web/UI and confirmed-write matrix not qualified"
+  ],
+  "history": {
+    "oldD4Result": "16/28 unchanged",
+    "oldD4FreezeSha256": "3f38cb23b6abcf043f9440520fd3951fedd018264eb16c82bba248c41ffc9036",
+    "protectedTrackedFilesUnchanged": true,
+    "userPrecheckBlob": "2238c220801ec870658f511c78e4bafcdaf9c23d",
+    "unrelatedUntrackedFilesRemoved": 0
+  },
+  "artifacts": {
+    "scratch\\rag-d4-r1\\gemini-first-observation\\freeze.json": "484aba8d906dd1cf4a538ffe33d10005ab6e13e802b6fbe199d7f29c0f004b28",
+    "scratch\\rag-d4-r1\\gemini-first-observation\\requests.jsonl": "21b39afb6e362c200d74738692fac2177341528918bda9b4743609fc3aa0b44a",
+    "scratch\\rag-d4-r1\\gemini-first-observation\\results.jsonl": "28b480ff73a0e983a64b1096db874b2c8898c17bf0da63049b903540627a244d",
+    "scratch\\rag-d4-r1\\gemini-first-observation\\review.json": "f84b99c758bcf836809cd934193f31750fd8746f7d983dae5fa9c160542adbb5",
+    "scratch\\rag-d4-r1\\gemini-first-observation\\execution.json": "66a5b3003b3f557411cca13148f85cdec078745d289760ba0328498d494cdbfb",
+    "contracts\\retrieval\\evaluation\\rag-d4-r1-behavior.v1.json": "10a29221294f7ee360ba985e970fd0bcdaac5ea0fecd7ae2bfa42596cbcf1120"
+  },
+  "scenarios": [
+    {
+      "id": "R101",
+      "category": "product-help",
+      "factsCovered": 2,
+      "factsRequired": 2,
+      "requiredRefsCovered": 1,
+      "requiredRefs": 1,
+      "structuredRefCount": 1,
+      "invalidStructuredRefs": [],
+      "forbiddenContentLeaks": [],
+      "unknownRequired": false,
+      "unknownCorrectAiReviewed": null,
+      "graphUnchanged": true,
+      "frozenReplayIdentical": true,
+      "runtimeCompleted": true,
+      "modelCalls": 1,
+      "totalMillis": 5122,
+      "behaviorPass": true
+    },
+    {
+      "id": "R102",
+      "category": "two-required-sources",
+      "factsCovered": 2,
+      "factsRequired": 2,
+      "requiredRefsCovered": 2,
+      "requiredRefs": 2,
+      "structuredRefCount": 2,
+      "invalidStructuredRefs": [],
+      "forbiddenContentLeaks": [],
+      "unknownRequired": false,
+      "unknownCorrectAiReviewed": null,
+      "graphUnchanged": true,
+      "frozenReplayIdentical": true,
+      "runtimeCompleted": true,
+      "modelCalls": 1,
+      "totalMillis": 5523,
+      "behaviorPass": false
+    },
+    {
+      "id": "R103",
+      "category": "legal-background-missing-answer",
+      "factsCovered": 0,
+      "factsRequired": 0,
+      "requiredRefsCovered": 0,
+      "requiredRefs": 0,
+      "structuredRefCount": 1,
+      "invalidStructuredRefs": [],
+      "forbiddenContentLeaks": [],
+      "unknownRequired": true,
+      "unknownCorrectAiReviewed": true,
+      "graphUnchanged": true,
+      "frozenReplayIdentical": true,
+      "runtimeCompleted": true,
+      "modelCalls": 1,
+      "totalMillis": 4152,
+      "behaviorPass": true
+    },
+    {
+      "id": "R104",
+      "category": "no-answer",
+      "factsCovered": 0,
+      "factsRequired": 0,
+      "requiredRefsCovered": 0,
+      "requiredRefs": 0,
+      "structuredRefCount": 1,
+      "invalidStructuredRefs": [],
+      "forbiddenContentLeaks": [],
+      "unknownRequired": true,
+      "unknownCorrectAiReviewed": true,
+      "graphUnchanged": true,
+      "frozenReplayIdentical": true,
+      "runtimeCompleted": true,
+      "modelCalls": 1,
+      "totalMillis": 4065,
+      "behaviorPass": true
+    },
+    {
+      "id": "R105",
+      "category": "unsupported-recommendation",
+      "factsCovered": 0,
+      "factsRequired": 0,
+      "requiredRefsCovered": 0,
+      "requiredRefs": 0,
+      "structuredRefCount": 1,
+      "invalidStructuredRefs": [],
+      "forbiddenContentLeaks": [],
+      "unknownRequired": true,
+      "unknownCorrectAiReviewed": true,
+      "graphUnchanged": true,
+      "frozenReplayIdentical": true,
+      "runtimeCompleted": true,
+      "modelCalls": 1,
+      "totalMillis": 4121,
+      "behaviorPass": true
+    },
+    {
+      "id": "R106",
+      "category": "cross-project",
+      "factsCovered": 0,
+      "factsRequired": 0,
+      "requiredRefsCovered": 0,
+      "requiredRefs": 0,
+      "structuredRefCount": 1,
+      "invalidStructuredRefs": [],
+      "forbiddenContentLeaks": [],
+      "unknownRequired": true,
+      "unknownCorrectAiReviewed": true,
+      "graphUnchanged": true,
+      "frozenReplayIdentical": true,
+      "runtimeCompleted": true,
+      "modelCalls": 1,
+      "totalMillis": 3592,
+      "behaviorPass": true
+    },
+    {
+      "id": "R107",
+      "category": "retracted",
+      "factsCovered": 0,
+      "factsRequired": 0,
+      "requiredRefsCovered": 0,
+      "requiredRefs": 0,
+      "structuredRefCount": 1,
+      "invalidStructuredRefs": [],
+      "forbiddenContentLeaks": [],
+      "unknownRequired": true,
+      "unknownCorrectAiReviewed": true,
+      "graphUnchanged": true,
+      "frozenReplayIdentical": true,
+      "runtimeCompleted": true,
+      "modelCalls": 1,
+      "totalMillis": 3602,
+      "behaviorPass": true
+    },
+    {
+      "id": "R108",
+      "category": "retrieval-outage",
+      "factsCovered": 0,
+      "factsRequired": 0,
+      "requiredRefsCovered": 0,
+      "requiredRefs": 0,
+      "structuredRefCount": 2,
+      "invalidStructuredRefs": [],
+      "forbiddenContentLeaks": [],
+      "unknownRequired": true,
+      "unknownCorrectAiReviewed": true,
+      "graphUnchanged": true,
+      "frozenReplayIdentical": true,
+      "runtimeCompleted": true,
+      "modelCalls": 1,
+      "totalMillis": 1369,
+      "behaviorPass": true
+    },
+    {
+      "id": "R109",
+      "category": "unconfirmed-user-intent",
+      "factsCovered": 0,
+      "factsRequired": 0,
+      "requiredRefsCovered": 0,
+      "requiredRefs": 0,
+      "structuredRefCount": 1,
+      "invalidStructuredRefs": [],
+      "forbiddenContentLeaks": [],
+      "unknownRequired": true,
+      "unknownCorrectAiReviewed": true,
+      "graphUnchanged": true,
+      "frozenReplayIdentical": true,
+      "runtimeCompleted": true,
+      "modelCalls": 1,
+      "totalMillis": 3612,
+      "behaviorPass": true
+    },
+    {
+      "id": "R110",
+      "category": "conflict-clarification",
+      "factsCovered": 2,
+      "factsRequired": 2,
+      "requiredRefsCovered": 2,
+      "requiredRefs": 2,
+      "structuredRefCount": 2,
+      "invalidStructuredRefs": [],
+      "forbiddenContentLeaks": [],
+      "unknownRequired": true,
+      "unknownCorrectAiReviewed": true,
+      "graphUnchanged": true,
+      "frozenReplayIdentical": true,
+      "runtimeCompleted": true,
+      "modelCalls": 1,
+      "totalMillis": 4365,
+      "behaviorPass": true
+    }
+  ]
+}

@@ -14,14 +14,20 @@
 
 Java、Python 锁定依赖和前端必须成套发布。Java 保留事实、Runtime、权限、存储、来源校验与副作用事务；Python 仅通过受认证宿主 RPC 使用同一 pgvector 存储。保留现有聊天模型及 OpenCode Zen 请求头策略，不把供应商密钥传给 Python。
 
-当前默认配置：
+当前代码默认配置（application.yml，未设置环境变量时的实际生效值）：
 
 ```text
-SPEC_AGENT_GLOBAL_ASSISTANT_ENGINE=java-legacy.v1
-SPEC_AGENT_RETRIEVAL_ENGINE=java-hybrid.v1
+SPEC_AGENT_GLOBAL_ASSISTANT_ENGINE=langchain-ga.v1
+SPEC_AGENT_RETRIEVAL_ENGINE=python-rag.v1
 ```
 
-上述变量未设置时亦保持旧默认。候选配置为 `langchain-ga.v1` 与 `python-rag.v1`；此处是操作说明，没有应用这些值到生产。
+> 事实校正（2026-10-25）：本文撰写于 2026-10-02，当时默认为
+> `java-legacy.v1`/`java-hybrid.v1`，`langchain-ga.v1`/`python-rag.v1` 仍是候选。
+> 其后单引擎切换已实施：`java-legacy.v1` 决策引擎已从代码删除
+> （`RunDispatcher` 显式拒绝该值），application.yml 默认值已切换为上述候选值；
+> `java-hybrid.v1` 检索引擎仍可选但已非默认。按本文早期版本的"旧默认"执行
+> 生产操作或回滚会误判现状。代码默认值不等于生产发布：生产切换仍需本文
+> 列出的授权与门槛。
 
 Python 使用仓库锁定版本安装，并运行 `pip check`。服务密钥通过既有安全配置注入，禁止输出到日志或证据。固定本地 Ollama `qwen3-embedding:0.6b`、1024 维和 profile
 `26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047`。
@@ -59,7 +65,7 @@ Java `SPEC_AGENT_BRAIN_BASE_URL` 指向该 Python 服务；Python `SPEC_AGENT_OL
 ## 回滚步骤与限制
 
 1. 停止接收新请求，取消或排空活跃 run，确认宿主 fence 生效并停止执行进程。
-2. 恢复已记录的成套 Java/Python/前端版本与原配置；将新请求引擎恢复为旧默认。保留新 schema、执行账本、checkpoint、公开历史和冻结输入，禁止删除表、重写 Answer 或自动重放 UNKNOWN。
+2. 恢复已记录的成套 Java/Python/前端版本与原配置；将新请求引擎恢复为该记录版本的默认。保留新 schema、执行账本、checkpoint、公开历史和冻结输入，禁止删除表、重写 Answer 或自动重放 UNKNOWN。（2026-10-25 校正：`java-legacy.v1` 已从代码删除，回滚目标只能是一个仍支持 `langchain-ga.v1` 的较早成套版本，不能再回到旧 Java 决策引擎。）
 3. 检索复用同一 retrieval_entries，没有保存第二套活动向量。新 generation 激活后不能假定旧向量仍可直接回滚。需要按目标 profile 重建新的 generation，或从经过验证的数据库备份恢复派生向量，再完成 CAS/来源校验才激活；期间只使用明确标注的可用检索状态。
 4. 在隔离环境复验旧引擎、新旧历史显示、冻结输入字节一致、来源权限及写入幂等。确认业务事实未改变后再恢复请求。
 

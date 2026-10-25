@@ -94,3 +94,40 @@ def test_independent_response_validator_rejects_tampered_dependency_selection():
         update={"payload": {"dependencyRef": "foreign"}})})
     with pytest.raises(ValueError, match="dependencyRef"):
         validate_v3_response_for_request(request, tampered)
+
+
+# 生产前置拒绝(模型输出)与契约自检(响应信封)消费同一个低层谓词
+# ``wait_payload_matches_contract``;同一矩阵下两条路径必须一致裁决,
+# 防止两份判定再次漂移。Java ActionEligibilityValidator 的权威复核
+# 由 Java 侧套件独立锁定。
+WAIT_MATRIX_INVALID = [
+    {},                                             # 缺失 dependencyRef
+    {"dependencyRef": None},                        # 空值
+    {"dependencyRef": 12345},                       # 错误类型(整数)
+    {"dependencyRef": ["invented"]},                # 错误类型(数组)
+    {"dependencyRef": "invented"},                  # 未知 dependencyRef
+    {"dependencyRef": ""},                          # 空字符串(不在投影集合内)
+    {"dependencyRef": "11111111-2222-3333-4444-555555555555", "projectId": "x"},  # 额外字段
+]
+
+
+@pytest.mark.parametrize("payload", WAIT_MATRIX_INVALID)
+def test_production_and_envelope_paths_agree_on_invalid_wait_payloads(payload):
+    request = parse_request_envelope(raw())
+    valid_ref = str(request.pending_dependencies.dependencies[0].invocation_id)
+    envelope = handle_decision(request, Client({"dependencyRef": valid_ref}))
+    tampered = envelope.model_copy(update={"action_proposal": envelope.action_proposal.model_copy(
+        update={"payload": payload})})
+
+    with pytest.raises(ActionIneligibleBrainError):
+        handle_decision(request, Client(payload))
+    with pytest.raises(ValueError, match="dependencyRef"):
+        validate_v3_response_for_request(request, tampered)
+
+
+def test_production_and_envelope_paths_agree_on_valid_wait_payload():
+    request = parse_request_envelope(raw())
+    valid_ref = str(request.pending_dependencies.dependencies[0].invocation_id)
+
+    response = handle_decision(request, Client({"dependencyRef": valid_ref}))
+    validate_v3_response_for_request(request, response)  # 不抛异常即两条路径一致放行

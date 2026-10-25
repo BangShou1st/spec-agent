@@ -5,7 +5,6 @@ import { useConnectionsStore } from '@/features/connections/state/connectionsSto
 import { useSkillsStore } from '@/features/skills/state/skillsStore'
 import { useModelSettingsStore } from '@/features/model-settings/state/modelSettingsStore'
 import { useProviderSettingsStore } from '@/features/model-settings/state/providerSettingsStore'
-import { useOpenRouterStore } from '@/features/model-settings/state/openRouterStore'
 import { useCustomProviderStore } from '@/features/model-settings/state/customProviderStore'
 import { getConnection, listConnectionTools } from '@/features/connections/api/connections'
 import { getOpenCodeSettings } from '@/features/model-settings/api/modelSettings'
@@ -26,14 +25,12 @@ describe('private settings identity lifecycle', () => {
     useSkillsStore().error = { code: 'private', message: 'private' }
     useModelSettingsStore().selectedModel = 'private-model'
     useProviderSettingsStore().viewTouched = true
-    useOpenRouterStore().error = { code: 'private', message: 'private' }
     useCustomProviderStore().error = { code: 'private', message: 'private' }
     bindPrivateSettingsIdentity(null)
     expect(useConnectionsStore().error).toBeNull()
     expect(useSkillsStore().error).toBeNull()
     expect(useModelSettingsStore().selectedModel).toBeNull()
     expect(useProviderSettingsStore().viewTouched).toBe(false)
-    expect(useOpenRouterStore().error).toBeNull()
     expect(useCustomProviderStore().error).toBeNull()
   })
   it('discards an old connection detail and does not request its tools after the identity changes', async () => {

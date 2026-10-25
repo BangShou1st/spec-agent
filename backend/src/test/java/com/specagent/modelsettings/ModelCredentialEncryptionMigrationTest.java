@@ -32,9 +32,9 @@ class ModelCredentialEncryptionMigrationTest {
     @Autowired NamedParameterJdbcTemplate jdbc;
     @Autowired ModelCredentialEncryptionMigrator migrator;
     @Autowired ModelCredentialCrypto crypto;
+    @Autowired com.specagent.access.OrganizationConfigurationScope configurationScope;
     @Autowired ModelProviderRepository modelProviders;
     @Autowired OpenCodeSettingsRepository openCode;
-    @Autowired OpenRouterSettingsRepository openRouter;
     @Autowired CustomProviderSettingsRepository custom;
 
     private int countPlaintextRows(String table) {
@@ -95,7 +95,7 @@ class ModelCredentialEncryptionMigrationTest {
         assertThat(modelProviders.findById(providerId).orElseThrow().apiKey())
                 .isEqualTo(SYNTHETIC_KEY);
         assertThat(openCode.find().orElseThrow().apiKey()).isEqualTo(SYNTHETIC_KEY);
-        assertThat(openRouter.find().orElseThrow().apiKey()).isEqualTo(SYNTHETIC_KEY);
+        assertThat(crypto.decryptScoped(jdbc.queryForObject("SELECT api_key FROM openrouter_settings WHERE org_id=:org", Map.of("org", configurationScope.readOrg()), String.class), configurationScope.readOrg(), "openrouter_settings", 1)).isEqualTo(SYNTHETIC_KEY);
         assertThat(custom.find().orElseThrow().apiKey()).isEqualTo(SYNTHETIC_KEY);
 
         // 幂等:重复迁移不再改动

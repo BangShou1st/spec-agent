@@ -83,6 +83,10 @@ class RebuildLeaseAcceptanceTest {
             jdbc.update("DELETE FROM embedding_rebuilds WHERE corpus_id = ?", project);
             jdbc.update("DELETE FROM retrieval_index_jobs WHERE corpus_id = ?", project);
             jdbc.update("DELETE FROM retrieval_index_heads WHERE corpus_id = ?", project);
+            // retrieval_scope_grants.index_generation has no ON DELETE action
+            // (V49): a grant written by the shared-Python indexing path blocks
+            // the generation delete unless it is removed first.
+            jdbc.update("DELETE FROM retrieval_scope_grants WHERE corpus_id = ?", project);
             jdbc.update("DELETE FROM retrieval_index_generations WHERE corpus_id = ?", project);
             jdbc.update("DELETE FROM retrieval_entries WHERE project_id = ?", project);
             jdbc.update("DELETE FROM nodes WHERE project_id = ?", project);

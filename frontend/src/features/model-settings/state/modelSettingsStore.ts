@@ -44,7 +44,7 @@ export const useModelSettingsStore = defineStore('modelSettings', {
     /**
      * OpenCode 没有持久化的"已校验版本"列:save 与 changeModel 在唯一一次
      * upsert 之前就已证明可达性,因此已存的(密钥,模型)对天然视为已校验。
-     * 此标志只在会话内有效,存在的原因仅仅是让卡片能呈现与 OpenRouter 卡
+     * 此标志只在会话内有效,存在的原因仅仅是让卡片能呈现与 其他 Provider 卡
      * 相同的 已配置但未验证 / 配置有效 / 测试失败 三种状态。
      */
     validated: false,
@@ -67,9 +67,9 @@ export const useModelSettingsStore = defineStore('modelSettings', {
       this.privateIdentity = identity
     },
     /**
-     * 与 OpenRouter 卡同一条规则：已保存的选中模型在（重新）拉取列表之前必须
+     * 与 其他 Provider 卡同一条规则：已保存的选中模型在（重新）拉取列表之前必须
      * 保持可见。否则列表为空的那段时间里，卡片会闪出「暂无可用模型」并把选择框
-     * 置灰 —— 这正是 OpenCode 卡与 OpenRouter 卡看起来行为不一致的原因。
+     * 置灰 —— 这正是 OpenCode 卡与 其他 Provider 卡看起来行为不一致的原因。
      */
     ensurePersistedVisible(): void {
       const persisted = this.status?.selectedModel
@@ -312,7 +312,7 @@ export const useModelSettingsStore = defineStore('modelSettings', {
      * 进入更换凭证模式。
      *
      * 刻意**不**清空模型目录和当前选择:已存凭证在新的一对(密钥,模型)保存之前
-     * 仍然有效,模型列表必须保持可用,与 OpenRouter 卡完全一致。
+     * 仍然有效,模型列表必须保持可用,与 其他 Provider 卡完全一致。
      * 此前在这里清空列表,导致点 更换 API Key 后模型下拉塌缩成禁用的占位项、
      * 刷新模型 按钮消失——同一个外壳表现不一致,这就是"不像范式"在界面上的样子。
      * 使用候选密钥的探测仍会替换列表(见 probe())。

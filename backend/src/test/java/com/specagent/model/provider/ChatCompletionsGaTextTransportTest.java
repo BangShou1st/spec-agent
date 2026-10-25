@@ -34,7 +34,7 @@ import org.mockito.ArgumentCaptor;
 class ChatCompletionsGaTextTransportTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
-    private final CustomRuntimeSettingsPort custom = mock(CustomRuntimeSettingsPort.class);
+    private final CustomRuntimeSettingsPort custom = mock(CustomRuntimeSettingsPort.class, org.mockito.Mockito.CALLS_REAL_METHODS);
 
     private static GaModelContract.Request textRequest() {
         return new GaModelContract.Request(GaModelContract.VERSION, UUID.randomUUID(), 1, UUID.randomUUID(),
@@ -78,7 +78,7 @@ class ChatCompletionsGaTextTransportTest {
     @Test
     void customChatCompletionsReturnsRealTextContent() throws Exception {
         when(custom.requireRuntimeSettings()).thenReturn(
-                new RuntimeCustomSettings("CHAT_COMPLETIONS", "http://localhost:9/v1", "custom-key", "llama"));
+                new RuntimeCustomSettings("CHAT_COMPLETIONS", "http://localhost:9/v1", "custom-key", "llama", 1));
         var captured = new AtomicReference<HttpRequest>();
         var transport = new ChatCompletionsGaTextTransport(custom, mapper,
                 clientReturning(chatResponse(200, validChatBody("你好,我能聊天")), captured));
@@ -94,16 +94,17 @@ class ChatCompletionsGaTextTransportTest {
     }
 
     @Test
-    void openRouterTextChatUsesTheFixedVerifiedEndpoint() throws Exception {
+    void customCanUseAnOpenRouterCompatibleEndpoint() throws Exception {
         var captured = new AtomicReference<HttpRequest>();
         var transport = new ChatCompletionsGaTextTransport(custom, mapper,
                 clientReturning(chatResponse(200, validChatBody("ok")), captured));
 
-        transport.complete(new GaModelTarget("OPENROUTER", "openrouter/auto", "openrouter-settings:1", "or-key"),
+        when(custom.requireRuntimeSettings()).thenReturn(new RuntimeCustomSettings("CHAT_COMPLETIONS", "https://openrouter.ai/api/v1", "or-key", "fixed-model", 1));
+        transport.complete(new GaModelTarget("CUSTOM", "fixed-model", "custom-settings:1", "or-key"),
                 textRequest(), Duration.ofSeconds(60), () -> true);
 
         assertThat(captured.get().uri().toString())
-                .isEqualTo(OpenRouterGatewaySupport.BASE_URL + "/chat/completions");
+                .isEqualTo("https://openrouter.ai/api/v1/chat/completions");
         assertThat(captured.get().headers().firstValue("Authorization")).contains("Bearer or-key");
     }
 
@@ -130,12 +131,40 @@ class ChatCompletionsGaTextTransportTest {
 
     @Test
     void providerRateLimitIsMappedToATypedFailure() throws Exception {
+        when(custom.requireRuntimeSettings()).thenReturn(new RuntimeCustomSettings("CHAT_COMPLETIONS",
+                "http://localhost:9/v1", "or-key", "model", 1));
         var transport = new ChatCompletionsGaTextTransport(custom, mapper,
                 clientReturning(chatResponse(429, "{\"error\":{\"message\":\"rate\"}}"), new AtomicReference<>()));
 
         assertThatThrownBy(() -> transport.complete(
-                new GaModelTarget("OPENROUTER", "openrouter/auto", "openrouter-settings:1", "or-key"),
+                new GaModelTarget("CUSTOM", "model", "custom-settings:1", "or-key"),
                 textRequest(), Duration.ofSeconds(60), () -> true))
                 .isInstanceOf(ModelProviderException.class);
+    }
+    @Test void exactQualifiedCustomTargetUsesNativeToolsAndRejectsRevisionDrift() throws Exception {
+        var qualification=mock(com.specagent.model.contract.CustomNativeToolQualification.class);
+        when(qualification.hasCustomTargets()).thenReturn(true);
+        when(qualification.customQualified("http://localhost:9/v1","lite")).thenReturn(true);
+        when(custom.requireRuntimeSettings()).thenReturn(new RuntimeCustomSettings("CHAT_COMPLETIONS","http://localhost:9/v1","fixture-key","lite",7));
+        String nativeBody="{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"id\":\"native-one\",\"type\":\"function\",\"function\":{\"name\":\"project_search\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2}}";
+        var captured=new AtomicReference<HttpRequest>();
+        var client=clientReturning(chatResponse(200,nativeBody),captured);
+        var transport=new ChatCompletionsGaTextTransport(custom,mapper,client,qualification);
+        var target=new GaModelTarget("CUSTOM","lite","custom-settings:7","fixture-key");
+        assertThat(transport.complete(target,toolRequest(),Duration.ofSeconds(20),()->true).toolCalls()).hasSize(1);
+        when(custom.requireRuntimeSettings()).thenReturn(new RuntimeCustomSettings("CHAT_COMPLETIONS","http://localhost:9/v1","fixture-key","lite",8));
+        assertThatThrownBy(()->transport.complete(target,toolRequest(),Duration.ofSeconds(20),()->true)).hasMessage("GA_MODEL_BINDING_MISMATCH");
+        org.mockito.Mockito.verify(client,org.mockito.Mockito.times(1)).send(any(),any());
+    }
+    @Test void qualificationCannotAuthorizeAnotherEndpointOrProvider() {
+        var qualification=mock(com.specagent.model.contract.CustomNativeToolQualification.class);
+        when(qualification.hasCustomTargets()).thenReturn(true);
+        when(qualification.customQualified("http://localhost:9/v1","lite")).thenReturn(true);
+        when(custom.requireRuntimeSettings()).thenReturn(new RuntimeCustomSettings("CHAT_COMPLETIONS","http://localhost:10/v1","fixture-key","lite",7));
+        var client=mock(HttpClient.class);
+        var transport=new ChatCompletionsGaTextTransport(custom,mapper,client,qualification);
+        assertThatThrownBy(()->transport.complete(new GaModelTarget("CUSTOM","lite","custom-settings:7","fixture-key"),toolRequest(),Duration.ofSeconds(20),()->true)).isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(()->transport.complete(new GaModelTarget("CUSTOM","lite","custom-settings:7","fixture-key"),toolRequest(),Duration.ofSeconds(20),()->true)).isInstanceOf(UnsupportedOperationException.class);
+        verifyNoInteractions(client);
     }
 }

@@ -1,0 +1,63 @@
+{
+  "round": "ARCH-QUALITY-01",
+  "recordedAt": "2026-10-26T03:05:00+08:00",
+  "baseline": "a30de0cc85caf46f7bca42742e76b3ee20e103f2",
+  "liveMode": "LIVE_NOT_RUN",
+  "liveNotRunScope": "无真实付费模型调用、无真实 API Key 读取、无业务数据库连接;全部行为等价验证使用 Fake Provider、隔离 PostgreSQL(127.0.0.1:55441, spec_agent_p3b_live_arch_q1, 用后即删)与 Mock/Fixture 传输。",
+  "targeted": {
+    "cluster1_gaResponseContract": {
+      "note": "新增 GaResponseContractValidatorTest 6/0/0;三协议 Adapter 委托后行为等价由以下套件锁定",
+      "GaResponseContractValidatorTest": "6/0/0",
+      "GaNativeModelContractTest": "7/0/0",
+      "AnthropicMessagesProtocolAdapterTest": "12/0/0",
+      "AnthropicGaNativeTransportTest": "14/0/0",
+      "ResponsesGaNativeTransportTest": "9/0/0",
+      "ResponsesProtocolAdapterTest": "9/0/0",
+      "ChatCompletionsGaTextTransportTest": "7/0/0",
+      "GaGeminiProtocolOfflineTest": "7/0/0",
+      "HttpOpenCodeZenClientShapeTest": "6/0/0",
+      "HttpOpenCodeZenTransportProxyTest": "3/0/0",
+      "ModelProviderTransportHarnessTest": "11/0/0",
+      "archunitNewGuard": "assistantApiShouldNotDependOnProviderImplementationPackages 先红(阻断 GaNativeModelBroker 改前违规)后绿"
+    },
+    "cluster2_modelSettings": {
+      "ApiKeyMaskingTest": "4/0/0(新增)",
+      "ModelConnectionsOfflineTest": "10/0/0(update 冗余删除+委托等价)",
+      "LegacyShortKeyMaskingTest": "9/0/0(MS-CROSS-R1 脱敏语义不变)",
+      "KiloSettingsServiceTest": "12/0/0(Kilo suffix ''→null 等价)",
+      "RevisionValidationTest": "2/0/0"
+    },
+    "dbRequiredE2e": "GaResponsesNativeToolEndToEndTest / GaAnthropicNativeToolEndToEndTest 于本地定向阶段因需隔离数据库未跑,改由全量 test 任务在隔离库上执行覆盖"
+  },
+  "fullLocal": {
+    "java_testOffline": "487 total / 0 skipped / 0 failures",
+    "java_test_full": "2676 total / 41 skipped / 1 failure — 失败为 NodeQueryCitationIntegrationTest.sourcePolicyRevocationAlsoAppliesToMandatoryLineageCards,SharedPythonRetrievalFixture 30s Python 子进程就绪超时(全量重负载环境噪声);单独复跑该类 9/0/0 通过;第4次全量中失败的 agent.runtime 4 例(claim 数据残留)在全新数据库的第5次全量中全部通过,单独复跑 29/29 通过",
+    "java_testDatabaseIntegration": "1005 total / 41 skipped / 0 failures(含 C16RetrievalAwaitGenerationEndToEndTest 真实 agent-brain 进程,SPEC_AGENT_GA_TEST_PYTHON 指向 agent-brain/.venv)",
+    "java_testCrossLanguage": "2 total / 0 skipped / 0 failures(broker-mode brain on 8100, Java test server 8099)",
+    "java_evalBFast": "166 total / 0 skipped / 0 failures",
+    "java_architecture": "ArchitectureTests 39/0/0 + HttpBoundaryGateFixtureTest 6/0/0 + CapabilitySkillsMcpBoundaryTests 6/0/0 + AgentBoundaryArchitectureTests 14/0/0(含本轮新增守卫;原有规则零删除零降级)",
+    "python_pytest": "344 passed / 0 failed(agent-brain/.venv, tests/ 全量)",
+    "frontend_typecheck": "PASS(vue-tsc --noEmit)",
+    "frontend_unit": "987 passed / 1 skipped(988)— skip 为 gaLiveStreamReplay.spec.ts 的 it.runIf(SPEC_AGENT_GA_LIVE_REPLAY) 显式 live 证据门控",
+    "frontend_build": "PASS(vite build)"
+  },
+  "skippedInventory": {
+    "java_test_41": "external-service/live 门控与一次性环境假设(与基线一致,非本轮新增)",
+    "frontend_1": "SPEC_AGENT_GA_LIVE_REPLAY live 证据门控(源码显式 it.runIf)"
+  },
+  "notRun": {
+    "evalLive*": "LIVE_NOT_RUN 原则,不发起真实付费请求",
+    "e2e_playwright": "本轮无前端改动,按项目 CI 流程由推送后 CI 执行"
+  },
+  "envNotes": [
+    "隔离库守卫要求 SPEC_AGENT_TEST_DB_SERVER_ADDRESS 与服务器自报 inet_server_addr 精确一致;本机 Docker bridge 端口映射下自报值为 172.17.0.4/32(带 /32 后缀)",
+    "全量 test 期间须确保 8100 端口无 broker-mode brain:PythonRetrievalClient 会连上它并阻塞等待回调;本轮第3次全量因此卡住,停止 brain 后恢复"
+  ],
+  "ci": {
+    "runId": 40125288536,
+    "headSha": "deeca2c703a6cdba9fd0cee93689de452d502b37",
+    "url": "https://github.com/BangShou1st/spec-agent/actions/runs/40125288536",
+    "conclusion": "SUCCESS",
+    "jobs": "10/10 success: contracts-static, backend-independent, brain, validation-mode, frontend, backend, e2e, eval-baseline, cross-language, validation-summary"
+  }
+}

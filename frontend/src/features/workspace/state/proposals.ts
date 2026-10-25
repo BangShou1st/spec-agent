@@ -127,6 +127,8 @@ export async function pollNodeQueryAction(
         status: result.status === 'FAILED' ? 'FAILED'
           : (result.status as 'RUNNING' | 'COMPLETED' | 'FAILED' | 'AWAITING_APPROVAL' | 'ACCEPTED' | 'REJECTED' | 'POLICY_DENIED' | 'NOT_CONFIRMABLE'),
         message: result.message,
+        sourceStatus: result.sourceStatus,
+        resourceRefs: result.resourceRefs ?? [],
         proposalId: result.proposalId ?? null,
         proposalStatus: result.proposalStatus ?? null,
         actionFamily: result.actionFamily ?? null,
@@ -157,8 +159,12 @@ export async function refreshNodeQueryResultAction(
   fallback: { routeId: string | null; question: string },
 ): Promise<void> {
   if (!store.projectId) return
+  const projectId = store.projectId
+  const session = store.projectSessionId
+  const isCurrent = (): boolean => store.projectId === projectId && store.projectSessionId === session
   try {
-    const result = await getNodeQueryResult(store.projectId, nodeId, runId)
+    const result = await getNodeQueryResult(projectId, nodeId, runId)
+    if (!isCurrent()) return
     const terminal = result.status === 'COMPLETED'
       || result.status === 'AWAITING_APPROVAL'
       || result.status === 'ACCEPTED'
@@ -175,12 +181,17 @@ export async function refreshNodeQueryResultAction(
       runId,
       status: result.status as 'COMPLETED' | 'AWAITING_APPROVAL' | 'ACCEPTED' | 'REJECTED' | 'POLICY_DENIED' | 'NOT_CONFIRMABLE',
       message: result.message,
+      sourceStatus: result.sourceStatus,
+      resourceRefs: result.resourceRefs ?? [],
       proposalId: result.proposalId ?? null,
       proposalStatus: result.proposalStatus ?? null,
       actionFamily: result.actionFamily ?? null,
     }
   } catch {
-    // 结果读取失败保持原状态;失败清单对账仍是权威。
+    // A failed authority refresh must not leave a previously accessible excerpt clickable.
+    if (isCurrent() && store.nodeQuery?.runId === runId) {
+      store.nodeQuery = { ...store.nodeQuery, message: null, resourceRefs: [], sourceStatus: 'VALIDATION_FAILED' }
+    }
   }
 }
 

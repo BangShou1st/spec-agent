@@ -11,6 +11,7 @@ from uuid import UUID
 
 import httpx
 from langchain_core.embeddings import Embeddings
+
 from langchain_ollama import OllamaEmbeddings
 from ollama import ResponseError
 from pydantic import Field, model_validator

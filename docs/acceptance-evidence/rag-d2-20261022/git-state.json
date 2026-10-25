@@ -1,0 +1,23 @@
+{
+  "recordedAt": "2026-10-22T21:26:00+08:00",
+  "branch": "dev",
+  "d2BaselineCommit": "8570721a71e27cdf522eb0fadd718c4f827d64dd",
+  "d2HeadCommit": "c94236611e9f1a073f1d53342ff90ec210543e4e",
+  "d21Files": {
+    "modified": [
+      "agent-brain/pyproject.toml",
+      "agent-brain/requirements.lock",
+      "agent-brain/src/spec_agent_brain/retrieval/configured_embedding.py",
+      "agent-brain/src/spec_agent_brain/retrieval/embedding.py",
+      "agent-brain/tests/test_proxy_isolation.py",
+      "docs/v2/evidence/SHARED_RAG_U1_REAL_INTEGRATION.json",
+      "docs/acceptance-evidence/rag-d2-20261022/summary.md",
+      "docs/acceptance-evidence/rag-d2-20261022/verification.json",
+      "docs/acceptance-evidence/rag-d2-20261022/git-state.json"
+    ],
+    "deleted": [
+      "agent-brain/src/spec_agent_brain/retrieval/scoped_import.py"
+    ]
+  },
+  "protectedUntrackedPreserved": true
+}

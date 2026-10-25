@@ -101,8 +101,11 @@ class GaBrokerOwnershipLostIntegrationTest {
         run = conversations.createRun(thread, "ga.v1", "ga.v1", "v1").id();
         var template = GaModelContract.readRequest(Files.readString(
                 Path.of("../contracts/global-assistant/fixtures/ga-model-request-valid.json")));
-        request = new GaModelContract.Request(GaModelContract.VERSION, run, 1, lease,
-                UUID.randomUUID(), "AGENT", binding, template.messages(), template.tools(),
+        var templateMessages = template.messages().stream()
+                .map(message -> new GaModelContract.Message(message.role(), message.content(),
+                        message.toolCalls(), message.toolCallId())).toList();
+        request = new GaModelContract.Request(GaModelContract.VERSION_2, run, 1, lease,
+                UUID.randomUUID(), "AGENT", binding, templateMessages, template.tools(),
                 "auto", 1024, false);
         revision = Instant.now();
         when(settings.find()).thenReturn(Optional.of(new OpenCodeSettings(
@@ -168,7 +171,7 @@ class GaBrokerOwnershipLostIntegrationTest {
     @Test void lateModelCallbackFromAnotherWorkerIsRefusedByPersistedOwnershipFacts() throws Exception {
         ExecutionClaim claim = claimWithRealScheduler();
         lease = claim.token().leaseId();
-        var current = new GaModelContract.Request(GaModelContract.VERSION, run, 1, lease,
+        var current = new GaModelContract.Request(GaModelContract.VERSION_2, run, 1, lease,
                 UUID.randomUUID(), "AGENT", binding, request.messages(), request.tools(),
                 "auto", 1024, false);
         assertEquals(200, post("/model-inference", mapper.writeValueAsString(current),
@@ -179,7 +182,7 @@ class GaBrokerOwnershipLostIntegrationTest {
         UUID newLease = UUID.randomUUID();
         jdbc.update("UPDATE runtime_tasks SET execution_epoch=2, lease_id=? WHERE ga_run_id=?",
                 newLease, run);
-        var late = new GaModelContract.Request(GaModelContract.VERSION, run, 1, lease,
+        var late = new GaModelContract.Request(GaModelContract.VERSION_2, run, 1, lease,
                 UUID.randomUUID(), "AGENT", binding, request.messages(), request.tools(),
                 "auto", 1024, false);
         var refused = post("/model-inference", mapper.writeValueAsString(late),
@@ -228,7 +231,7 @@ class GaBrokerOwnershipLostIntegrationTest {
     }
 
     private GaModelContract.Request streamRequest() {
-        return new GaModelContract.Request(GaModelContract.VERSION, run, 1, lease,
+        return new GaModelContract.Request(GaModelContract.VERSION_2, run, 1, lease,
                 UUID.randomUUID(), "AGENT", binding, request.messages(), request.tools(),
                 "auto", 1024, true);
     }

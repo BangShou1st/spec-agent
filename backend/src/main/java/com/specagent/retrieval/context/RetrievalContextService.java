@@ -30,6 +30,19 @@ public class RetrievalContextService {
 
     private static final int MAX_ITEMS = 12;
     private static final int MAX_CHARS = 12_000;
+    private static final Set<String> DEGRADABLE_ERROR_CODES = Set.of(
+            "RETRIEVAL_UNAVAILABLE",
+            "OLLAMA_UNAVAILABLE",
+            "DEADLINE_EXCEEDED"
+    );
+
+    public static boolean isDegradable(IllegalStateException ex) {
+        String message = ex.getMessage();
+        if (message == null) {
+            return false;
+        }
+        return DEGRADABLE_ERROR_CODES.contains(message) || message.startsWith("EMBEDDING_");
+    }
 
     private final HybridRetriever retriever;
 
@@ -70,8 +83,11 @@ public class RetrievalContextService {
                 var outcome=retriever.retrieveOutcome(query,snapshot.id(),"CONTEXT_PROJECTION",mandatory);
                 candidates=outcome.candidates(); state=outcome.state();
             } catch(IllegalStateException ex) {
-                return new ContextRetrieval(List.of(),Map.of("retrievalEngineVersion","python-rag.v1",
-                        "profileId",com.specagent.retrieval.protocol.RetrievalWire.PROFILE,"supplementalRetrievalUnavailable",true));
+                if (isDegradable(ex)) {
+                    return new ContextRetrieval(List.of(),Map.of("retrievalEngineVersion","python-rag.v1",
+                            "profileId",com.specagent.retrieval.protocol.RetrievalWire.PROFILE,"supplementalRetrievalUnavailable",true));
+                }
+                throw ex;
             }
         } else candidates= retriever.retrieve(query);
         Set<String> selectedRefs = new HashSet<>();

@@ -191,6 +191,18 @@ public class GaExecutionStore {
             throw new IllegalStateException("GA_CALL_NOT_RESERVED");
     }
 
+    /**
+     * MODEL completion with its continuation sidecar in one reliable commit:
+     * if the encrypted sidecar cannot be stored, the ledger never becomes
+     * SUCCEEDED and Python never receives executable tool calls.
+     */
+    @Transactional
+    public void completeModelWithContinuation(Scope scope, UUID call, String result, Runnable persistSidecar) {
+        lockedBinding(scope);
+        persistSidecar.run();
+        complete(scope, call, result);
+    }
+
     /** Failed/uncertain network calls consume budget and cannot be reissued. */
     @Transactional
     public void unknown(Scope scope, UUID call) {

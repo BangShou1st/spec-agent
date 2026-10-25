@@ -5,7 +5,6 @@ import com.specagent.model.contract.CustomRuntimeSettingsPort;
 import com.specagent.model.contract.KiloRuntimeSettingsPort;
 import com.specagent.model.contract.ModelProvider;
 import com.specagent.model.contract.OpenCodeRuntimeSettingsPort;
-import com.specagent.model.contract.OpenRouterRuntimeSettingsPort;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 
@@ -25,34 +24,40 @@ public class ActiveModelTargetService implements ActiveModelTargetPort {
     private final ModelProviderSettingsService providers;
     private final OpenCodeRuntimeSettingsPort openCode;
     private final KiloRuntimeSettingsPort kilo;
-    private final OpenRouterRuntimeSettingsPort openRouter;
     private final CustomRuntimeSettingsPort custom;
 
     public ActiveModelTargetService(ModelProviderSettingsService providers,
                                     OpenCodeRuntimeSettingsPort openCode,
                                     KiloRuntimeSettingsPort kilo,
-                                    OpenRouterRuntimeSettingsPort openRouter,
+
                                     CustomRuntimeSettingsPort custom) {
         this.providers = providers;
         this.openCode = openCode;
         this.kilo = kilo;
-        this.openRouter = openRouter;
         this.custom = custom;
     }
 
     @Override
     public Optional<Target> activeTarget() {
-        ModelProvider provider = providers.activeProvider();
+        var selected = providers.selection();
+        return targetForProvider(selected.provider(),selected.providerId());
+    }
+
+    private Optional<Target> targetForProvider(ModelProvider provider) {
+        return targetForProvider(provider,null);
+    }
+
+    private Optional<Target> targetForProvider(ModelProvider provider, java.util.UUID selectedId) {
         Object runtime = switch (provider) {
             case OPENCODE_ZEN -> openCode.requireRuntimeSettings();
             case KILO -> kilo.requireRuntimeSettings();
-            case OPENROUTER -> openRouter.requireRuntimeSettings();
-            case CUSTOM -> custom.requireRuntimeSettings();
+
+            case CUSTOM -> custom.requireRuntimeSettings(selectedId);
         };
         String model = switch (runtime) {
             case com.specagent.model.contract.RuntimeOpenCodeSettings value -> value.selectedModel();
             case com.specagent.model.contract.RuntimeKiloSettings value -> value.selectedModel();
-            case com.specagent.model.contract.RuntimeOpenRouterSettings value -> value.selectedModel();
+
             case com.specagent.model.contract.RuntimeCustomSettings value -> value.selectedModel();
             default -> throw new IllegalStateException("Unsupported active model settings");
         };
@@ -60,5 +65,14 @@ public class ActiveModelTargetService implements ActiveModelTargetPort {
             return Optional.empty();
         }
         return Optional.of(new Target(provider.name(), model, runtime));
+    }
+
+    @Override
+    public Optional<Target> targetForConnectionReference(String reference) {
+        if ("builtin:OPENCODE_ZEN".equals(reference)) return targetForProvider(ModelProvider.OPENCODE_ZEN);
+        if ("builtin:KILO".equals(reference)) return targetForProvider(ModelProvider.KILO);
+        if (reference == null || !reference.startsWith("custom-provider:")) return Optional.empty();
+        var settings = custom.requireRuntimeSettings(reference);
+        return Optional.of(new Target(ModelProvider.CUSTOM.name(), settings.selectedModel(), settings));
     }
 }

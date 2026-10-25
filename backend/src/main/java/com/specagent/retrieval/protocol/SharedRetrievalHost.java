@@ -34,6 +34,7 @@ public class SharedRetrievalHost {
                 || !Double.isFinite(item.rankScore()) || item.rankScore()<0) throw new IllegalStateException("RETRIEVAL_UNAVAILABLE");
         var checked=store.validateSources(new Validation(request.protocolVersion(),request.requestId(),request.workload(),request.scopeGrant(),
                 request.profileId(),request.indexGeneration(),request.deadline(),result.items().stream().map(Ranked::source).toList()));
+        if(!checked.rejectedEntryIds().isEmpty()) throw new IllegalStateException("SOURCE_VERSION_MISMATCH");
         var allowed=new HashSet<>(checked.allowedEntryIds());
         return new SearchResult(result.protocolVersion(),result.requestId(),result.workload(),result.scopeGrant(),result.profileId(),
                 result.indexGeneration(),result.deadline(),result.retrievalEngineVersion(),result.status(),result.vectorUnavailable(),

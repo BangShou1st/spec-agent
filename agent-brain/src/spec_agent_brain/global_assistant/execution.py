@@ -13,7 +13,12 @@ from starlette.responses import StreamingResponse
 
 from .agent import build_agent
 from .checkpoints import HostCheckpointSaver
-from .contracts import ExecutionEvent, ExecutionRequest, RunScope
+from .contracts import (
+    ExecutionEvent,
+    ExecutionRequest,
+    GA_EXECUTION_EVENT_PROTOCOL_VERSION,
+    RunScope,
+)
 from .host_rpc import CapabilityRpc, CheckpointRpc
 from .model_adapter import BrokerChatModel, NativeBroker, BrokerError
 from ..wire import canonical_hash
@@ -104,7 +109,7 @@ def execution_router(settings, authenticate):
                 if sequence >= 8191 and kind not in {"COMPLETED", "USER_INPUT_REQUIRED", "FAILED"}:
                     raise RuntimeError("GA_EXECUTION_EVENT_BUDGET")
                 sequence += 1
-                body = json.dumps({"protocolVersion": "ga-execution-event.v1", "runId": identity[0],
+                body = json.dumps({"protocolVersion": GA_EXECUTION_EVENT_PROTOCOL_VERSION, "runId": identity[0],
                     "executionEpoch": execution.execution_epoch, "eventId": str(uuid4()),
                     "sequence": sequence, "type": kind, "payload": payload},
                     ensure_ascii=False, allow_nan=False, separators=(",", ":"))

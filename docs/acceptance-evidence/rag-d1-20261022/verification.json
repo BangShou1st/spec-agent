@@ -1,0 +1,175 @@
+{
+  "taskId": "RAG-D1",
+  "recordedAt": "2026-10-22T20:33:00+08:00",
+  "branch": "dev",
+  "baselineCommit": "742870d6c143d75ce7ab4cc331947932aa0aea47",
+  "environment": {
+    "isolatedPostgresContainer": "spec-agent-iso-20261022-postgres",
+    "isolatedPostgresImage": "pgvector/pgvector:pg17",
+    "isolatedDatabase": "spec_agent_p3b_live_iso20261022",
+    "isolatedUser": "spec_agent_iso_20261022",
+    "isolatedServerEndpoint": "172.24.0.2/32:5432",
+    "isolatedPort": 55432,
+    "ollamaEndpoint": "http://127.0.0.1:11434",
+    "ollamaEmbeddingModel": "qwen3-embedding:0.6b",
+    "embeddingDimensions": 1024,
+    "pythonInterpreter": "agent-brain/.venv/Scripts/python.exe"
+  },
+  "defaultEngineSwitch": {
+    "previousDefault": "java-hybrid.v1",
+    "newDefault": "python-rag.v1",
+    "rollbackSupport": "java-hybrid.v1 explicitly retained and verified in legacy test profiles",
+    "javaDirectDbOwnership": "Java maintains 100% fact, scope and storage ownership; Python has zero direct DB credentials or connections"
+  },
+  "testExecutionSummary": {
+    "backendTestOffline": {
+      "status": "PASSED",
+      "duration": "33s",
+      "task": ":backend:testOffline"
+    },
+    "pythonPytestSuite": {
+      "status": "PASSED",
+      "passed": 292,
+      "failed": 0,
+      "skipped": 0,
+      "duration": "1.66s",
+      "command": "pytest agent-brain"
+    },
+    "databaseIntegrationSuite": {
+      "status": "PASSED",
+      "targetDatabase": "spec_agent_p3b_live_iso20261022",
+      "suites": [
+        {
+          "name": "SharedRetrievalIntegrationTest",
+          "method": "realPythonOllamaIndexAndChineseParaphraseUseExistingPgvectorThroughHostRpc",
+          "status": "PASSED",
+          "proof": "Real Python + local Ollama + authenticated Java RPC + pgvector cosine similarity"
+        },
+        {
+          "name": "C16RetrievalAwaitGenerationEndToEndTest",
+          "status": "PASSED",
+          "proof": "WAIT dependency resolution, lease coordinator CAS, continuation outbox"
+        },
+        {
+          "name": "GeminiCustomProviderSettingsVerificationTest",
+          "status": "PASSED",
+          "proof": "Gemini Lite discovery, encrypted credential save, compatibility probe"
+        },
+        {
+          "name": "GeminiRagControlledAbAcceptanceTest",
+          "status": "PASSED",
+          "proof": "Java vs Python RAG comparative evaluation under real Gemini Lite, zero hallucination on out-of-scope query, byte-for-byte frozen replay"
+        }
+      ]
+    }
+  },
+  "retrievalEvaluation": {
+    "calibrationSet52Queries": {
+      "dataset": "chinese-queries.v1.json",
+      "datasetRole": "DEVELOPMENT_CALIBRATION",
+      "queriesCount": 52,
+      "recallAt8": 1.0,
+      "legacyJavaRecallAt8": 0.925,
+      "mrr": 0.975,
+      "zeroHitCorrectness": "12/12 (100%)",
+      "staleEntityLeaks": 0,
+      "crossProjectPermissionLeaks": 0,
+      "latencyP50Ms": 347,
+      "latencyP95Ms": 417
+    },
+    "candidateSet68Queries": {
+      "dataset": "acceptance-candidate.v1.json",
+      "datasetRole": "INDEPENDENT_ACCEPTANCE_CANDIDATE",
+      "authorship": "AI-authored candidate queries/labels grounded in repository docs",
+      "humanReviewStatus": "PENDING",
+      "executionStatus": "NOT_RUN",
+      "reviewNote": "Strictly preserved PENDING status; no synthetic human approval forged"
+    }
+  },
+  "geminiInferenceAccounting": {
+    "model": "gemini-3.5-flash-lite",
+    "provider": "CUSTOM",
+    "protocol": "CHAT_COMPLETIONS",
+    "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "sessionInferenceBudget": 10,
+    "actualInferencesUsed": 6,
+    "calls": [
+      {
+        "index": 1,
+        "purpose": "CompatibilityProbeService verification",
+        "action": "FINAL",
+        "latencyMs": 13800,
+        "error": null
+      },
+      {
+        "index": 2,
+        "purpose": "Case1 Arm A (Java Hybrid Positive Query)",
+        "action": "RESPOND_TO_USER",
+        "latencyMs": 6561,
+        "error": null
+      },
+      {
+        "index": 3,
+        "purpose": "Case1 Arm B (Python RAG Positive Query)",
+        "action": "RESPOND_TO_USER",
+        "latencyMs": 1282,
+        "error": null
+      },
+      {
+        "index": 4,
+        "purpose": "Case2 Arm A (Java Hybrid Out-of-Scope Negative Query)",
+        "action": "RESPOND_TO_USER",
+        "latencyMs": 6831,
+        "error": null
+      },
+      {
+        "index": 5,
+        "purpose": "Case2 Arm B (Python RAG Out-of-Scope Negative Query)",
+        "action": "RESPOND_TO_USER",
+        "latencyMs": 1639,
+        "error": null
+      },
+      {
+        "index": 6,
+        "purpose": "Case3 (Frozen Replay under Python RAG)",
+        "action": "RESPOND_TO_USER",
+        "latencyMs": 1184,
+        "error": null
+      }
+    ],
+    "errorClassification": {
+      "http429RateLimit": 0,
+      "authenticationError": 0,
+      "timeoutError": 0,
+      "contractViolation": 0,
+      "silentFallback": 0
+    }
+  },
+  "qualityRubricEvaluation": {
+    "evidenceInSnapshot": {
+      "status": "PASS",
+      "finding": "Python RAG correctly populates retrievedContext with semantic lanes, cosine similarity rank scores, and exact chunk location ranges"
+    },
+    "citationGrounding": {
+      "status": "PASS",
+      "finding": "All sourceRefs returned by Gemini Lite are verified subsets of snapshot.allowedSourceRefs"
+    },
+    "evidencePromotionGuard": {
+      "status": "PASS",
+      "finding": "Gemini Lite did not promote retrieved resource evidence to confirmed graph facts; stayed within observation.known/risks and RESPOND_TO_USER payload"
+    },
+    "negativeQueryHallucinationPrevention": {
+      "status": "PASS",
+      "finding": "On out-of-scope query (Jira / 飞书), Gemini Lite explicitly recorded missing facts in observation.unknowns and informed user of lack of documentation, without inventing integration features"
+    },
+    "frozenSnapshotReplay": {
+      "status": "PASS",
+      "finding": "Replaying frozen snapshot against AgentInputSnapshotBuilder produced byte-for-byte identical output without re-querying python or postgres"
+    }
+  },
+  "verdict": {
+    "CODE_COMPLETE": "PASS",
+    "INTEGRATION_VERIFIED": "PASS",
+    "QUALITY_VERIFIED": "PASS_PENDING_HUMAN_REVIEW_FOR_HELD_OUT_68"
+  }
+}

@@ -53,6 +53,9 @@ export interface NodeQueryRunResult {
   proposalId?: string | null
   proposalStatus?: string | null
   actionFamily?: string | null
+  sourceStatus?: 'LEGACY' | 'NONE' | 'AVAILABLE' | 'UNAVAILABLE' | 'VALIDATION_FAILED'
+  sourceRefs?: string[]
+  resourceRefs?: { kind: string; id: string; label: string; metadata?: Record<string, unknown> | null }[]
 }
 
 /** 接受一个待定的 NodeQuery 提案的结果。 */

@@ -17,6 +17,8 @@ public interface ModelProviderRepository {
 
     Optional<ModelProviderRecord> findById(UUID id);
 
+    default Optional<ModelProviderRecord> findByIdForUpdate(UUID id) { return findById(id); }
+
     /** 取某预设的第一行,供遗留的按预设访问的门面方法使用。 */
     Optional<ModelProviderRecord> findFirstByPreset(String preset);
 

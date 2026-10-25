@@ -31,10 +31,11 @@ def execution(descriptors=None, budget=None):
                             capabilities=descriptors, budget=budget or Budget())
 
 
-def response(content="", calls=()):
-    return ModelResponse(protocolVersion="ga-model-inference.v1", content=content, toolCalls=list(calls),
+def response(content="", calls=(), continuation_ref=None):
+    return ModelResponse(protocolVersion="ga-model-inference.v2", content=content, toolCalls=list(calls),
                          finishReason="tool_calls" if calls else "stop",
-                         usage=Usage(promptTokens=12, completionTokens=4))
+                         usage=Usage(promptTokens=12, completionTokens=4),
+                         continuationRef=continuation_ref if continuation_ref else None)
 
 
 class ScriptBroker:
@@ -54,6 +55,37 @@ def setup_agent(e, broker, invoke, guard=lambda: None):
     graph = build_agent(e, model, saver=saver, invoke=invoke, guard=guard)
     config = {"configurable": {"thread_id": str(e.thread_id)}, "recursion_limit": 50}
     return graph, config, saver
+
+
+def test_model_continuation_ref_roundtrip_without_private_payloads():
+    e = execution()
+    ref = "gacr-00000000-0000-4000-8000-000000000001"
+    calls = [ToolCall(id="native-sig-1", name="project_search", arguments={"query": "项目"})]
+    broker = ScriptBroker([response(calls=calls, continuation_ref=ref), response(content="找到一个项目")])
+    invoked = []
+
+    def invoke(request):
+        invoked.append(request)
+        return CapabilityResponse(protocolVersion="ga-capability-result.v1", toolCallId=request.tool_call_id,
+                                  status="SUCCEEDED", content={"projects": [{"projectId": str(uuid4())}]},
+                                  sourceRefs=["project:verified"])
+
+    graph, config, saver = setup_agent(e, broker, invoke)
+    output = graph.invoke({"messages": [HumanMessage(content=e.content, id=str(e.message_id))]}, config)
+    assert output["messages"][-1].content == "找到一个项目"
+    assert len(invoked) == 1 and invoked[0].tool_call_id == "native-sig-1"
+    assert len(broker.requests) == 2
+    # Python carries only the opaque ref; no provider payload exists in-process.
+    assistant_msg = broker.requests[1].messages[2]
+    assert assistant_msg.role == "assistant"
+    assert assistant_msg.tool_calls[0].id == "native-sig-1"
+    assert assistant_msg.continuation_ref == ref
+    assert "extraContent" not in json.loads(assistant_msg.model_dump_json(by_alias=True))
+    assert "thought_signature" not in broker.requests[1].model_dump_json(by_alias=True)
+    # Verify tool message
+    tool_msg = broker.requests[1].messages[3]
+    assert tool_msg.role == "tool" and tool_msg.tool_call_id == "native-sig-1"
+    assert saver.get_tuple(config).checkpoint["channel_values"]["messages"][-1].content == "找到一个项目"
 
 
 def test_framework_native_tool_result_follow_up_and_checkpoint():
@@ -211,6 +243,17 @@ def test_shared_model_golden_fixtures():
                 cls.model_validate_json(path.read_text(encoding="utf-8"))
         else:
             cls.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def test_ms_c1_r1_python_wire_fixtures_match_current_contract():
+    root = Path(__file__).resolve().parents[2] / "contracts" / "global-assistant" / "fixtures" / "ms-c1-r1"
+    first = ModelRequest.model_validate_json((root / "python-first-request.json").read_text(encoding="utf-8"))
+    second = ModelRequest.model_validate_json((root / "python-second-request.json").read_text(encoding="utf-8"))
+    assert first.tool_choice == "required"
+    assert second.messages[1].continuation_ref == "gacr-00000000-0000-4000-8000-000000000042"
+    for wire in (first, second):
+        raw = wire.model_dump_json(by_alias=True)
+        assert "extraContent" not in raw
 
 
 def test_multiple_read_only_calls_keep_separate_arguments_results_and_follow_up():

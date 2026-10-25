@@ -21,8 +21,6 @@ import com.specagent.modelsettings.ModelProviderSettingsService;
 import com.specagent.modelsettings.OpenCodeSettings;
 import com.specagent.modelsettings.OpenCodeSettingsRepository;
 import com.specagent.modelsettings.OpenCodeSettingsService;
-import com.specagent.modelsettings.OpenRouterSettings;
-import com.specagent.modelsettings.OpenRouterSettingsService;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -42,14 +40,15 @@ class GaExecutionModelTargetResolverTest {
     private final OpenCodeSettingsService openCodeSettings = mock(OpenCodeSettingsService.class);
     private final OpenCodeModelCatalog openCodeModelProtocols = mock(OpenCodeModelCatalog.class);
     private final KiloSettingsService kiloSettings = mock(KiloSettingsService.class);
-    private final OpenRouterSettingsService openRouterSettings = mock(OpenRouterSettingsService.class);
     private final CustomProviderSettingsService customSettings = mock(CustomProviderSettingsService.class);
     private final GaNativeModelQualification qualification = mock(GaNativeModelQualification.class);
     private final GaBrainSettings host = mock(GaBrainSettings.class);
 
     private GaExecutionModelTargetResolver resolver() {
+        org.mockito.Mockito.doAnswer(i -> new ModelProviderSettingsService.Selection(providers.activeProvider(),providers.activeProviderId()))
+                .when(providers).selection();
         return new GaExecutionModelTargetResolver(providers, openCodeRepository, openCodeSettings,
-                openCodeModelProtocols, kiloSettings, openRouterSettings, customSettings, qualification, host);
+                openCodeModelProtocols, kiloSettings, customSettings, qualification, host);
     }
 
     private void hostSecret(String secret) {
@@ -74,10 +73,7 @@ class GaExecutionModelTargetResolverTest {
         return new KiloSettings(key, key == null ? null : "1234", model, updatedAt, updatedAt);
     }
 
-    private static OpenRouterSettings openRouter(String model, long revision) {
-        Instant now = Instant.now();
-        return new OpenRouterSettings("or-key", "1234", model, revision, revision, now, now, now);
-    }
+
 
     private static CustomProviderSettings custom(String format, String model, long revision) {
         Instant now = Instant.now();
@@ -179,31 +175,9 @@ class GaExecutionModelTargetResolverTest {
         assertThat(resolution.mode()).isEqualTo(GaExecutionMode.TEXT_CHAT);
     }
 
-    @Test
-    void configuredOpenRouterResolvesAsTextChat() {
-        hostSecret("secret");
-        when(providers.activeProvider()).thenReturn(ModelProvider.OPENROUTER);
-        when(openRouterSettings.requireStoredOrNull()).thenReturn(openRouter("openrouter/auto", 3));
-        when(openRouterSettings.activatable()).thenReturn(true);
 
-        var resolution = ready(resolver().resolveActive());
-        assertThat(resolution.target().provider()).isEqualTo("OPENROUTER");
-        assertThat(resolution.target().model()).isEqualTo("openrouter/auto");
-        assertThat(resolution.target().settingsRevision()).isEqualTo("openrouter-settings:3");
-        // 原生工具传输尚未验证,但普通聊天仍然可用。
-        assertThat(resolution.mode()).isEqualTo(GaExecutionMode.TEXT_CHAT);
-    }
 
-    @Test
-    void unvalidatedOpenRouterIsNotConfigured() {
-        hostSecret("secret");
-        when(providers.activeProvider()).thenReturn(ModelProvider.OPENROUTER);
-        when(openRouterSettings.requireStoredOrNull()).thenReturn(openRouter("openrouter/auto", 3));
-        when(openRouterSettings.activatable()).thenReturn(false);
 
-        assertThat(unavailableCode(resolver().resolveActive()))
-                .isEqualTo(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED);
-    }
 
     @Test
     void customChatCompletionsResolvesAsTextChat() {
@@ -218,16 +192,97 @@ class GaExecutionModelTargetResolverTest {
         assertThat(resolution.target().settingsRevision()).isEqualTo("custom-settings:2");
         assertThat(resolution.mode()).isEqualTo(GaExecutionMode.TEXT_CHAT);
     }
-
-    @Test
-    void customNonChatCompletionsFormatIsProtocolUnsupported() {
+    @Test void onlyQualifiedValidatedCustomEndpointAndModelResolveAsNativeTools() {
         hostSecret("secret");
         when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
-        when(customSettings.requireStoredOrNull()).thenReturn(custom("RESPONSES", "some-model", 1));
+        when(customSettings.requireStoredOrNull()).thenReturn(custom("CHAT_COMPLETIONS","lite",2));
+        when(customSettings.activatable()).thenReturn(true);
+        when(qualification.customQualified("https://custom.example/v1","lite")).thenReturn(true);
+        assertThat(ready(resolver().resolveActive()).mode()).isEqualTo(GaExecutionMode.NATIVE_TOOLS);
+        when(customSettings.activatable()).thenReturn(false);
+        assertThat(unavailableCode(resolver().resolveActive())).isEqualTo(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED);
+    }
 
-        // Responses / Anthropic 绝不能被默认为受支持的 Chat Completions。
+    @Test
+    void customAnthropicLegacyChatsAsTextAndNeverCarriesNativeTools() {
+        hostSecret("secret");
+        when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
+        when(customSettings.requireStoredOrNull()).thenReturn(custom("ANTHROPIC_MESSAGES", "claude-fixture", 1));
+        when(customSettings.activatable()).thenReturn(true);
+
+        // Legacy Anthropic 单例可以普通聊天,但绝不继承任何原生工具资格。
+        var resolution = ready(resolver().resolveActive());
+        assertThat(resolution.target().provider()).isEqualTo("CUSTOM");
+        assertThat(resolution.target().model()).isEqualTo("claude-fixture");
+        assertThat(resolution.mode()).isEqualTo(GaExecutionMode.TEXT_CHAT);
+    }
+
+    @Test
+    void customAnthropicUuidUpgradesToNativeToolsOnlyWithVerifiedQualification() {
+        hostSecret("secret");
+        when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
+        when(providers.activeProviderId()).thenReturn(java.util.UUID.randomUUID());
+        when(customSettings.requireRuntimeSettings(org.mockito.ArgumentMatchers.any(java.util.UUID.class)))
+                .thenReturn(new com.specagent.model.contract.RuntimeCustomSettings(
+                        "ANTHROPIC_MESSAGES", "https://custom.example/v1", "custom-key", "claude-fixture",
+                        3, java.util.UUID.randomUUID(), true));
+
+        var resolution = ready(resolver().resolveActive());
+
+        assertThat(resolution.target().model()).isEqualTo("claude-fixture");
+        assertThat(resolution.target().settingsRevision()).startsWith("custom-provider:");
+        assertThat(resolution.mode()).isEqualTo(GaExecutionMode.NATIVE_TOOLS);
+
+        org.mockito.Mockito.reset(customSettings);
+        when(customSettings.requireRuntimeSettings(org.mockito.ArgumentMatchers.any(java.util.UUID.class)))
+                .thenReturn(new com.specagent.model.contract.RuntimeCustomSettings(
+                        "ANTHROPIC_MESSAGES", "https://custom.example/v1", "custom-key", "claude-fixture",
+                        4, java.util.UUID.randomUUID(), false));
+        assertThat(ready(resolver().resolveActive()).mode()).isEqualTo(GaExecutionMode.TEXT_CHAT);
+    }
+
+    @Test
+    void customUnknownFormatIsProtocolUnsupported() {
+        hostSecret("secret");
+        when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
+        when(customSettings.requireStoredOrNull()).thenReturn(custom("TOTALLY_UNKNOWN_FORMAT", "some-model", 1));
+
+        // 未知格式绝不能被默认为受支持的协议。
         assertThat(unavailableCode(resolver().resolveActive()))
                 .isEqualTo(GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED);
+    }
+
+    @Test
+    void customResponsesChatsByTextAndUpgradesOnlyWithVerifiedNativeTools() {
+        hostSecret("secret");
+        when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
+        when(providers.activeProviderId()).thenReturn(java.util.UUID.randomUUID());
+        when(customSettings.requireRuntimeSettings(org.mockito.ArgumentMatchers.any(java.util.UUID.class)))
+                .thenReturn(new com.specagent.model.contract.RuntimeCustomSettings(
+                        "RESPONSES", "https://custom.example/v1", "custom-key", "responses-model",
+                        3, java.util.UUID.randomUUID(), true));
+
+        var resolution = ready(resolver().resolveActive());
+
+        assertThat(resolution.target().provider()).isEqualTo("CUSTOM");
+        assertThat(resolution.target().model()).isEqualTo("responses-model");
+        assertThat(resolution.target().settingsRevision()).startsWith("custom-provider:");
+        assertThat(resolution.mode()).isEqualTo(GaExecutionMode.NATIVE_TOOLS);
+    }
+
+    @Test
+    void customResponsesWithoutNativeQualificationStaysTextChat() {
+        hostSecret("secret");
+        when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
+        when(providers.activeProviderId()).thenReturn(java.util.UUID.randomUUID());
+        when(customSettings.requireRuntimeSettings(org.mockito.ArgumentMatchers.any(java.util.UUID.class)))
+                .thenReturn(new com.specagent.model.contract.RuntimeCustomSettings(
+                        "RESPONSES", "https://custom.example/v1", "custom-key", "responses-model",
+                        3, java.util.UUID.randomUUID(), false));
+
+        var resolution = ready(resolver().resolveActive());
+
+        assertThat(resolution.mode()).isEqualTo(GaExecutionMode.TEXT_CHAT);
     }
 
     @Test
@@ -272,18 +327,7 @@ class GaExecutionModelTargetResolverTest {
         assertThat(target.model()).isEqualTo("poolside/laguna-s-2.1:free");
     }
 
-    @Test
-    void frozenOpenRouterBindingIsReResolvedFromTheFrozenProvider() {
-        hostSecret("secret");
-        when(providers.activeProvider()).thenReturn(ModelProvider.KILO);
-        when(openRouterSettings.requireStoredOrNull()).thenReturn(openRouter("openrouter/auto", 3));
 
-        GaModelTarget target = resolver().requireFrozen("OPENROUTER", "openrouter/auto",
-                "openrouter-settings:3");
-
-        assertThat(target.provider()).isEqualTo("OPENROUTER");
-        assertThat(target.model()).isEqualTo("openrouter/auto");
-    }
 
     @Test
     void frozenBindingRejectsModelAndRevisionDrift() {
@@ -325,5 +369,19 @@ class GaExecutionModelTargetResolverTest {
                 "opencode-settings:" + updated);
 
         assertThat(target.model()).isEqualTo("test-model");
+    }
+
+    @Test
+    void downgradedCustomUuidConnectionFailsClosedAtPreparation() {
+        hostSecret("secret");
+        when(providers.activeProvider()).thenReturn(ModelProvider.CUSTOM);
+        when(providers.activeProviderId()).thenReturn(java.util.UUID.randomUUID());
+        // PR-22 Review P1:STRUCTURED 复验降级后,运行时边界拒绝 UUID 连接,
+        // 准备阶段必须把它终态化为"未配置",绝不能以过期 validated 标志放行。
+        when(customSettings.requireRuntimeSettings(org.mockito.ArgumentMatchers.any(java.util.UUID.class)))
+                .thenThrow(new IllegalStateException("GA_MODEL_BINDING_MISMATCH"));
+
+        assertThat(unavailableCode(resolver().resolveActive()))
+                .isEqualTo(GlobalAssistantErrorCode.GA_MODEL_NOT_CONFIGURED);
     }
 }

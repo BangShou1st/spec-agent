@@ -192,6 +192,8 @@ export const useWorkspaceStore = defineStore('workspace', {
       proposalId?: string | null
       proposalStatus?: string | null
       actionFamily?: string | null
+      sourceStatus?: string
+      resourceRefs?: { kind: string; id: string; label: string; metadata?: Record<string, unknown> | null }[]
     } | null,
     /*
      * 从后端提案列表 API 发现的持久待确认 NodeQuery 提案。一条 PROPOSED

@@ -12,6 +12,8 @@ import static org.mockito.Mockito.when;
 
 import com.specagent.model.contract.GaModelContract;
 import com.specagent.model.contract.GaModelTarget;
+import com.specagent.model.contract.CustomRuntimeSettingsPort;
+import com.specagent.model.contract.RuntimeCustomSettings;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +32,18 @@ class RoutingGaNativeInferenceGatewayTest {
     private final OpenCodeZenTransport zen = mock(OpenCodeZenTransport.class);
     private final KiloGaNativeTransport kilo = mock(KiloGaNativeTransport.class);
     private final ChatCompletionsGaTextTransport textChat = mock(ChatCompletionsGaTextTransport.class);
-    private final RoutingGaNativeInferenceGateway gateway = new RoutingGaNativeInferenceGateway(zen, kilo, textChat);
+    private final ResponsesGaNativeTransport responses = mock(ResponsesGaNativeTransport.class);
+    private final AnthropicGaNativeTransport anthropic = mock(AnthropicGaNativeTransport.class);
+    private RuntimeCustomSettings customRuntime = customSettings("CHAT_COMPLETIONS", "chat-model");
+    private CustomRuntimeSettingsPort customSettings = customSettings(customRuntime);
+    private RoutingGaNativeInferenceGateway gateway =
+            new RoutingGaNativeInferenceGateway(zen, kilo, textChat, responses, anthropic, customSettings);
+
+    private void customFormat(String format, String model) {
+        customRuntime = customSettings(format, model);
+        customSettings = customSettings(customRuntime);
+        gateway = new RoutingGaNativeInferenceGateway(zen, kilo, textChat, responses, anthropic, customSettings);
+    }
 
     private static GaModelContract.Request request() {
         return new GaModelContract.Request(GaModelContract.VERSION, UUID.randomUUID(), 1, UUID.randomUUID(),
@@ -41,6 +54,32 @@ class RoutingGaNativeInferenceGatewayTest {
 
     private static GaModelTarget target(String provider, String model) {
         return new GaModelTarget(provider, model, "revision:" + provider, "super-secret-key");
+    }
+
+    private GaModelTarget customTarget(String model) {
+        return new GaModelTarget("CUSTOM", model, customRuntime.bindingRevision(), "super-secret-key");
+    }
+
+    private static RuntimeCustomSettings customSettings(String format, String model) {
+        return new RuntimeCustomSettings(format, "http://localhost:9/v1", "super-secret-key", model, 1,
+                UUID.randomUUID(), true);
+    }
+
+    private CustomRuntimeSettingsPort customSettings(RuntimeCustomSettings settings) {
+        return new CustomRuntimeSettingsPort() {
+            @Override
+            public RuntimeCustomSettings requireRuntimeSettings() {
+                return settings;
+            }
+
+            @Override
+            public RuntimeCustomSettings requireRuntimeSettings(String frozenRevision) {
+                if (!settings.bindingRevision().equals(frozenRevision)) {
+                    throw new IllegalStateException("GA_MODEL_BINDING_MISMATCH");
+                }
+                return settings;
+            }
+        };
     }
 
     private static GaModelContract.Response response() {
@@ -89,18 +128,74 @@ class RoutingGaNativeInferenceGatewayTest {
     }
 
     @Test
-    void openRouterAndCustomUseTheTextOnlyChatCompletionsTransport() {
+    void customUsesTheChatCompletionsTransport() {
         when(textChat.complete(any(), any(), any(), any())).thenReturn(response());
         when(textChat.stream(any(), any(), any(), any(), any())).thenReturn(response());
 
-        gateway.complete(target("OPENROUTER", "openrouter/auto"), UUID.randomUUID(), request(),
+        gateway.complete(customTarget("chat-model"), UUID.randomUUID(), request(),
                 Duration.ofSeconds(30), () -> true);
-        gateway.stream(target("CUSTOM", "local-llama"), UUID.randomUUID(), request(),
+        gateway.stream(customTarget("chat-model"), UUID.randomUUID(), request(),
                 Duration.ofSeconds(30), () -> true, text -> true);
 
         verify(textChat).complete(any(), any(), any(), any());
         verify(textChat).stream(any(), any(), any(), any(), any());
-        verifyNoInteractions(zen, kilo);
+        verifyNoInteractions(zen, kilo, responses);
+    }
+
+    @Test
+    void customResponsesUsesTheResponsesTransportWithoutChatFallback() {
+        customFormat("RESPONSES", "responses-model");
+        when(responses.complete(any(), any(), any(), any())).thenReturn(response());
+        when(responses.stream(any(), any(), any(), any(), any())).thenReturn(response());
+
+        gateway.complete(customTarget("responses-model"), UUID.randomUUID(), request(),
+                Duration.ofSeconds(30), () -> true);
+        gateway.stream(customTarget("responses-model"), UUID.randomUUID(), request(),
+                Duration.ofSeconds(30), () -> true, text -> true);
+
+        verify(responses).complete(any(), any(), any(), any());
+        verify(responses).stream(any(), any(), any(), any(), any());
+        verifyNoInteractions(zen, kilo, textChat);
+    }
+
+    @Test
+    void customAnthropicUsesTheAnthropicTransportWithoutAnyFallback() {
+        customFormat("ANTHROPIC_MESSAGES", "anthropic-model");
+        when(anthropic.complete(any(), any(), any(), any())).thenReturn(response());
+        when(anthropic.stream(any(), any(), any(), any(), any())).thenReturn(response());
+
+        gateway.complete(customTarget("anthropic-model"), UUID.randomUUID(), request(),
+                Duration.ofSeconds(30), () -> true);
+        gateway.stream(customTarget("anthropic-model"), UUID.randomUUID(), request(),
+                Duration.ofSeconds(30), () -> true, text -> true);
+
+        verify(anthropic).complete(any(), any(), any(), any());
+        verify(anthropic).stream(any(), any(), any(), any(), any());
+        verifyNoInteractions(zen, kilo, textChat, responses);
+    }
+
+    @Test
+    void customAnthropicErrorsNeverFallBackToAnotherTransport() {
+        customFormat("ANTHROPIC_MESSAGES", "anthropic-model");
+        when(anthropic.complete(any(), any(), any(), any())).thenThrow(
+                ModelProviderException.rateLimited("custom-anthropic_messages", "rate limited"));
+
+        assertThatThrownBy(() -> gateway.complete(customTarget("anthropic-model"), UUID.randomUUID(),
+                request(), Duration.ofSeconds(30), () -> true))
+                .isInstanceOf(ModelProviderException.class);
+        verifyNoInteractions(textChat, responses);
+    }
+
+    @Test
+    void customResponsesErrorsNeverFallBackToChatCompletions() {
+        customFormat("RESPONSES", "frozen-model");
+        when(responses.complete(any(), any(), any(), any())).thenThrow(
+                ModelProviderException.rateLimited("custom-responses", "rate limited"));
+
+        assertThatThrownBy(() -> gateway.complete(customTarget("frozen-model"), UUID.randomUUID(),
+                request(), Duration.ofSeconds(30), () -> true))
+                .isInstanceOf(ModelProviderException.class);
+        verifyNoInteractions(textChat);
     }
 
     @Test
@@ -109,7 +204,7 @@ class RoutingGaNativeInferenceGatewayTest {
                 request(), Duration.ofSeconds(30), () -> true))
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessage("UNSUPPORTED_AGENT_MODEL");
-        verifyNoInteractions(zen, kilo, textChat);
+        verifyNoInteractions(zen, kilo, textChat, responses, anthropic);
     }
 
     @Test
