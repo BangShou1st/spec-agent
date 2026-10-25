@@ -27,25 +27,19 @@ from .config import ConfigurationError, Settings, load_settings
 from .contracts.protocol import (
     ARTIFACT_PROTOCOL_VERSION,
     INPUT_PROTOCOL_VERSION,
+    WORKSPACE_RPC_GRANT_VERSION,
 )
 from .artifact import BrainContractError as ArtifactBrainContractError
 from .artifact import handle_artifact
 from .decision import ActionIneligibleBrainError
 from .decision import BrainContractError as DecisionBrainContractError
 from .decision import handle_decision
+from .global_assistant.contracts import GA_EXECUTION_PROTOCOL_VERSIONS
 from .model_client import BrokerModelClient, FakeModelClient, ModelClient, ModelClientError
 from .state_update import BrainContractError as StateUpdateBrainContractError
 from .state_update import handle_state_update
 
 logger = logging.getLogger("spec_agent_brain")
-
-# GA 执行协议版本公告(design §8):本构建接受的执行信封与执行事件版本。
-# 唯一事实来源是 global_assistant.contracts 的 Literal 字面量;这里显式列出,
-# 使 /health 成为 Java 发起执行前的协商端点——本构建不认识的版本绝不会被发送。
-GA_EXECUTION_PROTOCOL_VERSIONS = [
-    "ga-execution.v1",
-    "ga-execution-event.v1",
-]
 
 
 class BrainFailureHTTPException(HTTPException):
@@ -178,9 +172,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "protocolVersion": INPUT_PROTOCOL_VERSION,
             # GA 执行协议的能力公告(design §8"显式版本化,不默认允许旧请求"):
             # Java 在发起执行前核对本列表,本构建不认识的版本绝不发送。
-            # contracts.py 的 Literal 字面量是唯一事实来源;两者必须同步演进。
-            "gaExecutionProtocolVersions": GA_EXECUTION_PROTOCOL_VERSIONS,
-            "workspaceRpcGrantVersions": ["workspace-rpc-grant.v1"],
+            # 唯一事实来源是 global_assistant.contracts 的版本常量。
+            "gaExecutionProtocolVersions": list(GA_EXECUTION_PROTOCOL_VERSIONS),
+            "workspaceRpcGrantVersions": [WORKSPACE_RPC_GRANT_VERSION],
             "modelMode": resolved.model_mode,
             "authEnabled": resolved.auth_enabled,
             "invocations": {

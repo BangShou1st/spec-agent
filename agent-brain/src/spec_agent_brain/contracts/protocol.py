@@ -17,6 +17,9 @@ ARTIFACT_PROTOCOL_VERSION = "agent-artifact.v1"
 INFERENCE_PROTOCOL_VERSION = "model-inference.v1"
 RANKING_PROTOCOL_VERSION = "agent-ranking.v1"
 RANKING_WEIGHTS_VERSION = "semantic-ranking-weights.v1"
+# 与 Java 侧 WorkspaceRpcGrants.VERSION 对应的跨语言协议常量;/health 的
+# workspaceRpcGrantVersions 公告与 broker 请求必须引用它。
+WORKSPACE_RPC_GRANT_VERSION = "workspace-rpc-grant.v1"
 
 INTERNAL_TOKEN_HEADER = "X-Spec-Agent-Internal-Token"
 

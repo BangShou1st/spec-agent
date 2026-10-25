@@ -1,10 +1,29 @@
 """Strict GA wire DTOs, independent from the Project Agent protocol."""
 
-from typing import Any, Literal, Self
+from typing import Any, Final, Literal, Self
 from uuid import UUID
 
 from pydantic import Field, field_validator, model_validator
 from ..wire import WireModel, canonical_hash
+
+# GA 协议族版本字面量的唯一事实来源:各 DTO 的 Literal、发送方与 /health
+# 的能力公告都引用这些常量,不再散落裸字面量。注意 ga-model-inference
+# 的 v1 代际是 Java 内部表示(GaModelContract.VERSION),与这里的 v2
+# Python wire 是有意区分的两代版本,不得合并。
+GA_MODEL_INFERENCE_PROTOCOL_VERSION: Final = "ga-model-inference.v2"
+GA_EXECUTION_PROTOCOL_VERSION: Final = "ga-execution.v1"
+GA_EXECUTION_EVENT_PROTOCOL_VERSION: Final = "ga-execution-event.v1"
+GA_CAPABILITY_INVOCATION_PROTOCOL_VERSION: Final = "ga-capability-invocation.v1"
+GA_CAPABILITY_RESULT_PROTOCOL_VERSION: Final = "ga-capability-result.v1"
+GA_MODEL_STREAM_PROTOCOL_VERSION: Final = "ga-model-stream.v1"
+
+# /health 公告的 GA 执行协议能力(执行信封 + 执行事件流)。Java 的
+# GaExecutionCoordinator 在发起执行前与该列表协商,本构建不认识的版本
+# 绝不会被发送;两侧必须同步演进。
+GA_EXECUTION_PROTOCOL_VERSIONS: Final = (
+    GA_EXECUTION_PROTOCOL_VERSION,
+    GA_EXECUTION_EVENT_PROTOCOL_VERSION,
+)
 
 
 class ToolCall(WireModel):
@@ -62,7 +81,7 @@ class RunScope(WireModel):
 
 
 class ModelRequest(RunScope):
-    protocol_version: Literal["ga-model-inference.v2"] = Field(alias="protocolVersion")
+    protocol_version: Literal[GA_MODEL_INFERENCE_PROTOCOL_VERSION] = Field(alias="protocolVersion")
     call_id: UUID = Field(alias="callId")
     call_type: Literal["AGENT", "SUMMARY"] = Field(alias="callType")
     model_binding_id: UUID = Field(alias="modelBindingId")
@@ -109,7 +128,7 @@ class Usage(WireModel):
 
 
 class ModelResponse(WireModel):
-    protocol_version: Literal["ga-model-inference.v2"] = Field(alias="protocolVersion")
+    protocol_version: Literal[GA_MODEL_INFERENCE_PROTOCOL_VERSION] = Field(alias="protocolVersion")
     content: str = Field(max_length=131072)
     tool_calls: list[ToolCall] = Field(default_factory=list, alias="toolCalls", max_length=5)
     finish_reason: Literal["stop", "tool_calls"] = Field(alias="finishReason")
@@ -158,7 +177,7 @@ class UiContext(WireModel):
 
 
 class ExecutionRequest(RunScope):
-    protocol_version: Literal["ga-execution.v1"] = Field(alias="protocolVersion")
+    protocol_version: Literal[GA_EXECUTION_PROTOCOL_VERSION] = Field(alias="protocolVersion")
     engine_version: Literal["langchain-ga.v1"] = Field(alias="engineVersion")
     thread_id: UUID = Field(alias="threadId")
     message_id: UUID = Field(alias="messageId")
@@ -195,7 +214,7 @@ class ExecutionRequest(RunScope):
 
 
 class CapabilityRequest(RunScope):
-    protocol_version: Literal["ga-capability-invocation.v1"] = Field(alias="protocolVersion")
+    protocol_version: Literal[GA_CAPABILITY_INVOCATION_PROTOCOL_VERSION] = Field(alias="protocolVersion")
     tool_call_id: str = Field(alias="toolCallId", min_length=1, max_length=128)
     capability_id: str = Field(alias="capabilityId", min_length=1, max_length=128)
     descriptor_version: str = Field(alias="descriptorVersion", min_length=1, max_length=64)
@@ -211,7 +230,7 @@ class CapabilityRequest(RunScope):
 
 
 class CapabilityResponse(WireModel):
-    protocol_version: Literal["ga-capability-result.v1"] = Field(alias="protocolVersion")
+    protocol_version: Literal[GA_CAPABILITY_RESULT_PROTOCOL_VERSION] = Field(alias="protocolVersion")
     tool_call_id: str = Field(alias="toolCallId", min_length=1, max_length=128)
     status: Literal["SUCCEEDED", "FAILED", "USER_INPUT_REQUIRED", "APPROVAL_REQUIRED"]
     content: dict[str, Any]
@@ -256,7 +275,7 @@ class ModelDeltaPayload(WireModel):
 
 
 class ModelStreamEvent(WireModel):
-    protocol_version: Literal["ga-model-stream.v1"] = Field(alias="protocolVersion")
+    protocol_version: Literal[GA_MODEL_STREAM_PROTOCOL_VERSION] = Field(alias="protocolVersion")
     call_id: UUID = Field(alias="callId")
     sequence: int = Field(ge=1, le=8192)
     type: Literal["TEXT_DELTA", "COMPLETED", "FAILED"]
@@ -271,7 +290,7 @@ class ModelStreamEvent(WireModel):
 
 
 class ExecutionEvent(WireModel):
-    protocol_version: Literal["ga-execution-event.v1"] = Field(alias="protocolVersion")
+    protocol_version: Literal[GA_EXECUTION_EVENT_PROTOCOL_VERSION] = Field(alias="protocolVersion")
     run_id: UUID = Field(alias="runId")
     execution_epoch: int = Field(alias="executionEpoch", ge=1, le=9223372036854775807)
     event_id: UUID = Field(alias="eventId")
