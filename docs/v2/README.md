@@ -40,7 +40,7 @@ authority: Current Authority
 - `AGENT_ACTION_PROTOCOL_V2.md` — Agent 与 Runtime 之间的通用 Action Proposal 协议。
 - `AGENT_AUTONOMY_MODEL.md` — Advisor / Autonomous、风险与审批策略。
 - `CAPABILITY_RUNTIME.md` — Skill / MCP / Internal Tool 的统一能力层及边界。
-- [C16_WAIT_V4.md](C16_WAIT_V4.md) — V4 pending 冻结投影、WAIT 订阅、完成/超时唤醒与失效；生产适配器和真实数据库验收仍未完成。
+- [C16_WAIT_V4.md](C16_WAIT_V4.md) — V4 pending 冻结投影、WAIT 订阅、完成/超时唤醒与失效；生产适配器已实现，真实数据库迁移/跨进程恢复/E2E 已于 2026-10-21 在隔离环境验收（c16-real-integration-20261021），生产部署验收仍未执行。
 - `GRAPH_OPERATION_HISTORY.md` — Undo / Redo、补偿操作、不可逆副作用。
 - `AGENT_EVALUATION_MODEL.md` — Agent 质量、延迟、调用次数、groundedness 和防过拟合评估。
 - `PYTHON_AGENT_RUNTIME_BOUNDARY.md` — Java Graph Runtime 与未来 Python Brain Adapter 的稳定边界。

@@ -1,7 +1,8 @@
 # C16 首个生产适配器：检索重建代际就绪
 
-状态：CODE_COMPLETE / OFFLINE_VERIFIED / INTEGRATION_NOT_VERIFIED / RELEASE_BLOCKED。
+状态（2026-10-25 事实校正后）：CODE_COMPLETE / OFFLINE_VERIFIED / DATABASE_MIGRATION_VERIFIED / REAL_WORKER_VERIFIED / CROSS_PROCESS_RECOVERY_VERIFIED / E2E_VERIFIED —— 隔离环境验收于 2026-10-21 完成，见 `docs/acceptance-evidence/c16-real-integration-20261021/delivery.md`；生产部署验收仍未执行。
 基线 dev `8fb328b9ddfe1a00e5f56e90eb1a250b9fd80872`。不改变 WAIT v4 协议。
+（首版状态行为 CODE_COMPLETE / OFFLINE_VERIFIED / INTEGRATION_NOT_VERIFIED / RELEASE_BLOCKED，基于当时仅有的离线证据；已被同日更晚的隔离环境真实集成证据取代，历史原文见文末与离线证据目录，不覆盖。）
 
 ## 真实任务与接入范围
 
@@ -62,17 +63,29 @@ generation/revision 溯源，不带凭据、原文或 worker 错误详情。业�
 READY 不因随后放弃激活而倒退；新调用不会选择 DISCARDED。迁移前已 DISCARDED 的历史
 任务按失败事实保留。Run 取消仍由现有 Run/WAIT 所有权和 continuation 资格检查处理。
 
-## 尚未验收的发布门槛
+## 发布门槛与验收状态（2026-10-25 事实校正更新）
 
-V103 只编写并静态核对，**没有执行**。新增列、表、FK、索引与终态回填涉及锁和存量数据；
-需要隔离 PostgreSQL 验证 Flyway 顺序、约束、回填成本和执行计划。真实 V99/V100/V101
-迁移验收仍 NOT RUN，不能由本轮离线测试替代。
+原首版本节标题为「尚未验收的发布门槛」，其中 V103 未执行、V99/V100/V101 迁移
+NOT RUN、跨进程恢复与 E2E NOT RUN 等断言基于当时仅有的离线证据，已被同日更晚的
+隔离环境真实集成验收取代：见
+`docs/acceptance-evidence/c16-real-integration-20261021/delivery.md`。该轮在隔离
+PostgreSQL（`spec_agent_p3b_live_iso20261021` 专用容器/账户/网络）上完成 V98–V103
+真实迁移链（含 V99 守卫的安全阻断与人工处置）、真实 Python 检索进程 + 真实本地
+Ollama 的 worker 执行、七项失败路径、七项跨进程竞争/崩溃/恢复场景与 E2E 全链路，
+并暴露并修复两个 P0 生产缺陷（完成扫描列名错误、续跑线程缺 actor 绑定）。
 
-禁止新旧业务 writer 混跑：旧版本 retry 不递增 revision，旧 worker 不写 outcome。
-上线必须先排空/停止旧 rebuild writer，在获授权的发布流程执行迁移并统一升级后恢复。
-本轮不宣称支持这种滚动混跑。还需隔离授权用户/组织/项目、已批准 embedding profile、
-可用的真实 Brain/embedding 服务、安全凭据、两独立 worker 进程及可控制的租约/时钟场景。
-运行真实任务完成、事务竞争、撤权、崩溃窗口、outbox 重投、跨进程恢复与 E2E 验收均
+仍然有效的发布门槛（未被上述证据取消）：
+
+- 禁止新旧业务 writer 混跑：旧版本 retry 不递增 revision，旧 worker 不写 outcome。
+  上线必须先排空/停止旧 rebuild writer，在获授权的发布流程执行迁移并统一升级后恢复；
+  不宣称支持滚动混跑。
+- 隔离环境验收不等于生产部署：生产切换仍需获授权的目标数据库、凭据注入、已批准
+  embedding profile、可用的真实 Brain/embedding 服务与两独立 worker 进程，以及
+  RUNBOOK 列出的运维门槛。
+
+原首版记录（历史，NOT RUN 断言已被上段取代，按原文保留）：V103 只编写并静态核对，
+没有执行。真实 V99/V100/V101 迁移验收仍 NOT RUN，不能由本轮离线测试替代。运行
+真实任务完成、事务竞争、撤权、崩溃窗口、outbox 重投、跨进程恢复与 E2E 验收均
 NOT RUN。本轮未连接数据库、调用模型或启动完整 Spring 集成环境。
 
 离线证据见 `docs/acceptance-evidence/c16-production-adapter-20261021/delivery.md`。
