@@ -16,11 +16,16 @@ authority: Historical Reference Only
 - 本地验证(隔离库 + Fake Provider):testOffline **489/0/0**、test **2680/0/41**、
   testDatabaseIntegration **1007/0/41**(skips 均为显式环境门控;红→绿复现记录见
   verification.md)。
-- 最终 HEAD CI:<!-- CI_VERDICT_PLACEHOLDER -->
+- 最终 HEAD CI:修复代码 HEAD `906ee3c` 双 run(40170687660 / 40170691663)各 **10/10
+  job success**(`gh run view` 于 2026-10-25 核验;含 backend/brain/frontend/e2e/
+  cross-language/eval-baseline/validation-summary)。本目录证据回填提交为 docs-only 追加,
+  其自身 CI 以 GitHub 该 head 的 run 为准(与本 PR 既有 `25902a5` docs-only head 同一处理方式)。
 
 ## 裁决
 
-<!-- FINAL_VERDICT_PLACEHOLDER -->
+**READY_FOR_MERGE_DECISION** —— Review `5641753298` 的 P1 已修复并有红→绿回归与全量
+本地验证支持,P2 已核实勘误,修复 HEAD CI 10/10 全绿;等待 owner 合并授权(合并模式
+merge commit,禁 squash;合并前按 PR 描述执行 tree-hash 核验)。
 
 生产发布阻断事项(RAG 人审、DB 中断演练、生产切换授权)不变;本 PR 合并 = 代码集成就绪,
 不等于生产发布就绪。

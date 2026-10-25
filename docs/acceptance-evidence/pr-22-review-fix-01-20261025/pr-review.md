@@ -50,7 +50,17 @@ verification.md。
 
 ## 4. 最终 HEAD CI(以推送后实际查询为准)
 
-<!-- CI_RESULT_PLACEHOLDER -->
+修复代码 HEAD `906ee3c`(origin/dev fast-forward `25902a5..906ee3c`,无强推):两个触发
+run 均 completed/**success**,各 10/10 job 全绿:
+
+```text
+run 40170691663(2026-10-25,branch dev,head 906ee3c)
+  contracts-static / validation-mode / brain / frontend / backend-independent /
+  backend / eval-baseline / cross-language / e2e / validation-summary = success
+run 40170687660:同 head,同 10/10 success
+```
+
+历史基线:`efbe11a` run 40152643427、`25902a5` run 40165818065(各 10/10),仅作旧证据保留。
 
 ## 5. 生产发布阻断事项(不变,与 review 一致)
 
